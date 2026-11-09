@@ -144,7 +144,9 @@ async function readableTextContrast(page, applicationMaterial = true) {
     return { failures, samples, materialSamples, literalSamples }
   })
   assert(
-    result.samples > 0 && (!applicationMaterial || result.materialSamples > 0) && result.literalSamples > 0,
+    result.samples > 0 &&
+      (!applicationMaterial || result.materialSamples > 0) &&
+      result.literalSamples > 0,
     'contrast samples include visible text and literal owners',
   )
   assert.deepEqual(
@@ -174,12 +176,15 @@ async function openTab(page, name) {
 }
 
 async function requestStates(page, selector, expected) {
-  const entries = await page.locator(selector).locator('[data-request-state]').evaluateAll((nodes) =>
-    nodes.map((node) => ({
-      state: node.getAttribute('data-request-state'),
-      text: node.textContent.replace(/\s+/g, ' ').trim(),
-    })),
-  )
+  const entries = await page
+    .locator(selector)
+    .locator('[data-request-state]')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        state: node.getAttribute('data-request-state'),
+        text: node.textContent.replace(/\s+/g, ' ').trim(),
+      })),
+    )
   assert.deepEqual(entries.map((entry) => entry.state).sort(), Object.keys(expected).sort())
   for (const entry of entries) {
     assert.match(entry.text, new RegExp(`\\b${expected[entry.state]}\\b`))
@@ -204,18 +209,22 @@ async function mapGeometry(page) {
     const nodes = [...canvas.querySelectorAll('[data-component]')].map((node) => ({
       id: node.getAttribute('data-component'),
       ...rectangle(node),
-      overflowing: node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1,
+      overflowing:
+        node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1,
       states: [...node.querySelectorAll('[data-request-state]')].map(rectangle),
     }))
     const routes = [...canvas.querySelectorAll('.composition-connection')].map((route) => ({
       path: route.querySelector('.composition-route').getAttribute('d'),
       background: rectangle(route.querySelector('.composition-slot-background')),
-      labels: [...route.querySelectorAll('text')].filter((node) => node.textContent.trim()).map(rectangle),
+      labels: [...route.querySelectorAll('text')]
+        .filter((node) => node.textContent.trim())
+        .map(rectangle),
     }))
     return { width: canvas.offsetWidth, height: canvas.offsetHeight, nodes, routes }
   })
   const contains = (outer, inner, tolerance = 1) =>
-    inner.x >= outer.x - tolerance && inner.y >= outer.y - tolerance &&
+    inner.x >= outer.x - tolerance &&
+    inner.y >= outer.y - tolerance &&
     inner.x + inner.width <= outer.x + outer.width + tolerance &&
     inner.y + inner.height <= outer.y + outer.height + tolerance
   const canvas = { x: 0, y: 0, width: result.width, height: result.height }
@@ -228,14 +237,19 @@ async function mapGeometry(page) {
   for (const [index, node] of result.nodes.entries())
     for (const other of result.nodes.slice(index + 1))
       assert(
-        node.x + node.width <= other.x || other.x + other.width <= node.x ||
-        node.y + node.height <= other.y || other.y + other.height <= node.y,
+        node.x + node.width <= other.x ||
+          other.x + other.width <= node.x ||
+          node.y + node.height <= other.y ||
+          other.y + other.height <= node.y,
         'mounted component cards do not overlap',
       )
   for (const route of result.routes) {
     assert(contains(canvas, route.background), 'slot summaries remain inside the shared canvas')
     for (const label of route.labels)
-      assert(contains(route.background, label), 'complete slot names, counts and state labels fit their route region')
+      assert(
+        contains(route.background, label),
+        'complete slot names, counts and state labels fit their route region',
+      )
   }
   return {
     width: result.width,
@@ -252,33 +266,72 @@ test('Run map separates mixed retained states, shared slots and unmatched eviden
     await page.getByRole('button', { name: 'Active 2', exact: true }).waitFor()
     await page.getByRole('button', { name: 'Needs attention 2', exact: true }).waitFor()
     await requestStates(page, '[data-composition-node-states="worker"]', {
-      requested: 1, active: 1, 'cancel-requested': 1, returned: 2, failed: 1, uncertain: 1,
+      requested: 1,
+      active: 1,
+      'cancel-requested': 1,
+      returned: 2,
+      failed: 1,
+      uncertain: 1,
     })
     await requestStates(page, '[data-composition-node-states="reviewer"]', { returned: 1 })
     await requestStates(page, '[data-composition-node-states="http"]', { active: 1 })
     await requestStates(page, '[data-composition-edge-states="prepare-route"]', {
-      active: 1, returned: 2, failed: 1,
+      active: 1,
+      returned: 2,
+      failed: 1,
     })
     await requestStates(page, '[data-composition-edge-states="retry-route"]', {
-      requested: 1, 'cancel-requested': 1, uncertain: 1,
+      requested: 1,
+      'cancel-requested': 1,
+      uncertain: 1,
     })
     assert.equal(await page.locator('[data-composition-edge="prepare-route"]').textContent(), '4')
     assert.equal(await page.locator('[data-composition-edge="retry-route"]').textContent(), '3')
-    assert.equal(await page.locator('[data-component="application"] [data-request-state]').count(), 0)
-    assert.equal(await page.locator('[data-component="checkpoint"] [data-request-state]').count(), 0)
-    assert.doesNotMatch(await page.locator('[data-component="checkpoint"]').textContent(), /\b(skipped|succeeded)\b/i)
-    await page.getByText('4 call observations are omitted. Counts describe retained observations only.', { exact: true }).waitFor()
-    await page.getByText('2 retained observations cannot be placed on this map', { exact: true }).waitFor()
+    assert.equal(
+      await page.locator('[data-component="application"] [data-request-state]').count(),
+      0,
+    )
+    assert.equal(
+      await page.locator('[data-component="checkpoint"] [data-request-state]').count(),
+      0,
+    )
+    assert.doesNotMatch(
+      await page.locator('[data-component="checkpoint"]').textContent(),
+      /\b(skipped|succeeded)\b/i,
+    )
+    await page
+      .getByText('4 call observations are omitted. Counts describe retained observations only.', {
+        exact: true,
+      })
+      .waitFor()
+    await page
+      .getByText('2 retained observations cannot be placed on this map', { exact: true })
+      .waitFor()
     await mapGeometry(page)
     await page.locator('[data-component="worker"]').click()
-    assert.deepEqual(await page.locator('[data-composition-call]').evaluateAll((nodes) =>
-      nodes.map((node) => node.getAttribute('data-composition-call'))), [
-      'prepare-one', 'prepare-two', 'prepare-three', 'prepare-four',
-      'retry-one', 'retry-two', 'retry-three',
-    ])
-    await page.getByRole('combobox', { name: 'Find a component', exact: true }).selectOption('reviewer')
-    assert.deepEqual(await page.locator('[data-composition-call]').evaluateAll((nodes) =>
-      nodes.map((node) => node.getAttribute('data-composition-call'))), ['approve-one'])
+    assert.deepEqual(
+      await page
+        .locator('[data-composition-call]')
+        .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-composition-call'))),
+      [
+        'prepare-one',
+        'prepare-two',
+        'prepare-three',
+        'prepare-four',
+        'retry-one',
+        'retry-two',
+        'retry-three',
+      ],
+    )
+    await page
+      .getByRole('combobox', { name: 'Find a component', exact: true })
+      .selectOption('reviewer')
+    assert.deepEqual(
+      await page
+        .locator('[data-composition-call]')
+        .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-composition-call'))),
+      ['approve-one'],
+    )
   })
 })
 
@@ -295,12 +348,20 @@ test('Run map focus preserves geometry and keyboard reachability through observa
     host.update({ ...mixed, revision: 2 })
     await page.getByRole('button', { name: 'All requests 9', exact: true }).waitFor()
     const geometry = await mapGeometry(page)
-    assert.deepEqual(geometry, initialGeometry, 'new mixed observations fit the existing Run-map geometry')
+    assert.deepEqual(
+      geometry,
+      initialGeometry,
+      'new mixed observations fit the existing Run-map geometry',
+    )
     for (const focus of ['active', 'attention', 'all']) {
       const button = page.locator(`[data-request-focus="${focus}"]`)
       await button.click()
       assert.equal(await button.getAttribute('aria-pressed'), 'true')
-      assert.deepEqual(await mapGeometry(page), geometry, 'focus changes emphasis, not map positions or visible labels')
+      assert.deepEqual(
+        await mapGeometry(page),
+        geometry,
+        'focus changes emphasis, not map positions or visible labels',
+      )
       assert.equal(await page.locator('[data-component]').count(), 5)
       for (const node of await page.locator('[data-component]').all()) {
         assert(await node.isVisible())
@@ -309,14 +370,24 @@ test('Run map focus preserves geometry and keyboard reachability through observa
     }
     await page.locator('[data-request-focus="active"]').click()
     await page.locator('[data-component="application"]').click()
-    const routeStyle = (edge) => page.locator(`.composition-connection:has([data-composition-edge="${edge}"]) .composition-route`).evaluate((node) => {
-      const style = getComputedStyle(node)
-      return { opacity: Number(style.strokeOpacity), width: Number.parseFloat(style.strokeWidth) }
-    })
+    const routeStyle = (edge) =>
+      page
+        .locator(
+          `.composition-connection:has([data-composition-edge="${edge}"]) .composition-route`,
+        )
+        .evaluate((node) => {
+          const style = getComputedStyle(node)
+          return {
+            opacity: Number(style.strokeOpacity),
+            width: Number.parseFloat(style.strokeWidth),
+          }
+        })
     const activeRoute = await routeStyle('prepare-route')
     const returnedRoute = await routeStyle('approve-route')
-    assert(activeRoute.opacity > returnedRoute.opacity && activeRoute.width > returnedRoute.width,
-      'selecting their shared root preserves the distinction between active and returned-only routes')
+    assert(
+      activeRoute.opacity > returnedRoute.opacity && activeRoute.width > returnedRoute.width,
+      'selecting their shared root preserves the distinction between active and returned-only routes',
+    )
     assert.deepEqual(await mapGeometry(page), geometry)
     const worker = page.locator('[data-component="worker"]')
     await worker.focus()
@@ -334,7 +405,10 @@ test('Run map focus preserves geometry and keyboard reachability through observa
     host.update(changed)
     await page.getByRole('button', { name: 'Active 0', exact: true }).waitFor()
     await page.getByRole('button', { name: 'Needs attention 3', exact: true }).waitFor()
-    assert.equal(await page.locator('[data-request-focus="attention"]').getAttribute('aria-pressed'), 'true')
+    assert.equal(
+      await page.locator('[data-request-focus="attention"]').getAttribute('aria-pressed'),
+      'true',
+    )
     assert.equal(await reviewer.getAttribute('aria-pressed'), 'true')
     await mapGeometry(page)
     host.update({
@@ -342,12 +416,17 @@ test('Run map focus preserves geometry and keyboard reachability through observa
       revision: 4,
       rootSourceId: 'next-run',
       calls: [],
-      views: changed.views.filter((item) => item.sourceId === 'root').map((item) => ({ ...item, sourceId: 'next-run' })),
+      views: changed.views
+        .filter((item) => item.sourceId === 'root')
+        .map((item) => ({ ...item, sourceId: 'next-run' })),
       omissions: { ...changed.omissions, calls: 0 },
       artifacts: { ...changed.artifacts, sourceId: 'next-run' },
     })
     await page.getByRole('button', { name: 'All requests 0', exact: true }).waitFor()
-    assert.equal(await page.locator('[data-request-focus="all"]').getAttribute('aria-pressed'), 'true')
+    assert.equal(
+      await page.locator('[data-request-focus="all"]').getAttribute('aria-pressed'),
+      'true',
+    )
     assert.equal(await page.locator('[data-component][aria-pressed="true"]').count(), 0)
   })
 })
@@ -361,23 +440,41 @@ test('an incomplete observation retains the readable map and fences exact reques
     const requests = page.locator('[data-composition-call]')
     assert.equal(await requests.count(), 7)
     host.update({
-      kind: 'incomplete', revision: 2, lastCompleteRevision: 1,
-      mode: original.mode, rootSourceId: original.rootSourceId,
-      reason: 'The latest map observation is incomplete.', workspace: original.workspace,
-      context: '', omissions: original.omissions, attention: [], diagnostics: [],
+      kind: 'incomplete',
+      revision: 2,
+      lastCompleteRevision: 1,
+      mode: original.mode,
+      rootSourceId: original.rootSourceId,
+      reason: 'The latest map observation is incomplete.',
+      workspace: original.workspace,
+      context: '',
+      omissions: original.omissions,
+      attention: [],
+      diagnostics: [],
     })
     await page.getByText('Incomplete observation', { exact: true }).waitFor()
     assert.equal(await page.locator('[data-component]').count(), 5)
     assert.equal(await requests.count(), 7)
     for (const request of await requests.all()) assert(!(await request.isEnabled()))
     await requestStates(page, '[data-composition-node-states="worker"]', {
-      requested: 1, active: 1, 'cancel-requested': 1, returned: 2, failed: 1, uncertain: 1,
+      requested: 1,
+      active: 1,
+      'cancel-requested': 1,
+      returned: 2,
+      failed: 1,
+      uncertain: 1,
     })
     host.update({ ...original, revision: 3 })
     await page.getByText('Connected', { exact: true }).waitFor()
-    assert.equal(await page.locator('[data-component="worker"]').getAttribute('aria-pressed'), 'true')
+    assert.equal(
+      await page.locator('[data-component="worker"]').getAttribute('aria-pressed'),
+      'true',
+    )
     for (const request of await requests.all()) assert(await request.isEnabled())
-    assert(host.requests.every((request) => request.method === 'GET'), 'map inspection never submits work')
+    assert(
+      host.requests.every((request) => request.method === 'GET'),
+      'map inspection never submits work',
+    )
   })
 })
 
@@ -390,63 +487,109 @@ for (const width of [1440, 390]) {
       await page.locator('[data-composition-call="prepare-one"]').click()
       const firstView = page.locator('[data-call-view="worker-one-notes"]')
       await firstView.waitFor()
-      assert.deepEqual(await page.locator('[data-call-view]').evaluateAll((nodes) =>
-        nodes.map((node) => node.getAttribute('data-call-view'))), ['worker-one-notes'])
+      assert.deepEqual(
+        await page
+          .locator('[data-call-view]')
+          .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-call-view'))),
+        ['worker-one-notes'],
+      )
       await firstView.click()
-      await page.getByText('These notes belong to the first worker request.', { exact: true }).waitFor()
-      assert.equal(await page.getByText('These notes belong to the second worker request.', { exact: true }).count(), 0)
+      await page
+        .getByText('These notes belong to the first worker request.', { exact: true })
+        .waitFor()
+      assert.equal(
+        await page
+          .getByText('These notes belong to the second worker request.', { exact: true })
+          .count(),
+        0,
+      )
       const back = page.locator('#invocation-return')
       assert(await back.isVisible())
       assert(await back.isEnabled())
       assert(await back.evaluate((node) => node === document.activeElement))
       await back.click()
-      await page.getByRole('heading', { name: 'Prepare the first candidate', exact: true }).waitFor()
+      await page
+        .getByRole('heading', { name: 'Prepare the first candidate', exact: true })
+        .waitFor()
       await firstView.waitFor()
       const map = page.locator('.composition-return')
       if (!(await map.isVisible()))
         await page.getByRole('button', { name: '← Back to calls', exact: true }).click()
       await map.click()
-      assert.equal(await page.locator('[data-component="worker"]').getAttribute('aria-pressed'), 'true')
-      assert.equal(await page.locator('[data-request-focus="attention"]').getAttribute('aria-pressed'), 'true')
+      assert.equal(
+        await page.locator('[data-component="worker"]').getAttribute('aria-pressed'),
+        'true',
+      )
+      assert.equal(
+        await page.locator('[data-request-focus="attention"]').getAttribute('aria-pressed'),
+        'true',
+      )
       if (width < 1120)
-        assert(await page.locator('.back-to-components').evaluate((node) => node === document.activeElement))
+        assert(
+          await page
+            .locator('.back-to-components')
+            .evaluate((node) => node === document.activeElement),
+        )
       else
-        assert(await page.locator('[data-component="worker"]').evaluate((node) => node === document.activeElement))
+        assert(
+          await page
+            .locator('[data-component="worker"]')
+            .evaluate((node) => node === document.activeElement),
+        )
       await page.locator('[data-composition-call="prepare-two"]').click()
       await page.locator('[data-call-view="worker-two-notes"]').waitFor()
-      assert.deepEqual(await page.locator('[data-call-view]').evaluateAll((nodes) =>
-        nodes.map((node) => node.getAttribute('data-call-view'))), ['worker-two-notes'])
+      assert.deepEqual(
+        await page
+          .locator('[data-call-view]')
+          .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-call-view'))),
+        ['worker-two-notes'],
+      )
       await noPageOverflow(page)
     })
   })
 
   test(`Run-map summaries and focus controls remain readable in every appearance at ${width}px`, async () => {
-    await withPage(compositionFixture(), { viewport: { width, height: 1000 }, hasTouch: true }, async (page) => {
-      await openTab(page, 'Application map')
-      for (const theme of ['Light', 'Dark', 'Monochrome']) {
-        await page.getByRole('button', { name: `${theme} appearance`, exact: true }).click()
-        const attention = page.locator('[data-request-focus="attention"]')
-        await attention.focus()
-        await page.keyboard.press('Enter')
-        assert.equal(await attention.getAttribute('aria-pressed'), 'true')
-        assert(await attention.evaluate((node) => node === document.activeElement))
-        const outline = await attention.evaluate((node) => {
-          const style = getComputedStyle(node)
-          return { style: style.outlineStyle, width: Number.parseFloat(style.outlineWidth) }
-        })
-        assert(outline.style !== 'none' && outline.width >= 2, 'keyboard focus stays visibly outlined')
-        for (const control of await page.locator('[data-request-focus]').all()) {
-          const box = await control.boundingBox()
-          assert(box.width >= 44 && box.height >= 44, 'coarse-pointer request-focus controls remain at least 44px')
+    await withPage(
+      compositionFixture(),
+      { viewport: { width, height: 1000 }, hasTouch: true },
+      async (page) => {
+        await openTab(page, 'Application map')
+        for (const theme of ['Light', 'Dark', 'Monochrome']) {
+          await page.getByRole('button', { name: `${theme} appearance`, exact: true }).click()
+          const attention = page.locator('[data-request-focus="attention"]')
+          await attention.focus()
+          await page.keyboard.press('Enter')
+          assert.equal(await attention.getAttribute('aria-pressed'), 'true')
+          assert(await attention.evaluate((node) => node === document.activeElement))
+          const outline = await attention.evaluate((node) => {
+            const style = getComputedStyle(node)
+            return { style: style.outlineStyle, width: Number.parseFloat(style.outlineWidth) }
+          })
+          assert(
+            outline.style !== 'none' && outline.width >= 2,
+            'keyboard focus stays visibly outlined',
+          )
+          for (const control of await page.locator('[data-request-focus]').all()) {
+            const box = await control.boundingBox()
+            assert(
+              box.width >= 44 && box.height >= 44,
+              'coarse-pointer request-focus controls remain at least 44px',
+            )
+          }
+          await requestStates(page, '[data-composition-node-states="worker"]', {
+            requested: 1,
+            active: 1,
+            'cancel-requested': 1,
+            returned: 2,
+            failed: 1,
+            uncertain: 1,
+          })
+          await mapGeometry(page)
+          await readableTextContrast(page, false)
+          await noPageOverflow(page)
         }
-        await requestStates(page, '[data-composition-node-states="worker"]', {
-          requested: 1, active: 1, 'cancel-requested': 1, returned: 2, failed: 1, uncertain: 1,
-        })
-        await mapGeometry(page)
-        await readableTextContrast(page, false)
-        await noPageOverflow(page)
-      }
-    })
+      },
+    )
   })
 }
 
@@ -461,29 +604,61 @@ test('child-view return is fenced by incomplete observations and by loss of its 
     const back = page.locator('#invocation-return')
     await back.waitFor()
     host.update({
-      kind: 'incomplete', revision: 2, lastCompleteRevision: 1,
-      mode: original.mode, rootSourceId: original.rootSourceId,
-      reason: 'The originating invocation cannot be refreshed.', workspace: original.workspace,
-      context: '', omissions: original.omissions, attention: [], diagnostics: [],
+      kind: 'incomplete',
+      revision: 2,
+      lastCompleteRevision: 1,
+      mode: original.mode,
+      rootSourceId: original.rootSourceId,
+      reason: 'The originating invocation cannot be refreshed.',
+      workspace: original.workspace,
+      context: '',
+      omissions: original.omissions,
+      attention: [],
+      diagnostics: [],
     })
     await page.getByText('Incomplete observation', { exact: true }).waitFor()
     assert(!(await back.isEnabled()))
-    await page.getByText('Invocation links are unavailable while this observation is stale or incomplete.', { exact: true }).waitFor()
-    await page.getByText('These notes belong to the first worker request.', { exact: true }).waitFor()
+    await page
+      .getByText(
+        'Invocation links are unavailable while this observation is stale or incomplete.',
+        { exact: true },
+      )
+      .waitFor()
+    await page
+      .getByText('These notes belong to the first worker request.', { exact: true })
+      .waitFor()
     host.update({ ...original, revision: 3 })
     await page.getByText('Connected', { exact: true }).waitFor()
     assert(await back.isEnabled())
-    host.update({ ...original, revision: 4, calls: original.calls.filter((call) => call.id !== 'prepare-one') })
-    await page.getByText('The originating invocation is no longer available in this observation.', { exact: true }).waitFor()
-    assert(!(await back.isEnabled()))
-    await page.getByText('These notes belong to the first worker request.', { exact: true }).waitFor()
     host.update({
-      ...original, revision: 5, rootSourceId: 'another-run', calls: [],
-      views: original.views.map((item) => item.sourceId === 'root' ? { ...item, sourceId: 'another-run' } : item),
+      ...original,
+      revision: 4,
+      calls: original.calls.filter((call) => call.id !== 'prepare-one'),
+    })
+    await page
+      .getByText('The originating invocation is no longer available in this observation.', {
+        exact: true,
+      })
+      .waitFor()
+    assert(!(await back.isEnabled()))
+    await page
+      .getByText('These notes belong to the first worker request.', { exact: true })
+      .waitFor()
+    host.update({
+      ...original,
+      revision: 5,
+      rootSourceId: 'another-run',
+      calls: [],
+      views: original.views.map((item) =>
+        item.sourceId === 'root' ? { ...item, sourceId: 'another-run' } : item,
+      ),
       artifacts: { ...original.artifacts, sourceId: 'another-run' },
     })
     await back.waitFor({ state: 'detached' })
-    assert(host.requests.every((request) => request.method === 'GET'), 'view navigation and reconciliation never submit execution')
+    assert(
+      host.requests.every((request) => request.method === 'GET'),
+      'view navigation and reconciliation never submit execution',
+    )
   })
 })
 

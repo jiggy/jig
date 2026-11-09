@@ -305,8 +305,7 @@ export class PrivateCliProgress {
           },
         })
         await this.#drainWrites()
-        if (web.active && this.#webAdvertised)
-          await this.lifetime.onWebDisplay?.(web.launchUrl)
+        if (web.active && this.#webAdvertised) await this.lifetime.onWebDisplay?.(web.launchUrl)
         this.#armDeadline()
       } catch (error) {
         await this.#closeWeb().catch(() => undefined)

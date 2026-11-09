@@ -164,8 +164,8 @@ if (process.env.ARCHIVE_MUTATION === 'canonical') appendFileSync(join(process.en
         headRepository: 'local/local',
       },
       buildProfile: {
-        version: '1.3.3',
-        revision: '274e01c737e85f8142070a9745b43a2ba09fce4c',
+        version: '1.4.4',
+        revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
         platform: 'linux',
         architecture: 'x64',
         nodeVersion: process.versions.node,

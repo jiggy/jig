@@ -143,11 +143,12 @@ async function producerJobReady(client, expected, run, name) {
         'jobs',
       )
   const matching = jobs.filter((job) => job.name === name)
-  if (!merge && matching.length > 1)
-    throw new Error(`Ambiguous current-attempt ${name}`)
+  if (!merge && matching.length > 1) throw new Error(`Ambiguous current-attempt ${name}`)
   if (!matching.length) {
     if (run.status === 'completed')
-      throw new Error(`Completed CI producer has no ${merge ? 'latest merge' : 'current-attempt'} ${name}`)
+      throw new Error(
+        `Completed CI producer has no ${merge ? 'latest merge' : 'current-attempt'} ${name}`,
+      )
     console.error(
       `Waiting for ${name} in CI run ${run.id}, attempt ${run.run_attempt}: job not observed yet`,
     )
@@ -481,8 +482,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     // Reject empty or malformed timeout operands before contacting GitHub.
     for (const key of ['timeout-seconds', 'producer-timeout-seconds']) {
       const value = options[key]
-      if (value !== undefined && (!/^(?:0|[1-9][0-9]*)$/.test(value) ||
-        !Number.isSafeInteger(Number(value))))
+      if (
+        value !== undefined &&
+        (!/^(?:0|[1-9][0-9]*)$/.test(value) || !Number.isSafeInteger(Number(value)))
+      )
         throw new Error(`--${key} requires a nonempty integer`)
     }
     const expected = await acquisitionExpectation(options.source)

@@ -173,7 +173,9 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(workflowTriggers(mac).push.branches).toEqual(['main'])
   expect(mac.permissions).toEqual({ contents: 'read' })
   expect(mac.jobs.prerequisites.environment).toBeUndefined()
-  expect(mac.jobs.prerequisites.strategy['fail-fast']).toBe("${{ github.event_name == 'pull_request' }}")
+  expect(mac.jobs.prerequisites.strategy['fail-fast']).toBe(
+    "${{ github.event_name == 'pull_request' }}",
+  )
   expect(mac.jobs.prerequisites.strategy['max-parallel']).toBe(6)
   expect(mac.jobs.prerequisites['continue-on-error']).toBeUndefined()
   expect(mac.jobs['qualified-architecture'].needs).toContain('prerequisites')
@@ -199,7 +201,9 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
     include: [
       { arch: 'guard', worker: 'guard', guard: true },
       ...Array.from({ length: 5 }, (_, worker) => ({
-        arch: 'arm64', worker, guard: false,
+        arch: 'arm64',
+        worker,
+        guard: false,
       })),
     ],
   })
@@ -236,15 +240,13 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
         ? "${{ !matrix.guard && steps.role.outputs.execute == 'true' && steps.role.outputs.role == '0' }}"
         : "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}",
     )
-    expect(nightly.if).toBe(
-      command.startsWith('bun test ') ? 'matrix.shard == 0' : undefined,
-    )
+    expect(nightly.if).toBe(command.startsWith('bun test ') ? 'matrix.shard == 0' : undefined)
     expect(required['continue-on-error']).toBeUndefined()
     expect(nightly['continue-on-error']).toBeUndefined()
   }
   expect(
-    mac.jobs.prerequisites.steps.find(
-      (step: any) => step.run?.includes('scripts/ci/qualify-macos-host.sh --shard'),
+    mac.jobs.prerequisites.steps.find((step: any) =>
+      step.run?.includes('scripts/ci/qualify-macos-host.sh --shard'),
     ).env.MAC_HOST_ROLE,
   ).toBe('${{ steps.role.outputs.role }}')
   expect(mac.jobs['qualified-architecture'].strategy.matrix.include).toEqual([
@@ -337,7 +339,9 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   for (const step of source.steps.filter((step: any) => step.with?.name?.startsWith('python-')))
     expect(step.if).toBe("github.event_name != 'pull_request'")
   for (const kind of ['python', 'python-reporting']) {
-    const retained = source.steps.find((step: any) => step.run?.includes(`merge-retry.mjs input ${kind} --`))
+    const retained = source.steps.find((step: any) =>
+      step.run?.includes(`merge-retry.mjs input ${kind} --`),
+    )
     expect(retained.if).toBe("github.event_name == 'pull_request'")
     expect(retained.run).toContain('--inputs')
   }
@@ -520,16 +524,18 @@ test('ordinary Agent publishing uses exact candidates and retains separate autho
   expect(publish.permissions).toEqual({ actions: 'read', contents: 'read', 'id-token': 'write' })
   expect(publish.needs).toContain('authorize')
   expect(authorize.name).toContain('same-revision')
-  expect(publish.steps.find((step: any) => step.uses?.startsWith('actions/checkout')).with.ref)
-    .toBe('${{ github.workflow_sha }}')
+  expect(
+    publish.steps.find((step: any) => step.uses?.startsWith('actions/checkout')).with.ref,
+  ).toBe('${{ github.workflow_sha }}')
   const download = publish.steps.find(
     (step: any) => step.name === 'Download exact persisted candidates',
   )
   expect(download.with['artifact-ids']).toContain('needs.authorize.outputs.')
   expect(download.with['run-id']).toContain('needs.authorize.outputs.')
   expect(download.with['github-token']).toBe('${{ github.token }}')
-  expect(publish.steps.find((step: any) => step.id === 'release').run)
-    .toContain('sh publisher/scripts/release/publish.sh')
+  expect(publish.steps.find((step: any) => step.id === 'release').run).toContain(
+    'sh publisher/scripts/release/publish.sh',
+  )
   const script = await Bun.file(join(root, 'scripts/release/publish.sh')).text()
   expect(publish.env.RELEASE_GROUP).toBe('host')
   expect(script).toContain('host) package_kinds="agent acp jig"')

@@ -8,13 +8,7 @@ import { releaseState } from '../release/state.mjs'
 const revision = /^[0-9a-f]{40}$/
 const roles = {
   linux: ['scope', 'host-artifacts', 'host-suite', 'rootless-linux'],
-  macos: [
-    'scope',
-    'host-artifacts',
-    'cohort-allocator',
-    'prerequisites',
-    'qualified-architecture',
-  ],
+  macos: ['scope', 'host-artifacts', 'cohort-allocator', 'prerequisites', 'qualified-architecture'],
 }
 
 // These inputs do not enter a Jig native host or its npm artifacts. Everything
@@ -29,7 +23,12 @@ export function independentHostInput(path) {
   return ['README.md', 'CONTRIBUTING.md', 'AGENTS.md'].includes(path)
 }
 
-export async function hostScope({ scope, repository = process.cwd(), env = process.env, event } = {}) {
+export async function hostScope({
+  scope,
+  repository = process.cwd(),
+  env = process.env,
+  event,
+} = {}) {
   const git = (args) =>
     execFileSync('git', ['-C', repository, ...args], {
       encoding: 'utf8',
@@ -41,7 +40,11 @@ export async function hostScope({ scope, repository = process.cwd(), env = proce
   if (env.GITHUB_SHA !== undefined)
     assert.equal(source, env.GITHUB_SHA, 'Workflow checkout changed')
   const full = (reason) => ({ source, required: true, reason })
-  if (scope === 'macos' && env.GITHUB_EVENT_NAME === 'push' && env.GITHUB_REF === 'refs/heads/main') {
+  if (
+    scope === 'macos' &&
+    env.GITHUB_EVENT_NAME === 'push' &&
+    env.GITHUB_REF === 'refs/heads/main'
+  ) {
     try {
       event ??= JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8'))
       assert.equal(event.ref, 'refs/heads/main')
@@ -50,8 +53,11 @@ export async function hostScope({ scope, repository = process.cwd(), env = proce
       assert.ok(env.GITHUB_REPOSITORY)
       assert.equal(event.repository?.full_name, env.GITHUB_REPOSITORY)
       const state = await releaseState(repository, source)
-      if (state.eligible) return full('Eligible generated release requires complete host qualification')
-      assert.ok(['feature-source', 'pending-changesets', 'stale-release-plan'].includes(state.reason))
+      if (state.eligible)
+        return full('Eligible generated release requires complete host qualification')
+      assert.ok(
+        ['feature-source', 'pending-changesets', 'stale-release-plan'].includes(state.reason),
+      )
       return { source, required: false, reason: `Nonrelease main source: ${state.reason}` }
     } catch {
       return full('A complete trusted main release comparison could not be established')
@@ -106,13 +112,19 @@ export function checkHostJobs(scope, report, statuses) {
 
 export function hostScopeSummary(scope, report, reconciled = false) {
   const title = report.required
-    ? (reconciled ? 'Required host qualification passed' : 'Host qualification required')
-    : 'Native qualification omitted';
-  return `## ${scope}: ${title}\n\n` +
+    ? reconciled
+      ? 'Required host qualification passed'
+      : 'Host qualification required'
+    : 'Native qualification omitted'
+  return (
+    `## ${scope}: ${title}\n\n` +
     `Source: ${report.source}\n\nReason: ${report.reason}\n\n` +
     (report.required
-      ? (reconciled ? 'All required host jobs passed.\n' : 'Selection alone supplies no execution evidence.\n')
-      : '**No native tests ran in this workflow. No host qualification receipt was created.**\n');
+      ? reconciled
+        ? 'All required host jobs passed.\n'
+        : 'Selection alone supplies no execution evidence.\n'
+      : '**No native tests ran in this workflow. No host qualification receipt was created.**\n')
+  )
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -140,7 +152,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (options['--github-output'])
       appendFileSync(options['--github-output'], `required=${report.required}\n`)
     if (process.env.GITHUB_STEP_SUMMARY)
-      appendFileSync(process.env.GITHUB_STEP_SUMMARY, hostScopeSummary(options['--scope'], report, Boolean(options['--results'])))
+      appendFileSync(
+        process.env.GITHUB_STEP_SUMMARY,
+        hostScopeSummary(options['--scope'], report, Boolean(options['--results'])),
+      )
     console.log(JSON.stringify(report, null, 2))
   } catch (error) {
     console.error(error.message)

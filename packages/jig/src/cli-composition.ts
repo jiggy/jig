@@ -76,7 +76,9 @@ export function projectPrivateRunComposition(
         )
         if (nodes.length > limits.nodes) return unavailable('limit')
       } else return unavailable('unavailable')
-      edges.push(Object.freeze({ id: JSON.stringify(['slot', id, slot]), source: id, target, slot }))
+      edges.push(
+        Object.freeze({ id: JSON.stringify(['slot', id, slot]), source: id, target, slot }),
+      )
       if (edges.length > limits.edges) return unavailable('limit')
     }
   }

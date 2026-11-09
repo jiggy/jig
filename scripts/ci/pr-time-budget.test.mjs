@@ -255,12 +255,17 @@ test('phase time rounds down and reserves settlement without extending the absol
     0,
   )
   assert.equal(
-    remainingPrTimeBudget(budget, { now: budget.deadlineEpochMs - 1, reserveSeconds: 0 }).remaining_seconds,
+    remainingPrTimeBudget(budget, { now: budget.deadlineEpochMs - 1, reserveSeconds: 0 })
+      .remaining_seconds,
     0,
   )
   assert.throws(() => remainingPrTimeBudget(budget, { now: budget.deadlineEpochMs }), /elapsed/)
   assert.throws(
-    () => remainingPrTimeBudget({ ...budget, deadlineEpochMs: budget.deadlineEpochMs + 1 }, { now: created }),
+    () =>
+      remainingPrTimeBudget(
+        { ...budget, deadlineEpochMs: budget.deadlineEpochMs + 1 },
+        { now: created },
+      ),
     /assigned job allowance/,
   )
   for (const reserveSeconds of [-1, 1.5, Infinity, PR_BUDGET_SECONDS])
@@ -522,13 +527,23 @@ test('real matrix polling observes queued work becoming successful without fabri
   assert.match(summary, /Monitor succeeded: all five current-attempt Mac worker jobs/)
   assert.match(summary, /subsequent native qualification aggregate owns qualification/)
   assert.equal((await f.requests()).split('run\n').length - 1, 2)
-  assert.deepEqual((await readdir(f.directory)).sort(), ['jobs.json', 'requests.txt', 'run.json', 'summary.md'])
+  assert.deepEqual((await readdir(f.directory)).sort(), [
+    'jobs.json',
+    'requests.txt',
+    'run.json',
+    'summary.md',
+  ])
 })
 
 test('an optional summary write failure does not fail its caller or write to stdout', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'jig-pr-summary-'))
   t.after(() => rm(directory, { recursive: true, force: true }))
-  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+  const result = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `
     import { writeMacPrGuardSummary } from ${JSON.stringify(new URL('./pr-time-budget.mjs', import.meta.url).href)}
     await writeMacPrGuardSummary(JSON.parse(process.argv[1]), process.argv[2])
     console.log('summary reporting returned')
@@ -745,11 +760,15 @@ function environment(jobStartedEpochMs = Date.now() - 5 * 60_000, kind = 'worker
 }
 
 function cli(args, env = environment()) {
-  const result = spawnSync(process.execPath, [join(import.meta.dirname, 'pr-time-budget.mjs'), ...args], {
-    encoding: 'utf8',
-    env,
-    timeout: 5000,
-  })
+  const result = spawnSync(
+    process.execPath,
+    [join(import.meta.dirname, 'pr-time-budget.mjs'), ...args],
+    {
+      encoding: 'utf8',
+      env,
+      timeout: 5000,
+    },
+  )
   assert.ifError(result.error)
   return result
 }
@@ -792,7 +811,10 @@ test('actual CLI emits only numeric phase outputs and refuses a zero-minute step
     assert.ok(phase.step_timeout_minutes <= phase.work_minutes + 2)
     assert.equal(phase.reserve_seconds, 120)
     const outputs = await readFile(destination, 'utf8')
-    assert.match(outputs, /^deadline_epoch_ms=\d+\nremaining_seconds=\d+\nreserve_seconds=120\nwork_seconds=\d+\nwork_minutes=\d+\nstep_timeout_minutes=\d+\n$/)
+    assert.match(
+      outputs,
+      /^deadline_epoch_ms=\d+\nremaining_seconds=\d+\nreserve_seconds=120\nwork_seconds=\d+\nwork_minutes=\d+\nstep_timeout_minutes=\d+\n$/,
+    )
     const short = cli(['remaining'], environment(Date.now() - 23 * 60_000))
     assert.equal(short.status, 1)
     assert.match(short.stderr, /Less than one work minute/)
@@ -847,15 +869,37 @@ test('a fresh bounded execution reports an exceeded end-to-end target without ch
 test('bounded subprocesses preserve literal arguments, actual nonzero exits and signals', async () => {
   const options = () => ({ deadlineEpochMs: Date.now() + 10_000 })
   assert.deepEqual(
-    await runCommandBeforeDeadline(process.execPath, ['-e', 'process.exit(process.argv[1] === "literal;$(no-shell)" ? 0 : 9)', 'literal;$(no-shell)'], options()),
+    await runCommandBeforeDeadline(
+      process.execPath,
+      [
+        '-e',
+        'process.exit(process.argv[1] === "literal;$(no-shell)" ? 0 : 9)',
+        'literal;$(no-shell)',
+      ],
+      options(),
+    ),
     { code: 0, signal: null, deadlineExceeded: false },
   )
-  assert.deepEqual(await runCommandBeforeDeadline(process.execPath, ['-e', 'process.exit(37)'], options()), {
-    code: 37, signal: null, deadlineExceeded: false,
-  })
-  assert.deepEqual(await runCommandBeforeDeadline(process.execPath, ['-e', 'process.kill(process.pid, "SIGTERM")'], options()), {
-    code: null, signal: 'SIGTERM', deadlineExceeded: false,
-  })
+  assert.deepEqual(
+    await runCommandBeforeDeadline(process.execPath, ['-e', 'process.exit(37)'], options()),
+    {
+      code: 37,
+      signal: null,
+      deadlineExceeded: false,
+    },
+  )
+  assert.deepEqual(
+    await runCommandBeforeDeadline(
+      process.execPath,
+      ['-e', 'process.kill(process.pid, "SIGTERM")'],
+      options(),
+    ),
+    {
+      code: null,
+      signal: 'SIGTERM',
+      deadlineExceeded: false,
+    },
+  )
 })
 
 test('a consumed or malformed subprocess deadline refuses before launching work', async () => {
@@ -872,7 +916,12 @@ test('a consumed or malformed subprocess deadline refuses before launching work'
     ])
       await assert.rejects(runCommandBeforeDeadline(process.execPath, args, options))
     assert.equal(existsSync(launched), false)
-    await assert.rejects(runCommandBeforeDeadline(join(directory, 'absent-command'), [], { deadlineEpochMs: Date.now() + 5000 }), /ENOENT/)
+    await assert.rejects(
+      runCommandBeforeDeadline(join(directory, 'absent-command'), [], {
+        deadlineEpochMs: Date.now() + 5000,
+      }),
+      /ENOENT/,
+    )
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -880,16 +929,35 @@ test('a consumed or malformed subprocess deadline refuses before launching work'
 
 test('deadline TERM cannot turn a late zero exit green or replace a genuine nonzero exit', async () => {
   for (const code of [0, 37]) {
-    const result = await runCommandBeforeDeadline(process.execPath, ['-e', `
+    const result = await runCommandBeforeDeadline(
+      process.execPath,
+      [
+        '-e',
+        `
       process.on('SIGTERM', () => setTimeout(() => process.exit(Number(process.argv[1])), 20))
       setInterval(() => {}, 1000)
-    `, String(code)], { deadlineEpochMs: Date.now() + 2000, terminationGraceMs: 200 })
-    assert.deepEqual(result, { code: code === 0 ? 124 : code, signal: null, deadlineExceeded: true })
+    `,
+        String(code),
+      ],
+      { deadlineEpochMs: Date.now() + 2000, terminationGraceMs: 200 },
+    )
+    assert.deepEqual(result, {
+      code: code === 0 ? 124 : code,
+      signal: null,
+      deadlineExceeded: true,
+    })
   }
-  const killed = await runCommandBeforeDeadline(process.execPath, ['-e', `
+  const killed = await runCommandBeforeDeadline(
+    process.execPath,
+    [
+      '-e',
+      `
     process.on('SIGTERM', () => {})
     setInterval(() => {}, 1000)
-  `], { deadlineEpochMs: Date.now() + 2000, terminationGraceMs: 100 })
+  `,
+    ],
+    { deadlineEpochMs: Date.now() + 2000, terminationGraceMs: 100 },
+  )
   assert.deepEqual(killed, { code: null, signal: 'SIGKILL', deadlineExceeded: true })
 })
 
@@ -915,15 +983,22 @@ test('deadline escalation kills descendants even after their leader exits succes
       setInterval(() => {}, 1000)
     `
     const before = Date.now()
-    const result = await runCommandBeforeDeadline(process.execPath, ['-e', leader, descendant, pidPath, termPath, escapedPath, heartbeatPath], {
-      deadlineEpochMs: before + 3000,
-      terminationGraceMs: 150,
-    })
+    const result = await runCommandBeforeDeadline(
+      process.execPath,
+      ['-e', leader, descendant, pidPath, termPath, escapedPath, heartbeatPath],
+      {
+        deadlineEpochMs: before + 3000,
+        terminationGraceMs: 150,
+      },
+    )
     descendantPid = Number(await readFile(pidPath, 'utf8'))
     assert.ok(Number.isSafeInteger(descendantPid) && descendantPid > 0)
     assert.equal(await readFile(termPath, 'utf8'), 'received')
     assert.deepEqual(result, { code: 124, signal: null, deadlineExceeded: true })
-    assert.ok(Date.now() - before >= 3150, 'the wrapper must retain its escalation timer after the leader exits')
+    assert.ok(
+      Date.now() - before >= 3150,
+      'the wrapper must retain its escalation timer after the leader exits',
+    )
     // Observe actual descendant execution without relying on a process-table
     // tool or mistaking an unreaped, terminated orphan for a running child.
     const heartbeat = await readFile(heartbeatPath, 'utf8')
@@ -933,7 +1008,11 @@ test('deadline escalation kills descendants even after their leader exits succes
     assert.equal(existsSync(escapedPath), false)
   } finally {
     if (descendantPid) {
-      try { process.kill(descendantPid, 'SIGKILL') } catch (error) { if (error.code !== 'ESRCH') throw error }
+      try {
+        process.kill(descendantPid, 'SIGKILL')
+      } catch (error) {
+        if (error.code !== 'ESRCH') throw error
+      }
     }
     await rm(directory, { recursive: true, force: true })
   }
@@ -1004,19 +1083,28 @@ test('a delayed timer callback cannot accept a zero exit beyond the absolute dea
     const lateExit = join(directory, 'late-zero')
     const ready = join(directory, 'ready')
     const deadlineEpochMs = Date.now() + 3000
-    const running = runCommandBeforeDeadline(process.execPath, ['-e', `
+    const running = runCommandBeforeDeadline(
+      process.execPath,
+      [
+        '-e',
+        `
       require('node:fs').writeFileSync(process.argv[3], 'ready')
       setTimeout(() => {
         require('node:fs').writeFileSync(process.argv[1], 'zero')
         process.exit(0)
       }, Math.max(0, Number(process.argv[2]) - Date.now()))
-    `, lateExit, String(deadlineEpochMs + 100), ready], { deadlineEpochMs, terminationGraceMs: 100 })
+    `,
+        lateExit,
+        String(deadlineEpochMs + 100),
+        ready,
+      ],
+      { deadlineEpochMs, terminationGraceMs: 100 },
+    )
     while (!existsSync(ready) && Date.now() < deadlineEpochMs - 500)
       await new Promise((resolve) => setTimeout(resolve, 10))
     assert.equal(existsSync(ready), true, 'the real child must start before timer starvation')
     const beforeStarvation = deadlineEpochMs - 500 - Date.now()
-    if (beforeStarvation > 0)
-      await new Promise((resolve) => setTimeout(resolve, beforeStarvation))
+    if (beforeStarvation > 0) await new Promise((resolve) => setTimeout(resolve, beforeStarvation))
     // Real event-loop starvation, not a clock or timer substitution. The child
     // has its own event loop and exits after the deadline while this one waits.
     while (Date.now() < deadlineEpochMs + 250) {}
@@ -1028,7 +1116,12 @@ test('a delayed timer callback cannot accept a zero exit beyond the absolute dea
 })
 
 test('actual run CLI preserves event boundaries, child outcomes and the settlement reserve', () => {
-  const command = [process.execPath, '-e', 'process.stdout.write(process.argv[1])', 'literal;$(no-shell)']
+  const command = [
+    process.execPath,
+    '-e',
+    'process.stdout.write(process.argv[1])',
+    'literal;$(no-shell)',
+  ]
   for (const event of ['push', 'workflow_dispatch']) {
     const result = cli(['run', '--', ...command], { ...process.env, GITHUB_EVENT_NAME: event })
     assert.equal(result.status, 0, result.stderr)
@@ -1046,18 +1139,39 @@ test('actual run CLI preserves event boundaries, child outcomes and the settleme
   const missingIdentity = { ...environment(), GITHUB_RUN_ID: '' }
   assert.equal(cli(['run', '--', ...command], missingIdentity).status, 1)
   assert.equal(cli(['run', '--', process.execPath, '-e', 'process.exit(23)']).status, 23)
-  assert.equal(cli(['run', '--', process.execPath, '-e', 'process.kill(process.pid, "SIGTERM")']).signal, 'SIGTERM')
-  const overdue = cli(['run', '--', process.execPath, '-e', `
+  assert.equal(
+    cli(['run', '--', process.execPath, '-e', 'process.kill(process.pid, "SIGTERM")']).signal,
+    'SIGTERM',
+  )
+  const overdue = cli(
+    [
+      'run',
+      '--',
+      process.execPath,
+      '-e',
+      `
     process.on('SIGTERM', () => process.exit(0))
     setInterval(() => {}, 1000)
-  `], environment(Date.now() - 23 * 60_000 + 2000))
+  `,
+    ],
+    environment(Date.now() - 23 * 60_000 + 2000),
+  )
   assert.equal(overdue.status, 124, overdue.stderr)
   assert.match(overdue.stderr, /exceeded its work deadline/)
   const settlement = environment(Date.now() - 24 * 60_000)
   assert.equal(cli(['run', '--', ...command], settlement).status, 1)
   assert.equal(cli(['run', '--reserve-seconds', '0', '--', ...command], settlement).status, 0)
-  assert.equal(cli(['run', '--reserve-seconds', '0', '--', ...command], environment(Date.now() - 26 * 60_000)).status, 1)
-  for (const args of [['run'], ['run', '--'], ['run', '--reserve-seconds', '1500', '--', ...command], ['run', '--github-output', 'ignored', '--', ...command]])
+  assert.equal(
+    cli(['run', '--reserve-seconds', '0', '--', ...command], environment(Date.now() - 26 * 60_000))
+      .status,
+    1,
+  )
+  for (const args of [
+    ['run'],
+    ['run', '--'],
+    ['run', '--reserve-seconds', '1500', '--', ...command],
+    ['run', '--github-output', 'ignored', '--', ...command],
+  ])
     assert.equal(cli(args).status, 1)
 })
 
@@ -1067,7 +1181,15 @@ test('actual run CLI forwards external cancellation to its child group and prese
   try {
     const ready = join(directory, 'ready')
     const stopped = join(directory, 'stopped')
-    wrapper = spawn(process.execPath, [join(import.meta.dirname, 'pr-time-budget.mjs'), 'run', '--', process.execPath, '-e', `
+    wrapper = spawn(
+      process.execPath,
+      [
+        join(import.meta.dirname, 'pr-time-budget.mjs'),
+        'run',
+        '--',
+        process.execPath,
+        '-e',
+        `
       const fs = require('node:fs')
       process.on('SIGTERM', () => {
         fs.writeFileSync(process.argv[2], 'terminated')
@@ -1075,7 +1197,12 @@ test('actual run CLI forwards external cancellation to its child group and prese
       })
       fs.writeFileSync(process.argv[1], 'ready')
       setInterval(() => {}, 1000)
-    `, ready, stopped], { env: { ...process.env, GITHUB_EVENT_NAME: 'push' }, stdio: 'ignore' })
+    `,
+        ready,
+        stopped,
+      ],
+      { env: { ...process.env, GITHUB_EVENT_NAME: 'push' }, stdio: 'ignore' },
+    )
     const completion = once(wrapper, 'exit')
     const readyDeadline = Date.now() + 3000
     while (!existsSync(ready) && Date.now() < readyDeadline)
@@ -1093,10 +1220,21 @@ test('actual run CLI forwards external cancellation to its child group and prese
 })
 
 test('zero-reserve settlement escalates at the original absolute deadline without another five-second allowance', () => {
-  const result = cli(['run', '--reserve-seconds', '0', '--', process.execPath, '-e', `
+  const result = cli(
+    [
+      'run',
+      '--reserve-seconds',
+      '0',
+      '--',
+      process.execPath,
+      '-e',
+      `
     process.on('SIGTERM', () => {})
     setInterval(() => {}, 1000)
-  `], environment(Date.now() - 25 * 60_000 + 2000))
+  `,
+    ],
+    environment(Date.now() - 25 * 60_000 + 2000),
+  )
   assert.equal(result.signal, 'SIGKILL')
   assert.match(result.stderr, /exceeded its work deadline/)
 })

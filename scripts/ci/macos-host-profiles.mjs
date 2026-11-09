@@ -6,22 +6,22 @@ export const MAC_HOST_PROFILES = Object.freeze({
     Object.freeze({
       kernel: '24.6.0',
       build: '24G830',
-      bun: '1.4.2',
-      revision: '744846f844374847c902b5e7fd59b4342a51ef99',
+      bun: '1.4.4',
+      revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
     }),
   ]),
   arm64: Object.freeze([
     Object.freeze({
       kernel: '24.6.0',
       build: '24G830',
-      bun: '1.4.2',
-      revision: '744846f844374847c902b5e7fd59b4342a51ef99',
+      bun: '1.4.4',
+      revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
     }),
     Object.freeze({
       kernel: '24.6.0',
       build: '24H232',
-      bun: '1.4.2',
-      revision: '744846f844374847c902b5e7fd59b4342a51ef99',
+      bun: '1.4.4',
+      revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
     }),
   ]),
 })

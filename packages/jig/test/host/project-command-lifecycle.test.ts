@@ -394,10 +394,7 @@ describe.serial('contained Project Command effect', () => {
           directory: root,
           host,
           onAcquisitionFailure: (evidence) =>
-            console.error(
-              'command-loss-acquisition',
-              JSON.stringify({ ...evidence, attempt }),
-            ),
+            console.error('command-loss-acquisition', JSON.stringify({ ...evidence, attempt })),
         })
       }
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined

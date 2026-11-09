@@ -13,8 +13,8 @@ function evidence(architecture, build) {
     arch: architecture,
     kernel: '24.6.0',
     build,
-    bun: '1.4.2',
-    revision: '744846f844374847c902b5e7fd59b4342a51ef99',
+    bun: '1.4.4',
+    revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
     processIdentityBytes: 56,
     coalitionIdentityBytes: 40,
     coalitionUsageBytes: 296,
@@ -35,9 +35,9 @@ test('hosted candidate pool keeps only its three exact native tuples', () => {
       })
     }),
     [
-      'x64/24.6.0/24G830/1.4.2/744846f844374847c902b5e7fd59b4342a51ef99',
-      'arm64/24.6.0/24G830/1.4.2/744846f844374847c902b5e7fd59b4342a51ef99',
-      'arm64/24.6.0/24H232/1.4.2/744846f844374847c902b5e7fd59b4342a51ef99',
+      'x64/24.6.0/24G830/1.4.4/38afee6c84fcf48c0edb2466aa4b27d287a59c30',
+      'arm64/24.6.0/24G830/1.4.4/38afee6c84fcf48c0edb2466aa4b27d287a59c30',
+      'arm64/24.6.0/24H232/1.4.4/38afee6c84fcf48c0edb2466aa4b27d287a59c30',
     ],
   )
 })
@@ -58,15 +58,15 @@ test('kernel, architecture and toolchain neighbors cannot widen the hosted pool'
   for (const architecture of ['x64', 'arm64', 'ia32', '__proto__'])
     for (const kernel of ['24.6.0', '24.6.1'])
       for (const build of ['24G830', '24H232', '24H233'])
-        for (const bun of ['1.4.2', '1.4.3'])
-          for (const revision of ['744846f844374847c902b5e7fd59b4342a51ef99', 'changed']) {
+        for (const bun of ['1.4.4', '1.4.5'])
+          for (const revision of ['38afee6c84fcf48c0edb2466aa4b27d287a59c30', 'changed']) {
             const observed = { ...evidence(architecture, build), kernel, bun, revision }
             const admitted =
               ['x64', 'arm64'].includes(architecture) &&
               kernel === '24.6.0' &&
               (build === '24G830' || (architecture === 'arm64' && build === '24H232')) &&
-              bun === '1.4.2' &&
-              revision === '744846f844374847c902b5e7fd59b4342a51ef99'
+              bun === '1.4.4' &&
+              revision === '38afee6c84fcf48c0edb2466aa4b27d287a59c30'
             if (admitted)
               assert.equal(requireMacHostPrerequisites(observed, architecture), observed)
             else assert.throws(() => requireMacHostPrerequisites(observed, architecture))
@@ -114,9 +114,16 @@ test('descriptor-bound prerequisites accept exact ARM builds and refuse unsafe f
     const fifo = join(root, 'fifo')
     const created = spawnSync('mkfifo', [fifo], { encoding: 'utf8' })
     assert.equal(created.status, 0, created.stderr)
-    const result = spawnSync(process.execPath, ['--input-type=module', '-e',
-      `import { readMacHostPrerequisites } from ${JSON.stringify(new URL('./macos-host-profiles.mjs', import.meta.url).href)}; readMacHostPrerequisites(process.argv[1], 'arm64')`, fifo],
-      { encoding: 'utf8', timeout: 5000 })
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import { readMacHostPrerequisites } from ${JSON.stringify(new URL('./macos-host-profiles.mjs', import.meta.url).href)}; readMacHostPrerequisites(process.argv[1], 'arm64')`,
+        fifo,
+      ],
+      { encoding: 'utf8', timeout: 5000 },
+    )
     assert.equal(result.error, undefined, String(result.error))
     assert.notEqual(result.status, 0)
     assert.match(result.stderr, /bounded regular file/)

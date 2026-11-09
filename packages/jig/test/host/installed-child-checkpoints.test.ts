@@ -25,6 +25,9 @@ test('installed nested routers repair failed and unsuccessful children from isol
     completed = true
   } finally {
     if (completed) await rm(root, { recursive: true, force: true })
-    else console.error(`Installed child checkpoint consumer and private transcripts retained at ${root}`)
+    else
+      console.error(
+        `Installed child checkpoint consumer and private transcripts retained at ${root}`,
+      )
   }
 }, 900_000)

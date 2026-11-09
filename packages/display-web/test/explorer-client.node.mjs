@@ -4,33 +4,58 @@ import test from 'node:test'
 import { PrivateExplorerClient } from '../dist/explorer-client.js'
 
 const project = (targetId = 'review') => ({
-  kind: 'project', revision: 'approved-one', state: 'approved',
+  kind: 'project',
+  revision: 'approved-one',
+  state: 'approved',
   targets: [
-    { id: 'review', label: 'Review changes', kind: 'binding', description: 'Draft, check, and review a change.', availability: 'ready' },
+    {
+      id: 'review',
+      label: 'Review changes',
+      kind: 'binding',
+      description: 'Draft, check, and review a change.',
+      availability: 'ready',
+    },
     { id: 'draft', label: 'Prepare a draft', kind: 'flow', availability: 'ready' },
     { id: 'worker', label: '<script>Worker</script>', kind: 'flow', availability: 'ready' },
   ],
   selected: {
     targetId,
     composition: {
-      state: 'available', provenance: 'admitted', rootId: targetId,
+      state: 'available',
+      provenance: 'admitted',
+      rootId: targetId,
       nodes: [
-        { id: targetId, label: targetId === 'review' ? 'Review changes' : 'Prepare a draft', kind: targetId === 'review' ? 'binding' : 'flow' },
+        {
+          id: targetId,
+          label: targetId === 'review' ? 'Review changes' : 'Prepare a draft',
+          kind: targetId === 'review' ? 'binding' : 'flow',
+        },
         { id: 'worker', label: '<script>Worker</script>', kind: 'flow' },
       ],
       edges: [{ id: 'worker-slot', source: targetId, target: 'worker', slot: 'draft' }],
     },
-    input: { state: 'schema', schema: { type: 'object', properties: { issue: { type: 'string' } }, required: ['issue'] } },
-    attachments: [], receives: [], launch: { state: 'available' },
+    input: {
+      state: 'schema',
+      schema: { type: 'object', properties: { issue: { type: 'string' } }, required: ['issue'] },
+    },
+    attachments: [],
+    receives: [],
+    launch: { state: 'available' },
   },
 })
 
 async function serverFor(handler) {
   const server = createServer(handler)
-  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
   return {
     origin: 'http://127.0.0.1:' + server.address().port,
-    async close() { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)) },
+    async close() {
+      server.closeAllConnections()
+      await new Promise((resolve) => server.close(resolve))
+    },
   }
 }
 const send = (response, value, status = 200) => {
@@ -101,8 +126,16 @@ test('a stale status reply cannot replace a newly accepted launch', async () => 
     if (request.url === '/api/project') return send(response, project())
     if (request.method === 'GET' && request.url === '/api/run') {
       gets++
-      if (gets === 2) { release = () => send(response, { state: 'idle' }); return }
-      return send(response, gets === 1 ? { state: 'idle' } : { state: 'starting', requestId: 'new-run', targetId: 'review' })
+      if (gets === 2) {
+        release = () => send(response, { state: 'idle' })
+        return
+      }
+      return send(
+        response,
+        gets === 1
+          ? { state: 'idle' }
+          : { state: 'starting', requestId: 'new-run', targetId: 'review' },
+      )
     }
     if (request.method === 'POST' && request.url === '/api/run') {
       await read(request)
@@ -132,7 +165,11 @@ test('a stale status reply cannot replace a newly accepted launch', async () => 
 test('malformed project replacement retains stale configuration and disables launch', async () => {
   let malformed = false
   const server = await serverFor((request, response) => {
-    if (request.url.startsWith('/api/project')) return send(response, malformed ? { kind: 'project', revision: 'changed', targets: [] } : project())
+    if (request.url.startsWith('/api/project'))
+      return send(
+        response,
+        malformed ? { kind: 'project', revision: 'changed', targets: [] } : project(),
+      )
     if (request.url === '/api/run') return send(response, { state: 'idle' })
     send(response, {}, 404)
   })
@@ -162,7 +199,8 @@ test('an explicit ingress refusal keeps the cause and allows a corrected request
     if (request.url === '/api/run' && request.method === 'POST') {
       const value = JSON.parse(await read(request))
       posts++
-      if (posts === 1) return send(response, { reason: 'Duplicate JSON members are not accepted.' }, 400)
+      if (posts === 1)
+        return send(response, { reason: 'Duplicate JSON members are not accepted.' }, 400)
       status = { state: 'starting', requestId: value.requestId, targetId: value.targetId }
       return send(response, status, 202)
     }
@@ -191,7 +229,10 @@ test('an explicit ingress refusal keeps the cause and allows a corrected request
 test('repeated target selection fences late project reads by exact identity', async () => {
   let release
   const server = await serverFor((request, response) => {
-    if (request.url === '/api/project?target=review') { release = () => send(response, project('review')); return }
+    if (request.url === '/api/project?target=review') {
+      release = () => send(response, project('review'))
+      return
+    }
     if (request.url === '/api/project?target=draft') return send(response, project('draft'))
     send(response, {}, 404)
   })
@@ -234,7 +275,11 @@ test('a changed approval reloads the catalogue once without reusing or submittin
     assert.equal(client.connection, 'current')
     assert.match(client.projectNotice, /workflow changed/)
     assert.equal(client.canLaunch, false, 'Run status has not been read')
-    assert.deepEqual(paths, ['GET /api/project', 'GET /api/project?target=review', 'GET /api/project'])
+    assert.deepEqual(paths, [
+      'GET /api/project',
+      'GET /api/project?target=review',
+      'GET /api/project',
+    ])
   } finally {
     client.stop()
     await server.close()
@@ -250,12 +295,18 @@ test('an unconfirmed Close stays fenced across late and fresh Run status replies
     if (request.url === '/api/project') return send(response, project())
     if (request.url === '/api/run' && request.method === 'GET') {
       statusReads++
-      if (statusReads === 2) { release = () => send(response, { state: 'idle' }); return }
+      if (statusReads === 2) {
+        release = () => send(response, { state: 'idle' })
+        return
+      }
       return send(response, { state: 'idle' })
     }
     if (request.url === '/api/close' && request.method === 'POST') {
       closePosts++
-      if (closePosts === 1) { response.destroy(); return }
+      if (closePosts === 1) {
+        response.destroy()
+        return
+      }
       return send(response, {})
     }
     if (request.url === '/api/run' && request.method === 'POST') runPosts++
@@ -306,14 +357,28 @@ test('a lost busy refusal resolves by request identity while only global state p
     }
     if (request.url.startsWith('/api/run?requestId=') && request.method === 'GET') {
       reads.push('request')
-      if (!reveal) return send(response, { code: 'REQUEST_UNKNOWN', reason: 'No retained result is available for this request. This does not confirm that it did not start.' }, 404)
+      if (!reveal)
+        return send(
+          response,
+          {
+            code: 'REQUEST_UNKNOWN',
+            reason:
+              'No retained result is available for this request. This does not confirm that it did not start.',
+          },
+          404,
+        )
       return send(response, retained)
     }
     if (request.url === '/api/run' && request.method === 'POST') {
       const value = JSON.parse(await read(request))
       posts++
       status = { state: 'running', requestId: 'another-tab-' + posts, targetId: 'draft' }
-      retained = { state: 'refused', requestId: value.requestId, targetId: value.targetId, reason: 'Another run belongs to this explorer.' }
+      retained = {
+        state: 'refused',
+        requestId: value.requestId,
+        targetId: value.targetId,
+        reason: 'Another run belongs to this explorer.',
+      }
       if (posts === 1) response.destroy()
       else send(response, retained)
       return
@@ -327,7 +392,11 @@ test('a lost busy refusal resolves by request identity while only global state p
     await client.launch('{}', 'busy-request')
     await until(() => client.runCurrent && client.runError.includes('No retained result'))
     assert.equal(client.unresolvedRequest, 'busy-request')
-    assert.equal(client.canLaunch, false, 'an unknown lookup never establishes that work did not start')
+    assert.equal(
+      client.canLaunch,
+      false,
+      'an unknown lookup never establishes that work did not start',
+    )
     assert.equal(posts, 1)
     reveal = true
     await client.refreshRun()
@@ -335,13 +404,21 @@ test('a lost busy refusal resolves by request identity while only global state p
     assert.match(client.requestError, /Another run/)
     assert.equal(client.run.state, 'running')
     assert.equal(client.run.requestId, 'another-tab-1')
-    assert.equal(client.canLaunch, false, 'the resolved refusal does not replace the actual active run')
+    assert.equal(
+      client.canLaunch,
+      false,
+      'the resolved refusal does not replace the actual active run',
+    )
     assert.deepEqual(reads.slice(-2), ['global', 'request'])
     status = { state: 'settled', requestId: 'another-tab-1', targetId: 'draft' }
     await client.refreshRun()
     assert.equal(client.canLaunch, true)
     assert.equal(await client.launch('{}', 'acknowledged-busy-request'), false)
-    assert.equal(client.canLaunch, false, 'even an acknowledged refusal waits for global reconciliation')
+    assert.equal(
+      client.canLaunch,
+      false,
+      'even an acknowledged refusal waits for global reconciliation',
+    )
     await until(() => client.runCurrent)
     assert.equal(client.run.requestId, 'another-tab-2')
     assert.equal(client.run.state, 'running')

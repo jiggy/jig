@@ -18,7 +18,13 @@ if (
 
 const testRoot = join(import.meta.dir, '..')
 
-for (const scenario of ['entrypoint', 'dependencies', 'limits', 'preparations', 'schema'] as const) {
+for (const scenario of [
+  'entrypoint',
+  'dependencies',
+  'limits',
+  'preparations',
+  'schema',
+] as const) {
   const name =
     scenario === 'schema'
       ? 'packed workspace Binding review identifies unsupported schema keywords'

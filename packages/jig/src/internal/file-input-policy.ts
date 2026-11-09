@@ -101,13 +101,7 @@ export function privateFilePath(value: string): string {
     FILE_CONTROLS.test(value) ||
     value
       .split('/')
-      .some(
-        (part) =>
-          !part ||
-          part === '.' ||
-          part === '..' ||
-          isProtectedProjectPath(part),
-      ) ||
+      .some((part) => !part || part === '.' || part === '..' || isProtectedProjectPath(part)) ||
     value.split('/').length > PRIVATE_FILE_LIMITS.depth
   )
     throw new PrivateFileInputError('path')

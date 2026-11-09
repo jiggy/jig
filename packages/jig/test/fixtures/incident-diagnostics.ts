@@ -84,4 +84,3 @@ export function incidentBranchDiagnostic(value: unknown) {
           : 'OTHER',
   }
 }
-

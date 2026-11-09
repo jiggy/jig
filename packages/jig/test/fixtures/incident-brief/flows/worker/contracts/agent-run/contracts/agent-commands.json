@@ -41,35 +41,23 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "label",
-                    "text"
-                  ],
+                  "required": ["label", "text"],
                   "additionalProperties": false
                 }
               }
             },
-            "required": [
-              "instructions"
-            ],
+            "required": ["instructions"],
             "additionalProperties": false
           }
         },
-        "required": [
-          "type",
-          "turn",
-          "input"
-        ],
+        "required": ["type", "turn", "input"],
         "additionalProperties": false
       },
       {
         "type": "object",
         "properties": {
           "type": {
-            "enum": [
-              "interrupt",
-              "close"
-            ]
+            "enum": ["interrupt", "close"]
           },
           "turn": {
             "type": "integer",
@@ -77,10 +65,7 @@
             "maximum": 7
           }
         },
-        "required": [
-          "type",
-          "turn"
-        ],
+        "required": ["type", "turn"],
         "additionalProperties": false
       }
     ]

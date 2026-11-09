@@ -10,15 +10,22 @@ import {
   validateDisplayProjectSnapshot,
 } from '@jigging/display-model'
 
-export type PrivateExplorerConnection = 'connecting' | 'current' | 'stale' | 'unavailable' | 'unauthorized' | 'closed'
+export type PrivateExplorerConnection =
+  | 'connecting'
+  | 'current'
+  | 'stale'
+  | 'unavailable'
+  | 'unauthorized'
+  | 'closed'
 
 const STATUS_BYTES = 16 * 1024
-const CLOSE_UNCONFIRMED = 'Closing the explorer was not confirmed. New runs remain paused. Check the terminal or try Close explorer again.'
+const CLOSE_UNCONFIRMED =
+  'Closing the explorer was not confirmed. New runs remain paused. Check the terminal or try Close explorer again.'
 export const PRIVATE_EXPLORER_INPUT_BYTES = DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT
 
-export function privateExplorerInput(text: string):
-  | { state: 'valid'; value: DisplayJsonValue }
-  | { state: 'empty' | 'invalid'; reason: string } {
+export function privateExplorerInput(
+  text: string,
+): { state: 'valid'; value: DisplayJsonValue } | { state: 'empty' | 'invalid'; reason: string } {
   if (!text.trim()) return { state: 'empty', reason: 'Enter the JSON input for this run.' }
   if (new TextEncoder().encode(text).byteLength > PRIVATE_EXPLORER_INPUT_BYTES)
     return { state: 'invalid', reason: 'Input exceeds the 16 MiB request limit.' }
@@ -41,11 +48,18 @@ export function privateExplorerInput(text: string):
     }
     return { state: 'valid', value }
   } catch {
-    return { state: 'invalid', reason: 'Input is not valid JSON. Check quotes, commas, and brackets.' }
+    return {
+      state: 'invalid',
+      reason: 'Input is not valid JSON. Check quotes, commas, and brackets.',
+    }
   }
 }
 
-async function boundedJson(response: Response, maximum: number, signal: AbortSignal): Promise<unknown> {
+async function boundedJson(
+  response: Response,
+  maximum: number,
+  signal: AbortSignal,
+): Promise<unknown> {
   const reader = response.body?.getReader()
   if (!reader) throw new Error('Response unavailable')
   const decoder = new TextDecoder('utf-8', { fatal: true })
@@ -68,8 +82,14 @@ async function boundedJson(response: Response, maximum: number, signal: AbortSig
 }
 
 function responseReason(value: unknown, fallback: string): string {
-  if (value && typeof value === 'object' && 'reason' in value &&
-    typeof value.reason === 'string' && value.reason.length > 0 && value.reason.length <= 1024)
+  if (
+    value &&
+    typeof value === 'object' &&
+    'reason' in value &&
+    typeof value.reason === 'string' &&
+    value.reason.length > 0 &&
+    value.reason.length <= 1024
+  )
     return value.reason
   return fallback
 }
@@ -109,10 +129,17 @@ export class PrivateExplorerClient {
   }
 
   get canLaunch(): boolean {
-    return !this.#stopped && !this.#closeRequested && !this.closing && !this.sending && !this.unresolvedRequest &&
-      this.connection === 'current' && this.runCurrent &&
+    return (
+      !this.#stopped &&
+      !this.#closeRequested &&
+      !this.closing &&
+      !this.sending &&
+      !this.unresolvedRequest &&
+      this.connection === 'current' &&
+      this.runCurrent &&
       this.project?.selected?.launch.state === 'available' &&
       (this.run?.state === 'idle' || this.run?.state === 'settled' || this.run?.state === 'refused')
+    )
   }
 
   start(): void {
@@ -146,26 +173,48 @@ export class PrivateExplorerClient {
     this.#changed()
     const timeout = setTimeout(() => controller.abort(), 15000)
     try {
-      const response = await fetch(this.#base + '/api/project' + (targetId ? '?target=' + encodeURIComponent(targetId) : ''), {
-        headers: this.#headers(), credentials: 'omit', cache: 'no-store', signal: controller.signal,
-      })
-      if (this.#stopped || generation !== this.#projectGeneration || this.#terminal(response)) return
+      const response = await fetch(
+        this.#base + '/api/project' + (targetId ? '?target=' + encodeURIComponent(targetId) : ''),
+        {
+          headers: this.#headers(),
+          credentials: 'omit',
+          cache: 'no-store',
+          signal: controller.signal,
+        },
+      )
+      if (this.#stopped || generation !== this.#projectGeneration || this.#terminal(response))
+        return
       const value = await boundedJson(response, DISPLAY_PROJECT_BYTE_LIMIT, controller.signal)
       if (this.#stopped || generation !== this.#projectGeneration) return
       if (!response.ok) {
-        if (targetId && value && typeof value === 'object' && 'code' in value &&
-          typeof value.code === 'string' && ['PROJECT_CHANGED', 'TARGET_MISSING', 'PROJECT_UNREVIEWED'].includes(value.code)) {
+        if (
+          targetId &&
+          value &&
+          typeof value === 'object' &&
+          'code' in value &&
+          typeof value.code === 'string' &&
+          ['PROJECT_CHANGED', 'TARGET_MISSING', 'PROJECT_UNREVIEWED'].includes(value.code)
+        ) {
           const recoveryGeneration = this.#projectGeneration + 1
           await this.refreshProject(null)
-          if (!this.#stopped && this.#projectGeneration === recoveryGeneration && !this.projectError && this.project) {
-            this.projectNotice = this.project?.state === 'unreviewed'
-              ? 'The local approval is no longer available. Review the project, then refresh.'
-              : 'The approved project or selected workflow changed. Review this selection and its input before running.'
+          if (
+            !this.#stopped &&
+            this.#projectGeneration === recoveryGeneration &&
+            !this.projectError &&
+            this.project
+          ) {
+            this.projectNotice =
+              this.project?.state === 'unreviewed'
+                ? 'The local approval is no longer available. Review the project, then refresh.'
+                : 'The approved project or selected workflow changed. Review this selection and its input before running.'
             this.#changed()
           }
           return
         }
-        this.projectError = responseReason(value, 'The approved project could not be read. Refresh to try again.')
+        this.projectError = responseReason(
+          value,
+          'The approved project could not be read. Refresh to try again.',
+        )
         this.connection = this.project ? 'stale' : 'unavailable'
         return
       }
@@ -193,13 +242,21 @@ export class PrivateExplorerClient {
     this.run = run
     this.runCurrent = true
     this.runError = this.#closeRequested ? CLOSE_UNCONFIRMED : ''
-    if (run.state !== 'idle' && run.requestId === this.#submitted?.requestId && run.targetId === this.#submitted.targetId) {
+    if (
+      run.state !== 'idle' &&
+      run.requestId === this.#submitted?.requestId &&
+      run.targetId === this.#submitted.targetId
+    ) {
       if (run.requestId === this.unresolvedRequest) this.unresolvedRequest = undefined
       if (run.state === 'refused') this.requestError = ''
     }
   }
 
-  #acceptRequestRun(value: unknown, requestId: string, targetId: string): Exclude<DisplayProjectRun, { state: 'idle' }> {
+  #acceptRequestRun(
+    value: unknown,
+    requestId: string,
+    targetId: string,
+  ): Exclude<DisplayProjectRun, { state: 'idle' }> {
     const run = validateDisplayProjectRun(value)
     if (run.state === 'idle' || run.requestId !== requestId || run.targetId !== targetId)
       throw new Error('Request status does not match its identity')
@@ -218,7 +275,10 @@ export class PrivateExplorerClient {
     const timeout = setTimeout(() => controller.abort(), 10000)
     try {
       const response = await fetch(this.#base + '/api/run', {
-        headers: this.#headers(), credentials: 'omit', cache: 'no-store', signal: controller.signal,
+        headers: this.#headers(),
+        credentials: 'omit',
+        cache: 'no-store',
+        signal: controller.signal,
       })
       if (this.#stopped || generation !== this.#runGeneration || this.#terminal(response)) return
       const value = await boundedJson(response, STATUS_BYTES, controller.signal)
@@ -228,16 +288,31 @@ export class PrivateExplorerClient {
       const pending = this.unresolvedRequest
       const submitted = this.#submitted
       if (pending && submitted?.requestId === pending) {
-        const lookup = await fetch(this.#base + '/api/run?requestId=' + encodeURIComponent(pending), {
-          headers: this.#headers(), credentials: 'omit', cache: 'no-store', signal: controller.signal,
-        })
+        const lookup = await fetch(
+          this.#base + '/api/run?requestId=' + encodeURIComponent(pending),
+          {
+            headers: this.#headers(),
+            credentials: 'omit',
+            cache: 'no-store',
+            signal: controller.signal,
+          },
+        )
         if (this.#stopped || generation !== this.#runGeneration || this.#terminal(lookup)) return
         const result = await boundedJson(lookup, STATUS_BYTES, controller.signal)
         if (this.#stopped || generation !== this.#runGeneration) return
-        if (lookup.status === 404 && result && typeof result === 'object' &&
-          'code' in result && result.code === 'REQUEST_UNKNOWN') {
-          this.runError = this.#closeRequested ? CLOSE_UNCONFIRMED : responseReason(result,
-            'No retained result is available for this request. This does not confirm that it did not start.')
+        if (
+          lookup.status === 404 &&
+          result &&
+          typeof result === 'object' &&
+          'code' in result &&
+          result.code === 'REQUEST_UNKNOWN'
+        ) {
+          this.runError = this.#closeRequested
+            ? CLOSE_UNCONFIRMED
+            : responseReason(
+                result,
+                'No retained result is available for this request. This does not confirm that it did not start.',
+              )
         } else {
           if (!lookup.ok) throw new Error('Request status unavailable')
           this.#acceptRequestRun(result, pending, submitted.targetId)
@@ -246,15 +321,22 @@ export class PrivateExplorerClient {
     } catch {
       if (this.#stopped || generation !== this.#runGeneration) return
       this.runCurrent = false
-      this.runError = this.#closeRequested ? CLOSE_UNCONFIRMED
+      this.runError = this.#closeRequested
+        ? CLOSE_UNCONFIRMED
         : 'Run status is unavailable. New runs stay paused until Jig confirms the current state.'
     } finally {
       clearTimeout(timeout)
       if (this.#runRequest === controller) this.#runRequest = undefined
       if (!this.#stopped && generation === this.#runGeneration) {
         this.#changed()
-        const active = this.unresolvedRequest || this.run?.state === 'starting' || this.run?.state === 'running'
-        this.#timer = setTimeout(() => { void this.refreshRun() }, active ? 1000 : 3000)
+        const active =
+          this.unresolvedRequest || this.run?.state === 'starting' || this.run?.state === 'running'
+        this.#timer = setTimeout(
+          () => {
+            void this.refreshRun()
+          },
+          active ? 1000 : 3000,
+        )
       }
     }
   }
@@ -262,12 +344,14 @@ export class PrivateExplorerClient {
   async launch(input: string, requestId: string): Promise<boolean> {
     const project = this.project
     const selected = project?.selected
-    if (!this.canLaunch || !project || !selected || privateExplorerInput(input).state !== 'valid') return false
+    if (!this.canLaunch || !project || !selected || privateExplorerInput(input).state !== 'valid')
+      return false
     const request = { requestId, revision: project.revision, targetId: selected.targetId }
     // Preserve the exact JSON text so the host can reject duplicate object members.
     const body = JSON.stringify(request).slice(0, -1) + ',"input":' + input + '}'
     if (new TextEncoder().encode(body).byteLength > DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT) {
-      this.requestError = 'Input and request metadata exceed the 16 MiB request limit. Reduce the input before running.'
+      this.requestError =
+        'Input and request metadata exceed the 16 MiB request limit. Reduce the input before running.'
       this.#changed()
       return false
     }
@@ -286,8 +370,12 @@ export class PrivateExplorerClient {
     const timeout = setTimeout(() => controller.abort(), 30000)
     try {
       const response = await fetch(this.#base + '/api/run', {
-        method: 'POST', headers: { ...this.#headers(), 'Content-Type': 'application/json' },
-        body, credentials: 'omit', cache: 'no-store', signal: controller.signal,
+        method: 'POST',
+        headers: { ...this.#headers(), 'Content-Type': 'application/json' },
+        body,
+        credentials: 'omit',
+        cache: 'no-store',
+        signal: controller.signal,
       })
       if (this.#stopped || this.#terminal(response)) return false
       const value = await boundedJson(response, STATUS_BYTES, controller.signal)
@@ -295,7 +383,10 @@ export class PrivateExplorerClient {
       if ([400, 409, 413, 429].includes(response.status)) {
         this.unresolvedRequest = undefined
         this.runCurrent = false
-        this.requestError = responseReason(value, 'Jig refused this request before starting work. Check the input and try again.')
+        this.requestError = responseReason(
+          value,
+          'Jig refused this request before starting work. Check the input and try again.',
+        )
         return false
       }
       if (!response.ok) throw new Error('Submission is unconfirmed')
@@ -304,7 +395,8 @@ export class PrivateExplorerClient {
     } catch {
       if (!this.#stopped) {
         this.runCurrent = false
-        this.runError = this.#closeRequested ? CLOSE_UNCONFIRMED
+        this.runError = this.#closeRequested
+          ? CLOSE_UNCONFIRMED
           : 'Jig has not confirmed whether this request started. Checking its status without submitting it again.'
       }
       return false
@@ -336,7 +428,11 @@ export class PrivateExplorerClient {
     const timeout = setTimeout(() => controller.abort(), 15000)
     try {
       const response = await fetch(this.#base + '/api/close', {
-        method: 'POST', headers: this.#headers(), credentials: 'omit', cache: 'no-store', signal: controller.signal,
+        method: 'POST',
+        headers: this.#headers(),
+        credentials: 'omit',
+        cache: 'no-store',
+        signal: controller.signal,
       })
       if (!response.ok && response.status !== 410) throw new Error('Close is unconfirmed')
       this.connection = 'closed'

@@ -16,7 +16,9 @@ export function privateExactJigVersion(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     value.length <= 128 &&
-    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$/.test(value) &&
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$/.test(
+      value,
+    ) &&
     !/[\r\n]/.test(value)
   )
 }
@@ -25,6 +27,11 @@ export async function privateJigVersionRecovery(required: string): Promise<strin
   if (await privateJigDevelopmentCheckout(release)) {
     return 'Update this Jig checkout to the required revision. From the repository root, run just jig::build, then retry review.'
   }
-  return 'Install the required Jig version with bun install --global @jigging/jig@' +
-    required + ' or npm install --global @jigging/jig@' + required + '. Then retry review.'
+  return (
+    'Install the required Jig version with bun install --global @jigging/jig@' +
+    required +
+    ' or npm install --global @jigging/jig@' +
+    required +
+    '. Then retry review.'
+  )
 }

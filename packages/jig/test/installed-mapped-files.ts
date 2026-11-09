@@ -58,11 +58,7 @@ export async function checkInstalledMappedFiles(options: {
   const evidence = `${options.directory}.commands`
   await mkdir(evidence, { mode: 0o700 })
   let index = 0
-  const command = async (
-    args: string[],
-    cwd = options.directory,
-    profile?: MappedFilesProfile,
-  ) => {
+  const command = async (args: string[], cwd = options.directory, profile?: MappedFilesProfile) => {
     const environment = await mappedFilesCommandEnvironment(profile, operatorEnvironment)
     const child = Bun.spawn(args, { cwd, env: environment, stdout: 'pipe', stderr: 'pipe' })
     const result = await settleTestCommand(child, {

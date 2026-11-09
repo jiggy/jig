@@ -559,7 +559,9 @@ test('successful retry envelopes retain the original creation time and preceding
     maxSeconds: 1860,
     overBudgetCount: 1,
   })
-  assert.ok(performanceMarkdown(report).includes('| After reruns | 1 | 31.0 | 31.0 | 31.0 | 31.0 | 1 |'))
+  assert.ok(
+    performanceMarkdown(report).includes('| After reruns | 1 | 31.0 | 31.0 | 31.0 | 31.0 | 1 |'),
+  )
 })
 
 test('a window without PR successes reports empty timing without a fast-success fallback', () => {
@@ -573,7 +575,9 @@ test('a window without PR successes reports empty timing without a fast-success 
     maxSeconds: null,
     overBudgetCount: 0,
   })
-  assert.ok(performanceMarkdown(report).includes('| All latest successes | 0 | — | — | — | — | 0 |'))
+  assert.ok(
+    performanceMarkdown(report).includes('| All latest successes | 0 | — | — | — | — | 0 |'),
+  )
 })
 
 test('foreign identity, duplicate jobs, reversed timing and missing attempts refuse the report', () => {
@@ -636,7 +640,9 @@ test('the real snapshot CLI is read-only and rejects ambiguous command options',
     assert.ok(rendered.stdout.includes('| ci.yml | pull_request | 1 | 8.0 | 8.0 | success: 1 |'))
     assert.ok(rendered.stdout.includes('no flake rate'))
     assert.ok(rendered.stdout.includes('PR three-workflow elapsed envelope'))
-    assert.ok(rendered.stdout.includes('latest observed job completion in the successful workflows'))
+    assert.ok(
+      rendered.stdout.includes('latest observed job completion in the successful workflows'),
+    )
     assert.ok(rendered.stdout.includes('Observed PR event-head groups: 1.'))
     assert.ok(rendered.stdout.includes('| 0 | 0 | 0 | 1 | 0 |'))
     for (const args of [

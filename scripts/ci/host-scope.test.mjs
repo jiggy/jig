@@ -67,15 +67,17 @@ test('unverified main, manual, unavailable and forged PR comparisons cannot omit
     )
   assert.equal((await hostScope({ ...f, event: {} })).required, true)
   assert.equal(
-    (await hostScope({
-      ...f,
-      event: {
-        pull_request: {
-          base: { sha: f.event.pull_request.head.sha },
-          head: f.event.pull_request.head,
+    (
+      await hostScope({
+        ...f,
+        event: {
+          pull_request: {
+            base: { sha: f.event.pull_request.head.sha },
+            head: f.event.pull_request.head,
+          },
         },
-      },
-    })).required,
+      })
+    ).required,
     true,
   )
   await assert.rejects(
@@ -87,15 +89,7 @@ test('unverified main, manual, unavailable and forged PR comparisons cannot omit
 test('always-present host gates require successful scope and exactly complete or omitted role sets', () => {
   for (const [scope, jobs] of [
     ['linux', ['host-artifacts', 'host-suite', 'rootless-linux']],
-    [
-      'macos',
-      [
-        'host-artifacts',
-        'cohort-allocator',
-        'prerequisites',
-        'qualified-architecture',
-      ],
-    ],
+    ['macos', ['host-artifacts', 'cohort-allocator', 'prerequisites', 'qualified-architecture']],
   ]) {
     for (const required of [true, false]) {
       const report = { required },

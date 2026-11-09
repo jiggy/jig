@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import { parse } from 'yaml'
-import { approvedReviews, preflightPullRequestNumber, reviewedCandidate } from './native-preflight.mjs'
+import {
+  approvedReviews,
+  preflightPullRequestNumber,
+  reviewedCandidate,
+} from './native-preflight.mjs'
 
 const source = 'a'.repeat(40),
   head = 'b'.repeat(40),
@@ -37,8 +41,19 @@ const reviews = [approval],
   permissions = { maintainer: 'write' }
 
 test('preflight refuses malformed or missing PR numbers before any API use', () => {
-  for (const raw of [undefined, '', '0', '-1', '+1', '1.0', '1e3',
-    '9007199254740993', ' 1', '1/', 'not-a-number']) {
+  for (const raw of [
+    undefined,
+    '',
+    '0',
+    '-1',
+    '+1',
+    '1.0',
+    '1e3',
+    '9007199254740993',
+    ' 1',
+    '1/',
+    'not-a-number',
+  ]) {
     assert.throws(() => preflightPullRequestNumber(raw), /positive decimal PR number/)
   }
   assert.equal(preflightPullRequestNumber('90'), 90)

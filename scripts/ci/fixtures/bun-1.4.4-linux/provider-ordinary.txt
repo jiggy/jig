@@ -1,4 +1,4 @@
-bun test v1.3.3 (274e01c7)
+bun test v1.4.4 (38afee6c8)
 
 packages/jig/test/package-provider-host.test.ts:
 (pass) installed software factory delivers complete blocked and checked dashboard views [79163.41ms]

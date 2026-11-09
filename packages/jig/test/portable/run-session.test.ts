@@ -20,11 +20,7 @@ function launch(
   entrypoint = `${import.meta.dir}/../run-session-peer.fixture.ts`,
 ) {
   const child = Bun.spawn(
-    [
-      installedBunLocation.executablePath,
-      entrypoint,
-      ...(mode === undefined ? [] : [mode]),
-    ],
+    [installedBunLocation.executablePath, entrypoint, ...(mode === undefined ? [] : [mode])],
     { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
   )
   const observed: Uint8Array[] = []

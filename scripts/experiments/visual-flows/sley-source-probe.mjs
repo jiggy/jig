@@ -24,7 +24,8 @@ if (args.length !== 2) {
 }
 
 try {
-  const sourceRoot = resolve(args[0]), destination = resolve(args[1])
+  const sourceRoot = resolve(args[0]),
+    destination = resolve(args[1])
   const verified = new Map()
   for (const [name, sha] of Object.entries(SOURCES)) {
     const bytes = await readFile(join(sourceRoot, 'typescript', name))
@@ -45,20 +46,37 @@ try {
   }
   const probe = join(consumer, 'probe.mjs')
   await copyFile(new URL('./sley-probe.mjs', import.meta.url), probe)
-  const execution = spawnSync(process.execPath, [probe, join(destination, 'evidence')], { encoding: 'utf8', timeout: 30_000 })
+  const execution = spawnSync(process.execPath, [probe, join(destination, 'evidence')], {
+    encoding: 'utf8',
+    timeout: 30_000,
+  })
   if (execution.stdout) process.stdout.write(execution.stdout)
   if (execution.stderr) process.stderr.write(execution.stderr)
-  if (execution.error || execution.status !== 0) throw new Error('The Sley probe did not complete successfully.')
-  await writeFile(join(destination, 'source-evidence.json'), JSON.stringify({
-    repository: 'https://github.com/jiggy/sley',
-    commit: 'dc3600ae6c0c0bcab9ceb11b761026f8b1b28c4a',
-    version: '0.0.3', node: process.version,
-    qualification: 'Verified source blobs and public ESM exports. No published npm artifact was qualified.',
-    files: SOURCES,
-  }, null, 2) + '\n')
+  if (execution.error || execution.status !== 0)
+    throw new Error('The Sley probe did not complete successfully.')
+  await writeFile(
+    join(destination, 'source-evidence.json'),
+    JSON.stringify(
+      {
+        repository: 'https://github.com/jiggy/sley',
+        commit: 'dc3600ae6c0c0bcab9ceb11b761026f8b1b28c4a',
+        version: '0.0.3',
+        node: process.version,
+        qualification:
+          'Verified source blobs and public ESM exports. No published npm artifact was qualified.',
+        files: SOURCES,
+      },
+      null,
+      2,
+    ) + '\n',
+  )
 } catch (error) {
-  console.error(error?.code === 'EEXIST' ? 'The output directory already exists. Choose a new directory.'
-    : error?.code === 'ENOENT' ? 'The source checkout or output parent directory is unavailable.'
-    : error.message)
+  console.error(
+    error?.code === 'EEXIST'
+      ? 'The output directory already exists. Choose a new directory.'
+      : error?.code === 'ENOENT'
+        ? 'The source checkout or output parent directory is unavailable.'
+        : error.message,
+  )
   process.exitCode = 1
 }

@@ -16,7 +16,7 @@ export async function generateContract(
   workerPath?: string,
 ): Promise<GeneratedContract> {
   signal.throwIfAborted()
-  const override = process.env.JIG_AUTHORING_NODE_PATH
+  const override = process.env.JIG_AUTHORING_NODE_PATH ?? process.env.FLOW_NODE
   if (override !== undefined && !isAbsolute(override))
     unavailable('AUTHORING_NODE', 'Select an absolute Node executable.')
   let node: string | undefined

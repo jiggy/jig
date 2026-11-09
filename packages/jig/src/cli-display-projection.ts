@@ -68,15 +68,16 @@ export class PrivateDisplayProjection {
       state: 'available',
       provenance: 'admitted',
       rootId: node(value.rootId),
-      nodes: value.nodes.map((entry): DisplayCompositionNode =>
-        entry.kind === 'resource'
-          ? {
-              id: node(entry.id),
-              kind: 'resource',
-              label: entry.label,
-              resourceKind: entry.resourceKind,
-            }
-          : { id: node(entry.id), kind: entry.kind, label: entry.label },
+      nodes: value.nodes.map(
+        (entry): DisplayCompositionNode =>
+          entry.kind === 'resource'
+            ? {
+                id: node(entry.id),
+                kind: 'resource',
+                label: entry.label,
+                resourceKind: entry.resourceKind,
+              }
+            : { id: node(entry.id), kind: entry.kind, label: entry.label },
       ),
       edges: value.edges.map((edge) => ({
         id: this.#id('composition-edge', edge.id),

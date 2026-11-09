@@ -111,7 +111,9 @@ test('admitted composition publishes opaque target IDs and joins only observed c
 })
 
 test('a live model without admitted composition keeps an explicit unavailable map', () => {
-  const snapshot = new PrivateDisplayProjection(new PrivateRunModel(), new Uint8Array(32)).capture(1)
+  const snapshot = new PrivateDisplayProjection(new PrivateRunModel(), new Uint8Array(32)).capture(
+    1,
+  )
   expect(snapshot.composition).toEqual({ state: 'unavailable', reason: 'unavailable' })
 })
 

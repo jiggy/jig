@@ -16,7 +16,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 const file = 'packages/display-web/test/client.test.ts'
-const plain = `bun test v1.3.3\n\n${file}:\n(pass) complete case [1.00ms]\n\n 1 pass\n 0 fail\n 2 expect() calls\nRan 1 test across 1 file. [2.00ms]\n`
+const plain = `bun test v1.4.4\n\n${file}:\n(pass) complete case [1.00ms]\n\n 1 pass\n 0 fail\n 2 expect() calls\nRan 1 test across 1 file. [2.00ms]\n`
 const grouped = plain
   .replace(`${file}:`, `::group::${file}:`)
   .replace('\n 1 pass', '\n::endgroup::\n 1 pass')
@@ -25,8 +25,8 @@ const prerequisites = (arch) => ({
   arch,
   kernel: '24.6.0',
   build: arch === 'arm64' ? '24H232' : '24G830',
-  bun: '1.4.2',
-  revision: '744846f844374847c902b5e7fd59b4342a51ef99',
+  bun: '1.4.4',
+  revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
   processIdentityBytes: 56,
   coalitionIdentityBytes: 40,
   coalitionUsageBytes: 296,
@@ -62,7 +62,7 @@ test('every selected skip, filter, failure and incomplete or foreign report refu
   assert.throws(() => parseBunTranscript(plain, { files: [file], filter: { file, pattern: '.*' } }))
   // The retained real mixed report contains skipped registrations; it now fails rather than inheriting a legacy permission table.
   const retained = readFileSync(
-    new URL('./fixtures/bun-1.3.3-linux/display-source-github-groups.txt', import.meta.url),
+    new URL('./fixtures/bun-1.4.4-linux/display-source-github-groups.txt', import.meta.url),
     'utf8',
   )
   assert.throws(() => parseBunTranscript(retained, { files: [file] }))
@@ -185,10 +185,12 @@ test('both full Mac architecture readers own every report once including native 
     const owningFile = /<testcase file="([^"]+)"/.exec(original)[1]
     writeFileSync(
       f.reports[0],
-      original.replace('tests="1"', 'tests="2"').replace(
-        '</testsuites>',
-        `<testcase file="${owningFile}" classname="suite" name="second case"/></testsuites>`,
-      ),
+      original
+        .replace('tests="1"', 'tests="2"')
+        .replace(
+          '</testsuites>',
+          `<testcase file="${owningFile}" classname="suite" name="second case"/></testsuites>`,
+        ),
     )
     const options = {
       repository: f.root,
@@ -207,13 +209,18 @@ test('both full Mac architecture readers own every report once including native 
     assert.equal(detailed.executed, f.files.length + 1)
     assert.equal(detailed.files, f.files.length)
     assert.equal(detailed.planned_files, f.files.length)
-    assert.equal(detailed.shards.reduce((total, row) => total + row.files, 0), f.files.length)
+    assert.equal(
+      detailed.shards.reduce((total, row) => total + row.files, 0),
+      f.files.length,
+    )
     const planned = planMacHostTests(f.files, arch)
     assert.deepEqual(
       detailed.shards.map((row) => row.files),
-      planned.map((shard) =>
-        shard.groups.length + (shard.index === 0 ? NATIVE_PREREQUISITE_TESTS.length : 0) +
-        (shard.index === planned.length - 1 ? 1 : 0),
+      planned.map(
+        (shard) =>
+          shard.groups.length +
+          (shard.index === 0 ? NATIVE_PREREQUISITE_TESTS.length : 0) +
+          (shard.index === planned.length - 1 ? 1 : 0),
       ),
     )
   }
@@ -274,7 +281,7 @@ test('one complete ARM host qualifies only its observed admitted build', () => {
       arch: 'arm64',
       kernel: '24.6.0',
       build,
-      bun: '1.4.2',
+      bun: '1.4.4',
       revision: prerequisites('arm64').revision,
     })
   }

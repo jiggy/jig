@@ -104,7 +104,9 @@ detailMedia.addEventListener('change', (event) => {
   if (
     event.matches &&
     active instanceof Element &&
-    active.closest('.workspace.show-detail .records, .application-workspace.show-detail .application-page')
+    active.closest(
+      '.workspace.show-detail .records, .application-workspace.show-detail .application-page',
+    )
   )
     document.querySelector<HTMLButtonElement>('.back-to-records')?.focus({ preventScroll: true })
 })
@@ -163,12 +165,17 @@ const provenance = (value: DisplayAttribution): string =>
 function redraw(): void {
   const focused = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
   // Native scrolling can precede its queued scroll event.
-  if (compositionViewportVisible && lastCompositionViewport?.isConnected &&
-    lastCompositionViewport.clientWidth && lastCompositionViewport.clientHeight)
+  if (
+    compositionViewportVisible &&
+    lastCompositionViewport?.isConnected &&
+    lastCompositionViewport.clientWidth &&
+    lastCompositionViewport.clientHeight
+  )
     rememberCompositionViewport(lastCompositionViewport)
-  if (client?.body && (
-    client.body.revision !== lastBodyRevision || client.body.rootSourceId !== lastRootSourceId
-  )) {
+  if (
+    client?.body &&
+    (client.body.revision !== lastBodyRevision || client.body.rootSourceId !== lastRootSourceId)
+  ) {
     const snapshot = client.body
     if (snapshot.rootSourceId !== lastRootSourceId) {
       compositionRequestFocus = 'all'
@@ -346,7 +353,8 @@ function navigate(id: string, preserveSubject = true): void {
   detailOrigin = undefined
   if (
     invocationViewOrigin &&
-    privateBrowserView(client?.body, destinationKey)?.sourceId !== invocationViewOrigin.childSourceId
+    privateBrowserView(client?.body, destinationKey)?.sourceId !==
+      invocationViewOrigin.childSourceId
   )
     invocationViewOrigin = undefined
   panel = undefined
@@ -358,7 +366,9 @@ function navigate(id: string, preserveSubject = true): void {
 }
 function focusSelectedEntry(): void {
   if (destinationKey === 'composition') {
-    document.querySelector<HTMLButtonElement>('[data-component][aria-pressed=true]')?.focus({ preventScroll: true })
+    document
+      .querySelector<HTMLButtonElement>('[data-component][aria-pressed=true]')
+      ?.focus({ preventScroll: true })
     return
   }
   if (
@@ -385,7 +395,8 @@ function focusSelectedEntry(): void {
   else document.querySelector<HTMLButtonElement>('.selection-notice button')?.focus()
 }
 function focusDetailReturn(): void {
-  const breakpoint = destinationKey === 'composition' ? '(max-width: 1120px)' : '(max-width: 1000px)'
+  const breakpoint =
+    destinationKey === 'composition' ? '(max-width: 1120px)' : '(max-width: 1000px)'
   if (matchMedia(breakpoint).matches)
     document.querySelector<HTMLButtonElement>('.back-to-records')?.focus()
 }
@@ -412,7 +423,9 @@ function selectCall(id: string, origin?: CompositionOrigin): void {
   }
   redraw()
   if (origin) {
-    const selectedButton = document.querySelector<HTMLButtonElement>('[data-call][aria-pressed=true]')
+    const selectedButton = document.querySelector<HTMLButtonElement>(
+      '[data-call][aria-pressed=true]',
+    )
     if (selectedButton) selectedButton.focus()
     else document.getElementById('selected-call-heading')?.focus()
   }
@@ -436,7 +449,8 @@ function openInvocationView(
     child.childSourceId !== childSourceId ||
     !child.views.some((item) => item.id === viewId)
   ) {
-    feedback = 'This reported view is unavailable for the selected invocation in the current observation.'
+    feedback =
+      'This reported view is unavailable for the selected invocation in the current observation.'
     redraw()
     return
   }
@@ -455,46 +469,69 @@ function InvocationReturn(): ComponentChildren {
   const snapshot = client?.body
   const selected = view()
   if (
-    !origin || !snapshot || !selected ||
-    snapshot.rootSourceId !== origin.rootSourceId || selected.sourceId !== origin.childSourceId
-  ) return null
+    !origin ||
+    !snapshot ||
+    !selected ||
+    snapshot.rootSourceId !== origin.rootSourceId ||
+    selected.sourceId !== origin.childSourceId
+  )
+    return null
   const child = privateBrowserInvocationViews(snapshot, origin.callId)
-  const available = child.kind === 'available' && child.childSourceId === origin.childSourceId &&
+  const available =
+    child.kind === 'available' &&
+    child.childSourceId === origin.childSourceId &&
     child.views.some((item) => item.id === selected.id)
   return h(
     'div',
     { class: 'invocation-context', 'aria-label': 'Invocation navigation' },
-    button('← Back to invocation', () => {
-      const current = client?.body
-      const currentChild = current && privateBrowserInvocationViews(current, origin.callId)
-      if (
-        !client?.referencesEnabled || invocationViewOrigin !== origin ||
-        current?.rootSourceId !== origin.rootSourceId || view()?.id !== selected.id ||
-        currentChild?.kind !== 'available' || currentChild.childSourceId !== origin.childSourceId ||
-        !currentChild.views.some((item) => item.id === selected.id)
-      ) {
-        feedback = 'The originating invocation is unavailable in the current observation.'
-        redraw()
-        return
-      }
-      callFilter = ''
-      navigate('overview', false)
-      selectCall(origin.callId, origin.composition)
-      focusSelectedEntry()
-      focusDetailReturn()
-    }, { id: 'invocation-return', disabled: !available || !client?.referencesEnabled }),
+    button(
+      '← Back to invocation',
+      () => {
+        const current = client?.body
+        const currentChild = current && privateBrowserInvocationViews(current, origin.callId)
+        if (
+          !client?.referencesEnabled ||
+          invocationViewOrigin !== origin ||
+          current?.rootSourceId !== origin.rootSourceId ||
+          view()?.id !== selected.id ||
+          currentChild?.kind !== 'available' ||
+          currentChild.childSourceId !== origin.childSourceId ||
+          !currentChild.views.some((item) => item.id === selected.id)
+        ) {
+          feedback = 'The originating invocation is unavailable in the current observation.'
+          redraw()
+          return
+        }
+        callFilter = ''
+        navigate('overview', false)
+        selectCall(origin.callId, origin.composition)
+        focusSelectedEntry()
+        focusDetailReturn()
+      },
+      { id: 'invocation-return', disabled: !available || !client?.referencesEnabled },
+    ),
     !available
-      ? h('p', { class: 'secondary' }, 'The originating invocation is no longer available in this observation.')
+      ? h(
+          'p',
+          { class: 'secondary' },
+          'The originating invocation is no longer available in this observation.',
+        )
       : !client?.referencesEnabled
-        ? h('p', { class: 'secondary' }, 'Invocation links are unavailable while this observation is stale or incomplete.')
+        ? h(
+            'p',
+            { class: 'secondary' },
+            'Invocation links are unavailable while this observation is stale or incomplete.',
+          )
         : null,
   )
 }
 
 function compositionMatches(rootSourceId: string, rootId: string): boolean {
-  return client?.body?.rootSourceId === rootSourceId &&
+  return (
+    client?.body?.rootSourceId === rootSourceId &&
     client.body.composition?.state === 'available' &&
     client.body.composition.rootId === rootId
+  )
 }
 
 function releaseCompositionViewport(): void {
@@ -517,16 +554,28 @@ function enterCompositionMap(): void {
 function leaveCompositionMap(event: FocusEvent): void {
   // A responsive hide can blur before the resize observer runs.
   if (!compositionFocusScope?.clientWidth) return
-  if (event.relatedTarget instanceof Node && compositionFocusScope.contains(event.relatedTarget)) return
+  if (event.relatedTarget instanceof Node && compositionFocusScope.contains(event.relatedTarget))
+    return
   compositionMapFocused = false
 }
 
 function compositionFitScale(viewport: HTMLElement): number | undefined {
   const width = Number(viewport.dataset.compositionWidth)
   const height = Number(viewport.dataset.compositionHeight)
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 ||
-    !viewport.clientWidth || !viewport.clientHeight) return
-  return Math.min(1, Math.max(1, viewport.clientWidth - 2) / width, Math.max(1, viewport.clientHeight - 2) / height)
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 0 ||
+    height <= 0 ||
+    !viewport.clientWidth ||
+    !viewport.clientHeight
+  )
+    return
+  return Math.min(
+    1,
+    Math.max(1, viewport.clientWidth - 2) / width,
+    Math.max(1, viewport.clientHeight - 2) / height,
+  )
 }
 
 function rememberCompositionViewport(viewport: HTMLElement): void {
@@ -536,7 +585,14 @@ function rememberCompositionViewport(viewport: HTMLElement): void {
 function compositionViewportCenter(viewport: HTMLElement): { x: number; y: number } | undefined {
   const canvas = viewport.querySelector<HTMLElement>('.composition-canvas')
   const scale = Number(viewport.dataset.compositionScale)
-  if (!canvas || !Number.isFinite(scale) || scale <= 0 || !viewport.clientWidth || !viewport.clientHeight) return
+  if (
+    !canvas ||
+    !Number.isFinite(scale) ||
+    scale <= 0 ||
+    !viewport.clientWidth ||
+    !viewport.clientHeight
+  )
+    return
   const bounds = viewport.getBoundingClientRect()
   const map = canvas.getBoundingClientRect()
   return {
@@ -548,13 +604,34 @@ function compositionViewportCenter(viewport: HTMLElement): { x: number; y: numbe
 function centerCompositionPoint(viewport: HTMLElement, point: { x: number; y: number }): void {
   const canvas = viewport.querySelector<HTMLElement>('.composition-canvas')
   const scale = Number(viewport.dataset.compositionScale)
-  if (!canvas || !Number.isFinite(scale) || scale <= 0 || !viewport.clientWidth || !viewport.clientHeight) return
+  if (
+    !canvas ||
+    !Number.isFinite(scale) ||
+    scale <= 0 ||
+    !viewport.clientWidth ||
+    !viewport.clientHeight
+  )
+    return
   const bounds = viewport.getBoundingClientRect()
   const map = canvas.getBoundingClientRect()
-  viewport.scrollLeft = Math.max(0, viewport.scrollLeft + map.left + point.x * scale -
-    bounds.left - viewport.clientLeft - viewport.clientWidth / 2)
-  viewport.scrollTop = Math.max(0, viewport.scrollTop + map.top + point.y * scale -
-    bounds.top - viewport.clientTop - viewport.clientHeight / 2)
+  viewport.scrollLeft = Math.max(
+    0,
+    viewport.scrollLeft +
+      map.left +
+      point.x * scale -
+      bounds.left -
+      viewport.clientLeft -
+      viewport.clientWidth / 2,
+  )
+  viewport.scrollTop = Math.max(
+    0,
+    viewport.scrollTop +
+      map.top +
+      point.y * scale -
+      bounds.top -
+      viewport.clientTop -
+      viewport.clientHeight / 2,
+  )
   rememberCompositionViewport(viewport)
 }
 
@@ -562,17 +639,32 @@ function centerCompositionNode(viewport: HTMLElement, node: HTMLElement): void {
   if (!viewport.clientWidth || !viewport.clientHeight) return
   const bounds = viewport.getBoundingClientRect()
   const card = node.getBoundingClientRect()
-  viewport.scrollLeft = Math.max(0, viewport.scrollLeft + card.left + card.width / 2 -
-    bounds.left - viewport.clientLeft - viewport.clientWidth / 2)
-  viewport.scrollTop = Math.max(0, viewport.scrollTop + card.top + card.height / 2 -
-    bounds.top - viewport.clientTop - viewport.clientHeight / 2)
+  viewport.scrollLeft = Math.max(
+    0,
+    viewport.scrollLeft +
+      card.left +
+      card.width / 2 -
+      bounds.left -
+      viewport.clientLeft -
+      viewport.clientWidth / 2,
+  )
+  viewport.scrollTop = Math.max(
+    0,
+    viewport.scrollTop +
+      card.top +
+      card.height / 2 -
+      bounds.top -
+      viewport.clientTop -
+      viewport.clientHeight / 2,
+  )
   rememberCompositionViewport(viewport)
 }
 
 function restoreCompositionViewport(): void {
-  let viewport = destinationKey === 'composition' && !panel
-    ? document.getElementById('composition-scroll')
-    : null
+  let viewport =
+    destinationKey === 'composition' && !panel
+      ? document.getElementById('composition-scroll')
+      : null
   if (!viewport) {
     releaseCompositionViewport()
     return
@@ -597,8 +689,12 @@ function restoreCompositionViewport(): void {
   const fit = compositionFitScale(viewport)
   if (fit === undefined) {
     const active = document.activeElement
-    const moveFocus = compositionViewportVisible && compositionMapFocused &&
-      (compositionFocusScope?.contains(active) || active === document.body || active === document.documentElement)
+    const moveFocus =
+      compositionViewportVisible &&
+      compositionMapFocused &&
+      (compositionFocusScope?.contains(active) ||
+        active === document.body ||
+        active === document.documentElement)
     compositionViewportVisible = false
     compositionMapFocused = false
     if (moveFocus && currentLocal().detailOpen) {
@@ -609,11 +705,18 @@ function restoreCompositionViewport(): void {
   compositionViewportVisible = true
   const composition = client?.body?.composition
   if (composition?.state !== 'available') return
-  const scale = compositionScaleMode === 'fit' ? fit :
-    compositionScaleMode === 'automatic' ? (fit >= 0.75 ? fit : 1) : compositionScale
-  const center = compositionViewport && !restoreSavedPosition && scale !== compositionScale
-    ? compositionViewportCenter(viewport)
-    : undefined
+  const scale =
+    compositionScaleMode === 'fit'
+      ? fit
+      : compositionScaleMode === 'automatic'
+        ? fit >= 0.75
+          ? fit
+          : 1
+        : compositionScale
+  const center =
+    compositionViewport && !restoreSavedPosition && scale !== compositionScale
+      ? compositionViewportCenter(viewport)
+      : undefined
   if (scale !== compositionScale) {
     compositionScale = scale
     render(h(App, {}), root)
@@ -621,8 +724,9 @@ function restoreCompositionViewport(): void {
     if (!viewport?.clientWidth || !viewport.clientHeight) return
   }
   if (compositionCenterNodeId) {
-    const selected = [...viewport.querySelectorAll<HTMLButtonElement>('[data-component]')]
-      .find((element) => element.dataset.component === compositionCenterNodeId)
+    const selected = [...viewport.querySelectorAll<HTMLButtonElement>('[data-component]')].find(
+      (element) => element.dataset.component === compositionCenterNodeId,
+    )
     compositionCenterNodeId = undefined
     if (selected) {
       centerCompositionNode(viewport, selected)
@@ -641,8 +745,9 @@ function restoreCompositionViewport(): void {
     rememberCompositionViewport(viewport)
     return
   }
-  const entry = [...viewport.querySelectorAll<HTMLButtonElement>('[data-component]')]
-    .find((element) => element.dataset.component === composition.rootId)
+  const entry = [...viewport.querySelectorAll<HTMLButtonElement>('[data-component]')].find(
+    (element) => element.dataset.component === composition.rootId,
+  )
   if (entry) centerCompositionNode(viewport, entry)
   else rememberCompositionViewport(viewport)
 }
@@ -654,8 +759,15 @@ function scaleComposition(action: 'in' | 'out' | 'fit' | 'actual'): void {
   if (fit === undefined) return
   const center = compositionViewportCenter(viewport)
   compositionScaleMode = action === 'fit' ? 'fit' : 'manual'
-  compositionScale = action === 'fit' ? fit : action === 'actual' ? 1 :
-    Math.max(Math.min(0.25, fit), Math.min(2, compositionScale * (action === 'in' ? 1.2 : 1 / 1.2)))
+  compositionScale =
+    action === 'fit'
+      ? fit
+      : action === 'actual'
+        ? 1
+        : Math.max(
+            Math.min(0.25, fit),
+            Math.min(2, compositionScale * (action === 'in' ? 1.2 : 1 / 1.2)),
+          )
   redraw()
   const next = document.getElementById('composition-scroll')
   if (!next?.clientWidth || !next.clientHeight) return
@@ -690,9 +802,15 @@ function Composition(): ComponentChildren {
     },
     onSelect: (id: string) => {
       const current = client?.body?.composition
-      if (!rootId || !compositionMatches(sourceId, rootId) ||
-        current?.state !== 'available' || !current.nodes.some((node) => node.id === id)) return
-      const fromDetails = document.activeElement instanceof HTMLElement &&
+      if (
+        !rootId ||
+        !compositionMatches(sourceId, rootId) ||
+        current?.state !== 'available' ||
+        !current.nodes.some((node) => node.id === id)
+      )
+        return
+      const fromDetails =
+        document.activeElement instanceof HTMLElement &&
         !!document.activeElement.closest('.composition-detail')
       humanNavigation = true
       compositionSelection = { rootSourceId: sourceId, rootId, nodeId: id }
@@ -710,10 +828,18 @@ function Composition(): ComponentChildren {
       focusSelectedEntry()
     },
     onCall: (id: string) => {
-      const body = client?.body, nodeId = compositionSelection.nodeId
-      if (!client?.referencesEnabled || !body || !nodeId || !rootId ||
+      const body = client?.body,
+        nodeId = compositionSelection.nodeId
+      if (
+        !client?.referencesEnabled ||
+        !body ||
+        !nodeId ||
+        !rootId ||
         !compositionMatches(sourceId, rootId) ||
-        !compositionObservations(body).matches.some((match) => match.callId === id && match.targetNodeId === nodeId)) {
+        !compositionObservations(body).matches.some(
+          (match) => match.callId === id && match.targetNodeId === nodeId,
+        )
+      ) {
         feedback = 'The selected invocation is unavailable in the current observation.'
         redraw()
         return
@@ -727,17 +853,33 @@ function Composition(): ComponentChildren {
       navigate('overview')
     },
     onNodeKeyDown: (event: KeyboardEvent) => {
-      if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+      if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key))
+        return
       event.preventDefault()
       const nodes = [...document.querySelectorAll<HTMLButtonElement>('[data-component]')]
       const index = nodes.indexOf(event.currentTarget as HTMLButtonElement)
-      const next = event.key === 'Home' ? 0 : event.key === 'End' ? nodes.length - 1 :
-        Math.max(0, Math.min(nodes.length - 1, index + (['ArrowDown', 'ArrowRight'].includes(event.key) ? 1 : -1)))
+      const next =
+        event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? nodes.length - 1
+            : Math.max(
+                0,
+                Math.min(
+                  nodes.length - 1,
+                  index + (['ArrowDown', 'ArrowRight'].includes(event.key) ? 1 : -1),
+                ),
+              )
       nodes[next]?.focus()
     },
     onScroll: (left: number, top: number) => {
       const viewport = document.getElementById('composition-scroll')
-      if (viewport?.clientWidth && viewport.clientHeight && rootId && compositionMatches(sourceId, rootId))
+      if (
+        viewport?.clientWidth &&
+        viewport.clientHeight &&
+        rootId &&
+        compositionMatches(sourceId, rootId)
+      )
         compositionViewport = { left, top }
     },
   })
@@ -772,9 +914,10 @@ function activate(reference: Reference, record: PrivateBrowserRecord): void {
   humanNavigation = true
   if (target.kind === 'artifact') {
     const origin = document.activeElement
-    detailOrigin = origin instanceof HTMLElement
-      ? { destination: destinationKey, key: record.key, element: origin }
-      : undefined
+    detailOrigin =
+      origin instanceof HTMLElement
+        ? { destination: destinationKey, key: record.key, element: origin }
+        : undefined
     currentLocal().selected = record.key
     currentLocal().detailOpen = true
     currentLocal().reference = reference
@@ -1659,10 +1802,13 @@ function Overview(): ComponentChildren {
   if (!snapshot) return null
   const selected = snapshot.calls.find((call) => call.id === selectedCall)
   const childViews = selected && privateBrowserInvocationViews(snapshot, selected.id)
-  const returnToComposition = selected && compositionOrigin &&
+  const returnToComposition =
+    selected &&
+    compositionOrigin &&
     compositionMatches(compositionOrigin.rootSourceId, compositionOrigin.rootId) &&
-    compositionObservations(snapshot).matches.some((match) =>
-      match.callId === selected.id && match.targetNodeId === compositionOrigin!.nodeId)
+    compositionObservations(snapshot).matches.some(
+      (match) => match.callId === selected.id && match.targetNodeId === compositionOrigin!.nodeId,
+    )
   const timeline = privateBrowserCallSpans(snapshot.calls)
   const matches = new Set(
     snapshot.calls
@@ -1823,12 +1969,16 @@ function Overview(): ComponentChildren {
         'div',
         { class: 'host-toolbar' },
         returnToComposition
-          ? button('← Application map', () => {
-              compositionSelection = { ...compositionOrigin! }
-              navigate('composition')
-              focusSelectedEntry()
-              focusDetailReturn()
-            }, { class: 'composition-return' })
+          ? button(
+              '← Application map',
+              () => {
+                compositionSelection = { ...compositionOrigin! }
+                navigate('composition')
+                focusSelectedEntry()
+                focusDetailReturn()
+              },
+              { class: 'composition-return' },
+            )
           : null,
         h(
           'p',
@@ -1919,7 +2069,11 @@ function Overview(): ComponentChildren {
           h(
             'div',
             {},
-            h('h2', { id: 'selected-call-heading', tabIndex: -1 }, literal(selected.intent ?? selected.slot)),
+            h(
+              'h2',
+              { id: 'selected-call-heading', tabIndex: -1 },
+              literal(selected.intent ?? selected.slot),
+            ),
             h('p', { class: `call-${selected.state}` }, `Observed state: ${selected.state}`),
             h(
               'dl',
@@ -1953,27 +2107,52 @@ function Overview(): ComponentChildren {
               h('h3', {}, 'Reported views'),
               childViews?.kind === 'available'
                 ? childViews.views.length
-                  ? h('ul', { class: 'call-view-links' }, childViews.views.map((item) =>
-                      h('li', { key: item.id },
-                        button(
-                          h('span', {},
-                            h('strong', {}, literal(item.value.title)),
-                            h('small', { class: 'secondary' }, 'Reported by ', literal(item.sourceLabel)),
+                  ? h(
+                      'ul',
+                      { class: 'call-view-links' },
+                      childViews.views.map((item) =>
+                        h(
+                          'li',
+                          { key: item.id },
+                          button(
+                            h(
+                              'span',
+                              {},
+                              h('strong', {}, literal(item.value.title)),
+                              h(
+                                'small',
+                                { class: 'secondary' },
+                                'Reported by ',
+                                literal(item.sourceLabel),
+                              ),
+                            ),
+                            () =>
+                              openInvocationView(
+                                snapshot.rootSourceId,
+                                selected.id,
+                                childViews.childSourceId,
+                                item.id,
+                              ),
+                            {
+                              class: 'call-view-link',
+                              'data-call-view': item.id,
+                              disabled: !client?.referencesEnabled,
+                            },
                           ),
-                          () => openInvocationView(snapshot.rootSourceId, selected.id, childViews.childSourceId, item.id),
-                          {
-                            class: 'call-view-link',
-                            'data-call-view': item.id,
-                            disabled: !client?.referencesEnabled,
-                          },
+                          item.ended ? h('p', { class: 'secondary' }, literal(item.ended)) : null,
                         ),
-                        item.ended ? h('p', { class: 'secondary' }, literal(item.ended)) : null,
                       ),
-                    ))
+                    )
                   : h('p', { class: 'secondary' }, 'No authored views are retained for this child.')
                 : h('p', { class: 'secondary' }, childViews?.label),
-              childViews?.kind === 'available' && childViews.views.length && !client?.referencesEnabled
-                ? h('p', { class: 'unavailable-note' }, 'View links are unavailable while this observation is stale or incomplete.')
+              childViews?.kind === 'available' &&
+                childViews.views.length &&
+                !client?.referencesEnabled
+                ? h(
+                    'p',
+                    { class: 'unavailable-note' },
+                    'View links are unavailable while this observation is stale or incomplete.',
+                  )
                 : null,
             ),
             h('h3', {}, 'Related reports'),
@@ -2402,10 +2581,10 @@ function Tabs(): ComponentChildren {
                         : tab.id === 'composition'
                           ? 'map'
                           : tab.id === 'overview'
-                          ? 'run'
-                          : tab.id === 'activity'
-                            ? 'activity'
-                            : 'files',
+                            ? 'run'
+                            : tab.id === 'activity'
+                              ? 'activity'
+                              : 'files',
                     }),
                   ),
                   h(
@@ -2778,17 +2957,17 @@ function App(): ComponentChildren {
                   : destinationKey === 'composition'
                     ? h(Composition, {})
                     : destinationKey === 'overview'
-                    ? h(Overview, {})
-                    : destinationKey === 'files'
-                      ? h(Files, {})
-                      : h(
-                          'div',
-                          {
-                            class: `application-workspace ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
-                          },
-                          h(ApplicationList, {}),
-                          state.detailOpen ? h(SelectedDetail, {}) : null,
-                        ),
+                      ? h(Overview, {})
+                      : destinationKey === 'files'
+                        ? h(Files, {})
+                        : h(
+                            'div',
+                            {
+                              class: `application-workspace ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
+                            },
+                            h(ApplicationList, {}),
+                            state.detailOpen ? h(SelectedDetail, {}) : null,
+                          ),
         ),
       ),
     ),
@@ -2830,86 +3009,86 @@ if (location.pathname === '/explore') {
   startPrivateExplorer(root, capability)
   capability = undefined
 } else {
-document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || event.defaultPrevented) return
-  if (
-    event.target instanceof Element &&
-    event.target.closest('input,textarea,select,[contenteditable]')
-  )
-    return
-  if (panel) {
-    event.preventDefault()
-    closePanel()
-    return
-  }
-  const state = currentLocal()
-  if (state.expanded) {
-    event.preventDefault()
-    state.expanded = false
-    redraw()
-  } else if (state.detailOpen) {
-    event.preventDefault()
-    state.detailOpen = false
-    client?.setPreview(undefined)
-    redraw()
-    focusSelectedEntry()
-  }
-})
-if (capability) {
-  let previousConnection = ''
-  client = new PrivateBrowserClient(capability, () => {
-    if (client && client.connection !== previousConnection) {
-      previousConnection = client.connection
-      announcement =
-        client.connection === 'current'
-          ? 'Observation synchronized.'
-          : client.connection === 'closed'
-            ? 'Inspection ended.'
-            : client.connection === 'disconnected'
-              ? 'Observation disconnected. Retained data may be stale.'
-              : ''
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || event.defaultPrevented) return
+    if (
+      event.target instanceof Element &&
+      event.target.closest('input,textarea,select,[contenteditable]')
+    )
+      return
+    if (panel) {
+      event.preventDefault()
+      closePanel()
+      return
     }
-    if (client?.connection === 'closed' || client?.connection === 'unauthorized') {
-      if (clock) clearInterval(clock)
-      clock = undefined
+    const state = currentLocal()
+    if (state.expanded) {
+      event.preventDefault()
+      state.expanded = false
+      redraw()
+    } else if (state.detailOpen) {
+      event.preventDefault()
+      state.detailOpen = false
+      client?.setPreview(undefined)
+      redraw()
+      focusSelectedEntry()
     }
-    redraw()
   })
-  capability = undefined
-  client.start()
-  clock = setInterval(() => {
-    if (client?.current?.workspace.phase === 'live') render(h(App, {}), root)
-  }, 1000)
-}
-redraw()
-addEventListener(
-  'pagehide',
-  () => {
-    if (clock) clearInterval(clock)
-    client?.stop()
-    render(null, root)
-    local.clear()
-    previousKeys.clear()
-    previousCallKeys = []
-    scrollPositions.clear()
-    treeChoices.clear()
-    compositionSelection = {}
-    compositionViewport = undefined
-    compositionCenterNodeId = undefined
-    compositionScale = 1
-    compositionScaleMode = 'automatic'
-    compositionRequestFocus = 'all'
-    lastRootSourceId = undefined
-    releaseCompositionViewport()
-    compositionOrigin = undefined
-    invocationViewOrigin = undefined
-  },
-  { once: true },
-)
-addEventListener('pageshow', (event) => {
-  if (event.persisted) {
-    hasCapability = false
-    redraw()
+  if (capability) {
+    let previousConnection = ''
+    client = new PrivateBrowserClient(capability, () => {
+      if (client && client.connection !== previousConnection) {
+        previousConnection = client.connection
+        announcement =
+          client.connection === 'current'
+            ? 'Observation synchronized.'
+            : client.connection === 'closed'
+              ? 'Inspection ended.'
+              : client.connection === 'disconnected'
+                ? 'Observation disconnected. Retained data may be stale.'
+                : ''
+      }
+      if (client?.connection === 'closed' || client?.connection === 'unauthorized') {
+        if (clock) clearInterval(clock)
+        clock = undefined
+      }
+      redraw()
+    })
+    capability = undefined
+    client.start()
+    clock = setInterval(() => {
+      if (client?.current?.workspace.phase === 'live') render(h(App, {}), root)
+    }, 1000)
   }
-})
+  redraw()
+  addEventListener(
+    'pagehide',
+    () => {
+      if (clock) clearInterval(clock)
+      client?.stop()
+      render(null, root)
+      local.clear()
+      previousKeys.clear()
+      previousCallKeys = []
+      scrollPositions.clear()
+      treeChoices.clear()
+      compositionSelection = {}
+      compositionViewport = undefined
+      compositionCenterNodeId = undefined
+      compositionScale = 1
+      compositionScaleMode = 'automatic'
+      compositionRequestFocus = 'all'
+      lastRootSourceId = undefined
+      releaseCompositionViewport()
+      compositionOrigin = undefined
+      invocationViewOrigin = undefined
+    },
+    { once: true },
+  )
+  addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+      hasCapability = false
+      redraw()
+    }
+  })
 }

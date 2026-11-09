@@ -541,11 +541,13 @@ async function executeCommand(
         ...(options.presentationDeadline === undefined
           ? {}
           : { presentationDeadline: options.presentationDeadline }),
-        writeError: options.writeStderr ?? ((text) => {
-          // A launch capability must bypass progress journals and diagnostics.
-          if (options.writeError) options.writeError(text)
-          else process.stderr.write(text)
-        }),
+        writeError:
+          options.writeStderr ??
+          ((text) => {
+            // A launch capability must bypass progress journals and diagnostics.
+            if (options.writeError) options.writeError(text)
+            else process.stderr.write(text)
+          }),
       })
     if (arguments_[0] === 'run') return await executeRun(arguments_, runtime)
     if (arguments_[0] === 'inspect') return await executeInspect(arguments_, runtime)
@@ -2839,7 +2841,7 @@ export function renderFailure(error: unknown, runtime: Pick<CliRuntime, 'writeEr
         'Jig could not identify the unsupported dependency source. Inspect the workspace manifest, lock and patch declarations; see https://jig.md/build/dependencies.',
       PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED: unsupportedRegistryLockHint(error),
       PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED:
-        'the supplied Bun lock format is unsupported by this host; generate it explicitly with Bun 1.3.3 for Linux and Mac, or Bun 1.4.2 for Mac, then review again. Jig does not convert or replace supplied locks',
+        'the supplied Bun lock format is unsupported by this host; generate it explicitly with Bun 1.4.4, then review again. Jig does not convert or replace supplied locks',
       PACKAGE_BUN_MANIFEST_SHAPE: 'package.json must contain an object',
       PACKAGE_BUN_MANIFEST_FIELD:
         'the indicated manifest field is unsupported here; use default npm registry dependencies or declared workspace members, with patches declared only at the workspace root',
@@ -3328,4 +3330,3 @@ if (import.meta.main) {
     process.removeListener('SIGTERM', interrupt)
   }
 }
-

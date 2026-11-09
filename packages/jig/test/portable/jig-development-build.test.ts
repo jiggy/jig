@@ -68,10 +68,18 @@ beforeAll(async () => {
   await mkdir(consumer)
 }, 120_000)
 
+let isolatedPath = '/nonexistent'
+try {
+  const shebang = await readFile('/bin/sh', 'utf8')
+  if (shebang.includes('/usr/bin/env')) {
+    isolatedPath = dirname(Bun.which('bash') ?? '/bin')
+  }
+} catch {}
+
 async function launch(args = ['completion', 'bash']) {
   const child = Bun.spawn([join(release, 'bin/jig'), ...args], {
     cwd: consumer,
-    env: { PATH: '/nonexistent', BUN_OPTIONS: 'invalid', NODE_OPTIONS: 'invalid' },
+    env: { PATH: isolatedPath, BUN_OPTIONS: 'invalid', NODE_OPTIONS: 'invalid' },
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',

@@ -1,4 +1,4 @@
-bun test v1.3.3 (274e01c7)
+bun test v1.4.4 (38afee6c8)
 
 packages/jig/test/root-agent-run-lifecycle.test.ts:
 (pass) contact-import variants are valid current FLOW packages [133.00ms]

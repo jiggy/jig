@@ -138,8 +138,8 @@ if (args[0] === 'view') {
         buildProfile: {
           platform: 'linux',
           architecture: 'x64',
-          version: '1.3.3',
-          revision: '274e01c737e85f8142070a9745b43a2ba09fce4c',
+          version: '1.4.4',
+          revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
           nodeVersion: '24.0.0',
           npmVersion: '11.6.2',
           justVersion: 'just 1.43.1',

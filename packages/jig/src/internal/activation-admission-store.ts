@@ -2582,7 +2582,11 @@ export async function savePrivateAttemptRunCheckpoint(input: {
 /** Authenticate the complete producer/caller ancestry in the held transaction. */
 async function requireActiveCheckpointInvocation(
   owner: StateOwner,
-  input: { readonly runId: string; readonly epoch: number; readonly operationPath: readonly string[] },
+  input: {
+    readonly runId: string
+    readonly epoch: number
+    readonly operationPath: readonly string[]
+  },
 ): Promise<CheckpointScope> {
   const scope = privateRunCheckpointScope(input.runId, input.operationPath)
   const run = loadRootRunSnapshot(
@@ -2649,10 +2653,7 @@ export async function readPrivateSettledChildCheckpoint(input: {
 }) {
   const callerOperationPath = [...input.callerOperationPath]
   const childOperationId = input.childOperationId
-  const scope = privateRunCheckpointScope(input.runId, [
-    ...callerOperationPath,
-    childOperationId,
-  ])
+  const scope = privateRunCheckpointScope(input.runId, [...callerOperationPath, childOperationId])
   const owner = await openStateOwner(input.projectRoot, false, 'read-only')
   let failure: unknown
   let checkpoint: ReturnType<typeof readPrivateAttemptCheckpointFiles>
@@ -3083,12 +3084,7 @@ export async function acquirePrivateAttemptExport(input: {
           attemptQuery(
             owner.database,
             'SELECT delivery_id FROM attempt_export_deliveries WHERE nonce = ?1 AND destination = ?2 AND source = ?3 AND selection = ?4',
-            [
-              attempt.row.nonce,
-              input.destination,
-              input.source ?? 'final',
-              selection,
-            ],
+            [attempt.row.nonce, input.destination, input.source ?? 'final', selection],
           ).length
         )
           attemptRefuse('UNAVAILABLE', 'The original export delivery must be reconciled.')
@@ -3117,13 +3113,7 @@ export async function acquirePrivateAttemptExport(input: {
         attemptWrite(
           owner.database,
           "INSERT INTO attempt_export_deliveries VALUES (?1, ?2, ?3, ?4, ?5, ?1, 'active', NULL)",
-          [
-            pinId,
-            attempt.row.nonce,
-            input.destination,
-            input.source ?? 'final',
-            selection,
-          ],
+          [pinId, attempt.row.nonce, input.destination, input.source ?? 'final', selection],
         )
       return {
         pinId,
@@ -3171,12 +3161,7 @@ export async function reconcilePrivateAttemptExportDelivery(input: {
       const row = attemptQuery<{ status: string; result_bytes: Uint8Array | null }>(
         owner.database,
         'SELECT status, result_bytes FROM attempt_export_deliveries WHERE nonce = ?1 AND destination = ?2 AND source = ?3 AND selection = ?4',
-        [
-          attempt.claims.ticketNonce,
-          input.destination,
-          input.source ?? 'final',
-          selection,
-        ],
+        [attempt.claims.ticketNonce, input.destination, input.source ?? 'final', selection],
       )[0]
       if (!row) return undefined
       if (row.status !== 'written' || row.result_bytes === null)
@@ -7098,4 +7083,3 @@ function hasCode(error: unknown, code: string): boolean {
     (error as { readonly code?: unknown }).code === code
   )
 }
-

@@ -926,7 +926,10 @@ export const CANONICAL_CLASS_15_1: ReadonlyMap<number, number> = new Map([
   [0x1e949, 230],
   [0x1e94a, 7],
 ])
-export const CANONICAL_DECOMPOSITION_15_1: ReadonlyMap<number, readonly number[]> = new Map<number, readonly number[]>([
+export const CANONICAL_DECOMPOSITION_15_1: ReadonlyMap<number, readonly number[]> = new Map<
+  number,
+  readonly number[]
+>([
   [0xc0, [0x41, 0x300]],
   [0xc1, [0x41, 0x301]],
   [0xc2, [0x41, 0x302]],

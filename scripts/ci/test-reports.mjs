@@ -293,14 +293,15 @@ export function readMacReports({
   )
     throw new Error('Mac qualification cannot combine different host profiles')
   const identities = new Set()
-  const rows = shardEvidence.map((evidence) =>
-    readMacShard({
-      ...evidence,
-      architecture,
-      source,
-      shardCount: macHostShardCount(architecture, plan),
-      identities,
-    }).shard,
+  const rows = shardEvidence.map(
+    (evidence) =>
+      readMacShard({
+        ...evidence,
+        architecture,
+        source,
+        shardCount: macHostShardCount(architecture, plan),
+        identities,
+      }).shard,
   )
   const count = rows.reduce((total, row) => total + row.executed, 0)
   if (detailed)

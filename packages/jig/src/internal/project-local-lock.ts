@@ -338,10 +338,7 @@ function validateReferences(
       }
     }
   }
-  validateChildGraph(
-    new Map(Object.entries(bindings)),
-    directFlows,
-  )
+  validateChildGraph(new Map(Object.entries(bindings)), directFlows)
 }
 
 function normalizeSlots(

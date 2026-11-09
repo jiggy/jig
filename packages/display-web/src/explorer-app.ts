@@ -33,7 +33,16 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
   let restoredKey = ''
   let client: PrivateExplorerClient | undefined
   let unauthorized = !capability
-  const empty: Draft = { input: '', bytes: 0, touched: false, detailOpen: false, scale: 1, scaleMode: 'automatic', left: 0, top: 0 }
+  const empty: Draft = {
+    input: '',
+    bytes: 0,
+    touched: false,
+    detailOpen: false,
+    scale: 1,
+    scaleMode: 'automatic',
+    left: 0,
+    top: 0,
+  }
 
   function selectedDraft(): Draft {
     const project = client?.project
@@ -55,7 +64,8 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
       if (oldKey === key) continue
       bytes -= oldDraft.bytes
       drafts.delete(oldKey)
-      draftNotice = 'An older input draft was cleared. This tab retains up to 16 drafts within 16 MiB.'
+      draftNotice =
+        'An older input draft was cleared. This tab retains up to 16 drafts within 16 MiB.'
     }
     return draft
   }
@@ -79,8 +89,20 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
   function fitScale(element: HTMLElement): number | undefined {
     const width = Number(element.dataset.compositionWidth)
     const height = Number(element.dataset.compositionHeight)
-    if (!element.clientWidth || !element.clientHeight || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return
-    return Math.min(1, Math.max(1, element.clientWidth - 2) / width, Math.max(1, element.clientHeight - 2) / height)
+    if (
+      !element.clientWidth ||
+      !element.clientHeight ||
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      width <= 0 ||
+      height <= 0
+    )
+      return
+    return Math.min(
+      1,
+      Math.max(1, element.clientWidth - 2) / width,
+      Math.max(1, element.clientHeight - 2) / height,
+    )
   }
 
   function restoreViewport(): void {
@@ -113,7 +135,14 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
       return
     }
     viewportVisible = true
-    const scale = draft.scaleMode === 'fit' ? fit : draft.scaleMode === 'automatic' ? fit >= 0.75 ? fit : 1 : draft.scale
+    const scale =
+      draft.scaleMode === 'fit'
+        ? fit
+        : draft.scaleMode === 'automatic'
+          ? fit >= 0.75
+            ? fit
+            : 1
+          : draft.scale
     if (scale !== draft.scale) {
       draft.scale = scale
       draw()
@@ -126,7 +155,9 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
   }
 
   function focusComponent(): void {
-    document.querySelector<HTMLButtonElement>('[data-component][aria-pressed=true]')?.focus({ preventScroll: true })
+    document
+      .querySelector<HTMLButtonElement>('[data-component][aria-pressed=true]')
+      ?.focus({ preventScroll: true })
   }
 
   function selectComponent(id: string): void {
@@ -143,102 +174,152 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
 
   function draw(): void {
     const draft = selectedDraft()
-    render(h(ExplorerPage, {
-      project: client?.project,
-      connection: unauthorized ? 'unauthorized' : client?.connection ?? 'connecting',
-      projectError: client?.projectError ?? '',
-      projectNotice: client?.projectNotice ?? '',
-      run: client?.run,
-      runCurrent: client?.runCurrent ?? false,
-      runError: client?.runError ?? '',
-      requestError: client?.requestError ?? '',
-      sending: client?.sending ?? false,
-      unresolved: !!client?.unresolvedRequest,
-      canLaunch: client?.canLaunch ?? false,
-      closing: client?.closing ?? false,
-      filter,
-      input: draft.input,
-      inputOpen,
-      inputTouched: draft.touched,
-      draftNotice,
-      selectedNodeId: draft.nodeId,
-      detailOpen: draft.detailOpen,
-      scale: draft.scale,
-      theme,
-      onFilter(value: string) { filter = value; redraw() },
-      onTarget(id: string) {
-        if (!id || id === client?.project?.selected?.targetId) return
-        rememberViewport()
-        void client?.refreshProject(id)
-      },
-      onRefresh() { void client?.refreshProject(client.projectError ? null : undefined); void client?.refreshRun() },
-      onRefreshRun() { void client?.refreshRun() },
-      onInput(value: string) {
-        draft.input = value
-        draft.bytes = new TextEncoder().encode(value).byteLength
-        if (draft.bytes > DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT)
-          draftNotice = 'This draft exceeds 16 MiB. It stays visible here but may be cleared when you choose another workflow.'
-        redraw()
-      },
-      onInputTouched() { draft.touched = true; redraw() },
-      onInputOpen() {
-        rememberViewport()
-        inputOpen = true
-        draft.detailOpen = false
-        redraw()
-        document.getElementById('explorer-input')?.focus()
-      },
-      onInputClose() {
-        inputOpen = false
-        redraw()
-        document.querySelector<HTMLButtonElement>('.explorer-workflow-heading .explorer-primary')?.focus()
-      },
-      onRun() {
-        draft.touched = true
-        if (privateExplorerInput(draft.input).state !== 'valid') { redraw(); return }
-        void client?.launch(draft.input, crypto.randomUUID())
-      },
-      async onClose() {
-        if (await client?.close()) {
-          drafts.clear()
+    render(
+      h(ExplorerPage, {
+        project: client?.project,
+        connection: unauthorized ? 'unauthorized' : (client?.connection ?? 'connecting'),
+        projectError: client?.projectError ?? '',
+        projectNotice: client?.projectNotice ?? '',
+        run: client?.run,
+        runCurrent: client?.runCurrent ?? false,
+        runError: client?.runError ?? '',
+        requestError: client?.requestError ?? '',
+        sending: client?.sending ?? false,
+        unresolved: !!client?.unresolvedRequest,
+        canLaunch: client?.canLaunch ?? false,
+        closing: client?.closing ?? false,
+        filter,
+        input: draft.input,
+        inputOpen,
+        inputTouched: draft.touched,
+        draftNotice,
+        selectedNodeId: draft.nodeId,
+        detailOpen: draft.detailOpen,
+        scale: draft.scale,
+        theme,
+        onFilter(value: string) {
+          filter = value
+          redraw()
+        },
+        onTarget(id: string) {
+          if (!id || id === client?.project?.selected?.targetId) return
+          rememberViewport()
+          void client?.refreshProject(id)
+        },
+        onRefresh() {
+          void client?.refreshProject(client.projectError ? null : undefined)
+          void client?.refreshRun()
+        },
+        onRefreshRun() {
+          void client?.refreshRun()
+        },
+        onInput(value: string) {
+          draft.input = value
+          draft.bytes = new TextEncoder().encode(value).byteLength
+          if (draft.bytes > DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT)
+            draftNotice =
+              'This draft exceeds 16 MiB. It stays visible here but may be cleared when you choose another workflow.'
+          redraw()
+        },
+        onInputTouched() {
+          draft.touched = true
+          redraw()
+        },
+        onInputOpen() {
+          rememberViewport()
+          inputOpen = true
+          draft.detailOpen = false
+          redraw()
+          document.getElementById('explorer-input')?.focus()
+        },
+        onInputClose() {
           inputOpen = false
           redraw()
-        }
-      },
-      onTheme(value: string) { theme = value; document.documentElement.dataset.theme = value; redraw() },
-      onSelect: selectComponent,
-      onDetailClose() { draft.detailOpen = false; redraw(); focusComponent() },
-      onScale(action: 'in' | 'out' | 'fit' | 'actual') {
-        rememberViewport()
-        draft.scaleMode = action === 'fit' ? 'fit' : 'manual'
-        draft.scale = action === 'actual' ? 1 : action === 'in' ? Math.min(2, draft.scale * 1.2) : action === 'out' ? Math.max(0.2, draft.scale / 1.2) : draft.scale
-        redraw()
-        focusComponent()
-        if (viewport?.clientWidth && viewport.clientHeight)
-          document.querySelector<HTMLButtonElement>('[data-component][aria-pressed=true]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-      },
-      onNodeKeyDown(event: KeyboardEvent) {
-        if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return
-        const nodes = client?.project?.selected?.composition
-        if (nodes?.state !== 'available' || !nodes.nodes.length) return
-        event.preventDefault()
-        const index = nodes.nodes.findIndex((item) => item.id === draft.nodeId)
-        const next = event.key === 'Home' ? 0 : event.key === 'End' ? nodes.nodes.length - 1
-          : (Math.max(0, index) + (event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1) + nodes.nodes.length) % nodes.nodes.length
-        selectComponent(nodes.nodes[next]!.id)
-        document.querySelector<HTMLButtonElement>('[data-component][aria-pressed=true]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-      },
-      onScroll(left: number, top: number) {
-        if (!viewport?.clientWidth || !viewport.clientHeight) return
-        draft.left = left
-        draft.top = top
-      },
-    }), root)
+          document
+            .querySelector<HTMLButtonElement>('.explorer-workflow-heading .explorer-primary')
+            ?.focus()
+        },
+        onRun() {
+          draft.touched = true
+          if (privateExplorerInput(draft.input).state !== 'valid') {
+            redraw()
+            return
+          }
+          void client?.launch(draft.input, crypto.randomUUID())
+        },
+        async onClose() {
+          if (await client?.close()) {
+            drafts.clear()
+            inputOpen = false
+            redraw()
+          }
+        },
+        onTheme(value: string) {
+          theme = value
+          document.documentElement.dataset.theme = value
+          redraw()
+        },
+        onSelect: selectComponent,
+        onDetailClose() {
+          draft.detailOpen = false
+          redraw()
+          focusComponent()
+        },
+        onScale(action: 'in' | 'out' | 'fit' | 'actual') {
+          rememberViewport()
+          draft.scaleMode = action === 'fit' ? 'fit' : 'manual'
+          draft.scale =
+            action === 'actual'
+              ? 1
+              : action === 'in'
+                ? Math.min(2, draft.scale * 1.2)
+                : action === 'out'
+                  ? Math.max(0.2, draft.scale / 1.2)
+                  : draft.scale
+          redraw()
+          focusComponent()
+          if (viewport?.clientWidth && viewport.clientHeight)
+            document
+              .querySelector<HTMLButtonElement>('[data-component][aria-pressed=true]')
+              ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+        },
+        onNodeKeyDown(event: KeyboardEvent) {
+          if (
+            !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)
+          )
+            return
+          const nodes = client?.project?.selected?.composition
+          if (nodes?.state !== 'available' || !nodes.nodes.length) return
+          event.preventDefault()
+          const index = nodes.nodes.findIndex((item) => item.id === draft.nodeId)
+          const next =
+            event.key === 'Home'
+              ? 0
+              : event.key === 'End'
+                ? nodes.nodes.length - 1
+                : (Math.max(0, index) +
+                    (event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1) +
+                    nodes.nodes.length) %
+                  nodes.nodes.length
+          selectComponent(nodes.nodes[next]!.id)
+          document
+            .querySelector<HTMLButtonElement>('[data-component][aria-pressed=true]')
+            ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+        },
+        onScroll(left: number, top: number) {
+          if (!viewport?.clientWidth || !viewport.clientHeight) return
+          draft.left = left
+          draft.top = top
+        },
+      }),
+      root,
+    )
   }
 
   function redraw(): void {
     if (disposed) return
-    const focused = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+    const focused =
+      document.activeElement instanceof HTMLElement ? document.activeElement : undefined
     const previousKey = activeKey
     rememberViewport()
     draw()
@@ -246,21 +327,30 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
     restoreViewport()
     if (focused && !focused.isConnected) {
       if (focused.dataset.explorerTarget !== undefined)
-        document.querySelector<HTMLButtonElement>('[data-explorer-target][aria-current="page"]')?.focus()
+        document
+          .querySelector<HTMLButtonElement>('[data-explorer-target][aria-current="page"]')
+          ?.focus()
       else if (focused.dataset.component !== undefined)
         document.getElementById('explorer-workflow-title')?.focus()
     }
   }
 
   function escape(event: KeyboardEvent): void {
-    if (event.key !== 'Escape' || event.defaultPrevented ||
-      event.target instanceof Element && event.target.closest('input,textarea,select,[contenteditable]')) return
+    if (
+      event.key !== 'Escape' ||
+      event.defaultPrevented ||
+      (event.target instanceof Element &&
+        event.target.closest('input,textarea,select,[contenteditable]'))
+    )
+      return
     const draft = selectedDraft()
     if (inputOpen) {
       event.preventDefault()
       inputOpen = false
       redraw()
-      document.querySelector<HTMLButtonElement>('.explorer-workflow-heading .explorer-primary')?.focus()
+      document
+        .querySelector<HTMLButtonElement>('.explorer-workflow-heading .explorer-primary')
+        ?.focus()
     } else if (draft.detailOpen) {
       event.preventDefault()
       draft.detailOpen = false
@@ -282,15 +372,19 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
     client.start()
     capability = undefined
   } else redraw()
-  addEventListener('pagehide', () => {
-    disposed = true
-    client?.stop()
-    drafts.clear()
-    releaseViewport()
-    document.removeEventListener('keydown', escape)
-    root.removeEventListener('focusin', focusChanged)
-    render(null, root)
-  }, { once: true })
+  addEventListener(
+    'pagehide',
+    () => {
+      disposed = true
+      client?.stop()
+      drafts.clear()
+      releaseViewport()
+      document.removeEventListener('keydown', escape)
+      root.removeEventListener('focusin', focusChanged)
+      render(null, root)
+    },
+    { once: true },
+  )
   addEventListener('pageshow', (event) => {
     if (!event.persisted) return
     disposed = false

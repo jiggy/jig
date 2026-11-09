@@ -112,9 +112,8 @@ function summarizePrEnvelopes(envelopes) {
   const successful = selected.filter((envelope) => envelope.outcome === 'success')
   const durations = (rows) => ({
     ...summarize(rows.map((row) => row.threeWorkflowEnvelopeSeconds)),
-    overBudgetCount: rows.filter(
-      (row) => row.threeWorkflowEnvelopeSeconds > PR_BUDGET_SECONDS,
-    ).length,
+    overBudgetCount: rows.filter((row) => row.threeWorkflowEnvelopeSeconds > PR_BUDGET_SECONDS)
+      .length,
   })
   return {
     budgetSeconds: PR_BUDGET_SECONDS,
@@ -350,8 +349,7 @@ export function analyzeCiPerformance(snapshot) {
   )
   const envelopes = [...groups.values()].map((group) => {
     const duplicate = new Set(group.map((run) => run.workflow)).size !== group.length
-    const complete =
-      !duplicate && group.length === PERFORMANCE_WORKFLOWS.length
+    const complete = !duplicate && group.length === PERFORMANCE_WORKFLOWS.length
     const successful =
       complete && group.every((run) => run.conclusion === 'success' && run.completedAt)
     const outcome = duplicate
@@ -360,7 +358,9 @@ export function analyzeCiPerformance(snapshot) {
         ? 'incomplete'
         : successful
           ? 'success'
-          : group.some((run) => ['failure', 'timed_out', 'startup_failure'].includes(run.conclusion))
+          : group.some((run) =>
+                ['failure', 'timed_out', 'startup_failure'].includes(run.conclusion),
+              )
             ? 'failed'
             : group.some((run) => run.conclusion === 'cancelled')
               ? 'cancelled'

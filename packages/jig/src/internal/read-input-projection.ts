@@ -1,4 +1,9 @@
-import { PRIVATE_FILE_LIMITS, PRIVATE_READ_INPUT_BYTES, privateAttachmentName, privateFilePath } from './file-input-policy.js'
+import {
+  PRIVATE_FILE_LIMITS,
+  PRIVATE_READ_INPUT_BYTES,
+  privateAttachmentName,
+  privateFilePath,
+} from './file-input-policy.js'
 import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-capture.js'
 
 export interface PrivateReadInputFile {
@@ -16,22 +21,26 @@ export function normalizePrivateInputEmptyDirectories(
   roots: readonly string[],
   paths: readonly string[],
 ): readonly string[] {
-  if (!Array.isArray(value) || value.length > PRIVATE_FILE_LIMITS.entries ||
-    new Set(value).size !== value.length)
+  if (
+    !Array.isArray(value) ||
+    value.length > PRIVATE_FILE_LIMITS.entries ||
+    new Set(value).size !== value.length
+  )
     throw new TypeError('invalid input empty directories')
   const allowed = new Set(normalizePrivateReadInputDirectories(roots))
   const files = new Set(paths)
-  const directories = value.map((path) => {
-    splitPath(path, allowed)
-    if (files.has(path) || paths.some((file) => path.startsWith(`${file}/`)))
-      throw new TypeError('input directory conflicts with a file')
-    return path
-  }).sort(ordinal)
+  const directories = value
+    .map((path) => {
+      splitPath(path, allowed)
+      if (files.has(path) || paths.some((file) => path.startsWith(`${file}/`)))
+        throw new TypeError('input directory conflicts with a file')
+      return path
+    })
+    .sort(ordinal)
   const entries = new Set(paths)
   for (const path of [...paths, ...directories]) {
     const parts = path.split('/')
-    for (let count = 2; count <= parts.length; count++)
-      entries.add(parts.slice(0, count).join('/'))
+    for (let count = 2; count <= parts.length; count++) entries.add(parts.slice(0, count).join('/'))
   }
   if (entries.size > PRIVATE_FILE_LIMITS.entries)
     throw new TypeError('input tree exceeds its entry limit')
@@ -133,8 +142,16 @@ export function planPrivateReadInputProjection(input: {
         ? undefined
         : canonical.find(
             (view) =>
-              JSON.stringify(emptyDirectories.filter((path) => path.startsWith(`${root}/`)).map((path) => path.slice(root.length))) ===
-              JSON.stringify(emptyDirectories.filter((path) => path.startsWith(`${view.root}/`)).map((path) => path.slice(view.root.length))) &&
+              JSON.stringify(
+                emptyDirectories
+                  .filter((path) => path.startsWith(`${root}/`))
+                  .map((path) => path.slice(root.length)),
+              ) ===
+                JSON.stringify(
+                  emptyDirectories
+                    .filter((path) => path.startsWith(`${view.root}/`))
+                    .map((path) => path.slice(view.root.length)),
+                ) &&
               view.files.length === files.length &&
               view.files.every((entry, index) => {
                 const file = files[index]
@@ -151,7 +168,8 @@ export function planPrivateReadInputProjection(input: {
   const files = canonical.flatMap((view) => view.files.map((entry) => entry.file))
   const physicalDirectories = normalizePrivateInputEmptyDirectories(
     emptyDirectories.filter((path) => !aliases.some((alias) => path.startsWith(`${alias.name}/`))),
-    directories, files.map((file) => file.path),
+    directories,
+    files.map((file) => file.path),
   )
   const bytes = files.reduce((sum, file) => {
     const original = authority.get(file.input)

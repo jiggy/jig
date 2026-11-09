@@ -1,4 +1,12 @@
-import { type BigIntStats, closeSync, constants, type Dirent, readFileSync, realpathSync, lstatSync } from 'node:fs'
+import {
+  type BigIntStats,
+  closeSync,
+  constants,
+  type Dirent,
+  readFileSync,
+  realpathSync,
+  lstatSync,
+} from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { type FileHandle, mkdtemp, open, rmdir } from 'node:fs/promises'
@@ -38,17 +46,30 @@ const NOFOLLOW_ANY = 0x20000000
 function calls(): Native {
   if (native !== undefined) return native
   privateMacosCurrentProcessIdentity() // Exact qualified kernel and architecture.
-  if (process.versions.bun !== '1.4.2')
+  if (process.versions.bun !== '1.4.4')
     throw new Error('macOS descriptor adoption requires the qualified Bun runtime')
   const ffi = createRequire(import.meta.url)('bun:ffi')
   const modulePath = fileURLToPath(import.meta.url)
   const libexec = modulePath.lastIndexOf('/libexec/')
-  const bridge = libexec >= 0
-    ? join(modulePath.slice(0, libexec), 'libexec/macos-descriptor-bridge.dylib')
-    : join(dirname(modulePath), modulePath.includes('/internal/') ? '../../support/macos-descriptor-bridge.dylib' : '../support/macos-descriptor-bridge.dylib')
+  const bridge =
+    libexec >= 0
+      ? join(modulePath.slice(0, libexec), 'libexec/macos-descriptor-bridge.dylib')
+      : join(
+          dirname(modulePath),
+          modulePath.includes('/internal/')
+            ? '../../support/macos-descriptor-bridge.dylib'
+            : '../support/macos-descriptor-bridge.dylib',
+        )
   const canonical = realpathSync(bridge)
   const metadata = lstatSync(bridge)
-  if (canonical !== bridge || !metadata.isFile() || metadata.size > 1024 * 1024 || (metadata.mode & 0o022) !== 0 || createHash('sha256').update(readFileSync(bridge)).digest('hex') !== 'c8418f5bfc1bd2b346eb962c9379605df12f79b6d7395eefb2fde4ff7ded9b4e')
+  if (
+    canonical !== bridge ||
+    !metadata.isFile() ||
+    metadata.size > 1024 * 1024 ||
+    (metadata.mode & 0o022) !== 0 ||
+    // biome-ignore format: checked literally by scripts/native-support.mjs
+    createHash('sha256').update(readFileSync(bridge)).digest('hex') !== 'c8418f5bfc1bd2b346eb962c9379605df12f79b6d7395eefb2fde4ff7ded9b4e'
+  )
     throw new Error('native descriptor bridge identity is invalid')
   const declarations = {
     openat: { args: ['i32', 'ptr', 'i32', 'u32'], returns: 'i32' },
@@ -65,12 +86,15 @@ function calls(): Native {
     symlinkat: { args: ['ptr', 'i32', 'ptr'], returns: 'i32' },
     linkat: { args: ['i32', 'ptr', 'i32', 'ptr', 'i32'], returns: 'i32' },
   }
-  const fixed = ffi.dlopen(bridge, Object.fromEntries(
-    Object.entries(declarations).map(([name, declaration]) => [`jig_${name}`, declaration]),
-  ))
-  const symbols = Object.fromEntries(Object.keys(declarations).map(
-    (name) => [name, fixed.symbols[`jig_${name}`]],
-  )) as Native['symbols']
+  const fixed = ffi.dlopen(
+    bridge,
+    Object.fromEntries(
+      Object.entries(declarations).map(([name, declaration]) => [`jig_${name}`, declaration]),
+    ),
+  )
+  const symbols = Object.fromEntries(
+    Object.keys(declarations).map((name) => [name, fixed.symbols[`jig_${name}`]]),
+  ) as Native['symbols']
   native = { ptr: ffi.ptr, toArrayBuffer: ffi.toArrayBuffer, symbols }
   return native
 }
@@ -221,9 +245,9 @@ export async function privateMacosContainedAnonymousBacking(): Promise<
   return anonymousBacking(process.cwd())
 }
 
-async function anonymousBacking(parent: string): Promise<
-  Readonly<{ writer: FileHandle; reader: FileHandle }>
-> {
+async function anonymousBacking(
+  parent: string,
+): Promise<Readonly<{ writer: FileHandle; reader: FileHandle }>> {
   calls()
   const path = await mkdtemp(join(parent, 'jig-capture-'))
   let directory: FileHandle | undefined

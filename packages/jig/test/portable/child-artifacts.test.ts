@@ -128,7 +128,11 @@ test('verified retained bytes receive fresh local custody and keep the existing 
     directories: ['artifacts', 'artifacts/source', 'artifacts/source/empty'],
   }
   try {
-    const reference = await capturePrivateRetainedFlowArtifact(root, retained, new AbortController().signal)
+    const reference = await capturePrivateRetainedFlowArtifact(
+      root,
+      retained,
+      new AbortController().signal,
+    )
     const snapshot = resolvePrivateFlowArtifact(root, reference)
     bytes.fill(0)
     expect(readPrivateCapturedOutput(snapshot)[0]!.contents).toEqual(Buffer.from([0, 255, 128]))
@@ -141,7 +145,11 @@ test('verified retained bytes receive fresh local custody and keep the existing 
         new AbortController().signal,
       )
     await expect(
-      capturePrivateRetainedFlowArtifact(root, { files: [], directories: [] }, new AbortController().signal),
+      capturePrivateRetainedFlowArtifact(
+        root,
+        { files: [], directories: [] },
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' })
     releasePrivateFlowArtifact(root, reference)
     expect(() => resolvePrivateFlowArtifact(root, reference)).toThrow('does not hold')
@@ -155,7 +163,11 @@ test('cancelled retained handoff retires the unissued snapshot before returning 
   const root = createPrivateRootFlowFileContext({ declarations: {}, captured: [] })
   const stop = new AbortController()
   try {
-    const pending = capturePrivateRetainedFlowArtifact(root, { files: [], directories: [] }, stop.signal)
+    const pending = capturePrivateRetainedFlowArtifact(
+      root,
+      { files: [], directories: [] },
+      stop.signal,
+    )
     const rejected = pending.then(
       () => false,
       () => true,
@@ -169,7 +181,11 @@ test('cancelled retained handoff retires the unissued snapshot before returning 
         new AbortController().signal,
       )
     await expect(
-      capturePrivateRetainedFlowArtifact(root, { files: [], directories: [] }, new AbortController().signal),
+      capturePrivateRetainedFlowArtifact(
+        root,
+        { files: [], directories: [] },
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' })
   } finally {
     root.close()

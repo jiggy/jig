@@ -21,8 +21,8 @@ const host = {
   kernel: '23.4.0',
   build: '23E224',
   uid: 501,
-  bunVersion: '1.4.2',
-  bunRevision: '744846f844374847c902b5e7fd59b4342a51ef99',
+  bunVersion: '1.4.4',
+  bunRevision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
 }
 
 test('native preflight accepts only exact unprivileged Mac qualification candidates', () => {

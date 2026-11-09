@@ -1,4 +1,4 @@
-bun test v1.3.3 (274e01c7)
+bun test v1.4.4 (38afee6c8)
 
 ::group::packages/display-model/test/model.test.ts:
 (pass) public model owns immutable supplied observations without changing claims or opaque identities [4.00ms]

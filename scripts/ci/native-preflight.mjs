@@ -6,8 +6,7 @@ import { acquireCandidate, githubClient, validateWorkflowRun } from './candidate
 
 /** Validate the dispatch PR identity before interpolating it into any API path. */
 export function preflightPullRequestNumber(raw) {
-  if (typeof raw !== 'string' || !/^[1-9][0-9]*$/.test(raw) ||
-    !Number.isSafeInteger(Number(raw)))
+  if (typeof raw !== 'string' || !/^[1-9][0-9]*$/.test(raw) || !Number.isSafeInteger(Number(raw)))
     throw Error('Native preflight requires a positive decimal PR number')
   return Number(raw)
 }

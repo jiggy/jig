@@ -170,7 +170,13 @@ test('optional admitted maps follow application views and cannot collide with au
     edges: [],
   }
   const keys = privateBrowserTabs(data).map((tab) => tab.id)
-  expect(keys).toEqual([displayViewKey('composition'), 'composition', 'overview', 'activity', 'files'])
+  expect(keys).toEqual([
+    displayViewKey('composition'),
+    'composition',
+    'overview',
+    'activity',
+    'files',
+  ])
   expect(privateBrowserTabs(data)[0]?.application).toBe(true)
   expect(privateBrowserTabs(data)[1]?.application).toBeUndefined()
   expect(privateBrowserView(data, 'composition')).toBeUndefined()
@@ -178,8 +184,12 @@ test('optional admitted maps follow application views and cannot collide with au
 
   data.composition = { state: 'unavailable', reason: 'limit' }
   expect(privateBrowserTabs(data).map((tab) => tab.id)).toEqual(keys)
-  expect(privateBrowserTabs(data, 'recorded-packet').some((tab) => tab.id === 'composition')).toBeFalse()
-  expect(privateBrowserTabs(data, 'retained-views').some((tab) => tab.id === 'composition')).toBeFalse()
+  expect(
+    privateBrowserTabs(data, 'recorded-packet').some((tab) => tab.id === 'composition'),
+  ).toBeFalse()
+  expect(
+    privateBrowserTabs(data, 'retained-views').some((tab) => tab.id === 'composition'),
+  ).toBeFalse()
   delete data.composition
   expect(privateBrowserTabs(data).some((tab) => tab.id === 'composition')).toBeFalse()
 })
@@ -273,7 +283,12 @@ test('invocation views use exact child ownership and retain raw view identities'
       parentId: 'call-2',
     },
   ]
-  const child = { ...view, id: 'overview', sourceId: 'child-a', sourceLabel: 'Same publisher label' }
+  const child = {
+    ...view,
+    id: 'overview',
+    sourceId: 'child-a',
+    sourceLabel: 'Same publisher label',
+  }
   const details = {
     ...child,
     id: displayViewKey('overview'),
@@ -286,7 +301,12 @@ test('invocation views use exact child ownership and retain raw view identities'
     { ...child, id: 'other-call-view', sourceId: 'child-b' },
     { ...child, id: 'nested-view', sourceId: 'grandchild' },
     { ...child, id: 'unrelated-view', sourceId: 'unrelated' },
-    { ...child, id: 'host-adapter', hostRole: 'recorded-report', value: { ...view.value, id: 'adapter' } },
+    {
+      ...child,
+      id: 'host-adapter',
+      hostRole: 'recorded-report',
+      value: { ...view.value, id: 'adapter' },
+    },
     details,
   ]
   expect(privateBrowserInvocationViews(body, selected.id)).toEqual({
@@ -332,21 +352,34 @@ test('exact child-view destinations bypass general subject navigation', () => {
   const before = {
     ...view,
     sourceId: 'child',
-    value: { ...view.value, target: { definitionId: 'summary', instanceKey: 'one', subjectKey: 'one' } },
+    value: {
+      ...view.value,
+      target: { definitionId: 'summary', instanceKey: 'one', subjectKey: 'one' },
+    },
   }
   const requested = {
     ...before,
     id: 'overview',
-    value: { ...view.value, id: 'requested', target: { definitionId: 'details', instanceKey: 'two', subjectKey: 'two' } },
+    value: {
+      ...view.value,
+      id: 'requested',
+      target: { definitionId: 'details', instanceKey: 'two', subjectKey: 'two' },
+    },
   }
   const related = {
     ...requested,
     id: 'related',
-    value: { ...view.value, id: 'related', target: { definitionId: 'details', instanceKey: 'one', subjectKey: 'one' } },
+    value: {
+      ...view.value,
+      id: 'related',
+      target: { definitionId: 'details', instanceKey: 'one', subjectKey: 'one' },
+    },
   }
   body.views = [before, requested, related]
   const destination = displayViewKey(requested.id)
-  expect(privateBrowserNavigationDestination(body, before, destination)).toBe(displayViewKey(related.id))
+  expect(privateBrowserNavigationDestination(body, before, destination)).toBe(
+    displayViewKey(related.id),
+  )
   expect(privateBrowserNavigationDestination(body, before, destination, false)).toBe(destination)
 })
 

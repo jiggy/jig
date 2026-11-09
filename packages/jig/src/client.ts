@@ -110,8 +110,7 @@ export function createAttemptClient(options: AttemptClientOptions) {
         }
       }
       if (verb === 'result')
-        expectedCheckpointScope =
-          (request as AttemptRequests['result']).checkpointScope ?? 'root'
+        expectedCheckpointScope = (request as AttemptRequests['result']).checkpointScope ?? 'root'
     } catch {
       throw new AttemptContractError()
     }

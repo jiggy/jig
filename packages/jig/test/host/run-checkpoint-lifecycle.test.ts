@@ -6,7 +6,17 @@ const suiteTestRoot = suiteDirname(import.meta.dir)
 import { constants, Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { cp, mkdir, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type CheckpointScope, parseAttemptFrame } from '../../src/attempt-contract.js'
@@ -570,7 +580,9 @@ async function nestedCheckpointFixture(): Promise<string> {
   )
   const reviewed = await cli(root, ['review', '--yes'])
   if (reviewed.code !== 0)
-    throw new Error(`nested checkpoint fixture review failed: ${reviewed.stderr}\n${reviewed.stdout}`)
+    throw new Error(
+      `nested checkpoint fixture review failed: ${reviewed.stderr}\n${reviewed.stdout}`,
+    )
   return root
 }
 

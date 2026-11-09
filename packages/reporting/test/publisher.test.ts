@@ -47,10 +47,7 @@ test('descriptor is self-contained and Python copy preserves exact bytes', () =>
   expect(
     ts.equals(
       readFileSync(
-        new URL(
-          '../../jiggy-reporting/src/jiggy/reporting/reporting.json',
-          import.meta.url,
-        ),
+        new URL('../../jiggy-reporting/src/jiggy/reporting/reporting.json', import.meta.url),
       ),
     ),
   ).toBe(true)
@@ -145,11 +142,9 @@ test('close acknowledgement does not swallow a delayed unexpected send rejection
   )
   const failure = new OperationError('RESOURCE_EXHAUSTED')
   let finished = false
-  const scope = withReporting(m.run, 'updates', (updates) => updates.notice('one')).finally(
-    () => {
-      finished = true
-    },
-  )
+  const scope = withReporting(m.run, 'updates', (updates) => updates.notice('one')).finally(() => {
+    finished = true
+  })
   const observed = scope.catch((error) => error)
   await closed.promise
   expect(finished).toBe(false)

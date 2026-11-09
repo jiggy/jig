@@ -156,9 +156,9 @@ runtime_version=$("$npm_bun" --version)
 runtime_revision=$("$npm_bun" --revision)
 runtime_hash_line=$(sha256sum "$npm_bun")
 runtime_sha256=${runtime_hash_line%% *}
-if [ "$runtime_version" != "1.3.3" ] ||
-   [ "$runtime_revision" != "1.3.3+274e01c73" ] ||
-   [ "$runtime_sha256" != "e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839" ]; then
+if [ "$runtime_version" != "1.4.4" ] ||
+   [ "$runtime_revision" != "1.4.4+38afee6c8" ] ||
+   [ "$runtime_sha256" != "10702245766b225e70bbf6235fd6b47214fd94b4760d00ffaed8ab0df57ac235" ]; then
   echo "npm installed the wrong Jig Bun dependency" >&2
   exit 1
 fi
@@ -220,7 +220,7 @@ commit=$(git -C "$repository" rev-parse HEAD)
   printf '  "gates": ["package-smoke", "operational-baseline-1", "installed-hostile-baseline", "npm-local-install-help", "npm-global-install-help"],\n'
   printf '  "npmExecutable": "%s",\n' "$JIG_NPM"
   printf '  "npmVersion": "%s",\n' "$npm_version"
-  printf '  "runtimePackage": "@oven/bun-linux-x64-baseline@1.3.3",\n'
+  printf '  "runtimePackage": "@oven/bun-linux-x64-baseline@1.4.4",\n'
   printf '  "runtimeRevision": "%s",\n' "$runtime_revision"
   printf '  "runtimeSha256": "%s",\n' "$runtime_sha256"
   printf '  "sha256": "%s"\n' "$archive_sha256"

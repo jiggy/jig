@@ -197,13 +197,13 @@ async function requireSupportedLock(
     requirePrivateBunLockPolicy(
       value,
       workspace === undefined ? undefined : new Set(workspace.members),
-      process.platform === 'darwin' && process.versions.bun === '1.4.2' ? 2 : 1,
+      process.versions.bun === '1.4.4' ? 2 : 1,
     )
     if (mode === 'evaluation')
       requirePrivateProjectEvaluationLock(
         value,
         JSON.parse(await readFile(join(PACKAGE_ROOT, 'package.json'), 'utf8')),
-        process.platform === 'darwin' && process.versions.bun === '1.4.2' ? 2 : 1,
+        process.versions.bun === '1.4.4' ? 2 : 1,
       )
   } catch (error) {
     if (resolved) {

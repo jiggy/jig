@@ -95,9 +95,9 @@ try {
     code: 'ENOENT',
   })
   assert.deepEqual(installedManifest.optionalDependencies, {
-    '@oven/bun-darwin-x64-baseline': '1.4.2',
-    '@oven/bun-darwin-aarch64': '1.4.2',
-    '@oven/bun-linux-x64-baseline': '1.3.3',
+    '@oven/bun-darwin-x64-baseline': '1.4.4',
+    '@oven/bun-darwin-aarch64': '1.4.4',
+    '@oven/bun-linux-x64-baseline': '1.4.4',
   })
   assert.deepEqual(installedManifest.dependencies, {
     '@opentui/core': '0.5.17',

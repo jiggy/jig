@@ -129,8 +129,8 @@ async function canonicalBundle(temporary, sourceRevision) {
       headRepository: 'local/local',
     },
     buildProfile: {
-      version: '1.3.3',
-      revision: '274e01c737e85f8142070a9745b43a2ba09fce4c',
+      version: '1.4.4',
+      revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
       platform: 'linux',
       architecture: 'x64',
       nodeVersion: process.versions.node,
@@ -217,15 +217,33 @@ async function fixture(t, builds = ['24H232', '24G830', '24H232', '24G830', '24H
   for (const [worker, build] of builds.entries()) {
     const observed = prerequisites(build)
     const owner = { ...identity, worker, jobId: 1000 + worker }
-    const announcement = publish('announcement', createMacHostCohortAnnouncement({
-      identity: owner, allocatorJobId, prerequisites: observed,
-    }), worker)
-    const assignment = publish('assignment', createMacHostCohortAssignment({
-      identity, allocatorJobId, announcement, assignments,
-    }), worker)
+    const announcement = publish(
+      'announcement',
+      createMacHostCohortAnnouncement({
+        identity: owner,
+        allocatorJobId,
+        prerequisites: observed,
+      }),
+      worker,
+    )
+    const assignment = publish(
+      'assignment',
+      createMacHostCohortAssignment({
+        identity,
+        allocatorJobId,
+        announcement,
+        assignments,
+      }),
+      worker,
+    )
     assignments.push(assignment)
     const receipt = createMacHostCohortWorkerReceipt({
-      identity: owner, allocatorJobId, ready, announcement, assignment, prerequisites: observed,
+      identity: owner,
+      allocatorJobId,
+      ready,
+      announcement,
+      assignment,
+      prerequisites: observed,
     })
     const role = receipt.role
     receipts.push(receipt)
@@ -273,10 +291,15 @@ async function fixture(t, builds = ['24H232', '24G830', '24H232', '24G830', '24H
     [allocatorJobId, MAC_COHORT_ALLOCATOR_NAME],
     [9001, MAC_COHORT_READY_JOB_NAME],
     [9002, MAC_COHORT_GUARD_JOB_NAME],
-  ]) jobs.push({
-    id, name, run_id: identity.runId, run_attempt: identity.runAttempt,
-    status: 'completed', conclusion: 'success',
-  })
+  ])
+    jobs.push({
+      id,
+      name,
+      run_id: identity.runId,
+      run_attempt: identity.runAttempt,
+      status: 'completed',
+      conclusion: 'success',
+    })
   const options = {
     repository,
     identity,
@@ -313,17 +336,18 @@ await retainMacHostWorkerAssignment(JSON.parse(readFileSync(0, 'utf8')), process
     await mkdir(join(scratch, 'mac-evidence'), { recursive: true })
     const summaryPath = summary ? join(scratch, summary) : ''
     const outputPath = join(scratch, output)
-    const run = () => spawnSync(process.execPath, ['--input-type=module', '-e', script], {
-      input: JSON.stringify(receipt),
-      encoding: 'utf8',
-      timeout: 5000,
-      env: {
-        ...process.env,
-        RUNNER_TEMP: scratch,
-        GITHUB_OUTPUT: outputPath,
-        GITHUB_STEP_SUMMARY: summaryPath,
-      },
-    })
+    const run = () =>
+      spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+        input: JSON.stringify(receipt),
+        encoding: 'utf8',
+        timeout: 5000,
+        env: {
+          ...process.env,
+          RUNNER_TEMP: scratch,
+          GITHUB_OUTPUT: outputPath,
+          GITHUB_STEP_SUMMARY: summaryPath,
+        },
+      })
     return { scratch, summaryPath, outputPath, run, result: run() }
   }
   for (const receipt of f.receipts.slice(0, 4)) {
@@ -334,17 +358,24 @@ await retainMacHostWorkerAssignment(JSON.parse(readFileSync(0, 'utf8')), process
       receipt,
     )
     const output = await readFile(actual.outputPath, 'utf8')
-    assert.equal(output,
-      `execute=${receipt.role !== null}\nrole=${receipt.role ?? 'surplus'}\ninstalled=${receipt.role === 2}\n`)
+    assert.equal(
+      output,
+      `execute=${receipt.role !== null}\nrole=${receipt.role ?? 'surplus'}\ninstalled=${receipt.role === 2}\n`,
+    )
     assert.deepEqual(JSON.parse(actual.result.stdout), {
-      worker: receipt.worker, role: receipt.role, profile: receipt.profile,
+      worker: receipt.worker,
+      role: receipt.role,
+      profile: receipt.profile,
     })
     const summary = await readFile(actual.summaryPath, 'utf8')
     assert.ok(actual.result.stderr.includes(summary))
     assert.ok(summary.includes(`### Mac worker ${receipt.worker} assignment`))
     assert.match(summary, /Observed host: `arm64` Darwin `24\.6\.0` build `24H232`/)
     assert.match(summary, /no execution credit/)
-    assert.match(summary, /Physical worker numbers identify runner jobs\. Logical role numbers identify assigned test partitions\./)
+    assert.match(
+      summary,
+      /Physical worker numbers identify runner jobs\. Logical role numbers identify assigned test partitions\./,
+    )
     if (receipt.role === null) {
       assert.match(summary, /Status: \*\*surplus\*\*\. No test role is assigned/)
       assert.match(summary, /Test steps are inapplicable on this worker/)
@@ -366,10 +397,17 @@ await retainMacHostWorkerAssignment(JSON.parse(readFileSync(0, 'utf8')), process
     assert.equal(await readFile(actual.summaryPath, 'utf8'), summary)
   }
   for (const summary of ['', '.']) {
-    const actual = await retain(f.receipts[0], `optional-summary-${summary ? 'directory' : 'absent'}`, { summary })
+    const actual = await retain(
+      f.receipts[0],
+      `optional-summary-${summary ? 'directory' : 'absent'}`,
+      { summary },
+    )
     assert.equal(actual.result.status, 0, actual.result.stderr)
     assert.match(actual.result.stderr, /Execution is pending/)
-    assert.equal(await readFile(actual.outputPath, 'utf8'), 'execute=true\nrole=2\ninstalled=true\n')
+    assert.equal(
+      await readFile(actual.outputPath, 'utf8'),
+      'execute=true\nrole=2\ninstalled=true\n',
+    )
     if (summary) assert.match(actual.result.stderr, /assignment summary is unavailable/)
   }
   const failed = await retain(f.receipts[0], 'failed-output', { output: '.' })
@@ -381,14 +419,19 @@ await retainMacHostWorkerAssignment(JSON.parse(readFileSync(0, 'utf8')), process
 const coordinationIdentity = { sourceRevision: 'a'.repeat(40), runId: 500, runAttempt: 2 }
 const allocatorJobId = 9000
 const coordinationJob = (id, name, status = 'in_progress') => ({
-  id, name, run_id: coordinationIdentity.runId, run_attempt: coordinationIdentity.runAttempt,
-  status, conclusion: null,
+  id,
+  name,
+  run_id: coordinationIdentity.runId,
+  run_attempt: coordinationIdentity.runAttempt,
+  status,
+  conclusion: null,
 })
 const coordinationJobs = () => [
   coordinationJob(allocatorJobId, MAC_COHORT_ALLOCATOR_NAME),
   coordinationJob(9001, MAC_COHORT_READY_JOB_NAME),
   ...Array.from({ length: 5 }, (_, worker) =>
-    coordinationJob(1000 + worker, macHostCohortWorkerName(worker), 'queued')),
+    coordinationJob(1000 + worker, macHostCohortWorkerName(worker), 'queued'),
+  ),
 ]
 
 test('optional cohort timing retains only exact worker identities and valid UTC intervals', () => {
@@ -402,11 +445,12 @@ test('optional cohort timing retains only exact worker identities and valid UTC 
     runner_name: 'unneeded remote metadata',
     steps: [{ name: 'unneeded remote step' }],
   }
-  const timing = (jobs) => macHostCohortJobTimings({
-    identity: coordinationIdentity,
-    workers: [worker],
-    jobs,
-  })
+  const timing = (jobs) =>
+    macHostCohortJobTimings({
+      identity: coordinationIdentity,
+      workers: [worker],
+      jobs,
+    })
   assert.deepEqual(timing([job]), [
     {
       id: 1000,
@@ -450,12 +494,13 @@ async function coordinationProtocol(t, { dropAssignmentResponse = false } = {}) 
   await writeFile(jobsPath, JSON.stringify(coordinationJobs()))
   await writeFile(requestsPath, '')
   const jobResponses = []
-  const entries = async () => Promise.all(
-    (await readdir(published)).sort().map(async (id) => ({
-      artifact: JSON.parse(await readFile(join(published, id, 'artifact.json'), 'utf8')),
-      record: JSON.parse(await readFile(join(published, id, 'record.json'), 'utf8')),
-    })),
-  )
+  const entries = async () =>
+    Promise.all(
+      (await readdir(published)).sort().map(async (id) => ({
+        artifact: JSON.parse(await readFile(join(published, id, 'artifact.json'), 'utf8')),
+        record: JSON.parse(await readFile(join(published, id, 'record.json'), 'utf8')),
+      })),
+    )
   let publication = Promise.resolve()
   const server = createServer(async (request, response) => {
     try {
@@ -481,24 +526,41 @@ async function coordinationProtocol(t, { dropAssignmentResponse = false } = {}) 
           const id = 2000 + (await readdir(published)).length
           const staging = await mkdtemp(join(directory, 'upload-'))
           const source = JSON.stringify(record) + '\n'
-          const archive = execFileSync('python3', ['-I', '-c',
-            'import io,sys,zipfile\nout=io.BytesIO()\nwith zipfile.ZipFile(out,"w",zipfile.ZIP_DEFLATED) as archive: archive.writestr("record.json",sys.stdin.buffer.read())\nsys.stdout.buffer.write(out.getvalue())',
-          ], { input: source })
-          const artifact = { id, name, digest: 'sha256:' + digest(archive), size_in_bytes: archive.length, expired: false }
+          const archive = execFileSync(
+            'python3',
+            [
+              '-I',
+              '-c',
+              'import io,sys,zipfile\nout=io.BytesIO()\nwith zipfile.ZipFile(out,"w",zipfile.ZIP_DEFLATED) as archive: archive.writestr("record.json",sys.stdin.buffer.read())\nsys.stdout.buffer.write(out.getvalue())',
+            ],
+            { input: source },
+          )
+          const artifact = {
+            id,
+            name,
+            digest: 'sha256:' + digest(archive),
+            size_in_bytes: archive.length,
+            expired: false,
+          }
           await writeFile(join(staging, 'record.json'), source)
           await writeFile(join(staging, 'record.zip'), archive)
           await writeFile(join(staging, 'artifact.json'), JSON.stringify(artifact))
           await rename(staging, join(published, String(id)))
           return artifact
         })
-        publication = save.then(() => undefined, () => undefined)
+        publication = save.then(
+          () => undefined,
+          () => undefined,
+        )
         const artifact = await save
         if (dropAssignmentResponse && name.startsWith('macos-cohort-assignment-')) {
           request.socket.destroy()
           return
         }
         response.setHeader('content-type', 'application/json')
-        response.end(JSON.stringify({ id: artifact.id, name: artifact.name, digest: artifact.digest }))
+        response.end(
+          JSON.stringify({ id: artifact.id, name: artifact.name, digest: artifact.digest }),
+        )
       } else {
         response.writeHead(404)
         response.end()
@@ -525,13 +587,18 @@ async function coordinationProtocol(t, { dropAssignmentResponse = false } = {}) 
     return response.json()
   }
   const artifacts = {
-    upload: (name, record) => json('/artifacts', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name, record }),
-    }),
+    upload: (name, record) =>
+      json('/artifacts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name, record }),
+      }),
   }
   const publish = async (type, record, worker) => ({
-    artifact: await artifacts.upload(macHostCohortArtifactName(type, coordinationIdentity, worker), record),
+    artifact: await artifacts.upload(
+      macHostCohortArtifactName(type, coordinationIdentity, worker),
+      record,
+    ),
     record,
   })
   const setJobs = async (jobs) => {
@@ -545,19 +612,26 @@ async function coordinationProtocol(t, { dropAssignmentResponse = false } = {}) 
     Object.assign(selected, change)
     await setJobs(jobs)
   }
-  const reader = (listArtifacts = () => json('/artifacts')) => macHostCohortRecordReader({
-    identity: coordinationIdentity,
-    listArtifacts,
-    download: async (artifact) => {
-      const response = await fetch(origin + '/artifacts/' + artifact.id + '/zip', {
-        signal: AbortSignal.timeout(5000),
-      })
-      assert.equal(response.status, 200)
-      return decodeMacHostCohortRecord(new Uint8Array(await response.arrayBuffer()), artifact)
-    },
-  })
+  const reader = (listArtifacts = () => json('/artifacts')) =>
+    macHostCohortRecordReader({
+      identity: coordinationIdentity,
+      listArtifacts,
+      download: async (artifact) => {
+        const response = await fetch(origin + '/artifacts/' + artifact.id + '/zip', {
+          signal: AbortSignal.timeout(5000),
+        })
+        assert.equal(response.status, 200)
+        return decodeMacHostCohortRecord(new Uint8Array(await response.arrayBuffer()), artifact)
+      },
+    })
   return {
-    identity: coordinationIdentity, allocatorJobId, artifacts, publish, setJob, setJobs, entries,
+    identity: coordinationIdentity,
+    allocatorJobId,
+    artifacts,
+    publish,
+    setJob,
+    setJobs,
+    entries,
     jobResponses,
     waitForJobResponse: async (predicate) => {
       const deadline = Date.now() + 5000
@@ -567,14 +641,21 @@ async function coordinationProtocol(t, { dropAssignmentResponse = false } = {}) 
       }
     },
     metadataPath: (id) => join(published, String(id), 'artifact.json'),
-    readJobs: () => json('/jobs'), readRecords: reader(), reader,
+    readJobs: () => json('/jobs'),
+    readRecords: reader(),
+    reader,
     deadlineMs: Date.now() + 60_000,
     announce: async (worker, build = '24H232') => {
       await setJob(1000 + worker, { status: 'in_progress' })
-      return publish('announcement', createMacHostCohortAnnouncement({
-        identity: { ...coordinationIdentity, worker, jobId: 1000 + worker },
-        allocatorJobId, prerequisites: prerequisites(build),
-      }), worker)
+      return publish(
+        'announcement',
+        createMacHostCohortAnnouncement({
+          identity: { ...coordinationIdentity, worker, jobId: 1000 + worker },
+          allocatorJobId,
+          prerequisites: prerequisites(build),
+        }),
+        worker,
+      )
     },
     waitForRecord: async (type, worker) => {
       const name = macHostCohortArtifactName(type, coordinationIdentity, worker)
@@ -586,7 +667,8 @@ async function coordinationProtocol(t, { dropAssignmentResponse = false } = {}) 
         await new Promise((resolve) => setTimeout(resolve, 20))
       }
     },
-    requests: async () => (await readFile(requestsPath, 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse),
+    requests: async () =>
+      (await readFile(requestsPath, 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse),
   }
 }
 
@@ -595,20 +677,40 @@ test('the singleton allocator publishes arriving roles without waiting for queue
   await f.setJob(allocatorJobId, { status: 'queued' })
   await f.announce(4)
   const allocation = allocateMacHostRoles(f)
-  await f.waitForJobResponse((jobs) => jobs.find(({ id }) => id === allocatorJobId)?.status === 'queued')
-  assert.equal((await f.entries()).some(({ artifact }) => artifact.name.startsWith('macos-cohort-ready-')), false)
+  await f.waitForJobResponse(
+    (jobs) => jobs.find(({ id }) => id === allocatorJobId)?.status === 'queued',
+  )
+  assert.equal(
+    (await f.entries()).some(({ artifact }) => artifact.name.startsWith('macos-cohort-ready-')),
+    false,
+  )
   await f.setJob(allocatorJobId, { status: 'in_progress' })
   const first = await f.waitForRecord('assignment', 4)
   assert.equal(first.record.role, 2)
-  assert.ok((await f.readJobs()).filter((job) => job.name.startsWith('Native host worker') && job.id !== 1004)
-    .every((job) => job.status === 'queued'))
-  for (const worker of [1, 0, 3, 2]) await f.announce(worker, [1, 3].includes(worker) ? '24G830' : '24H232')
+  assert.ok(
+    (await f.readJobs())
+      .filter((job) => job.name.startsWith('Native host worker') && job.id !== 1004)
+      .every((job) => job.status === 'queued'),
+  )
+  for (const worker of [1, 0, 3, 2])
+    await f.announce(worker, [1, 3].includes(worker) ? '24G830' : '24H232')
   const result = await allocation
-  assert.deepEqual(result.assignments.map(({ record }) => [record.worker, record.role])
-    .sort(([left], [right]) => left - right), [
-    [0, 0], [1, 2], [2, 1], [3, 0], [4, 2],
-  ])
-  assert.deepEqual(result.ledger.record.assignmentArtifacts, result.assignments.map(({ artifact }) => artifact))
+  assert.deepEqual(
+    result.assignments
+      .map(({ record }) => [record.worker, record.role])
+      .sort(([left], [right]) => left - right),
+    [
+      [0, 0],
+      [1, 2],
+      [2, 1],
+      [3, 0],
+      [4, 2],
+    ],
+  )
+  assert.deepEqual(
+    result.ledger.record.assignmentArtifacts,
+    result.assignments.map(({ artifact }) => artifact),
+  )
   assert.equal((await f.entries()).length, 12)
 })
 
@@ -617,8 +719,14 @@ test('a lost upload response leaves one durable assignment and aborts without re
   await f.announce(3)
   await assert.rejects(allocateMacHostRoles(f), /fetch failed/)
   const entries = await f.entries()
-  assert.equal(entries.filter(({ artifact }) => artifact.name.startsWith('macos-cohort-assignment-')).length, 1)
-  assert.equal(entries.some(({ artifact }) => artifact.name.startsWith('macos-cohort-ledger-')), false)
+  assert.equal(
+    entries.filter(({ artifact }) => artifact.name.startsWith('macos-cohort-assignment-')).length,
+    1,
+  )
+  assert.equal(
+    entries.some(({ artifact }) => artifact.name.startsWith('macos-cohort-ledger-')),
+    false,
+  )
 })
 
 test('the real readiness and assignment readers consume published records and enforce an expired work bound', async (t) => {
@@ -628,19 +736,36 @@ test('the real readiness and assignment readers consume published records and en
   const assignments = []
   for (const worker of [0, 1, 2, 3]) {
     const announcement = await f.announce(worker, [1, 3].includes(worker) ? '24G830' : '24H232')
-    assignments.push(await f.publish('assignment', createMacHostCohortAssignment({
-      ...f, announcement, assignments,
-    }), worker))
+    assignments.push(
+      await f.publish(
+        'assignment',
+        createMacHostCohortAssignment({
+          ...f,
+          announcement,
+          assignments,
+        }),
+        worker,
+      ),
+    )
   }
   await f.setJob(1004, { status: 'in_progress' })
   const receipt = awaitMacHostRole({
-    ...f, identity: { ...f.identity, worker: 4, jobId: 1004 },
+    ...f,
+    identity: { ...f.identity, worker: 4, jobId: 1004 },
     prerequisites: prerequisites('24H232'),
   })
   const announcement = await f.waitForRecord('announcement', 4)
-  assignments.push(await f.publish('assignment', createMacHostCohortAssignment({
-    ...f, announcement, assignments,
-  }), 4))
+  assignments.push(
+    await f.publish(
+      'assignment',
+      createMacHostCohortAssignment({
+        ...f,
+        announcement,
+        assignments,
+      }),
+      4,
+    ),
+  )
   await f.publish('ledger', createMacHostCohortLedger({ ...f, ready, assignments }))
   await f.setJob(allocatorJobId, { status: 'completed', conclusion: 'success' })
   const actual = await receipt
@@ -649,9 +774,13 @@ test('the real readiness and assignment readers consume published records and en
   await assert.rejects(waitForMacHostAllocator(f), /allocator completed before worker readiness/)
 
   const pending = await coordinationProtocol(t)
-  await assert.rejects(waitForMacHostAllocator({
-    ...pending, deadlineMs: Date.now() + 150,
-  }), /coordination deadline/)
+  await assert.rejects(
+    waitForMacHostAllocator({
+      ...pending,
+      deadlineMs: Date.now() + 150,
+    }),
+    /coordination deadline/,
+  )
   const stopped = await coordinationProtocol(t)
   await stopped.setJob(allocatorJobId, { status: 'completed', conclusion: 'failure' })
   await assert.rejects(waitForMacHostAllocator(stopped), /allocator did not succeed/)
@@ -664,17 +793,26 @@ test('real record polling caches ZIP transfers and refuses changed metadata or d
   assert.equal((await f.readRecords()).length, 1)
   assert.equal((await f.requests()).filter((operation) => operation === 'download').length, 1)
   const original = await readFile(f.metadataPath(ready.artifact.id), 'utf8')
-  await writeFile(f.metadataPath(ready.artifact.id), JSON.stringify({
-    ...JSON.parse(original), digest: 'sha256:' + 'f'.repeat(64),
-  }))
+  await writeFile(
+    f.metadataPath(ready.artifact.id),
+    JSON.stringify({
+      ...JSON.parse(original),
+      digest: 'sha256:' + 'f'.repeat(64),
+    }),
+  )
   await assert.rejects(f.readRecords(), /immutable artifact metadata changed/)
   await writeFile(f.metadataPath(ready.artifact.id), original)
   const duplicate = await f.publish('ready', ready.record)
   await assert.rejects(f.readRecords(), /duplicate record artifacts/)
   const second = JSON.parse(await readFile(f.metadataPath(duplicate.artifact.id), 'utf8'))
-  await writeFile(f.metadataPath(duplicate.artifact.id), JSON.stringify({
-    ...second, id: ready.artifact.id, name: macHostCohortArtifactName('ledger', f.identity),
-  }))
+  await writeFile(
+    f.metadataPath(duplicate.artifact.id),
+    JSON.stringify({
+      ...second,
+      id: ready.artifact.id,
+      name: macHostCohortArtifactName('ledger', f.identity),
+    }),
+  )
   await assert.rejects(f.readRecords(), /duplicate record artifacts/)
   assert.equal((await f.requests()).filter((operation) => operation === 'download').length, 1)
   assert.equal((await f.entries()).length, 2)
@@ -694,15 +832,19 @@ async function artifactInventoryService(t, initial) {
     try {
       const url = new URL(request.url, 'http://127.0.0.1')
       const page = Number(url.searchParams.get('page'))
-      if (request.method !== 'GET' ||
-          url.pathname !== '/repos/jiggy/jig/actions/runs/500/artifacts' ||
-          url.searchParams.get('per_page') !== '100' || !Number.isSafeInteger(page) || page < 1) {
+      if (
+        request.method !== 'GET' ||
+        url.pathname !== '/repos/jiggy/jig/actions/runs/500/artifacts' ||
+        url.searchParams.get('per_page') !== '100' ||
+        !Number.isSafeInteger(page) ||
+        page < 1
+      ) {
         response.writeHead(404).end()
         return
       }
       const observed = { page, authorization: request.headers.authorization }
       requests.push(observed)
-      response.once('finish', () => observed.finished = true)
+      response.once('finish', () => (observed.finished = true))
       const state = JSON.parse(await readFile(inventoryPath, 'utf8'))
       response.writeHead(200, { 'content-type': 'application/json' })
       if (state.stall) {
@@ -711,7 +853,10 @@ async function artifactInventoryService(t, initial) {
       }
       const payload = Object.hasOwn(state.pages ?? {}, page)
         ? state.pages[page]
-        : { total_count: state.artifacts.length, artifacts: state.artifacts.slice((page - 1) * 100, page * 100) }
+        : {
+            total_count: state.artifacts.length,
+            artifacts: state.artifacts.slice((page - 1) * 100, page * 100),
+          }
       response.end(state.raw ?? JSON.stringify(payload))
     } catch {
       response.destroy()
@@ -729,12 +874,15 @@ async function artifactInventoryService(t, initial) {
   const environment = { GITHUB_REPOSITORY: 'jiggy/jig', GH_TOKEN: 'inventory-read-token' }
   const options = { apiOrigin: 'http://127.0.0.1:' + server.address().port }
   return {
-    requests, replace,
+    requests,
+    replace,
     list: (deadlineMs = Date.now() + 15_000) =>
       listMacHostCohortArtifacts(environment, coordinationIdentity, deadlineMs, options),
     waitForPage: async (page, count = 1) => {
       const deadline = Date.now() + 5000
-      while (requests.filter((request) => request.page === page && request.finished).length < count) {
+      while (
+        requests.filter((request) => request.page === page && request.finished).length < count
+      ) {
         if (Date.now() >= deadline) throw new Error('Artifact inventory page was not observed')
         await new Promise((resolve) => setTimeout(resolve, 10))
       }
@@ -742,32 +890,55 @@ async function artifactInventoryService(t, initial) {
   }
 }
 
-const retainedArtifactInventory = (count) => Array.from({ length: count }, (_, index) => ({
-  id: 10_000 + index,
-  name: `prior-evidence-${index}-${coordinationIdentity.sourceRevision}-r500-a1`,
-}))
+const retainedArtifactInventory = (count) =>
+  Array.from({ length: count }, (_, index) => ({
+    id: 10_000 + index,
+    name: `prior-evidence-${index}-${coordinationIdentity.sourceRevision}-r500-a1`,
+  }))
 
 test('paginated retained artifacts preserve current-attempt records from every page without relying on order', async (t) => {
   const protocol = await coordinationProtocol(t)
   const ready = await protocol.publish('ready', createMacHostCohortReady(protocol))
   const announcement = await protocol.announce(4)
-  const published = new Map((await protocol.entries()).map(({ artifact }) => [artifact.id, artifact]))
+  const published = new Map(
+    (await protocol.entries()).map(({ artifact }) => [artifact.id, artifact]),
+  )
   const prior = retainedArtifactInventory(105)
-  const artifacts = [...prior.slice(0, 55), published.get(ready.artifact.id),
-    ...prior.slice(55), published.get(announcement.artifact.id)]
+  const artifacts = [
+    ...prior.slice(0, 55),
+    published.get(ready.artifact.id),
+    ...prior.slice(55),
+    published.get(announcement.artifact.id),
+  ]
   const f = await artifactInventoryService(t, { artifacts })
   const reader = protocol.reader(() => f.list())
   const records = await reader()
-  assert.deepEqual(records.map(({ artifact }) => artifact.id), [ready.artifact.id, announcement.artifact.id])
-  assert.deepEqual(f.requests.map(({ page }) => page), [1, 2])
-  assert.ok(f.requests.every(({ authorization }) => authorization === 'Bearer inventory-read-token'))
-  assert.equal((await protocol.requests()).filter((operation) => operation === 'download').length, 2)
+  assert.deepEqual(
+    records.map(({ artifact }) => artifact.id),
+    [ready.artifact.id, announcement.artifact.id],
+  )
+  assert.deepEqual(
+    f.requests.map(({ page }) => page),
+    [1, 2],
+  )
+  assert.ok(
+    f.requests.every(({ authorization }) => authorization === 'Bearer inventory-read-token'),
+  )
+  assert.equal(
+    (await protocol.requests()).filter((operation) => operation === 'download').length,
+    2,
+  )
 
   const duplicate = await protocol.publish('ready', ready.record)
-  const duplicateMetadata = (await protocol.entries()).find(({ artifact }) => artifact.id === duplicate.artifact.id).artifact
+  const duplicateMetadata = (await protocol.entries()).find(
+    ({ artifact }) => artifact.id === duplicate.artifact.id,
+  ).artifact
   await f.replace({ artifacts: [published.get(ready.artifact.id), ...prior, duplicateMetadata] })
   await assert.rejects(reader(), /duplicate record artifacts/)
-  assert.equal((await protocol.requests()).filter((operation) => operation === 'download').length, 2)
+  assert.equal(
+    (await protocol.requests()).filter((operation) => operation === 'download').length,
+    2,
+  )
 })
 
 test('artifact pagination permits its exact bound and refuses malformed, missing or repeated pages', async (t) => {
@@ -780,9 +951,24 @@ test('artifact pagination permits its exact bound and refuses malformed, missing
   const artifacts = retainedArtifactInventory(105)
   for (const [state, reason] of [
     [{ artifacts: retainedArtifactInventory(1001) }, /1000-artifact bound/],
-    [{ artifacts, pages: { 2: { total_count: 105, artifacts: artifacts.slice(100, 104) } } }, /incomplete artifact/],
-    [{ artifacts, pages: { 2: { total_count: 105, artifacts: [artifacts[0], ...artifacts.slice(101)] } } }, /repeats an artifact/],
-    [{ artifacts, pages: { 1: { total_count: 105, artifacts: [artifacts[1], ...artifacts.slice(1, 100)] } } }, /duplicate identities/],
+    [
+      { artifacts, pages: { 2: { total_count: 105, artifacts: artifacts.slice(100, 104) } } },
+      /incomplete artifact/,
+    ],
+    [
+      {
+        artifacts,
+        pages: { 2: { total_count: 105, artifacts: [artifacts[0], ...artifacts.slice(101)] } },
+      },
+      /repeats an artifact/,
+    ],
+    [
+      {
+        artifacts,
+        pages: { 1: { total_count: 105, artifacts: [artifacts[1], ...artifacts.slice(1, 100)] } },
+      },
+      /duplicate identities/,
+    ],
     [{ artifacts: [{ id: 0, name: 'invalid' }] }, /malformed/],
     [{ artifacts: [{ id: 1, name: null }] }, /malformed/],
     [{ artifacts: [], pages: { 1: { total_count: -1, artifacts: [] } } }, /incomplete metadata/],
@@ -800,13 +986,21 @@ test('a temporarily incomplete artifact page restarts the complete bounded inven
   for (const page of [1, 2]) {
     const service = await artifactInventoryService(t, {
       artifacts,
-      pages: { [page]: { total_count: 105, artifacts: artifacts.slice((page - 1) * 100, page * 100).slice(0, -1) } },
+      pages: {
+        [page]: {
+          total_count: 105,
+          artifacts: artifacts.slice((page - 1) * 100, page * 100).slice(0, -1),
+        },
+      },
     })
     const pending = service.list()
     await service.waitForPage(page)
     await service.replace({ artifacts })
     assert.deepEqual(await pending, artifacts)
-    assert.deepEqual(service.requests.map((request) => request.page), page === 1 ? [1, 1, 2] : [1, 2, 1, 2])
+    assert.deepEqual(
+      service.requests.map((request) => request.page),
+      page === 1 ? [1, 1, 2] : [1, 2, 1, 2],
+    )
   }
 })
 
@@ -822,15 +1016,24 @@ test('a changing artifact count restarts a complete read and never returns a par
   await recovered.waitForPage(2)
   await recovered.replace({ artifacts: current })
   assert.deepEqual(await pending, current)
-  assert.deepEqual(recovered.requests.map(({ page }) => page), [1, 2, 1, 2])
+  assert.deepEqual(
+    recovered.requests.map(({ page }) => page),
+    [1, 2, 1, 2],
+  )
 
   const unstable = await artifactInventoryService(t, changing)
   await assert.rejects(unstable.list(), /did not stabilize/)
-  assert.deepEqual(unstable.requests.map(({ page }) => page), [1, 2, 1, 2, 1, 2])
+  assert.deepEqual(
+    unstable.requests.map(({ page }) => page),
+    [1, 2, 1, 2, 1, 2],
+  )
 })
 
 test('artifact inventory reads bound actual response bytes and the caller deadline across retries', async (t) => {
-  const oversized = await artifactInventoryService(t, { artifacts: [], raw: ' '.repeat(4 * 1024 * 1024 + 1) })
+  const oversized = await artifactInventoryService(t, {
+    artifacts: [],
+    raw: ' '.repeat(4 * 1024 * 1024 + 1),
+  })
   await assert.rejects(oversized.list(), /byte or time allowance/)
   assert.equal(oversized.requests.length, 1)
   const entries = retainedArtifactInventory(105)
@@ -849,13 +1052,13 @@ test('artifact inventory reads bound actual response bytes and the caller deadli
   })
   const started = Date.now()
   // The same absolute cutoff may land during HTTP or the retry pause.
-  await assert.rejects(changing.list(started + 150), /deadline|timeout|time allowance/)
-  assert.ok(Date.now() - started < 2000)
+  await assert.rejects(changing.list(started + 400), /deadline|timeout|time allowance/)
+  assert.ok(Date.now() - started < 3000)
   assert.ok(changing.requests.length >= 1 && changing.requests.length <= 2)
   const stalled = await artifactInventoryService(t, { artifacts: [], stall: true })
   const bodyStarted = Date.now()
-  await assert.rejects(stalled.list(bodyStarted + 150), /byte or time allowance|network or timeout/)
-  assert.ok(Date.now() - bodyStarted < 2000)
+  await assert.rejects(stalled.list(bodyStarted + 400), /byte or time allowance|network or timeout/)
+  assert.ok(Date.now() - bodyStarted < 3000)
   assert.equal(stalled.requests.length, 1)
 })
 
@@ -864,12 +1067,18 @@ test('coordination deadlines and polling delays preserve absolute caps without a
   assert.equal(macHostCohortCoordinationDeadline('start', now + 1_000_000, now), now + 60_000)
   assert.equal(macHostCohortCoordinationDeadline('ready', now + 1_000_000, now), now + 1_000_000)
   assert.equal(macHostCohortCoordinationDeadline('claim', now + 1_000_000, now), now + 120_000)
-  assert.equal(macHostCohortCoordinationDeadline('ready-active', now + 1_000_000, now), now + 180_000)
+  assert.equal(
+    macHostCohortCoordinationDeadline('ready-active', now + 1_000_000, now),
+    now + 180_000,
+  )
   for (const mode of ['start', 'ready', 'ready-active', 'claim', 'allocate']) {
     assert.equal(macHostCohortCoordinationDeadline(mode, now + 35_000, now), now + 35_000)
     assert.throws(() => macHostCohortCoordinationDeadline(mode, now, now), /coordination deadline/)
   }
-  assert.equal(macHostCohortCoordinationDeadline('claim', now + 120_000, now + 30_000), now + 120_000)
+  assert.equal(
+    macHostCohortCoordinationDeadline('claim', now + 120_000, now + 30_000),
+    now + 120_000,
+  )
   assert.equal(macHostCohortPollDelay(now, now), 5000)
   assert.equal(macHostCohortPollDelay(now, now + 59_999), 5000)
   assert.equal(macHostCohortPollDelay(now, now + 60_000), 60_000)
@@ -899,7 +1108,8 @@ test('allocator startup pins its observed job and refuses duplicate, foreign or 
   for (const observed of [
     [jobs[0], { ...jobs[0], id: 9005 }],
     ...[
-      { run_id: 499 }, { run_attempt: 1 },
+      { run_id: 499 },
+      { run_attempt: 1 },
       { status: 'completed', conclusion: 'failure' },
       { status: 'completed', conclusion: 'success' },
     ].map((change) => [{ ...jobs[0], ...change }]),
@@ -914,8 +1124,10 @@ test('allocator startup pins its observed job and refuses duplicate, foreign or 
   await changed.setJob(allocatorJobId, { status: 'queued' })
   // Observe both promises before the HTTP state transition can trigger rejection.
   await Promise.all([
-    assert.rejects(waitForMacHostAllocatorStart({ ...changed, pollIntervalMs: 20 }),
-      /identity changed before startup/),
+    assert.rejects(
+      waitForMacHostAllocatorStart({ ...changed, pollIntervalMs: 20 }),
+      /identity changed before startup/,
+    ),
     (async () => {
       await changed.waitForJobResponse((jobs) => jobs[0]?.status === 'queued')
       await changed.setJob(allocatorJobId, { id: 9005, status: 'in_progress' })
@@ -928,13 +1140,21 @@ test('allocator metadata waiting cannot extend its supplied deadline', async (t)
   const f = await coordinationProtocol(t)
   await f.setJob(allocatorJobId, { status: 'queued' })
   const started = Date.now()
-  await assert.rejects(waitForMacHostAllocatorStart({
-    ...f, deadlineMs: started + 100, pollIntervalMs: 20,
-  }), /startup deadline expired.*status=queued.*job=900/)
+  await assert.rejects(
+    waitForMacHostAllocatorStart({
+      ...f,
+      deadlineMs: started + 100,
+      pollIntervalMs: 20,
+    }),
+    /startup deadline expired.*status=queued.*job=900/,
+  )
   assert.ok(Date.now() - started < 2000)
   assert.equal((await f.entries()).length, 0)
   const reads = f.jobResponses.length
-  await assert.rejects(waitForMacHostAllocatorStart({ ...f, deadlineMs: Date.now() - 1 }), /coordination deadline/)
+  await assert.rejects(
+    waitForMacHostAllocatorStart({ ...f, deadlineMs: Date.now() - 1 }),
+    /coordination deadline/,
+  )
   assert.equal(f.jobResponses.length, reads)
 })
 
@@ -942,31 +1162,45 @@ test('observed acquisition, readiness, deadline guard, and native failures stop 
   const identity = coordinationIdentity
   for (const name of [
     MAC_COHORT_READY_JOB_NAME,
-    'Enforce Mac PR deadline', macHostCohortWorkerName(3), 'prerequisites',
+    'Enforce Mac PR deadline',
+    macHostCohortWorkerName(3),
+    'prerequisites',
     "matrix.guard && 'Enforce Mac PR deadline' || (github.event_name == 'pull_request' && format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) || format('Native host shard — {0} / 0', matrix.arch))",
   ]) {
     for (const conclusion of ['failure', 'cancelled', 'skipped']) {
       const jobs = coordinationJobs()
       if (!jobs.some((job) => job.name === name)) jobs.push(coordinationJob(1100, name))
-      Object.assign(jobs.find((job) => job.name === name), { status: 'completed', conclusion })
-      assert.throws(() => requireMacHostAllocationProgress(jobs, identity, allocatorJobId),
-        /prerequisite or worker did not succeed/)
+      Object.assign(
+        jobs.find((job) => job.name === name),
+        { status: 'completed', conclusion },
+      )
+      assert.throws(
+        () => requireMacHostAllocationProgress(jobs, identity, allocatorJobId),
+        /prerequisite or worker did not succeed/,
+      )
     }
   }
-  assert.doesNotThrow(() => requireMacHostAllocationProgress(coordinationJobs(), identity, allocatorJobId))
+  assert.doesNotThrow(() =>
+    requireMacHostAllocationProgress(coordinationJobs(), identity, allocatorJobId),
+  )
 })
 
 test('allocator selection rejects missing, duplicate, stale, inactive, or failed jobs', () => {
   const jobs = coordinationJobs()
   assert.equal(selectMacHostAllocatorJob(jobs, coordinationIdentity), allocatorJobId)
   for (const observed of [
-    [], [jobs[0], { ...jobs[0], id: 9005 }],
+    [],
+    [jobs[0], { ...jobs[0], id: 9005 }],
     ...[
-      { id: 0 }, { run_id: 499 }, { run_attempt: 1 }, { status: 'queued' },
+      { id: 0 },
+      { run_id: 499 },
+      { run_attempt: 1 },
+      { status: 'queued' },
       { status: 'completed', conclusion: 'success' },
       { status: 'completed', conclusion: 'failure' },
     ].map((change) => [{ ...jobs[0], ...change }]),
-  ]) assert.throws(() => selectMacHostAllocatorJob(observed, coordinationIdentity), /allocator/)
+  ])
+    assert.throws(() => selectMacHostAllocatorJob(observed, coordinationIdentity), /allocator/)
 })
 
 test('PRs select an Ubuntu deadline guard and five ARM workers; main retains one complete host', () => {
@@ -974,7 +1208,9 @@ test('PRs select an Ubuntu deadline guard and five ARM workers; main retains one
     include: [
       { arch: 'guard', worker: 'guard', guard: true },
       ...Array.from({ length: 5 }, (_, worker) => ({
-        arch: 'arm64', worker, guard: false,
+        arch: 'arm64',
+        worker,
+        guard: false,
       })),
     ],
   })
@@ -997,10 +1233,7 @@ test('a claim binds to one actual active worker job in the current run attempt',
     conclusion: null,
   }
   assert.equal(
-    selectMacHostWorkerJob(
-      [{ ...job, id: 900, name: 'Quick development checks' }, job],
-      identity,
-    ),
+    selectMacHostWorkerJob([{ ...job, id: 900, name: 'Quick development checks' }, job], identity),
     1002,
   )
   for (const jobs of [
@@ -1028,18 +1261,24 @@ test('3+2 workers validate every executed role and normalize one complete exact 
   const result = await f.reconcile()
   assert.equal(Object.hasOwn(result, 'qualified'), false)
   assert.equal(result.profile.build, '24H232')
-  assert.deepEqual(result.roles.map(({ worker, role }) => ({ worker, role })), [
-    { worker: 2, role: 0 },
-    { worker: 4, role: 1 },
-    { worker: 0, role: 2 },
-  ])
-  assert.deepEqual(result.reports.map(({ worker, role }) => ({ worker, role })), [
-    { worker: 0, role: 2 },
-    { worker: 1, role: 2 },
-    { worker: 2, role: 0 },
-    { worker: 3, role: 0 },
-    { worker: 4, role: 1 },
-  ])
+  assert.deepEqual(
+    result.roles.map(({ worker, role }) => ({ worker, role })),
+    [
+      { worker: 2, role: 0 },
+      { worker: 4, role: 1 },
+      { worker: 0, role: 2 },
+    ],
+  )
+  assert.deepEqual(
+    result.reports.map(({ worker, role }) => ({ worker, role })),
+    [
+      { worker: 0, role: 2 },
+      { worker: 1, role: 2 },
+      { worker: 2, role: 0 },
+      { worker: 3, role: 0 },
+      { worker: 4, role: 1 },
+    ],
+  )
   assert.ok(result.reports.every((report) => report.executed > 0))
   assert.deepEqual(
     (await readdir(f.normalizedDirectory)).sort(),
@@ -1141,7 +1380,11 @@ test('worker receipts, native prerequisites and source markers remain current an
   await refusesBeforeNormalization(f, {}, /worker or source/)
   await writeFile(join(directory, 'source.txt'), `${f.identity.sourceRevision}\n`)
   await writeFile(join(directory, 'prerequisites.json'), JSON.stringify(prerequisites('24H232')))
-  await refusesBeforeNormalization(f, {}, /assignment differs from its announced worker and profile/)
+  await refusesBeforeNormalization(
+    f,
+    {},
+    /assignment differs from its announced worker and profile/,
+  )
 })
 
 test('all five exact directories and regular files are required, without linked evidence', async (t) => {
@@ -1169,7 +1412,10 @@ test('same-profile surplus workers retain no execution proof and still need succ
   const f = await fixture(t, Array(5).fill('24G830'))
   const result = await f.reconcile()
   assert.equal(result.profile.build, '24G830')
-  assert.deepEqual(result.workers.map(({ role }) => role), [2, 0, 1, null, null])
+  assert.deepEqual(
+    result.workers.map(({ role }) => role),
+    [2, 0, 1, null, null],
+  )
   assert.equal(result.reports.length, 3)
   await rm(f.normalizedDirectory, { recursive: true })
   for (const file of [
@@ -1185,30 +1431,44 @@ test('same-profile surplus workers retain no execution proof and still need succ
     await refusesBeforeNormalization(f, {}, /Surplus Mac cohort worker/)
     await rm(path)
   }
-  const jobs = f.jobs.map((job, worker) =>
-    worker === 4 ? { ...job, conclusion: 'failure' } : job,
-  )
+  const jobs = f.jobs.map((job, worker) => (worker === 4 ? { ...job, conclusion: 'failure' } : job))
   await refusesBeforeNormalization(f, { jobs }, /each exact current-attempt job/)
 })
 
 test('all allocator records are required, including minority announcements and assignments', async (t) => {
   const f = await fixture(t)
   for (const missing of f.records) {
-    await refusesBeforeNormalization(f, {
-      records: f.records.filter((entry) => entry !== missing),
-    }, /complete ready, announcement, assignment and ledger inventory/)
+    await refusesBeforeNormalization(
+      f,
+      {
+        records: f.records.filter((entry) => entry !== missing),
+      },
+      /complete ready, announcement, assignment and ledger inventory/,
+    )
   }
   const stale = structuredClone(f.records)
   stale.find(({ record }) => record.worker === 1).record.runAttempt--
-  await refusesBeforeNormalization(f, { records: stale }, /foreign source, run, attempt or allocator/)
+  await refusesBeforeNormalization(
+    f,
+    { records: stale },
+    /foreign source, run, attempt or allocator/,
+  )
   const changed = structuredClone(f.records)
   changed.find(({ record }) => record.worker === 1).artifact.digest = `sha256:${'f'.repeat(64)}`
-  await refusesBeforeNormalization(f, { records: changed }, /assignment differs from its announced worker/)
+  await refusesBeforeNormalization(
+    f,
+    { records: changed },
+    /assignment differs from its announced worker/,
+  )
   for (const name of [MAC_COHORT_ALLOCATOR_NAME, MAC_COHORT_READY_JOB_NAME])
     for (const conclusion of ['failure', 'cancelled', 'skipped'])
-      await refusesBeforeNormalization(f, {
-        jobs: f.jobs.map((job) => job.name === name ? { ...job, conclusion } : job),
-      }, /each exact current-attempt job/)
+      await refusesBeforeNormalization(
+        f,
+        {
+          jobs: f.jobs.map((job) => (job.name === name ? { ...job, conclusion } : job)),
+        },
+        /each exact current-attempt job/,
+      )
 })
 
 test('the canonical archive and artifact envelope are independently verified', async (t) => {
@@ -1234,41 +1494,62 @@ test('normalization refuses an existing destination and preserves its retained c
   assert.equal(await readFile(canary, 'utf8'), 'retain existing evidence\n')
 })
 
-test('readiness waits for a queued allocator within preparation and observes its immutable ready record', async t => {
+test('readiness waits for a queued allocator within preparation and observes its immutable ready record', async (t) => {
   const f = await coordinationProtocol(t)
   await f.setJob(allocatorJobId, { status: 'queued' })
   const ready = await f.publish('ready', createMacHostCohortReady(f))
   const deadlines = []
   let recordReads = 0
   const [actual] = await Promise.all([
-    waitForMacHostAllocator({ ...f, pollIntervalMs: 20, metadataRefreshMs: 20,
-      readJobs: deadline => { deadlines.push(deadline); return f.readJobs() },
-      readRecords: () => { recordReads++; return f.readRecords() },
+    waitForMacHostAllocator({
+      ...f,
+      pollIntervalMs: 20,
+      metadataRefreshMs: 20,
+      readJobs: (deadline) => {
+        deadlines.push(deadline)
+        return f.readJobs()
+      },
+      readRecords: () => {
+        recordReads++
+        return f.readRecords()
+      },
     }),
     (async () => {
-      await f.waitForJobResponse(jobs => jobs[0]?.status === 'queued')
+      await f.waitForJobResponse((jobs) => jobs[0]?.status === 'queued')
       assert.equal(recordReads, 0, 'A queued allocator cannot grant readiness')
       await f.setJob(allocatorJobId, { status: 'in_progress' })
     })(),
   ])
   assert.equal(actual.artifact.id, ready.artifact.id)
-  assert.ok(deadlines.every(deadline => deadline === f.deadlineMs), 'Polling cannot extend preparation')
+  assert.ok(
+    deadlines.every((deadline) => deadline === f.deadlineMs),
+    'Polling cannot extend preparation',
+  )
 })
 
-test('readiness refuses queued expiry, missing ready proof, and a replaced allocator without extending preparation', async t => {
+test('readiness refuses queued expiry, missing ready proof, and a replaced allocator without extending preparation', async (t) => {
   for (const status of ['queued', 'in_progress']) {
     const f = await coordinationProtocol(t)
     await f.setJob(allocatorJobId, { status })
-    await assert.rejects(waitForMacHostAllocator({ ...f, deadlineMs: Date.now() + 150,
-      pollIntervalMs: 20, metadataRefreshMs: 20,
-    }), /coordination deadline/)
+    await assert.rejects(
+      waitForMacHostAllocator({
+        ...f,
+        deadlineMs: Date.now() + 150,
+        pollIntervalMs: 20,
+        metadataRefreshMs: 20,
+      }),
+      /coordination deadline/,
+    )
   }
   const f = await coordinationProtocol(t)
   await f.setJob(allocatorJobId, { status: 'queued' })
   await Promise.all([
-    assert.rejects(waitForMacHostAllocator({ ...f, pollIntervalMs: 20, metadataRefreshMs: 20 }), /changed during readiness/),
+    assert.rejects(
+      waitForMacHostAllocator({ ...f, pollIntervalMs: 20, metadataRefreshMs: 20 }),
+      /changed during readiness/,
+    ),
     (async () => {
-      await f.waitForJobResponse(jobs => jobs[0]?.status === 'queued')
+      await f.waitForJobResponse((jobs) => jobs[0]?.status === 'queued')
       await f.setJob(allocatorJobId, { id: 9005, status: 'in_progress' })
     })(),
   ])

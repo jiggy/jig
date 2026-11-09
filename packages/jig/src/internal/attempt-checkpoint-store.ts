@@ -1,4 +1,8 @@
-import type { AttemptCheckpointEntry, AttemptResults, CheckpointScope } from '../attempt-contract.js'
+import type {
+  AttemptCheckpointEntry,
+  AttemptResults,
+  CheckpointScope,
+} from '../attempt-contract.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import { type PrivateCapturedOutput, readPrivateCapturedOutput } from './captured-output.js'
 import { privateFilePath, sha256 } from './file-input.js'

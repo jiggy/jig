@@ -49,7 +49,8 @@ const jsonType = 'application/json; charset=utf-8'
 const assetPaths = ['/', '/assets/app.js', '/assets/app.css']
 
 export type PrivateExplorerRunEvent =
-  Readonly<{ event: 'viewer'; url: string }> | Readonly<{ event: 'settled' }>
+  | Readonly<{ event: 'viewer'; url: string }>
+  | Readonly<{ event: 'settled' }>
 export type PrivateExplorerRunBridge = Readonly<{
   url: string
   capability: string

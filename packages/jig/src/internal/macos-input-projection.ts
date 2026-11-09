@@ -102,7 +102,9 @@ export async function projectPrivateMacosInputs(
   const roots = normalizePrivateMacosInputDirectories(inputDirectories)
   const files = normalizePrivateMacosInputs(manifest, roots, inputAliases)
   const emptyDirectories = normalizePrivateInputEmptyDirectories(
-    inputEmptyDirectories, roots, files.map((file) => file.path),
+    inputEmptyDirectories,
+    roots,
+    files.map((file) => file.path),
   )
   const aliases = normalizePrivateReadInputAliases(
     inputAliases,

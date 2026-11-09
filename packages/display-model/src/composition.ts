@@ -8,11 +8,7 @@ export type DisplayCompositionMatch = Readonly<{
 }>
 export type DisplayCompositionUnmatched = Readonly<{
   callId: string
-  reason:
-    | 'composition-unavailable'
-    | 'caller-unobserved'
-    | 'slot-unavailable'
-    | 'identity-conflict'
+  reason: 'composition-unavailable' | 'caller-unobserved' | 'slot-unavailable' | 'identity-conflict'
 }>
 export type DisplayCompositionObservations = Readonly<{
   matches: readonly DisplayCompositionMatch[]

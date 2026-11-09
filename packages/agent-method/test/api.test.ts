@@ -460,13 +460,13 @@ test('Responses requires valid structured data for completed answers', () => {
     output: { text: '{"answer":"yes"}', structured: { answer: 'yes' } },
   })
   for (const body of ['{"answer":42}', '{"different":"shape"}'])
-    expect(() =>
-      finishAgent(request, responsesResult(responses([message([text(body)])]))),
-    ).toThrow('responseSchema')
+    expect(() => finishAgent(request, responsesResult(responses([message([text(body)])])))).toThrow(
+      'responseSchema',
+    )
   for (const body of ['not JSON', '{"answer":"one","answer":"two"}'])
-    expect(() =>
-      finishAgent(request, responsesResult(responses([message([text(body)])]))),
-    ).toThrow('JSON/0')
+    expect(() => finishAgent(request, responsesResult(responses([message([text(body)])])))).toThrow(
+      'JSON/0',
+    )
 })
 
 test('both APIs preserve the complete HTTP byte bounds and JSON/0 failure behavior', () => {

@@ -666,7 +666,15 @@ test('workspace patches are immutable captured inputs, including patches inside 
   }
 })
 for (const [suiteCaseIndex, suiteCaseValue] of (
-  ['missing', 'link', 'directory-link', 'oversized', 'escape', 'protected', 'protected-folded'] as const
+  [
+    'missing',
+    'link',
+    'directory-link',
+    'oversized',
+    'escape',
+    'protected',
+    'protected-folded',
+  ] as const
 ).entries()) {
   test('workspace patch capture rejects %s' + ` (case ${suiteCaseIndex + 1})`, () =>
     Reflect.apply(
