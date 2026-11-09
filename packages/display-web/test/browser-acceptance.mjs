@@ -1060,6 +1060,7 @@ test('wide collections expose their remaining columns through usable scroll cont
       const left = page.getByRole('button', { name: 'Scroll Candidates left', exact: true })
       assert(await left.isEnabled())
       assert((await left.boundingBox()).height >= 44)
+      assert((await left.boundingBox()).width >= 44)
       await left.click()
       await page.waitForFunction((button) => !button.disabled, await right.elementHandle())
       assert(await right.isEnabled())
