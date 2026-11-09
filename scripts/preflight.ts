@@ -4,6 +4,7 @@ import { isAbsolute, resolve } from 'node:path'
 import { NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
 import { discoverRepositoryTests, suiteTestFiles } from './ci/suite-inventory.mjs'
 import manifest from './ci/test-suites.json'
+import QUALIFIED_BUN from './ci/qualified-bun.json' with { type: 'json' }
 
 const repository = resolve(import.meta.dir, '..')
 const timeoutMs = 10 * 60_000
@@ -26,11 +27,11 @@ export function requireMacHost(host: {
     )
   }
   if (
-    host.bunVersion !== '1.4.4' ||
-    host.bunRevision !== '38afee6c84fcf48c0edb2466aa4b27d287a59c30'
+    host.bunVersion !== QUALIFIED_BUN.version ||
+    host.bunRevision !== QUALIFIED_BUN.revision
   ) {
     throw Error(
-      'Native preflight requires the qualified Bun 1.4.4 revision 38afee6c84fcf48c0edb2466aa4b27d287a59c30.',
+      `Native preflight requires the qualified Bun ${QUALIFIED_BUN.version} revision ${QUALIFIED_BUN.revision}.`,
     )
   }
 }

@@ -160,6 +160,12 @@ preparation never becomes a consumer requirement.
   It checks the window's minimum request cost
   before collecting individual run histories. Insufficient budget refuses the
   complete report without sampling. Use a narrower manual window after refusal.
+- `qualified-bun.json` owns the single source of truth for the qualified Bun
+  runtime version, revision, platform, architecture, and exact Just version used
+  across candidate builds, profiles, provenance checks, and preflight tests.
+- `bump-qualified-bun.ts` automates workspace-wide qualified Bun upgrades,
+  reconciling metadata, package dependencies, workflows, documentation,
+  fixtures, and changesets from an exact version and tag revision.
 - `build-candidates.mjs` archives clean tracked source and freezes seven Jig-owned npm archives and the published FLOW dependency. It uses qualified native Linux x64 Bun 1.4.4/Just 1.43.1, normal
   workspace resolution and package-owned packing. Preserve generated resolution,
   actual tool identities, inventories and hashes. Build-only receipts carry

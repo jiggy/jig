@@ -1,4 +1,5 @@
 import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs'
+import QUALIFIED_BUN from './qualified-bun.json' with { type: 'json' }
 
 // Exact hosted candidates. Prerequisites never establish native qualification.
 export const MAC_HOST_PROFILES = Object.freeze({
@@ -6,22 +7,22 @@ export const MAC_HOST_PROFILES = Object.freeze({
     Object.freeze({
       kernel: '24.6.0',
       build: '24G830',
-      bun: '1.4.4',
-      revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
+      bun: QUALIFIED_BUN.version,
+      revision: QUALIFIED_BUN.revision,
     }),
   ]),
   arm64: Object.freeze([
     Object.freeze({
       kernel: '24.6.0',
       build: '24G830',
-      bun: '1.4.4',
-      revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
+      bun: QUALIFIED_BUN.version,
+      revision: QUALIFIED_BUN.revision,
     }),
     Object.freeze({
       kernel: '24.6.0',
       build: '24H232',
-      bun: '1.4.4',
-      revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
+      bun: QUALIFIED_BUN.version,
+      revision: QUALIFIED_BUN.revision,
     }),
   ]),
 })

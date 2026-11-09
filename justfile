@@ -111,6 +111,12 @@ build: jig::build
     node --test scripts/ci/*.test.mjs scripts/release/*.test.mjs scripts/experiments/visual-flows/*.test.mjs
     bun test scripts/development-shell.test.ts scripts/new-worktree.test.ts scripts/justfile.test.ts scripts/preflight.test.ts scripts/example-dependency-versions.test.ts scripts/check-example-project.test.ts scripts/agent-candidate.test.ts scripts/operational-baseline-checks.test.ts scripts/test-release-applications.test.ts
 
+# Fast preflight check for runtime qualification (~20 seconds)
+@qualify-check:
+    just check-skills
+    node --test scripts/ci/build-candidates.test.mjs scripts/ci/npm-candidate-preflight.test.mjs
+    bun test packages/jig/test/portable/installed-launcher.test.ts packages/jig/test/portable/jig-development-build.test.ts
+
 # Build and check locally, including native regression tests on supported Macs
 @preflight:
     bun scripts/preflight.ts
