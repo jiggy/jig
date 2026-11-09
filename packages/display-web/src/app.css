@@ -2307,9 +2307,10 @@ footer {
 }
 .application-summary {
   max-width: 78ch;
-  font-size: 15px;
-  line-height: 24px;
-  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  margin: 0 0 16px;
+  color: var(--secondary);
 }
 .application-about {
   margin-left: auto;
@@ -2910,12 +2911,6 @@ nav .nav-entry {
 .application-about > small {
   max-width: 68ch;
 }
-.application-summary {
-  margin: 0 0 12px;
-  font-size: 12px;
-  line-height: 20px;
-  color: var(--secondary);
-}
 .application-document {
   max-width: 880px;
   padding: 24px 28px;
@@ -3344,6 +3339,7 @@ nav .nav-entry {
   .tree-toggle,
   .run-context-menu > summary,
   .appearance-option,
+  .table-scroll-tools button,
   .application-table .application-inspect {
     min-width: 44px;
     min-height: 44px;
