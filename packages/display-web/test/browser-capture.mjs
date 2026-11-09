@@ -56,11 +56,31 @@ const browser = await chromium.launch({
     : {}),
 })
 try {
-  for (const [name, make, tab, focus] of [
+  for (const [name, make, tab, focus, prepare] of [
     ['map', compositionFixture, 'Application map'],
     ['map-attention', compositionFixture, 'Application map', 'attention'],
     ['execution', hostFixture, 'Execution'],
+    [
+      'execution-detail',
+      hostFixture,
+      'Execution',
+      undefined,
+      async (page) => {
+        await page.locator('[data-call="group"]').click()
+        await page.locator('.call-detail').waitFor()
+      },
+    ],
     ['files', hostFixture, 'Delivered files'],
+    [
+      'files-detail',
+      hostFixture,
+      'Delivered files',
+      undefined,
+      async (page) => {
+        await page.getByRole('button', { name: /review\.patch/ }).click()
+        await page.locator('.file-preview pre').filter({ hasText: 'const count = 2' }).waitFor()
+      },
+    ],
     ['activity', hostFixture, 'Activity'],
     ['diagnostics', hostFixture, 'Diagnostics'],
     ['contacts', contactFixture],
@@ -69,6 +89,16 @@ try {
     ['patch', patchFixture],
     ['factory', factoryFixture],
     ['child', childFixture, 'Specialist material'],
+    [
+      'child-detail',
+      childFixture,
+      'Specialist material',
+      undefined,
+      async (page) => {
+        await page.getByRole('button', { name: 'Alpha', exact: true }).click()
+        await page.locator('.detail').waitFor()
+      },
+    ],
     ['document', documentFixture],
   ])
     for (const [viewportName, viewport] of [
@@ -92,6 +122,7 @@ try {
           } else await page.getByRole('tab', { name: new RegExp(`^${tab}(?:\\s|$)`) }).click()
         }
         if (focus) await page.locator(`[data-request-focus="${focus}"]`).click()
+        if (prepare) await prepare(page)
         for (const theme of ['Light', 'Dark', 'Monochrome']) {
           const appearance = page.getByRole('button', { name: `${theme} appearance`, exact: true })
           await appearance.click()

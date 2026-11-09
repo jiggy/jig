@@ -103,6 +103,7 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
 - All authored publishers share material rendering, including attributed child views.
   Publisher placement never reduces reports or collections to inspection teasers.
 - Table columns size to their content and preserve readable identifiers. Overflowing tables expose scroll controls beside the complete collection.
+  Preserve natural line lengths for ordinary values. Keep prose bounded and avoid redundant cards around reading content.
 - Small collections disclose search and sorting. Active filters remain visible.
   Complete counts stay compact. Retained and reported differences remain explicit.
 - Content and formatted reports share responsive comparison regions with their supplied context.
@@ -136,6 +137,7 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   Fixture rendering does not qualify a host transport or newcomer usability.
 
 The visual review matrix serves identical observations to current and PR-base production assets.
+It includes initial pages and selected call, file and child-record details.
 Its HTML pairs and manifests identify both revisions. They do not replace an original approved mockup.
 
 ## Verification

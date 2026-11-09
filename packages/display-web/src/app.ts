@@ -96,7 +96,17 @@ let closing = false
 let clock: ReturnType<typeof setInterval> | undefined
 let client: PrivateBrowserClient | undefined
 const navigationMedia = matchMedia('(max-width: 700px)')
-navigationMedia.addEventListener('change', () => redraw())
+navigationMedia.addEventListener('change', (event) => {
+  const active = document.activeElement
+  const navigationFocused =
+    active instanceof Element && active.closest('.navigation nav, .mobile-view-picker')
+  redraw()
+  if (navigationFocused) {
+    if (event.matches)
+      document.querySelector<HTMLSelectElement>('.mobile-view-picker select')?.focus()
+    else document.querySelector<HTMLButtonElement>('[role=tab][tabindex="0"]')?.focus()
+  }
+})
 // A breakpoint can hide the control that currently owns keyboard focus.
 const detailMedia = matchMedia('(max-width: 1000px)')
 detailMedia.addEventListener('change', (event) => {
@@ -2564,7 +2574,7 @@ function Tabs(): ComponentChildren {
           'nav',
           {
             role: 'tablist',
-            'aria-orientation': navigationMedia.matches ? 'horizontal' : 'vertical',
+            'aria-orientation': 'vertical',
             'aria-label':
               client?.current?.mode === 'retained-views' ? 'Application views' : 'Run views',
           },
