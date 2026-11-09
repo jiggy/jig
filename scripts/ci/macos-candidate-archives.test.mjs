@@ -36,7 +36,7 @@ test('Mac qualifier stages and revalidates frozen candidate archives without rep
     await mkdir(join(repository, 'scripts/release'))
     await mkdir(canonical)
     await mkdir(scratchRoot)
-    for (const name of ['qualify-macos-host.sh', 'candidate-provenance.mjs'])
+    for (const name of ['qualify-macos-host.sh', 'candidate-provenance.mjs', 'qualified-bun.json'])
       await copyFile(join(root, 'scripts/ci', name), join(repository, 'scripts/ci', name))
     await copyFile(
       join(root, 'scripts/release/catalog.mjs'),
