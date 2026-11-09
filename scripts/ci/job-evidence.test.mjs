@@ -16,10 +16,10 @@ const helper = resolve(import.meta.dirname, 'job-evidence.mjs')
 const nodeReport =
   '# tests 3\n# suites 0\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 10.0\n'
 const bunReport =
-  'bun test v1.3.3\n\npackages/jig/test/file-input.test.ts:\n(pass) portable [1.00ms]\n\n 1 pass\n 0 fail\n 4 expect() calls\nRan 1 test across 1 file. [10.00ms]\n'
+  'bun test v1.4.4\n\npackages/jig/test/file-input.test.ts:\n(pass) portable [1.00ms]\n\n 1 pass\n 0 fail\n 4 expect() calls\nRan 1 test across 1 file. [10.00ms]\n'
 const pythonReport =
   'test_example (consumer.Test) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.010s\n\nOK\n'
-const sourceProfile = 'ubuntu-24.04/bun-1.3.3/node-24/python-3.13'
+const sourceProfile = 'ubuntu-24.04/bun-1.4.4/node-24/python-3.13'
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'jig-job-evidence-'))
   t.after(() => rm(root, { recursive: true, force: true }))

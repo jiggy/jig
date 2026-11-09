@@ -323,11 +323,7 @@ console.log(JSON.stringify(nativeConversationErrorDiagnostic({errors:[new Operat
     await cp(join(root, 'bun.lock'), lockCopy)
     const lock = (await import(lockCopy)).default
     expect(() =>
-      requirePrivateBunLockPolicy(
-        lock,
-        new Set(members),
-        process.platform === 'darwin' && process.versions.bun === '1.4.2' ? 2 : 1,
-      ),
+      requirePrivateBunLockPolicy(lock, new Set(members), process.versions.bun === '1.4.4' ? 2 : 1),
     ).not.toThrow()
     for (const [name, directory] of [
       ['@jigging/flow', 'flow-sdk'],

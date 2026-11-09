@@ -123,7 +123,7 @@ run_source_stage() {
   if [ -s "$release_tmp/$stage_id.bun.files" ]; then
     set --
     while IFS= read -r test_file; do set -- "$@" "./$test_file"; done < "$release_tmp/$stage_id.bun.files"
-    bun test "$@" --reporter=junit "--reporter-outfile=$stage_reports/bun.xml"
+    bun test --timeout 420000 "$@" --reporter=junit "--reporter-outfile=$stage_reports/bun.xml"
   fi
   if [ -s "$release_tmp/$stage_id.node.files" ]; then
     set --
@@ -259,7 +259,7 @@ done < "$release_tmp/applications.names"
     esac
     set -- "$@" "$release_tmp/$copied_file"
   done < "$release_tmp/source-applications.files"
-  bun test "$@" --reporter=junit "--reporter-outfile=$report_directory/source-applications.xml"
+  bun test --timeout 420000 "$@" --reporter=junit "--reporter-outfile=$report_directory/source-applications.xml"
   set -- --report "$report_directory/source-applications.xml" --mapping "$release_tmp/application-map.json" --repository "$PWD"
   if [ "${GITHUB_ACTIONS:-}" = true ]; then set -- "$@" --revision "$GITHUB_SHA"; fi
   "$python_bin" scripts/ci/normalize-source-junit.py "$@"

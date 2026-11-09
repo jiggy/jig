@@ -1,31 +1,71 @@
 // A retry may retain a job only inside the original pull-request workflow run.
 // The latest execution wins, including failures: never search backwards for green.
-const timestamp = (value) => typeof value === 'string' ? Date.parse(value) : Number.NaN
+const timestamp = (value) => (typeof value === 'string' ? Date.parse(value) : Number.NaN)
 
 function carriedCheck(job) {
-  return job.status === 'completed' && job.conclusion === 'success' &&
-    Number.isFinite(timestamp(job.created_at)) && Number.isFinite(timestamp(job.completed_at)) &&
+  return (
+    job.status === 'completed' &&
+    job.conclusion === 'success' &&
+    Number.isFinite(timestamp(job.created_at)) &&
+    Number.isFinite(timestamp(job.completed_at)) &&
     timestamp(job.created_at) > timestamp(job.completed_at)
+  )
 }
 
 function executionObservation(job) {
-  if (!Number.isFinite(timestamp(job.started_at)) ||
-      !Number.isFinite(timestamp(job.completed_at)) ||
-      timestamp(job.started_at) > timestamp(job.completed_at) ||
-      !Number.isSafeInteger(job.runner_id) || job.runner_id <= 0 ||
-      typeof job.runner_name !== 'string' || !job.runner_name ||
-      !Array.isArray(job.labels) || !job.labels.length ||
-      job.labels.some((label) => typeof label !== 'string' || !label) ||
-      !Array.isArray(job.steps) || !job.steps.length) return undefined
-  if (new Set(job.steps.map((step) => step?.number)).size !== job.steps.length ||
-      job.steps.some((step) => !step || !Number.isSafeInteger(step.number) || step.number < 1 ||
-        typeof step.name !== 'string' || !step.name || step.status !== 'completed' ||
-        typeof step.conclusion !== 'string' || !step.conclusion ||
-        !((step.conclusion === 'skipped' && step.started_at === null && step.completed_at === null) ||
-          (Number.isFinite(timestamp(step.started_at)) && Number.isFinite(timestamp(step.completed_at)) &&
-            timestamp(step.started_at) <= timestamp(step.completed_at))))) return undefined
-  return JSON.stringify([job.started_at, job.completed_at, job.runner_id, job.runner_name, job.labels,
-    job.steps.map((step) => [step.number, step.name, step.status, step.conclusion, step.started_at, step.completed_at])])
+  if (
+    !Number.isFinite(timestamp(job.started_at)) ||
+    !Number.isFinite(timestamp(job.completed_at)) ||
+    timestamp(job.started_at) > timestamp(job.completed_at) ||
+    !Number.isSafeInteger(job.runner_id) ||
+    job.runner_id <= 0 ||
+    typeof job.runner_name !== 'string' ||
+    !job.runner_name ||
+    !Array.isArray(job.labels) ||
+    !job.labels.length ||
+    job.labels.some((label) => typeof label !== 'string' || !label) ||
+    !Array.isArray(job.steps) ||
+    !job.steps.length
+  )
+    return undefined
+  if (
+    new Set(job.steps.map((step) => step?.number)).size !== job.steps.length ||
+    job.steps.some(
+      (step) =>
+        !step ||
+        !Number.isSafeInteger(step.number) ||
+        step.number < 1 ||
+        typeof step.name !== 'string' ||
+        !step.name ||
+        step.status !== 'completed' ||
+        typeof step.conclusion !== 'string' ||
+        !step.conclusion ||
+        !(
+          (step.conclusion === 'skipped' &&
+            step.started_at === null &&
+            step.completed_at === null) ||
+          (Number.isFinite(timestamp(step.started_at)) &&
+            Number.isFinite(timestamp(step.completed_at)) &&
+            timestamp(step.started_at) <= timestamp(step.completed_at))
+        ),
+    )
+  )
+    return undefined
+  return JSON.stringify([
+    job.started_at,
+    job.completed_at,
+    job.runner_id,
+    job.runner_name,
+    job.labels,
+    job.steps.map((step) => [
+      step.number,
+      step.name,
+      step.status,
+      step.conclusion,
+      step.started_at,
+      step.completed_at,
+    ]),
+  ])
 }
 
 export function latestJob(jobs, run, name, { completed = true } = {}) {
@@ -33,10 +73,15 @@ export function latestJob(jobs, run, name, { completed = true } = {}) {
   if (!matches.length) throw new Error('Missing merge job: ' + name)
   for (const job of matches) {
     if (
-      !Number.isSafeInteger(job.id) || job.id <= 0 || job.run_id !== run.id ||
-      job.head_sha !== run.head_sha || !Number.isSafeInteger(job.run_attempt) ||
-      job.run_attempt < 1 || job.run_attempt > run.run_attempt
-    ) throw new Error('Merge job identity mismatch: ' + name)
+      !Number.isSafeInteger(job.id) ||
+      job.id <= 0 ||
+      job.run_id !== run.id ||
+      job.head_sha !== run.head_sha ||
+      !Number.isSafeInteger(job.run_attempt) ||
+      job.run_attempt < 1 ||
+      job.run_attempt > run.run_attempt
+    )
+      throw new Error('Merge job identity mismatch: ' + name)
   }
   const executions = matches.filter((job) => {
     // GitHub copies unselected successful checks into a retry with new IDs and
@@ -44,11 +89,17 @@ export function latestJob(jobs, run, name, { completed = true } = {}) {
     // Retain only the uniquely matching original execution, never the copy's ID.
     if (!carriedCheck(job)) return true
     const observation = executionObservation(job)
-    const originals = matches.filter((earlier) => earlier.id !== job.id && earlier.run_attempt < job.run_attempt &&
-      earlier.status === 'completed' && earlier.conclusion === 'success' &&
-      Number.isFinite(timestamp(earlier.created_at)) &&
-      timestamp(earlier.created_at) <= timestamp(earlier.started_at) &&
-      observation !== undefined && executionObservation(earlier) === observation)
+    const originals = matches.filter(
+      (earlier) =>
+        earlier.id !== job.id &&
+        earlier.run_attempt < job.run_attempt &&
+        earlier.status === 'completed' &&
+        earlier.conclusion === 'success' &&
+        Number.isFinite(timestamp(earlier.created_at)) &&
+        timestamp(earlier.created_at) <= timestamp(earlier.started_at) &&
+        observation !== undefined &&
+        executionObservation(earlier) === observation,
+    )
     if (originals.length !== 1) throw new Error('Unverifiable carried merge check: ' + name)
     return false
   })
@@ -65,7 +116,12 @@ export async function allRunJobs(client, repository, run) {
   const jobs = []
   for (let page = 1; page <= 10; page++) {
     const response = await client.api(
-      'repos/' + repository + '/actions/runs/' + run.id + '/jobs?filter=all&per_page=100&page=' + page,
+      'repos/' +
+        repository +
+        '/actions/runs/' +
+        run.id +
+        '/jobs?filter=all&per_page=100&page=' +
+        page,
     )
     if (!Array.isArray(response.jobs)) throw new Error('Missing merge job response')
     jobs.push(...response.jobs)

@@ -25,6 +25,9 @@ test('installed child checkpoint retrieval waits for local cancellation and nati
     completed = true
   } finally {
     if (completed) await rm(root, { recursive: true, force: true })
-    else console.error(`Child checkpoint cancellation consumer and private transcripts retained at ${root}`)
+    else
+      console.error(
+        `Child checkpoint cancellation consumer and private transcripts retained at ${root}`,
+      )
   }
 }, 900_000)

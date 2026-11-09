@@ -79,7 +79,9 @@ export function currentSkillPull(pull, source, { repository, defaultBranch }) {
 export function currentSkillReferenceSource(source, run, pull, options) {
   const observed = skillReferenceRun(run, options)
   return (
-    observed !== undefined && JSON.stringify(observed) === JSON.stringify(source) && currentSkillPull(pull, source, options)
+    observed !== undefined &&
+    JSON.stringify(observed) === JSON.stringify(source) &&
+    currentSkillPull(pull, source, options)
   )
 }
 
@@ -120,7 +122,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const summary = 'No current pull request matches this producer. No changes were written.\n'
       console.log(summary)
       await appendFile(process.env.GITHUB_OUTPUT, 'ready=false\n')
-      if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, summary)
+      if (process.env.GITHUB_STEP_SUMMARY)
+        await appendFile(process.env.GITHUB_STEP_SUMMARY, summary)
     } else {
       const runPath = `repos/${repository}/actions/runs/${expected.runId}`
       const pullPath = `repos/${repository}/pulls/${expected.number}`

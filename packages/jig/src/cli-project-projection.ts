@@ -45,7 +45,11 @@ const labelFor = (target: RunTargetIdentity): string =>
 export class PrivateProjectProjectionError extends Error {
   constructor(
     readonly code:
-      'PROJECT_CHANGED' | 'TARGET_UNAVAILABLE' | 'TARGET_MISSING' | 'PROJECT_UNREVIEWED' | 'INPUT_INVALID',
+      | 'PROJECT_CHANGED'
+      | 'TARGET_UNAVAILABLE'
+      | 'TARGET_MISSING'
+      | 'PROJECT_UNREVIEWED'
+      | 'INPUT_INVALID',
     message: string,
   ) {
     super(message)
@@ -181,15 +185,16 @@ export function projectPrivateProjectSnapshot(
           state: 'available',
           provenance: 'admitted',
           rootId: nodeId(privateComposition.rootId),
-          nodes: privateComposition.nodes.map((node): DisplayCompositionNode =>
-            node.kind === 'resource'
-              ? {
-                  id: nodeId(node.id),
-                  kind: 'resource',
-                  resourceKind: node.resourceKind,
-                  label: node.label,
-                }
-              : { id: nodeId(node.id), kind: node.kind, label: node.label },
+          nodes: privateComposition.nodes.map(
+            (node): DisplayCompositionNode =>
+              node.kind === 'resource'
+                ? {
+                    id: nodeId(node.id),
+                    kind: 'resource',
+                    resourceKind: node.resourceKind,
+                    label: node.label,
+                  }
+                : { id: nodeId(node.id), kind: node.kind, label: node.label },
           ),
           edges: privateComposition.edges.map((edge) => ({
             id: identity('connection', approval, edge.id),

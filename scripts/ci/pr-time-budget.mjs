@@ -188,7 +188,8 @@ async function readPrMetadata(
   { token, apiOrigin = githubApiOrigin, deadlineEpochMs } = {},
 ) {
   const selected = identity(expected)
-  if (typeof token !== 'string' || !token) throw new Error('GH_TOKEN is required to verify the PR deadline')
+  if (typeof token !== 'string' || !token)
+    throw new Error('GH_TOKEN is required to verify the PR deadline')
   const origin = new URL(apiOrigin)
   if (
     origin.username ||
@@ -440,7 +441,9 @@ export async function writeMacPrGuardSummary(budget, destination) {
         `\`\`\`text\n${formatPrTimeBudget(budget)}\n\`\`\`\n\n${macPrGuardSuccess}\n\n${formatPrTurnaround(budget)}\n\n`,
     )
   } catch {
-    console.error('The optional Mac PR deadline summary could not be written. The successful monitor result is unchanged.')
+    console.error(
+      'The optional Mac PR deadline summary could not be written. The successful monitor result is unchanged.',
+    )
   }
 }
 
@@ -484,7 +487,8 @@ export function macPrMatrixStatus(snapshot, expected, previous = {}, now = Date.
       pending.push({ name, status: 'missing' })
       continue
     }
-    if (matches.length !== 1) throw new Error('PR matrix guard requires unique current-attempt jobs')
+    if (matches.length !== 1)
+      throw new Error('PR matrix guard requires unique current-attempt jobs')
     const job = matches[0]
     currentJob(job, selected)
     if (Object.hasOwn(previousIds, name) && previousIds[name] !== job.id)
@@ -674,7 +678,10 @@ export async function runCommandBeforeDeadline(
       deadlineExceeded = true
       stop('SIGTERM')
     } else {
-      deadlineTimer = setTimeout(inspectDeadline, Math.min(deadlineEpochMs - Date.now(), 2_147_483_647))
+      deadlineTimer = setTimeout(
+        inspectDeadline,
+        Math.min(deadlineEpochMs - Date.now(), 2_147_483_647),
+      )
     }
   }
   const forwardedSignals = ['SIGINT', 'SIGTERM', 'SIGHUP'].map((signal) => {
@@ -707,7 +714,7 @@ export async function runCommandBeforeDeadline(
     deadlineExceeded ||= deadlineReached()
     return {
       code: result.code === 0 && deadlineExceeded ? 124 : result.code,
-      signal: result.signal ?? (result.code === 0 ? externalSignal ?? null : null),
+      signal: result.signal ?? (result.code === 0 ? (externalSignal ?? null) : null),
       deadlineExceeded,
     }
   } finally {
@@ -779,7 +786,12 @@ function options(args, mode) {
   for (let index = 0; index < args.length; index += 2) {
     const name = args[index]?.replace(/^--/, '')
     const value = args[index + 1]
-    if (!args[index]?.startsWith('--') || !allowed.has(name) || !value || Object.hasOwn(selected, name))
+    if (
+      !args[index]?.startsWith('--') ||
+      !allowed.has(name) ||
+      !value ||
+      Object.hasOwn(selected, name)
+    )
       throw new Error('Invalid PR time-budget arguments')
     selected[name] = value
   }
@@ -813,12 +825,17 @@ async function runCli(args, environment) {
     const reserveSeconds = selected['reserve-seconds']
       ? numeric(selected['reserve-seconds'], 'settlement reserve', 0)
       : PR_SETTLEMENT_RESERVE_SECONDS
-    if (reserveSeconds >= PR_BUDGET_SECONDS) throw new Error('Settlement reserve exceeds the PR budget')
+    if (reserveSeconds >= PR_BUDGET_SECONDS)
+      throw new Error('Settlement reserve exceeds the PR budget')
     if (!['pull_request', 'push', 'workflow_dispatch'].includes(environment.GITHUB_EVENT_NAME))
       throw new Error('The PR deadline command requires a recognized GitHub event')
     let deadlineEpochMs = null
     if (environment.GITHUB_EVENT_NAME === 'pull_request') {
-      if (!environment.GITHUB_REPOSITORY || !environment.GITHUB_RUN_ID || !environment.GITHUB_RUN_ATTEMPT)
+      if (
+        !environment.GITHUB_REPOSITORY ||
+        !environment.GITHUB_RUN_ID ||
+        !environment.GITHUB_RUN_ATTEMPT
+      )
         throw new Error('The PR deadline command requires the current workflow identity')
       const budget = retainedBudget(environment)
       remainingPrTimeBudget(budget, { reserveSeconds })
@@ -828,9 +845,10 @@ async function runCli(args, environment) {
       deadlineEpochMs,
       // Settlement may consume the reserve, but its escalation must not add a
       // fresh grace interval beyond this assigned job's absolute deadline.
-      terminationGraceMs: deadlineEpochMs === null
-        ? commandTerminationGraceMs
-        : Math.min(commandTerminationGraceMs, reserveSeconds * 1000),
+      terminationGraceMs:
+        deadlineEpochMs === null
+          ? commandTerminationGraceMs
+          : Math.min(commandTerminationGraceMs, reserveSeconds * 1000),
     })
   }
   if (!['start', 'remaining', 'check'].includes(mode))
@@ -879,13 +897,17 @@ async function runCli(args, environment) {
     }
     await appendFile(
       selected['github-env'],
-      Object.entries(assignments).map(([key, value]) => `${key}=${value}\n`).join(''),
+      Object.entries(assignments)
+        .map(([key, value]) => `${key}=${value}\n`)
+        .join(''),
     )
   }
   if (selected['github-output'])
     await appendFile(
       selected['github-output'],
-      Object.entries(result).map(([key, value]) => `${key}=${value}\n`).join(''),
+      Object.entries(result)
+        .map(([key, value]) => `${key}=${value}\n`)
+        .join(''),
     )
   if (mode === 'start') console.error(formatPrTimeBudget(budget))
   if (mode === 'check' && selected['github-summary']) {

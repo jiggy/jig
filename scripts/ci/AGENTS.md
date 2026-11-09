@@ -160,7 +160,7 @@ preparation never becomes a consumer requirement.
   It checks the window's minimum request cost
   before collecting individual run histories. Insufficient budget refuses the
   complete report without sampling. Use a narrower manual window after refusal.
-- `build-candidates.mjs` archives clean tracked source and freezes seven Jig-owned npm archives and the published FLOW dependency. It uses qualified native Linux x64 Bun 1.3.3/Just 1.43.1, normal
+- `build-candidates.mjs` archives clean tracked source and freezes seven Jig-owned npm archives and the published FLOW dependency. It uses qualified native Linux x64 Bun 1.4.4/Just 1.43.1, normal
   workspace resolution and package-owned packing. Preserve generated resolution,
   actual tool identities, inventories and hashes. Build-only receipts carry
   pending qualification. Expensive consumer tests run after artifact retention.
@@ -290,7 +290,7 @@ They consume frozen package exports with tracked test helpers and installed
   Silicon 24G830, and Apple Silicon 24H232 profiles. The hosted pool admits Intel
   24G830 and either exact Apple Silicon 24G830 or 24H232 tuple.
 
-  It owns Bun 1.4.2 and real Node 22+
+  It owns Bun 1.4.4 and real Node 22+
   preflight, and frozen same-revision host/model/renderer archives with digest
   rechecks. It owns ordinary native npm installation through the same fresh full
   Jig package-smoke consumer. That consumer verifies the matching optional

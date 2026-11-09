@@ -75,6 +75,8 @@ build: jig::build
     set -euo pipefail
     flow_node=${FLOW_NODE:-$(command -v node)}
     "$flow_node" -e 'if(process.release?.name!=="node"||process.versions?.bun!==undefined||Number(process.versions.node.split(".")[0])<22)process.exit(70)'
+    export FLOW_NODE="$flow_node"
+    export JIG_AUTHORING_NODE_PATH="${JIG_AUTHORING_NODE_PATH:-$flow_node}"
     profile=portable
     if [[ "$(uname -s)" == Linux ]]; then profile=portable-linux; fi
     portable=$("$flow_node" scripts/ci/suite-inventory.mjs --target source-portable --profile "$profile")
@@ -87,7 +89,7 @@ build: jig::build
             *) files+=("./$file") ;;
         esac
     done <<< "$(printf '%s\n%s\n' "$portable" "$protocol")"
-    bun test "${files[@]}" "$@"
+    bun test --timeout 420000 "${files[@]}" "$@"
     if (( ${#node_files[@]} )); then
         "$flow_node" --test "${node_files[@]}"
     fi

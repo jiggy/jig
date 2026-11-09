@@ -10,11 +10,7 @@ const LOADER_PATHS = [
 export function privateLinuxHostToolCandidates(
   name: 'bwrap' | 'systemd-run' | 'systemctl',
 ): readonly string[] {
-  return [
-    `/usr/bin/${name}`,
-    `/bin/${name}`,
-    `/run/current-system/sw/bin/${name}`,
-  ]
+  return [`/usr/bin/${name}`, `/bin/${name}`, `/run/current-system/sw/bin/${name}`]
 }
 
 /** Resolve names only. Callers still validate files, features, and retained identity. */

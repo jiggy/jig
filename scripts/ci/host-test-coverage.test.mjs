@@ -53,7 +53,7 @@ test('current full Mac role assignment owns every selected file once without nam
     const candidates = MAC_HOST_PROFILES[arch]
     assert.ok(candidates.some(({ build }) => target.inventoryProfile === `macos-${build}`))
     assert.deepEqual(target.profiles, [
-      arch === 'arm64' ? 'macos/arm64/bun-1.4.2' : 'macos-24G830/x64/bun-1.4.2',
+      arch === 'arm64' ? 'macos/arm64/bun-1.4.4' : 'macos-24G830/x64/bun-1.4.4',
     ])
     const selected = await discoverHostTests(root, arch)
     assert.deepEqual(selected, files)
@@ -117,12 +117,12 @@ test('the PR plan preserves the complete ARM inventory across three whole-file r
   const roles = planMacHostTests(files, 'arm64', { plan: 'pull-request' })
   assert.equal(complete.length, 1)
   assert.equal(macHostShardCount('arm64', 'pull-request'), 3)
-  assert.deepEqual(roles.map(({ index }) => index), [0, 1, 2])
-  assert.ok(roles.every((role) => role.architecture === 'arm64' && role.groups.length > 0))
   assert.deepEqual(
-    planMacHostTests([...files].reverse(), 'arm64', { plan: 'pull-request' }),
-    roles,
+    roles.map(({ index }) => index),
+    [0, 1, 2],
   )
+  assert.ok(roles.every((role) => role.architecture === 'arm64' && role.groups.length > 0))
+  assert.deepEqual(planMacHostTests([...files].reverse(), 'arm64', { plan: 'pull-request' }), roles)
   const groups = roles.flatMap(({ groups }) => groups)
   const coverage = [
     ...groups.map(({ file }) => file),
@@ -163,7 +163,10 @@ test('the PR plan preserves the complete ARM inventory across three whole-file r
     })
   }
   const seconds = roles.map(({ estimatedSeconds }) => estimatedSeconds)
-  assert.equal(seconds.reduce((total, value) => total + value, 0), complete[0].estimatedSeconds)
+  assert.equal(
+    seconds.reduce((total, value) => total + value, 0),
+    complete[0].estimatedSeconds,
+  )
   assert.ok(
     Math.max(...seconds) - Math.min(...seconds) <=
       Math.max(...groups.map(({ estimatedSeconds }) => estimatedSeconds)),
@@ -173,9 +176,13 @@ test('the PR plan preserves the complete ARM inventory across three whole-file r
   assert.throws(() => planMacHostTests(files, 'arm64', { plan: 'unknown' }), /Unknown/)
   for (const file of [...NATIVE_PREREQUISITE_TESTS, INSTALLED_STARTUP_TEST])
     assert.throws(() =>
-      planMacHostTests(files.filter((current) => current !== file), 'arm64', {
-        plan: 'pull-request',
-      }),
+      planMacHostTests(
+        files.filter((current) => current !== file),
+        'arm64',
+        {
+          plan: 'pull-request',
+        },
+      ),
     )
   assert.throws(() => planMacHostTests([...files, files[0]], 'arm64', { plan: 'pull-request' }))
 })
@@ -555,10 +562,16 @@ test('every required and nightly hosted Mac shard checks its exact target before
       'utf8',
     ),
   )
-  assert.equal(workflow.jobs.prerequisites['runs-on'], "${{ matrix.guard && 'ubuntu-24.04' || 'macos-15' }}")
-  const nightly = parse(await readFile(
-    resolve(import.meta.dirname, '../../.github/workflows/macos-intel-nightly.yml'), 'utf8',
-  ))
+  assert.equal(
+    workflow.jobs.prerequisites['runs-on'],
+    "${{ matrix.guard && 'ubuntu-24.04' || 'macos-15' }}",
+  )
+  const nightly = parse(
+    await readFile(
+      resolve(import.meta.dirname, '../../.github/workflows/macos-intel-nightly.yml'),
+      'utf8',
+    ),
+  )
   assert.equal(nightly.jobs.prerequisites['runs-on'], 'macos-15-intel')
   for (const job of [workflow.jobs.prerequisites, nightly.jobs.prerequisites]) {
     const probes = job.steps.filter((step) =>
@@ -584,20 +597,28 @@ test('PR roles retain native and installed ownership while complete hosts keep t
     ),
   )
   const job = workflow.jobs.prerequisites
-  const nightly = parse(await readFile(
-    resolve(import.meta.dirname, '../../.github/workflows/macos-intel-nightly.yml'), 'utf8',
-  ))
+  const nightly = parse(
+    await readFile(
+      resolve(import.meta.dirname, '../../.github/workflows/macos-intel-nightly.yml'),
+      'utf8',
+    ),
+  )
   const intel = Array.from({ length: MAC_HOST_SHARDS.x64 }, (_, shard) => ({
-    arch: 'x64', shard, installed: shard === MAC_HOST_SHARDS.x64 - 1,
+    arch: 'x64',
+    shard,
+    installed: shard === MAC_HOST_SHARDS.x64 - 1,
   }))
   const evaluate = (expression, context) =>
-    runInNewContext(expression
-      .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
-      .replace(/\.([A-Za-z_][A-Za-z0-9_]*-[A-Za-z0-9_-]+)/g, "['$1']"), {
-      fromJSON: JSON.parse,
-      always: () => true,
-      ...context,
-    })
+    runInNewContext(
+      expression
+        .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+        .replace(/\.([A-Za-z_][A-Za-z0-9_]*-[A-Za-z0-9_-]+)/g, "['$1']"),
+      {
+        fromJSON: JSON.parse,
+        always: () => true,
+        ...context,
+      },
+    )
   const native = job.steps.find((step) =>
     /bun test packages\/jig\/test\/macos\/macos-process-controls/.test(step.run ?? ''),
   )
@@ -608,8 +629,13 @@ test('PR roles retain native and installed ownership while complete hosts keep t
   assert.match(qualifier.run, /--shard "\$MAC_HOST_ROLE"/)
   assert.equal(qualifier.env.MAC_HOST_ROLE, '${{ steps.role.outputs.role }}')
   const coordinatorInstalls = job.steps.filter((step) =>
-    step.run?.split('\n').some((line) => line.trim() ===
-      'node scripts/ci/pr-time-budget.mjs run -- bun install --cwd "$RUNNER_TEMP/mac-cohort-client" --frozen-lockfile --ignore-scripts'),
+    step.run
+      ?.split('\n')
+      .some(
+        (line) =>
+          line.trim() ===
+          'node scripts/ci/pr-time-budget.mjs run -- bun install --cwd "$RUNNER_TEMP/mac-cohort-client" --frozen-lockfile --ignore-scripts',
+      ),
   )
   assert.equal(coordinatorInstalls.length, 1)
   const coordinator = coordinatorInstalls[0]
@@ -661,23 +687,29 @@ test('PR roles retain native and installed ownership while complete hosts keep t
         }),
         profile && role.installed ? 65 : 35,
       )
-    const total = (profile ? 90 : 60) + intel.reduce(
-      (sum, role) => sum + evaluate(nightly.jobs.prerequisites['timeout-minutes'], {
-        matrix: role,
-        inputs: { include_startup_profile: profile },
-      }),
-      0,
-    )
+    const total =
+      (profile ? 90 : 60) +
+      intel.reduce(
+        (sum, role) =>
+          sum +
+          evaluate(nightly.jobs.prerequisites['timeout-minutes'], {
+            matrix: role,
+            inputs: { include_startup_profile: profile },
+          }),
+        0,
+      )
     assert.ok(total < (profile ? 270 : 210))
   }
   const surplus = context('pull_request', null, 3)
   assert.equal(evaluate(coordinator.if, surplus), true)
   assert.equal(evaluate(coordinator.if, { ...surplus, steps: {} }), true)
-  const executed = job.steps.filter((step) =>
-    step !== coordinator && (
-      /clang |bun install |just --justfile|candidate-provenance\.mjs verify|shard-\$MAC_HOST_ROLE\.complete/.test(step.run ?? '') ||
-      step.uses?.startsWith('actions/download-artifact@')
-    ),
+  const executed = job.steps.filter(
+    (step) =>
+      step !== coordinator &&
+      (/clang |bun install |just --justfile|candidate-provenance\.mjs verify|shard-\$MAC_HOST_ROLE\.complete/.test(
+        step.run ?? '',
+      ) ||
+        step.uses?.startsWith('actions/download-artifact@')),
   )
   assert.ok(executed.length >= 6)
   for (const step of [...executed, native, clients, qualifier])

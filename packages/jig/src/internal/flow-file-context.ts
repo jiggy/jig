@@ -236,8 +236,7 @@ export function privateFlowFileCheckpointInputs(context: PrivateFlowFileContext)
     .map(([name, files]) => ({
       name,
       files: files.map(({ path, input: { bytes, digest } }) => ({ path, bytes, digest })),
-      directories:
-        held.rights.get(held.readArtifacts.get(name)!)?.snapshot?.directories ?? [],
+      directories: held.rights.get(held.readArtifacts.get(name)!)?.snapshot?.directories ?? [],
     }))
 }
 
@@ -257,7 +256,11 @@ export async function capturePrivateRetainedFlowArtifact(
     throw new ChannelOperationError('RESOURCE_EXHAUSTED', 'root artifact retention limit exceeded')
   const snapshot = capturePrivateRetainedOutput(input)
   try {
-    await capturePrivateFlowArtifact(context, { kind: 'snapshot', ready: Promise.resolve(snapshot) }, signal)
+    await capturePrivateFlowArtifact(
+      context,
+      { kind: 'snapshot', ready: Promise.resolve(snapshot) },
+      signal,
+    )
     signal.throwIfAborted()
     return commitPrivateFlowArtifact(context, snapshot)
   } catch (error) {
@@ -400,7 +403,10 @@ export function selectedPrivateFlowArtifacts(
     const artifact = requireRight(held, selected[name]!)
     if (artifact.snapshot === undefined) {
       if (held.root.artifacts.size + held.root.pendingCaptures >= 16)
-        throw new ChannelOperationError('RESOURCE_EXHAUSTED', 'root artifact retention limit exceeded')
+        throw new ChannelOperationError(
+          'RESOURCE_EXHAUSTED',
+          'root artifact retention limit exceeded',
+        )
       const bytes = artifact.reads!.reduce((sum, file) => sum + file.input.bytes, 0)
       if (
         held.root.bytes + held.root.pendingCaptures * 16 * 1024 * 1024 + bytes >

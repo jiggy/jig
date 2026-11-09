@@ -24,14 +24,14 @@ const MARKDOWN_RUNTIME_DESTINATION = '/jig-markdown-runtime.js'
 const LINUX_BUN_PACKAGE = join('@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
 const MACOS_BUN_PACKAGE = join('@oven', 'bun-darwin-x64-baseline', 'bin', 'bun')
 const LINUX_BUN = Object.freeze({
-  version: '1.3.3',
-  revision: '274e01c737e85f8142070a9745b43a2ba09fce4c',
-  digest: 'sha256:e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839',
+  version: '1.4.4',
+  revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
+  digest: 'sha256:10702245766b225e70bbf6235fd6b47214fd94b4760d00ffaed8ab0df57ac235',
 })
 const MACOS_BUN = Object.freeze({
-  version: '1.4.2',
-  revision: '744846f844374847c902b5e7fd59b4342a51ef99',
-  digest: 'sha256:2fa513af22ac59e03aae640cad302e73cb1ddb0f6398501e2ddccf7dcd613596',
+  version: '1.4.4',
+  revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
+  digest: 'sha256:c35307c7d45d65c5a385a58c4a6cb0bb9499e4e626abdee207c177a77ba666ab',
 })
 const authenticSupports = new WeakSet<object>()
 
@@ -92,7 +92,7 @@ export async function openPrivateInstalledBunSupport(
       : process.arch === 'arm64'
         ? {
             ...MACOS_BUN,
-            digest: 'sha256:35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5',
+            digest: 'sha256:0a2237cdcfa0d16ef501d9acca9f0026309ef348bea7393a64e8d1e3609565cc',
           }
         : MACOS_BUN
   const releaseRoot = await installedDirectory(location.releaseRoot, 'installed Jig release')

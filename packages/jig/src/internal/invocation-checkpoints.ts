@@ -111,7 +111,11 @@ export class PrivateInvocationCheckpoints {
             result: { outcome: 'done', output: output as unknown as JsonValue },
           }
         if (this.owner.files === undefined) throw new Error('checkpoint file owner unavailable')
-        const reference = await capturePrivateRetainedFlowArtifact(this.owner.files, retained, signal)
+        const reference = await capturePrivateRetainedFlowArtifact(
+          this.owner.files,
+          retained,
+          signal,
+        )
         return {
           status: 'succeeded',
           result: {

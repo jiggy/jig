@@ -17,7 +17,7 @@ export function normalizeNfc15_1(value: string): string {
     if (syllable >= 0 && syllable < 11172) {
       emit(0x1100 + Math.floor(syllable / 588))
       emit(0x1161 + Math.floor((syllable % 588) / 28))
-      if (syllable % 28) emit(0x11a7 + syllable % 28)
+      if (syllable % 28) emit(0x11a7 + (syllable % 28))
       return
     }
     ordered.push(code)
@@ -32,7 +32,8 @@ export function normalizeNfc15_1(value: string): string {
   }
   for (const scalar of value) emit(scalar.codePointAt(0)!)
   const result: number[] = []
-  let starter = -1, lastClass = 0
+  let starter = -1,
+    lastClass = 0
   for (const code of ordered) {
     const rank = classes.get(code) ?? 0
     const combined = starter < 0 ? undefined : compose(result[starter]!, code)
@@ -48,10 +49,12 @@ export function normalizeNfc15_1(value: string): string {
 }
 
 function compose(first: number, second: number): number | undefined {
-  const leading = first - 0x1100, vowel = second - 0x1161
+  const leading = first - 0x1100,
+    vowel = second - 0x1161
   if (leading >= 0 && leading < 19 && vowel >= 0 && vowel < 21)
     return 0xac00 + (leading * 21 + vowel) * 28
-  const syllable = first - 0xac00, trailing = second - 0x11a7
+  const syllable = first - 0xac00,
+    trailing = second - 0x11a7
   if (syllable >= 0 && syllable < 11172 && syllable % 28 === 0 && trailing > 0 && trailing < 28)
     return first + trailing
   return compositions.get(first * 0x110000 + second)

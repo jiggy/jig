@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { ATTEMPT_REQUEST_BYTES } from '../../src/attempt-contract.js'
 import { settleTestCommand } from '../fixtures/bounded-command.js'
 import {
@@ -104,9 +104,16 @@ test('installed help is focused and version matches the installed manifest', asy
     stdout: `${manifest.version}\n`,
     stderr: '',
   })
+  let isolatedPath = '/nonexistent'
+  try {
+    const shebang = await readFile('/bin/sh', 'utf8')
+    if (shebang.includes('/usr/bin/env')) {
+      isolatedPath = dirname(Bun.which('bash') ?? '/bin')
+    }
+  } catch {}
   expect(
     await invoke(['--version'], root, undefined, {
-      PATH: '/nonexistent',
+      PATH: isolatedPath,
       BUN_OPTIONS: 'invalid',
       NODE_OPTIONS: 'invalid',
     }),

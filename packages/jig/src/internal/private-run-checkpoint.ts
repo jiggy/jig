@@ -99,8 +99,11 @@ export interface RunCheckpointReceipt {
 export class PrivateCheckpointRejected extends Error {
   constructor(
     message: string,
-    readonly code: 'INVALID_INPUT' | 'RESOURCE_EXHAUSTED' | 'CANCELLED' | 'DEADLINE_EXCEEDED' =
-      'INVALID_INPUT',
+    readonly code:
+      | 'INVALID_INPUT'
+      | 'RESOURCE_EXHAUSTED'
+      | 'CANCELLED'
+      | 'DEADLINE_EXCEEDED' = 'INVALID_INPUT',
   ) {
     super(message)
   }

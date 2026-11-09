@@ -26,11 +26,11 @@ export function requireMacHost(host: {
     )
   }
   if (
-    host.bunVersion !== '1.4.2' ||
-    host.bunRevision !== '744846f844374847c902b5e7fd59b4342a51ef99'
+    host.bunVersion !== '1.4.4' ||
+    host.bunRevision !== '38afee6c84fcf48c0edb2466aa4b27d287a59c30'
   ) {
     throw Error(
-      'Native preflight requires the qualified Bun 1.4.2 revision 744846f844374847c902b5e7fd59b4342a51ef99.',
+      'Native preflight requires the qualified Bun 1.4.4 revision 38afee6c84fcf48c0edb2466aa4b27d287a59c30.',
     )
   }
 }

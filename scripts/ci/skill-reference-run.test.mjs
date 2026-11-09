@@ -93,7 +93,7 @@ test('missing associations and advancing PR heads cannot select old source for w
   }
 })
 
-test('the writer CLI omits obsolete events without API access, artifacts, or write outputs', async t => {
+test('the writer CLI omits obsolete events without API access, artifacts, or write outputs', async (t) => {
   const { execFileSync } = await import('node:child_process')
   const { mkdtemp, writeFile, readFile, rm, stat } = await import('node:fs/promises')
   const { tmpdir } = await import('node:os')
@@ -102,16 +102,32 @@ test('the writer CLI omits obsolete events without API access, artifacts, or wri
   assert.ok(node.startsWith('/'), 'The CLI test requires an absolute Node executable')
   const directory = await mkdtemp(join(tmpdir(), 'jig-obsolete-references-'))
   t.after(() => rm(directory, { recursive: true, force: true }))
-  for (const [index, pull_requests] of [[], [{ ...pull, head: { ...pull.head, sha: 'd'.repeat(40) } }]].entries()) {
+  for (const [index, pull_requests] of [
+    [],
+    [{ ...pull, head: { ...pull.head, sha: 'd'.repeat(40) } }],
+  ].entries()) {
     const event = join(directory, `event-${index}.json`)
     const output = join(directory, `output-${index}`)
     const summary = join(directory, `summary-${index}`)
     const destination = join(directory, `artifacts-${index}`)
-    await writeFile(event, JSON.stringify({ action: 'completed', repository: { ...repository, default_branch: 'main' },
-      workflow_run: { ...run, pull_requests } }))
+    await writeFile(
+      event,
+      JSON.stringify({
+        action: 'completed',
+        repository: { ...repository, default_branch: 'main' },
+        workflow_run: { ...run, pull_requests },
+      }),
+    )
     const transcript = execFileSync(node, ['scripts/ci/skill-reference-run.mjs', destination], {
-      encoding: 'utf8', env: { PATH: directory, GITHUB_EVENT_NAME: 'workflow_run', GITHUB_EVENT_PATH: event,
-        GITHUB_REPOSITORY: options.repository, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary },
+      encoding: 'utf8',
+      env: {
+        PATH: directory,
+        GITHUB_EVENT_NAME: 'workflow_run',
+        GITHUB_EVENT_PATH: event,
+        GITHUB_REPOSITORY: options.repository,
+        GITHUB_OUTPUT: output,
+        GITHUB_STEP_SUMMARY: summary,
+      },
     })
     assert.match(transcript, /No current pull request matches this producer/)
     assert.equal(await readFile(output, 'utf8'), 'ready=false\n')

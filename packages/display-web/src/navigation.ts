@@ -95,10 +95,16 @@ export function privateBrowserInvocationViews(
   | { kind: 'unavailable'; label: string } {
   const call = snapshot.calls.find((item) => item.id === callId)
   if (snapshot.mode !== 'live-run' || !call)
-    return { kind: 'unavailable', label: 'This invocation is unavailable in the current observation.' }
+    return {
+      kind: 'unavailable',
+      label: 'This invocation is unavailable in the current observation.',
+    }
   const childSourceId = call.childSourceId
   if (childSourceId === undefined)
-    return { kind: 'unavailable', label: 'A child publisher is not identified in this observation.' }
+    return {
+      kind: 'unavailable',
+      label: 'A child publisher is not identified in this observation.',
+    }
   if (
     childSourceId === snapshot.rootSourceId ||
     childSourceId === call.sourceId ||
@@ -108,7 +114,9 @@ export function privateBrowserInvocationViews(
   return {
     kind: 'available',
     childSourceId,
-    views: snapshot.views.filter((item) => item.sourceId === childSourceId && item.hostRole === undefined),
+    views: snapshot.views.filter(
+      (item) => item.sourceId === childSourceId && item.hostRole === undefined,
+    ),
   }
 }
 

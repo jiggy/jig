@@ -164,7 +164,10 @@ describe('shared Agent method', () => {
 
   test('retains valid structured data without promoting refusal or limit to completion', () => {
     const prepared = prepareAgent({ instructions: 'Answer.', responseSchema: answerSchema })
-    for (const [stop, outcome] of [['refusal', 'blocked'], ['limit', 'limit']] as const) {
+    for (const [stop, outcome] of [
+      ['refusal', 'blocked'],
+      ['limit', 'limit'],
+    ] as const) {
       for (const text of ['{"answer":"READY"}', '```json\n{"answer":"READY"}\n```']) {
         expect(finishAgent(prepared, exchange(text, stop))).toEqual({
           outcome,
@@ -176,7 +179,10 @@ describe('shared Agent method', () => {
 
   test('omits invalid structured values from noncompletion without changing their text', () => {
     const prepared = prepareAgent({ instructions: 'Answer.', responseSchema: answerSchema })
-    for (const [stop, outcome] of [['refusal', 'blocked'], ['limit', 'limit']] as const) {
+    for (const [stop, outcome] of [
+      ['refusal', 'blocked'],
+      ['limit', 'limit'],
+    ] as const) {
       for (const text of [
         '',
         'null',

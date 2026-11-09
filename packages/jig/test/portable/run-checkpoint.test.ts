@@ -136,7 +136,9 @@ test('child checkpoint descriptor has one exact native identity and a host artif
   expect(contract.digest).toBe(CHILD_CHECKPOINT_CONTRACT_DIGEST)
   expect(contract.invocation!.artifactResults).toEqual(['checkpoint'])
   assertChildCheckpointContract(contract)
-  expect(() => assertChildCheckpointContract({ ...contract, digest: 'sha256:' + '0'.repeat(64) })).toThrow()
+  expect(() =>
+    assertChildCheckpointContract({ ...contract, digest: 'sha256:' + '0'.repeat(64) }),
+  ).toThrow()
 })
 
 test('child checkpoint accepts only a bounded caller-local operation ID', () => {

@@ -131,8 +131,11 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
                 {},
                 'Search and sort',
                 filtered
-                  ? h('span', { class: 'secondary' },
-                      ` · “${text(activeQuery.slice(0, 80))}${activeQuery.length > 80 ? '…' : ''}”`)
+                  ? h(
+                      'span',
+                      { class: 'secondary' },
+                      ` · “${text(activeQuery.slice(0, 80))}${activeQuery.length > 80 ? '…' : ''}”`,
+                    )
                   : null,
               ),
               h(

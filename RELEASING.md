@@ -164,8 +164,8 @@ Release generation and publication details belong to the
 ## Build a source release
 
 Download the matching GitHub release's **Source code (tar.gz)** or zip and extract it.
-On Linux x64/glibc, use Bun 1.3.3 and Just 1.43.1.
-The Bun revision is `274e01c737e85f8142070a9745b43a2ba09fce4c`.
+On Linux x64/glibc, use Bun 1.4.4 and Just 1.43.1.
+The Bun revision is `38afee6c84fcf48c0edb2466aa4b27d287a59c30`.
 From the extracted repository root:
 
 ```sh

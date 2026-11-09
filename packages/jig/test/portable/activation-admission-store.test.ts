@@ -1890,20 +1890,30 @@ describe.serial('direct alpha activation store', () => {
       expect(project.state).toBe('approved')
       expect(project.targets).toHaveLength(1)
       expect(project.targets[0]).toMatchObject({
-        label: 'run', kind: 'flow', description: 'Direct alpha store fixture.',
+        label: 'run',
+        kind: 'flow',
+        description: 'Direct alpha store fixture.',
       })
       expect(project.selected?.composition.state).toBe('available')
       expect(project.selected?.input).toMatchObject({
-        state: 'schema', schema: { type: 'object', required: ['value'] },
+        state: 'schema',
+        schema: { type: 'object', required: ['value'] },
       })
-      expect(await explorer.selection(project.revision, project.selected!.targetId, { value: 'test' })).toEqual({
-        target: { kind: 'flow', path: 'flows/run' }, approval: approved,
+      expect(
+        await explorer.selection(project.revision, project.selected!.targetId, { value: 'test' }),
+      ).toEqual({
+        target: { kind: 'flow', path: 'flows/run' },
+        approval: approved,
       })
       await expect(
         explorer.selection(project.revision, project.selected!.targetId, 'private-rejected-value'),
       ).rejects.toMatchObject({ code: 'INPUT_INVALID' })
       try {
-        await explorer.selection(project.revision, project.selected!.targetId, 'private-rejected-value')
+        await explorer.selection(
+          project.revision,
+          project.selected!.targetId,
+          'private-rejected-value',
+        )
         throw new Error('Expected reviewed input rejection')
       } catch (error) {
         expect(String(error)).toContain('Expected object; received string')
@@ -1912,7 +1922,9 @@ describe.serial('direct alpha activation store', () => {
       expect(JSON.stringify(project)).not.toContain('flows/run')
       expect(JSON.stringify(project)).not.toContain(approved)
       expect(JSON.stringify(project)).not.toContain('binding:router')
-      await expect(explorer.project('missing-target')).rejects.toMatchObject({ code: 'TARGET_MISSING' })
+      await expect(explorer.project('missing-target')).rejects.toMatchObject({
+        code: 'TARGET_MISSING',
+      })
       let menu = ''
       const selection = await privateCliPrepareArguments(['run', '--input', '{"value":1}'], {
         currentDirectory: fixture.root,
@@ -2225,7 +2237,9 @@ describe.serial('direct alpha activation store', () => {
       expect(await readdir(root)).toEqual([])
       const explorer = new PrivateProjectProjection(root)
       expect(await explorer.project()).toMatchObject({ state: 'unreviewed', targets: [] })
-      await expect(explorer.selection('none', 'none', null)).rejects.toMatchObject({ code: 'PROJECT_UNREVIEWED' })
+      await expect(explorer.selection('none', 'none', null)).rejects.toMatchObject({
+        code: 'PROJECT_UNREVIEWED',
+      })
       expect(await readdir(root)).toEqual([])
       await writeFile(join(root, 'jig.lock'), '{}\n')
       expect(await inspectPrivateApprovedProject(root)).toEqual({
@@ -4261,4 +4275,3 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 })
-

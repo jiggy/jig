@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { constants } from 'node:fs'
+import { accessSync, constants } from 'node:fs'
 import {
   access,
   chmod,
@@ -23,8 +23,8 @@ import { PACKAGE_LAYOUT } from './candidate-provenance.mjs'
 
 export const CANDIDATE_PACKAGES = PACKAGE_LAYOUT
 export const QUALIFIED_BUN = Object.freeze({
-  version: '1.3.3',
-  revision: '274e01c737e85f8142070a9745b43a2ba09fce4c',
+  version: '1.4.4',
+  revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
   platform: 'linux',
   architecture: 'x64',
 })
@@ -46,12 +46,29 @@ async function executable(path, label) {
   return await realpath(path)
 }
 
+function resolveTool(run, name) {
+  try {
+    return run('which', [name])
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+    for (const dir of (process.env.PATH || '').split(':')) {
+      if (!dir) continue
+      const candidate = join(dir, name)
+      try {
+        accessSync(candidate, constants.X_OK)
+        return candidate
+      } catch {}
+    }
+    throw error
+  }
+}
+
 // Verify real runtime identities before creating output or changing generated files.
 export async function candidateTools({ env = process.env, run = execute } = {}) {
-  const bun = await executable(env.JIG_CI_BUN || run('which', ['bun']), 'Bun')
+  const bun = await executable(env.JIG_CI_BUN || resolveTool(run, 'bun'), 'Bun')
   const node = await executable(env.FLOW_NODE || process.execPath, 'FLOW_NODE')
-  const npm = await executable(env.FLOW_NPM || env.JIG_NPM || run('which', ['npm']), 'npm')
-  const just = await executable(run('which', ['just']), 'Just')
+  const npm = await executable(env.FLOW_NPM || env.JIG_NPM || resolveTool(run, 'npm'), 'npm')
+  const just = await executable(env.JIG_CI_JUST || resolveTool(run, 'just'), 'Just')
   const identity = JSON.parse(
     run(bun, [
       '--no-env-file',
@@ -62,7 +79,7 @@ export async function candidateTools({ env = process.env, run = execute } = {}) 
   for (const [key, expected] of Object.entries(QUALIFIED_BUN)) {
     if (identity[key] !== expected)
       throw new Error(
-        'Candidates require native Linux x64 Bun 1.3.3 revision 274e01c737e85f8142070a9745b43a2ba09fce4c',
+        'Candidates require native Linux x64 Bun 1.4.4 revision 38afee6c84fcf48c0edb2466aa4b27d287a59c30',
       )
   }
   const nodeVersion = run(node, [

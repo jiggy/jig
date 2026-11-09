@@ -249,7 +249,10 @@ test('contract-field diagnostic locations keep protected-path and ancestor bound
     '.',
     '..',
   ]) {
-    const failure = projectError(new CheckError('invalid', 'CONTRACT_FIELD', 'private', path), 'plan')
+    const failure = projectError(
+      new CheckError('invalid', 'CONTRACT_FIELD', 'private', path),
+      'plan',
+    )
     expect(failure.toJSON()).toEqual({
       code: 'INVALID_CANDIDATE',
       message: 'project candidate is invalid',

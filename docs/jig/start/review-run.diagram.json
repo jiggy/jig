@@ -8,63 +8,36 @@
     "legend": {
       "mode": "hidden"
     },
-    "viewBox": [
-      520,
-      290
-    ]
+    "viewBox": [520, 290]
   },
   "components": [
     {
       "id": "source",
       "type": "frontend",
       "label": "Edit source",
-      "pos": [
-        20,
-        40
-      ],
-      "size": [
-        180,
-        64
-      ]
+      "pos": [20, 40],
+      "size": [180, 64]
     },
     {
       "id": "review",
       "type": "security",
       "label": "Review and approve",
-      "pos": [
-        320,
-        40
-      ],
-      "size": [
-        180,
-        64
-      ]
+      "pos": [320, 40],
+      "size": [180, 64]
     },
     {
       "id": "run",
       "type": "backend",
       "label": "Run accepted work",
-      "pos": [
-        320,
-        190
-      ],
-      "size": [
-        180,
-        64
-      ]
+      "pos": [320, 190],
+      "size": [180, 64]
     },
     {
       "id": "result",
       "type": "frontend",
       "label": "Read the result",
-      "pos": [
-        20,
-        190
-      ],
-      "size": [
-        180,
-        64
-      ]
+      "pos": [20, 190],
+      "size": [180, 64]
     }
   ],
   "connections": [
@@ -79,10 +52,7 @@
       "to": "run",
       "label": "jig run",
       "variant": "default",
-      "labelAt": [
-        410,
-        118
-      ]
+      "labelAt": [410, 118]
     },
     {
       "from": "run",

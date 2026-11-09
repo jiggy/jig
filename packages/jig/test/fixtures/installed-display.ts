@@ -6,18 +6,18 @@ export const installedRuntime =
   process.platform === 'darwin'
     ? Object.freeze({
         package: process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline',
-        version: '1.4.2',
-        revision: '1.4.2+744846f84',
+        version: '1.4.4',
+        revision: '1.4.4+38afee6c8',
         sha256:
           process.arch === 'arm64'
-            ? '35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5'
-            : '2fa513af22ac59e03aae640cad302e73cb1ddb0f6398501e2ddccf7dcd613596',
+            ? '0a2237cdcfa0d16ef501d9acca9f0026309ef348bea7393a64e8d1e3609565cc'
+            : 'c35307c7d45d65c5a385a58c4a6cb0bb9499e4e626abdee207c177a77ba666ab',
       })
     : Object.freeze({
         package: 'bun-linux-x64-baseline',
-        version: '1.3.3',
-        revision: '1.3.3+274e01c73',
-        sha256: 'e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839',
+        version: '1.4.4',
+        revision: '1.4.4+38afee6c8',
+        sha256: '10702245766b225e70bbf6235fd6b47214fd94b4760d00ffaed8ab0df57ac235',
       })
 export const expectedInstalledFiles = [
   'LICENSE.md',

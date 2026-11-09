@@ -127,4 +127,3 @@ test('incident branch diagnostics preserve assertion failures for malformed obse
   expect(incidentBranchDiagnostic({ role: 'draft', result: [] }).hasResult).toBe(false)
   expect(incidentBranchDiagnostic({ role: 'draft', result: null }).hasResult).toBe(false)
 })
-

@@ -22,8 +22,8 @@ const prerequisites = (build = '24H232') => ({
   arch: 'arm64',
   kernel: '24.6.0',
   build,
-  bun: '1.4.2',
-  revision: '744846f844374847c902b5e7fd59b4342a51ef99',
+  bun: '1.4.4',
+  revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
   processIdentityBytes: 56,
   coalitionIdentityBytes: 40,
   coalitionUsageBytes: 296,
@@ -48,10 +48,7 @@ function fixture(plan = 'pull-request') {
   const files = [
     ...NATIVE_PREREQUISITE_TESTS,
     INSTALLED_STARTUP_TEST,
-    ...Array.from(
-      { length: 12 },
-      (_, index) => `packages/jig/test/host/cohort-${index}.test.ts`,
-    ),
+    ...Array.from({ length: 12 }, (_, index) => `packages/jig/test/host/cohort-${index}.test.ts`),
     'packages/jig/test/macos/cohort-native.test.ts',
     'packages/display-web/test/cohort.test.ts',
   ]
@@ -76,10 +73,7 @@ function fixture(plan = 'pull-request') {
   const evidenceDirectory = join(repository, 'evidence')
   const shards = planMacHostTests(files, 'arm64', { plan })
   const directories = shards.map((shard) => {
-    const directory = join(
-      evidenceDirectory,
-      `macos-prerequisites-arm64-${shard.index}-${source}`,
-    )
+    const directory = join(evidenceDirectory, `macos-prerequisites-arm64-${shard.index}-${source}`)
     mkdirSync(directory, { recursive: true })
     writeFileSync(join(directory, 'prerequisites.json'), JSON.stringify(prerequisites()))
     writeFileSync(
@@ -137,11 +131,17 @@ test('three PR roles validate exact files without granting partial qualification
     assert.ok(report.executed > 0)
     assert.equal(report.skipped_reports, 0)
   }
-  assert.equal(roles.reduce((sum, report) => sum + report.executed, 0), f.files.length)
+  assert.equal(
+    roles.reduce((sum, report) => sum + report.executed, 0),
+    f.files.length,
+  )
   const complete = f.complete()
   assert.equal(complete.qualified, true)
   assert.equal(complete.executed, f.files.length)
-  assert.deepEqual(complete.shards, roles.map((report) => report.shard))
+  assert.deepEqual(
+    complete.shards,
+    roles.map((report) => report.shard),
+  )
 })
 
 test('complete ARM mode remains one full role and cannot accept a PR subset', () => {

@@ -57,7 +57,7 @@ export function intelHealthRecord(receipt, target, env = process.env) {
     consumer.headRepository !== env.GITHUB_REPOSITORY ||
     !['schedule', 'workflow_dispatch'].includes(consumer.event)
   )
-    throw new Error('Intel health requires this run\'s complete exact-source qualification')
+    throw new Error("Intel health requires this run's complete exact-source qualification")
   return {
     schemaVersion: 1,
     outcome: 'passed',
@@ -86,15 +86,17 @@ async function healthFiles(directory) {
 export function healthRows(targets, records, env = process.env) {
   return targets.map((target) => ({
     ...target,
-    passed: records.filter((record) =>
-      record.schemaVersion === 1 &&
-      record.outcome === 'passed' &&
-      record.sourceRevision === target.source &&
-      record.runId === Number(env.GITHUB_RUN_ID) &&
-      record.runAttempt === Number(env.GITHUB_RUN_ATTEMPT) &&
-      record.workflowHead === env.GITHUB_SHA &&
-      record.version === (target.version ?? null),
-    ).length === 1,
+    passed:
+      records.filter(
+        (record) =>
+          record.schemaVersion === 1 &&
+          record.outcome === 'passed' &&
+          record.sourceRevision === target.source &&
+          record.runId === Number(env.GITHUB_RUN_ID) &&
+          record.runAttempt === Number(env.GITHUB_RUN_ATTEMPT) &&
+          record.workflowHead === env.GITHUB_SHA &&
+          record.version === (target.version ?? null),
+      ).length === 1,
   }))
 }
 
@@ -103,11 +105,17 @@ async function lastPublishedPass(client, repository) {
   for (const run of runs.sort((a, b) => b.id - a.id)) {
     if (!trustedNight(run, repository)) continue
     const artifacts = await paginated(
-      client, `repos/${repository}/actions/runs/${run.id}/artifacts`, 'artifacts',
+      client,
+      `repos/${repository}/actions/runs/${run.id}/artifacts`,
+      'artifacts',
     )
     const name = new RegExp(`^intel-health-[0-9a-f]{40}-r${run.id}-a[1-9][0-9]*$`)
     for (const artifact of artifacts.filter((entry) => name.test(entry.name) && !entry.expired)) {
-      verifyArtifactMetadata(artifact, { name: artifact.name, runId: run.id, headSha: run.head_sha })
+      verifyArtifactMetadata(artifact, {
+        name: artifact.name,
+        runId: run.id,
+        headSha: run.head_sha,
+      })
       const temporary = await mkdtemp(join(tmpdir(), 'jig-intel-health-'))
       try {
         const directory = join(temporary, 'health')
@@ -115,10 +123,16 @@ async function lastPublishedPass(client, repository) {
         for (const record of await healthFiles(directory)) {
           const recordName = `intel-health-${record.sourceRevision}-r${run.id}-a${record.runAttempt}`
           if (
-            record.schemaVersion === 1 && record.outcome === 'passed' && record.version &&
-            artifact.name === recordName && record.runId === run.id && record.runAttempt > 0 &&
-            record.runAttempt <= run.run_attempt && record.workflowHead === run.head_sha
-          ) return record
+            record.schemaVersion === 1 &&
+            record.outcome === 'passed' &&
+            record.version &&
+            artifact.name === recordName &&
+            record.runId === run.id &&
+            record.runAttempt > 0 &&
+            record.runAttempt <= run.run_attempt &&
+            record.workflowHead === run.head_sha
+          )
+            return record
         }
       } finally {
         await rm(temporary, { recursive: true, force: true })
@@ -139,7 +153,11 @@ function expected(repository, source) {
 }
 
 export async function selectIntelTargets({
-  client, repository, mainSource, pullRequest, publishedVersion = currentPublishedVersion,
+  client,
+  repository,
+  mainSource,
+  pullRequest,
+  publishedVersion = currentPublishedVersion,
 }) {
   requireRevision(mainSource)
   if (pullRequest) {
@@ -176,10 +194,19 @@ export async function selectIntelTargets({
 }
 
 export async function verifyIntelInput(
-  directory, target, { integrityForVersion = publishedIntegrity } = {},
+  directory,
+  target,
+  { integrityForVersion = publishedIntegrity } = {},
 ) {
   const receipt = await verifyCandidateBundle(directory, { sourceRevision: target.source })
-  for (const key of ['repository', 'workflowPath', 'event', 'headBranch', 'headRepository', 'headSha'])
+  for (const key of [
+    'repository',
+    'workflowPath',
+    'event',
+    'headBranch',
+    'headRepository',
+    'headSha',
+  ])
     if (receipt.producer[key] !== target.expected[key])
       throw new Error(`Intel input producer ${key} mismatch`)
   const envelope = JSON.parse(await readFile(resolve(directory, 'ARTIFACT.json'), 'utf8'))
@@ -199,12 +226,24 @@ export async function verifyIntelInput(
 function currentPublishedVersion() {
   let version
   try {
-    version = JSON.parse(execFileSync('npm', [
-      'view', '@jigging/jig@alpha', 'version', '--json', '--registry=https://registry.npmjs.org',
-    ], { encoding: 'utf8', timeout: 60_000, maxBuffer: 1024 * 1024 }))
+    version = JSON.parse(
+      execFileSync(
+        'npm',
+        [
+          'view',
+          '@jigging/jig@alpha',
+          'version',
+          '--json',
+          '--registry=https://registry.npmjs.org',
+        ],
+        { encoding: 'utf8', timeout: 60_000, maxBuffer: 1024 * 1024 },
+      ),
+    )
   } catch (error) {
     let code
-    try { code = JSON.parse(error.stdout).error?.code } catch {}
+    try {
+      code = JSON.parse(error.stdout).error?.code
+    } catch {}
     if (code === 'E404') return undefined
     throw new Error('Could not determine the published Jig alpha version', { cause: error })
   }
@@ -215,8 +254,14 @@ function publishedIntegrity(version) {
   if (!/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(version))
     throw new Error('Invalid published version')
   const metadata = execFileSync(
-    'npm', ['view', `@jigging/jig@${version}`, 'dist.integrity', '--json',
-      '--registry=https://registry.npmjs.org'],
+    'npm',
+    [
+      'view',
+      `@jigging/jig@${version}`,
+      'dist.integrity',
+      '--json',
+      '--registry=https://registry.npmjs.org',
+    ],
     { encoding: 'utf8', timeout: 60_000, maxBuffer: 1024 * 1024 },
   )
   return JSON.parse(metadata)
@@ -231,14 +276,18 @@ export async function acquireIntelInput({ client, repository, target, destinatio
     for (const run of runs.sort((a, b) => b.id - a.id)) {
       if (!trustedNight(run, repository)) continue
       const artifacts = await paginated(
-        client, `repos/${repository}/actions/runs/${run.id}/artifacts`, 'artifacts',
+        client,
+        `repos/${repository}/actions/runs/${run.id}/artifacts`,
+        'artifacts',
       )
       const name = `intel-inputs-${target.source}-r${run.id}-a${run.run_attempt}`
       const matches = artifacts.filter((artifact) => artifact.name === name && !artifact.expired)
       if (!matches.length) continue
       if (matches.length !== 1) throw new Error('Ambiguous Intel input mirror')
       const artifact = verifyArtifactMetadata(matches[0], {
-        name, runId: run.id, headSha: run.head_sha,
+        name,
+        runId: run.id,
+        headSha: run.head_sha,
       })
       await downloadArtifactDirectory(client, artifact, destination)
       return verifyIntelInput(destination, target)
@@ -257,18 +306,30 @@ export async function acquireIntelInput({ client, repository, target, destinatio
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    if (process.env.GITHUB_REF !== 'refs/heads/main') throw new Error('Intel workflow must run from main')
+    if (process.env.GITHUB_REF !== 'refs/heads/main')
+      throw new Error('Intel workflow must run from main')
     const repository = process.env.GITHUB_REPOSITORY
     const client = githubClient(repository)
     if (process.argv[2] === 'select') {
-      const targets = await selectIntelTargets({ client, repository, mainSource: process.env.GITHUB_SHA,
-        pullRequest: process.env.INTEL_PULL_REQUEST })
-      const shards = targets.flatMap((target) => [3, 0, 1, 2].map((shard) => ({
-        ...target, arch: 'x64', shard, installed: shard === 3,
-      })))
+      const targets = await selectIntelTargets({
+        client,
+        repository,
+        mainSource: process.env.GITHUB_SHA,
+        pullRequest: process.env.INTEL_PULL_REQUEST,
+      })
+      const shards = targets.flatMap((target) =>
+        [3, 0, 1, 2].map((shard) => ({
+          ...target,
+          arch: 'x64',
+          shard,
+          installed: shard === 3,
+        })),
+      )
       const aggregates = targets.map((target) => ({ ...target, arch: 'x64', count: 4 }))
-      await appendFile(process.env.GITHUB_OUTPUT,
-        `targets=${JSON.stringify({ include: aggregates })}\nshards=${JSON.stringify({ include: shards })}\n`)
+      await appendFile(
+        process.env.GITHUB_OUTPUT,
+        `targets=${JSON.stringify({ include: aggregates })}\nshards=${JSON.stringify({ include: shards })}\n`,
+      )
     } else if (process.argv[2] === 'acquire') {
       const target = JSON.parse(process.env.INTEL_TARGET)
       await acquireIntelInput({ client, repository, target, destination: resolve(process.argv[3]) })
@@ -278,7 +339,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       await writeFile(process.argv[4], JSON.stringify(result, null, 2) + '\n', { flag: 'wx' })
     } else if (process.argv[2] === 'health') {
       const targets = JSON.parse(process.env.INTEL_TARGETS).include
-      if (!Array.isArray(targets) || !targets.length) throw new Error('Missing Intel target selection')
+      if (!Array.isArray(targets) || !targets.length)
+        throw new Error('Missing Intel target selection')
       const rows = healthRows(targets, await healthFiles(process.argv[3]))
       const latest = rows.find((row) => row.version && row.passed)
       let previous = latest
@@ -292,14 +354,22 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         }
       }
       const summary = [
-        '## Intel compatibility health', '',
-        '| Target | Exact source | Result |', '| --- | --- | --- |',
-        ...rows.map((row) => `| ${row.label} | ${row.source} | ${row.passed ? 'Passed' : 'Failed or incomplete'} |`),
-        '', `Last recorded passing published version: ${previous?.version ?? history}.`,
-        'Intel results do not grant or block release readiness.', '',
+        '## Intel compatibility health',
+        '',
+        '| Target | Exact source | Result |',
+        '| --- | --- | --- |',
+        ...rows.map(
+          (row) =>
+            `| ${row.label} | ${row.source} | ${row.passed ? 'Passed' : 'Failed or incomplete'} |`,
+        ),
+        '',
+        `Last recorded passing published version: ${previous?.version ?? history}.`,
+        'Intel results do not grant or block release readiness.',
+        '',
       ].join('\n')
       await appendFile(process.env.GITHUB_STEP_SUMMARY, summary)
-      if (rows.some((row) => !row.passed)) throw new Error('Intel compatibility failed or is incomplete')
+      if (rows.some((row) => !row.passed))
+        throw new Error('Intel compatibility failed or is incomplete')
     } else throw new Error('Use select, acquire, record or health')
   } catch (error) {
     console.error(error.message)

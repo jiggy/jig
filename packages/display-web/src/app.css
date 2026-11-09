@@ -256,7 +256,11 @@
   border-radius: 8px;
   background: var(--page);
   color: var(--text);
-  font: 12px / 1.65 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font:
+    12px / 1.65 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
   tab-size: 2;
 }
 .explorer-input-panel textarea[aria-invalid="true"] {
@@ -285,7 +289,11 @@
   background: var(--page);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font: 11px / 1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font:
+    11px / 1.6 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
 }
 .explorer-input-requirements ul {
   list-style: none;
@@ -708,7 +716,9 @@
 }
 .composition-card.request-focused:not(.selected) {
   border-color: var(--secondary);
-  box-shadow: inset 3px 0 var(--text), 0 2px 5px rgb(0 0 0 / 0.04);
+  box-shadow:
+    inset 3px 0 var(--text),
+    0 2px 5px rgb(0 0 0 / 0.04);
 }
 .composition-card-content {
   display: flex;

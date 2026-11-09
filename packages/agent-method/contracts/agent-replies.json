@@ -12,11 +12,7 @@
             "const": "accepted"
           },
           "command": {
-            "enum": [
-              "prompt",
-              "interrupt",
-              "close"
-            ]
+            "enum": ["prompt", "interrupt", "close"]
           },
           "turn": {
             "type": "integer",
@@ -24,11 +20,7 @@
             "maximum": 7
           }
         },
-        "required": [
-          "type",
-          "command",
-          "turn"
-        ],
+        "required": ["type", "command", "turn"],
         "additionalProperties": false
       },
       {
@@ -38,32 +30,17 @@
             "const": "rejected"
           },
           "command": {
-            "enum": [
-              "prompt",
-              "interrupt",
-              "close"
-            ]
+            "enum": ["prompt", "interrupt", "close"]
           },
           "turn": {
             "type": "integer",
             "minimum": 0
           },
           "code": {
-            "enum": [
-              "BUSY",
-              "STALE_TURN",
-              "TURN_LIMIT",
-              "INVALID_INPUT",
-              "NOT_RUNNING"
-            ]
+            "enum": ["BUSY", "STALE_TURN", "TURN_LIMIT", "INVALID_INPUT", "NOT_RUNNING"]
           }
         },
-        "required": [
-          "type",
-          "command",
-          "turn",
-          "code"
-        ],
+        "required": ["type", "command", "turn", "code"],
         "additionalProperties": false
       },
       {
@@ -89,10 +66,7 @@
                     "$ref": "#/$defs/AgentOutput"
                   }
                 },
-                "required": [
-                  "outcome",
-                  "output"
-                ],
+                "required": ["outcome", "output"],
                 "additionalProperties": false
               },
               {
@@ -105,10 +79,7 @@
                     "$ref": "#/$defs/AgentOutput"
                   }
                 },
-                "required": [
-                  "outcome",
-                  "output"
-                ],
+                "required": ["outcome", "output"],
                 "additionalProperties": false
               },
               {
@@ -121,20 +92,13 @@
                     "$ref": "#/$defs/AgentOutput"
                   }
                 },
-                "required": [
-                  "outcome",
-                  "output"
-                ],
+                "required": ["outcome", "output"],
                 "additionalProperties": false
               }
             ]
           }
         },
-        "required": [
-          "type",
-          "turn",
-          "result"
-        ],
+        "required": ["type", "turn", "result"],
         "additionalProperties": false
       },
       {
@@ -149,10 +113,7 @@
             "maximum": 7
           }
         },
-        "required": [
-          "type",
-          "turn"
-        ],
+        "required": ["type", "turn"],
         "additionalProperties": false
       },
       {
@@ -173,12 +134,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "type",
-          "turn",
-          "code",
-          "message"
-        ],
+        "required": ["type", "turn", "code", "message"],
         "additionalProperties": false
       }
     ]
@@ -193,9 +149,7 @@
         },
         "structured": true
       },
-      "required": [
-        "text"
-      ],
+      "required": ["text"],
       "additionalProperties": false
     }
   }

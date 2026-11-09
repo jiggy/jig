@@ -93,7 +93,7 @@ function* tokens(value: JsonValue): Generator<Token> {
   }
   yield { text: '{', quoted: false }
   const record = value as Record<string, JsonValue>
-  const keys = Object.keys(record).sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
+  const keys = Object.keys(record).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
   for (let index = 0; index < keys.length; index++) {
     if (index !== 0) yield { text: ',', quoted: false }
     const key = keys[index]!
@@ -110,7 +110,7 @@ export function* privateUtf8StringChunks(text: string): Generator<Uint8Array> {
   const buffer = Buffer.alloc(PRIVATE_CAPTURE_CHUNK_BYTES)
   const encoder = new TextEncoder()
   try {
-    for (let start = 0; start < text.length;) {
+    for (let start = 0; start < text.length; ) {
       let end = Math.min(start + 16_384, text.length)
       const last = text.charCodeAt(end - 1)
       if (end < text.length && last >= 0xd800 && last <= 0xdbff) end--

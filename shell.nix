@@ -2,16 +2,38 @@
   # Keep the current host tools, including Bubblewrap 0.12.0.
   pkgs ? import (builtins.fetchTarball {
     url = "https://github.com/NixOS/nixpkgs/archive/9bb52223f4f6a0cc606fd0852d8784f896c137d5.tar.gz";
+    sha256 = "sha256-2Cxxgpz1+cRgKZJFi12/9LG3aIBN66f2RvFs34Oj/A0=";
   }) { },
 }:
 let
-  # Select Bun independently so the rest of the host toolchain stays unchanged.
-  bun = (import (builtins.fetchTarball {
-    url = "https://github.com/NixOS/nixpkgs/archive/2f5cde3125a022b349324aae7e15a35622723cb8.tar.gz";
-  }) { }).bun;
+  bun = pkgs.bun.overrideAttrs (old: rec {
+    version = "1.4.4";
+    passthru = (old.passthru or { }) // {
+      sources = {
+        "aarch64-darwin" = pkgs.fetchurl {
+          url = "https://github.com/oven-sh/bun/releases/download/bun-v${version}/bun-darwin-aarch64.zip";
+          hash = "sha256-wkDX8My5DCY6hJ/NsJt+5iYw2SE0jtaq/ahrnVd7xRA=";
+        };
+        "aarch64-linux" = pkgs.fetchurl {
+          url = "https://github.com/oven-sh/bun/releases/download/bun-v${version}/bun-linux-aarch64.zip";
+          hash = "sha256-uqa7NvUdblhWHgK76oJQOKnfRU9nPW13bou/hvjHhQ4=";
+        };
+        "x86_64-darwin" = pkgs.fetchurl {
+          url = "https://github.com/oven-sh/bun/releases/download/bun-v${version}/bun-darwin-x64-baseline.zip";
+          hash = "sha256-1KFVrfv9CRVes7oFyeOlRPOSl9emhhbTx3WfZ6tcR9w=";
+        };
+        "x86_64-linux" = pkgs.fetchurl {
+          url = "https://github.com/oven-sh/bun/releases/download/bun-v${version}/bun-linux-x64-baseline.zip";
+          hash = "sha256-4ERutVmVdy65iUvrrppr42jZhai5Jx7hJEhvmUbu3XY=";
+        };
+      };
+    };
+    src = passthru.sources.${pkgs.stdenvNoCC.hostPlatform.system}
+      or (throw "Unsupported system: ${pkgs.stdenvNoCC.hostPlatform.system}");
+  });
   python = pkgs.python3.withPackages (p: [ p.build p.setuptools p.wheel ]);
 in
-assert bun.version == "1.3.3";
+assert bun.version == "1.4.4";
 pkgs.mkShellNoCC {
   packages = [
     bun
@@ -31,6 +53,7 @@ pkgs.mkShellNoCC {
   JIG_NPM = "${pkgs.nodejs_24}/bin/npm";
   PYTHON = "${python}/bin/python3";
   JIG_BWRAP_PATH = "${pkgs.bubblewrap}/bin/bwrap";
+  JIG_AUTHORING_NODE_PATH = "${pkgs.nodejs_24}/bin/node";
 
   shellHook = ''
     jig_repository=${pkgs.lib.escapeShellArg (toString ./.)}

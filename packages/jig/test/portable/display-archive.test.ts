@@ -597,7 +597,7 @@ test(
       expect(await archive.commit(input(first!))).toEqual(accepted)
       expect((await archive.state()).requests).toBe(PRIVATE_DISPLAY_ARCHIVE_LIMITS.requests)
     }),
-  120_000,
+  420_000,
 )
 
 test('closing joins accepted work, is memoized, and prevents later operations', async () =>

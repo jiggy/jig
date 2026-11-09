@@ -31,7 +31,7 @@ if [[ "$EUID" == 0 ]]; then
   echo 'Qualification requires an unprivileged operator.' >&2
   exit 2
 fi
-bun -e 'if (Bun.version !== "1.4.2" || Bun.revision !== "744846f844374847c902b5e7fd59b4342a51ef99") throw new Error("exact qualified Bun 1.4.2 is required")'
+bun -e 'if (Bun.version !== "1.4.4" || Bun.revision !== "38afee6c84fcf48c0edb2466aa4b27d287a59c30") throw new Error("exact qualified Bun 1.4.4 is required")'
 node_path="${JIG_AUTHORING_NODE_PATH:-${FLOW_NODE:-$(command -v node || true)}}"
 if [[ "$node_path" != /* || ! -x "$node_path" ]]; then
   echo 'Configure an absolute Node 22+ compiler executable before qualification.' >&2
@@ -83,7 +83,7 @@ snapshot() {
 snapshot > "$scratch/before"
 finish() {
   status=$?
-  if [[ -f "$scratch/SHA256SUMS" ]] && ! shasum -a 256 --check "$scratch/SHA256SUMS"; then status=1; fi
+  if [[ -f "$scratch/SHA256SUMS" ]] && ! { if command -v shasum >/dev/null 2>&1; then shasum -a 256 --check "$scratch/SHA256SUMS"; else sha256sum --check "$scratch/SHA256SUMS"; fi; }; then status=1; fi
   if [[ -n "$candidate_receipt" ]]; then
     current_receipt=''
     if ! current_receipt=$("$JIG_AUTHORING_NODE_PATH" scripts/ci/candidate-provenance.mjs verify \
@@ -147,7 +147,11 @@ for package in flow-sdk reporting agent-method agent-acp display-model display-w
     jig) export JIG_PACKAGE_ARCHIVE="${archives[0]}" ;;
   esac
 done
-shasum -a 256 "$scratch"/*/*.tgz > "$scratch/SHA256SUMS"
+if command -v shasum >/dev/null 2>&1; then
+  shasum -a 256 "$scratch"/*/*.tgz > "$scratch/SHA256SUMS"
+else
+  sha256sum "$scratch"/*/*.tgz > "$scratch/SHA256SUMS"
+fi
 cat "$scratch/SHA256SUMS"
 export JIG_MACOS_PROCESS_TEST=1
 if [[ -n "${JIG_MACOS_TEST_TIMINGS_DIRECTORY:-}" ]]; then

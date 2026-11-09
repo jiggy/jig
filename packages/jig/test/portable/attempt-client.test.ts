@@ -525,13 +525,25 @@ test('result and export correlate explicit checkpoint scopes with their serializ
   const selected = await client().result({ ticket: 'private-ticket', checkpointScope })
   expect(selected.checkpoint.scope).toBe(checkpointScope)
   expect((await client().result({ ticket: 'private-ticket' })).checkpoint.scope).toBe('root')
-  expect(await client().export({
-    ticket: 'private-ticket', destination: './exports/child', source: 'checkpoint', checkpointScope,
-  })).toMatchObject({ source: 'checkpoint', checkpointScope })
-  await expect(client('result-scope').result({ ticket: 'private-ticket', checkpointScope })).rejects.toHaveProperty('code', 'PROTOCOL_ERROR')
-  await expect(client('export-scope').export({
-    ticket: 'private-ticket', destination: './exports/child', source: 'checkpoint', checkpointScope,
-  })).rejects.toHaveProperty('code', 'PROTOCOL_ERROR')
+  expect(
+    await client().export({
+      ticket: 'private-ticket',
+      destination: './exports/child',
+      source: 'checkpoint',
+      checkpointScope,
+    }),
+  ).toMatchObject({ source: 'checkpoint', checkpointScope })
+  await expect(
+    client('result-scope').result({ ticket: 'private-ticket', checkpointScope }),
+  ).rejects.toHaveProperty('code', 'PROTOCOL_ERROR')
+  await expect(
+    client('export-scope').export({
+      ticket: 'private-ticket',
+      destination: './exports/child',
+      source: 'checkpoint',
+      checkpointScope,
+    }),
+  ).rejects.toHaveProperty('code', 'PROTOCOL_ERROR')
 })
 
 test('checkpoint scope correlation uses the transmitted snapshot after caller mutation', async () => {
@@ -540,7 +552,9 @@ test('checkpoint scope correlation uses the transmitted snapshot after caller mu
   value.checkpointScope = digest as `sha256:${string}`
   expect((await pending).checkpoint.scope).toBe('root')
   const publication = {
-    ...value, destination: './exports/child', source: 'checkpoint' as const,
+    ...value,
+    destination: './exports/child',
+    source: 'checkpoint' as const,
   }
   const exporting = client().export(publication)
   publication.checkpointScope = 'root'

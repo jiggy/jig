@@ -14,7 +14,9 @@ import { workerView } from '../flows/worker/dashboard.ts'
 import input from '../input.json'
 
 test('both handoff Flows carry the exact licensed public reporting contract', async () => {
-  const descriptor = await readFile(new URL(import.meta.resolve('@jigging/reporting/reporting.json')))
+  const descriptor = await readFile(
+    new URL(import.meta.resolve('@jigging/reporting/reporting.json')),
+  )
   const license = await readFile(new URL(import.meta.resolve('@jigging/reporting/LICENSE')))
 
   for (const flow of ['project', 'worker']) {

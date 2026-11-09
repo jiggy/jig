@@ -41,8 +41,8 @@ const prerequisites = (arch) => ({
   arch,
   kernel: '24.6.0',
   build: arch === 'arm64' ? '24H232' : '24G830',
-  bun: '1.4.2',
-  revision: '744846f844374847c902b5e7fd59b4342a51ef99',
+  bun: '1.4.4',
+  revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
   processIdentityBytes: 56,
   coalitionIdentityBytes: 40,
   coalitionUsageBytes: 296,
@@ -221,12 +221,16 @@ async function addCohortReceipts(f) {
 async function cohortFixture(run) {
   const sourceRepository = await mkdtemp(resolve(tmpdir(), 'jig-mac-summary-source-'))
   try {
-    const git = (args) => execFileSync('git', ['-C', sourceRepository, ...args], { encoding: 'utf8' })
+    const git = (args) =>
+      execFileSync('git', ['-C', sourceRepository, ...args], { encoding: 'utf8' })
     git(['init', '--quiet'])
     const files = [
       ...NATIVE_PREREQUISITE_TESTS,
       INSTALLED_STARTUP_TEST,
-      ...Array.from({ length: 12 }, (_, index) => `packages/jig/test/host/summary-${index}.test.ts`),
+      ...Array.from(
+        { length: 12 },
+        (_, index) => `packages/jig/test/host/summary-${index}.test.ts`,
+      ),
     ]
     for (const file of files) {
       await mkdir(dirname(resolve(sourceRepository, file)), { recursive: true })
@@ -302,7 +306,10 @@ test('summary projects the single complete validator and optional timings on bot
       assert.equal(result.report.qualified, false)
       assert.match(result.stdout, /Qualification: \*\*failed\*\*/)
       assert.match(result.stdout, /Complete planned file coverage: \*\*unavailable\*\*/)
-      assert.match(result.stdout, /Executed files, executed cases, skipped cases and failed\/error cases: \*\*unavailable\*\*/)
+      assert.match(
+        result.stdout,
+        /Executed files, executed cases, skipped cases and failed\/error cases: \*\*unavailable\*\*/,
+      )
       assert.doesNotMatch(result.stdout, /Executed cases: \*\*0\*\*/)
     })
 })
@@ -322,7 +329,7 @@ test('summary names only the build tested by the complete ARM host', async () =>
         arch: 'arm64',
         kernel: '24.6.0',
         build,
-        bun: '1.4.2',
+        bun: '1.4.4',
         revision: prerequisites('arm64').revision,
       })
       assert.ok(
@@ -367,7 +374,9 @@ async function diagnosticsUnavailable(f, roles = [0], environment = {}, timeout)
     assert.equal(row.worker, null)
     assert.equal(row.job_id, null)
     assert.equal(row.job_url, null)
-    assert.ok(result.stdout.includes(`| ${role} | unavailable | ${row.files} | ${row.executed} | 0 | 0 |`))
+    assert.ok(
+      result.stdout.includes(`| ${role} | unavailable | ${row.files} | ${row.executed} | 0 | 0 |`),
+    )
   }
   return result
 }
@@ -389,30 +398,63 @@ test('PR summary links selected physical workers and counts verified files indep
     assert.equal(result.report.timing_available, true)
     assert.equal(result.report.worker_mapping_applicable, true)
     assert.match(result.stdout, /\| Role \| Physical worker \/ job \|/)
-    assert.deepEqual(result.report.shards.map(({ timing }) => timing), [
-      { wait_seconds: 300, job_seconds: 900 },
-      { wait_seconds: 60, job_seconds: 500 },
-      { wait_seconds: 180, job_seconds: 700 },
-    ])
-    assert.deepEqual(result.report.shards.map(({ worker }) => worker), f.workers)
-    assert.deepEqual(result.report.shards.map(({ job_id }) => job_id), f.workers.map((worker) => 1000 + worker))
+    assert.deepEqual(
+      result.report.shards.map(({ timing }) => timing),
+      [
+        { wait_seconds: 300, job_seconds: 900 },
+        { wait_seconds: 60, job_seconds: 500 },
+        { wait_seconds: 180, job_seconds: 700 },
+      ],
+    )
+    assert.deepEqual(
+      result.report.shards.map(({ worker }) => worker),
+      f.workers,
+    )
+    assert.deepEqual(
+      result.report.shards.map(({ job_id }) => job_id),
+      f.workers.map((worker) => 1000 + worker),
+    )
     for (const [role, row] of result.report.shards.entries()) {
-      const expectedFiles = f.plans[role].groups.length + f.plans[role].nativeFiles.length +
+      const expectedFiles =
+        f.plans[role].groups.length +
+        f.plans[role].nativeFiles.length +
         (f.plans[role].installed ? 1 : 0)
       const url = `https://github.com/local/local/actions/runs/42/job/${1000 + f.workers[role]}`
       assert.equal(row.files, expectedFiles)
       assert.equal(row.job_url, url)
-      assert.ok(result.stdout.includes(`| ${role} | [Worker ${f.workers[role]}](${url}) | ${expectedFiles} | ${row.executed} | 0 | 0 |`))
+      assert.ok(
+        result.stdout.includes(
+          `| ${role} | [Worker ${f.workers[role]}](${url}) | ${expectedFiles} | ${row.executed} | 0 | 0 |`,
+        ),
+      )
     }
-    assert.ok(result.stdout.includes(`Complete planned file coverage: **${f.expectedCount}/${f.expectedCount} files**`))
-    assert.match(result.stdout, /Every planned role has complete reports on the exact host profile above/)
-    assert.match(result.stdout, /Counts cover planned source, native and installed-client startup tests/)
-    assert.match(result.stdout, /Packed consumer CLI probes, archive identity and residue checks are additionally required/)
+    assert.ok(
+      result.stdout.includes(
+        `Complete planned file coverage: **${f.expectedCount}/${f.expectedCount} files**`,
+      ),
+    )
+    assert.match(
+      result.stdout,
+      /Every planned role has complete reports on the exact host profile above/,
+    )
+    assert.match(
+      result.stdout,
+      /Counts cover planned source, native and installed-client startup tests/,
+    )
+    assert.match(
+      result.stdout,
+      /Packed consumer CLI probes, archive identity and residue checks are additionally required/,
+    )
 
-    const unlinked = await f.summarize(f.count, { GITHUB_REPOSITORY: 'local/local)[foreign](https://example.invalid)' })
+    const unlinked = await f.summarize(f.count, {
+      GITHUB_REPOSITORY: 'local/local)[foreign](https://example.invalid)',
+    })
     assert.equal(unlinked.status, 0, unlinked.stderr)
     assert.equal(unlinked.report.qualified, true)
-    assert.deepEqual(unlinked.report.shards.map(({ worker }) => worker), f.workers)
+    assert.deepEqual(
+      unlinked.report.shards.map(({ worker }) => worker),
+      f.workers,
+    )
     assert.ok(unlinked.report.shards.every(({ job_url }) => job_url === null))
     assert.doesNotMatch(unlinked.stdout, /https:\/\//)
     assert.match(unlinked.stdout, /Some physical worker mappings or job links are unavailable/)
@@ -463,9 +505,7 @@ test('PR job metadata must match one successful current-attempt worker and valid
       await writeFile(
         f.jobsPath,
         JSON.stringify(
-          f.jobs.map((job, worker) =>
-            worker === f.workers[0] ? { ...job, ...changes } : job,
-          ),
+          f.jobs.map((job, worker) => (worker === f.workers[0] ? { ...job, ...changes } : job)),
         ),
       )
       await diagnosticsUnavailable(f)
@@ -572,8 +612,8 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
         headRepository: 'local/local',
       },
       buildProfile: {
-        version: '1.3.3',
-        revision: '274e01c737e85f8142070a9745b43a2ba09fce4c',
+        version: '1.4.4',
+        revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
         platform: 'linux',
         architecture: 'x64',
         nodeVersion: process.versions.node,
@@ -638,7 +678,10 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
     assert.equal(summary.files, f.expectedCount)
     assert.equal(summary.planned_files, f.expectedCount)
     if (plan === 'pull-request') {
-      assert.deepEqual(summary.shards.map(({ timing }) => timing.job_seconds), [900, 500, 700])
+      assert.deepEqual(
+        summary.shards.map(({ timing }) => timing.job_seconds),
+        [900, 500, 700],
+      )
       return
     }
     const marker = resolve(f.directories[0], 'shard-0.complete')

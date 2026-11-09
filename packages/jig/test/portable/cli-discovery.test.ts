@@ -175,12 +175,21 @@ test('completion scripts contain only static shell code and read-only target loo
     expect(script).toContain(shell === 'fish' ? '-l source-root' : '--source-root')
   }
   expect(completionScript('sh')).toBeUndefined()
-  const check = Bun.spawn(['bash', '-n'], {
+  const bash =
+    ['/bin/bash', 'bash'].find((candidate) => {
+      try {
+        const result = Bun.spawnSync([candidate, '-c', 'type complete >/dev/null 2>&1'])
+        return result.exitCode === 0
+      } catch {
+        return false
+      }
+    }) ?? 'bash'
+  const check = Bun.spawn([bash, '-n'], {
     stdin: new Blob([completionScript('bash')!]),
     stderr: 'pipe',
   })
   expect(await check.exited).toBe(0)
-  const completion = Bun.spawn(['bash'], {
+  const completion = Bun.spawn([bash], {
     stdin: new Blob([
       completionScript('bash')!,
       `
@@ -216,7 +225,16 @@ test('source-root completion preserves directory spaces without executing Jig', 
   try {
     await mkdir(join(root, 'local library'))
     await writeFile(join(root, 'local-file'), 'ordinary file')
-    const completion = Bun.spawn(['bash'], {
+    const bash =
+      ['/bin/bash', 'bash'].find((candidate) => {
+        try {
+          const result = Bun.spawnSync([candidate, '-c', 'type complete >/dev/null 2>&1'])
+          return result.exitCode === 0
+        } catch {
+          return false
+        }
+      }) ?? 'bash'
+    const completion = Bun.spawn([bash], {
       cwd: root,
       stdin: new Blob([
         completionScript('bash')!,

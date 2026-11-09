@@ -44,10 +44,7 @@
       },
       "scopeId": "sley:scope:1",
       "ownedScopeId": "sley:scope:2",
-      "declaredExits": [
-        "accepted",
-        "exhausted"
-      ],
+      "declaredExits": ["accepted", "exhausted"],
       "concurrency": 1,
       "maxActivations": 8
     },
@@ -187,10 +184,7 @@
       "owner": "sley:element:3",
       "parent": "sley:scope:1",
       "entry": "sley:element:6",
-      "declaredExits": [
-        "accepted",
-        "exhausted"
-      ],
+      "declaredExits": ["accepted", "exhausted"],
       "concurrency": 1,
       "maxActivations": 8
     }

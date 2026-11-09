@@ -669,8 +669,11 @@ export function releaseSummary(result, repository) {
       '',
     )
   } else if (['not-release', 'ignored'].includes(result.state)) {
-    lines.push('**Nothing published. This source does not select a release.**',
-      'No release action is required for ordinary development commits.', '')
+    lines.push(
+      '**Nothing published. This source does not select a release.**',
+      'No release action is required for ordinary development commits.',
+      '',
+    )
   } else {
     lines.push(
       '**No packages were published by this readiness check.**',

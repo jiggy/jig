@@ -3,16 +3,33 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { Script } from 'node:vm'
 import { projectGraph } from './lock-graph.mjs'
-import { componentSelection, defaultGraphIndex, displayNodeKind, edgeLabel, evidenceText, graphRoots, isRuntimeGraph, layoutGraph, nodeSource, preserveCaseSelection, renderExplorer, scopeExits, selectedCaseObservation, selectedInvestigationContext } from './viewer.mjs'
+import {
+  componentSelection,
+  defaultGraphIndex,
+  displayNodeKind,
+  edgeLabel,
+  evidenceText,
+  graphRoots,
+  isRuntimeGraph,
+  layoutGraph,
+  nodeSource,
+  preserveCaseSelection,
+  renderExplorer,
+  scopeExits,
+  selectedCaseObservation,
+  selectedInvestigationContext,
+} from './viewer.mjs'
 
 const sley = JSON.parse(await readFile(new URL('./sley-example.json', import.meta.url), 'utf8'))
 const digest = `sha256:${'a'.repeat(64)}`
 const pkg = (extra = {}) => ({ digest, directRun: true, uses: {}, ...extra })
-const example = graph => ({ title: 'Example', graph })
+const example = (graph) => ({ title: 'Example', graph })
 const small = () => ({ nodes: [{ id: 'a', kind: 'node', label: 'A' }], edges: [], warnings: [] })
 
 function embeddedData(html) {
-  const match = html.match(/<script id="graph-data" type="application\/json">([\s\S]*?)<\/script\b[^>]*>/iu)
+  const match = html.match(
+    /<script id="graph-data" type="application\/json">([\s\S]*?)<\/script\b[^>]*>/iu,
+  )
   assert.ok(match, 'one inert graph-data block is present')
   return { encoded: match[1], decoded: JSON.parse(match[1]) }
 }
@@ -49,7 +66,7 @@ test('generated executable script parses, including the exact shared helpers', (
     const page = html.replaceAll('</script>', ending)
     assert.deepEqual(embeddedData(page).decoded, [example(sley), example(small())])
     const scripts = [...page.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\b[^>]*>/giu)]
-    const executable = scripts.filter(match => !match[1].includes('application/json'))
+    const executable = scripts.filter((match) => !match[1].includes('application/json'))
     assert.equal(executable.length, 1)
     assert.doesNotThrow(() => new Script(executable[0][2], { filename: 'generated-explorer.js' }))
     assert.ok(executable[0][2].includes(layoutGraph.toString()))
@@ -63,7 +80,10 @@ test('generated executable script parses, including the exact shared helpers', (
 test('lock inventories retain structural hierarchy even though every runnable target is a possible root', () => {
   const graph = projectGraph({
     packages: {
-      'flows/parent': pkg({ uses: { child: {} }, slots: { child: { kind: 'flow', path: 'flows/child' } } }),
+      'flows/parent': pkg({
+        uses: { child: {} },
+        slots: { child: { kind: 'flow', path: 'flows/child' } },
+      }),
       'flows/child': pkg(),
     },
     bindings: {},
@@ -77,17 +97,20 @@ test('lock inventories retain structural hierarchy even though every runnable ta
 
 test('actual Sley entry and scope exits survive without invented callback edges', () => {
   assert.deepEqual(graphRoots(sley), ['sley:element:1'])
-  const nested = sley.nodes.find(node => node.label === 'Draft / check loop')
+  const nested = sley.nodes.find((node) => node.label === 'Draft / check loop')
   assert.deepEqual(scopeExits(sley, nested), ['accepted', 'exhausted'])
   const { declaredExits, ...scopeOnly } = nested
   assert.deepEqual(scopeExits(sley, scopeOnly), ['accepted', 'exhausted'])
-  const check = sley.nodes.find(node => node.label === 'Check')
-  assert.deepEqual(sley.edges.filter(edge => edge.source === check.id).map(edgeLabel), ['revise'])
+  const check = sley.nodes.find((node) => node.label === 'Check')
+  assert.deepEqual(sley.edges.filter((edge) => edge.source === check.id).map(edgeLabel), ['revise'])
   assert.equal(layoutGraph(sley).edgePaths.size, sley.edges.length)
 })
 
 test('ordinary unlabelled runtime links are not described as scope entries', () => {
-  assert.equal(edgeLabel({ label: 'unlabelled', action: null, meaning: 'declared-link' }), 'unlabelled')
+  assert.equal(
+    edgeLabel({ label: 'unlabelled', action: null, meaning: 'declared-link' }),
+    'unlabelled',
+  )
   assert.equal(edgeLabel({ action: null, meaning: 'declared-link' }), 'unlabelled')
   assert.equal(edgeLabel({ action: null, meaning: 'scope-entry' }), 'entry')
   assert.equal(edgeLabel({ slot: 'child', meaning: 'may-invoke' }), 'child')
@@ -95,7 +118,10 @@ test('ordinary unlabelled runtime links are not described as scope entries', () 
 
 test('runtime classification follows the topology contract rather than the presence of run records', () => {
   assert.equal(isRuntimeGraph({ ...sley, runs: [] }), true)
-  assert.equal(isRuntimeGraph({ ...small(), runs: sley.runs, provenance: { source: 'jig.lock' } }), false)
+  assert.equal(
+    isRuntimeGraph({ ...small(), runs: sley.runs, provenance: { source: 'jig.lock' } }),
+    false,
+  )
   assert.equal(displayNodeKind({ kind: 'flow', runnable: false }, small()), 'Flow · not direct')
   assert.equal(displayNodeKind(sley.nodes[0], sley), 'Scope')
 })
@@ -104,15 +130,30 @@ test('source locations and conditional evidence wording reflect the supplied dat
   const location = { path: 'bindings/review.ts', line: 12, column: 7 }
   assert.deepEqual(nodeSource({ location }), location)
   assert.match(evidenceText(sley).text, /reports zero handler entries/u)
-  assert.doesNotMatch(evidenceText({ ...sley, provenance: {} }).text, /reports zero handler entries/u)
+  assert.doesNotMatch(
+    evidenceText({ ...sley, provenance: {} }).text,
+    /reports zero handler entries/u,
+  )
   assert.match(evidenceText({ ...sley, provenance: {} }).text, /does not verify/u)
-  assert.match(evidenceText({ ...small(), provenance: { source: 'jig.lock' } }).heading, /supplied lock/u)
+  assert.match(
+    evidenceText({ ...small(), provenance: { source: 'jig.lock' } }).heading,
+    /supplied lock/u,
+  )
 })
 
 test('parallel slots have separate paths and labels', () => {
   const graph = {
-    nodes: [{ id: 'a', kind: 'flow' }, { id: 'b', kind: 'flow' }],
-    edges: ['first', 'second'].map(slot => ({ id: slot, source: 'a', target: 'b', slot, meaning: 'may-invoke' })),
+    nodes: [
+      { id: 'a', kind: 'flow' },
+      { id: 'b', kind: 'flow' },
+    ],
+    edges: ['first', 'second'].map((slot) => ({
+      id: slot,
+      source: 'a',
+      target: 'b',
+      slot,
+      meaning: 'may-invoke',
+    })),
   }
   const paths = [...layoutGraph(graph).edgePaths.values()]
   assert.notEqual(paths[0].path, paths[1].path)
@@ -121,24 +162,28 @@ test('parallel slots have separate paths and labels', () => {
 
 test('the Sley exhausted edge stays in the sibling gutter, away from incoming labels', () => {
   const { positions, edgePaths } = layoutGraph(sley)
-  const edge = sley.edges.find(edge => edge.action === 'exhausted')
-  const source = positions.get(edge.source), target = positions.get(edge.target)
+  const edge = sley.edges.find((edge) => edge.action === 'exhausted')
+  const source = positions.get(edge.source),
+    target = positions.get(edge.target)
   const geometry = edgePaths.get(edge.id)
   assert.equal(source.y, target.y)
-  const left = source.x + source.width, right = target.x
+  const left = source.x + source.width,
+    right = target.x
   assert.ok(geometry.labelY > source.y && geometry.labelY < source.y + source.height)
   assert.ok(geometry.labelX - geometry.labelWidth / 2 > left)
   assert.ok(geometry.labelX + geometry.labelWidth / 2 < right)
   const coordinates = geometry.path.match(/-?\d+(?:\.\d+)?/gu).map(Number)
   for (let index = 0; index < coordinates.length; index += 2) {
     assert.ok(coordinates[index] >= left && coordinates[index] <= right)
-    assert.ok(coordinates[index + 1] > source.y && coordinates[index + 1] < source.y + source.height)
+    assert.ok(
+      coordinates[index + 1] > source.y && coordinates[index + 1] < source.y + source.height,
+    )
   }
 })
 
 test('fit bounds include feedback curves, self-loops, and label extents', () => {
   const cyclic = {
-    nodes: ['a', 'b', 'c', 'd', 'e'].map(id => ({ id, kind: 'node' })),
+    nodes: ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, kind: 'node' })),
     edges: [
       { id: 'de', source: 'd', target: 'e', meaning: 'declared-link' },
       { id: 'ed', source: 'e', target: 'd', meaning: 'declared-link' },
@@ -168,8 +213,11 @@ test('the lock projection remains redacted inside the HTML and its embedded expo
     packages: { 'flows/request': pkg({ directRun: false }) },
     bindings: {
       request: {
-        packagePath: 'flows/request', settings: { token: secret },
-        slots: { service: { kind: 'grant', policy: { kind: 'http', url: `https://${secret}.invalid` } } },
+        packagePath: 'flows/request',
+        settings: { token: secret },
+        slots: {
+          service: { kind: 'grant', policy: { kind: 'http', url: `https://${secret}.invalid` } },
+        },
         attachments: { source: { source: secret, files: [{ path: secret }], digest } },
       },
     },
@@ -183,8 +231,17 @@ test('the lock projection remains redacted inside the HTML and its embedded expo
 test('raw locks, missing endpoints, duplicate IDs, and malformed observations fail before producing HTML', () => {
   const invalid = [
     { packages: {}, bindings: {} },
-    { ...small(), nodes: [{ id: 'a', kind: 'node' }, { id: 'a', kind: 'node' }] },
-    { ...small(), edges: [{ id: 'missing', source: 'a', target: 'missing', meaning: 'may-invoke' }] },
+    {
+      ...small(),
+      nodes: [
+        { id: 'a', kind: 'node' },
+        { id: 'a', kind: 'node' },
+      ],
+    },
+    {
+      ...small(),
+      edges: [{ id: 'missing', source: 'a', target: 'missing', meaning: 'may-invoke' }],
+    },
     { ...small(), warnings: [null] },
     { ...small(), runs: [{ observations: [null] }] },
     { ...small(), runs: [{ nodeCounts: { a: -1 } }] },
@@ -192,7 +249,8 @@ test('raw locks, missing endpoints, duplicate IDs, and malformed observations fa
     { ...small(), nodes: [{ id: 'a', kind: 'scope', declaredExits: 'accepted' }] },
     { ...small(), root: 'missing' },
   ]
-  for (const graph of invalid) assert.throws(() => renderExplorer({ graphs: [example(graph)] }), TypeError)
+  for (const graph of invalid)
+    assert.throws(() => renderExplorer({ graphs: [example(graph)] }), TypeError)
 })
 
 test('empty inventories render an empty bounded graph rather than crashing layout', () => {
@@ -210,13 +268,18 @@ test('the initial application is selected by retained runtime cases, independent
 })
 
 test('case changes preserve the selected component and repeated visit through a missing-case gap', () => {
-  const check = sley.nodes.find(node => node.label === 'Check')
-  const accepted = sley.runs.find(run => run.id === 'accepted-after-revision')
-  const rejected = sley.runs.find(run => run.id === 'rejected-before-drafting')
-  const exhausted = sley.runs.find(run => run.id === 'exhausted')
+  const check = sley.nodes.find((node) => node.label === 'Check')
+  const accepted = sley.runs.find((run) => run.id === 'accepted-after-revision')
+  const rejected = sley.runs.find((run) => run.id === 'rejected-before-drafting')
+  const exhausted = sley.runs.find((run) => run.id === 'exhausted')
   const original = { nodeId: check.id, runId: accepted.id, observationIndex: 5, visitOrdinal: 2 }
   const gap = preserveCaseSelection(sley, original, rejected.id)
-  assert.deepEqual(gap, { nodeId: check.id, runId: rejected.id, observationIndex: null, visitOrdinal: 2 })
+  assert.deepEqual(gap, {
+    nodeId: check.id,
+    runId: rejected.id,
+    observationIndex: null,
+    visitOrdinal: 2,
+  })
   assert.equal(selectedCaseObservation(sley, rejected, gap), undefined)
   const restored = preserveCaseSelection(sley, gap, accepted.id)
   assert.deepEqual(restored, original)
@@ -227,37 +290,62 @@ test('case changes preserve the selected component and repeated visit through a 
 })
 
 test('changing the component in Overview cannot show the prior component observation in Recorded cases', () => {
-  const run = sley.runs.find(value => value.id === 'accepted-after-revision')
-  const check = sley.nodes.find(node => node.label === 'Check')
-  const draft = sley.nodes.find(node => node.label === 'Draft')
+  const run = sley.runs.find((value) => value.id === 'accepted-after-revision')
+  const check = sley.nodes.find((node) => node.label === 'Check')
+  const draft = sley.nodes.find((node) => node.label === 'Draft')
   const selectedCheck = { nodeId: check.id, runId: run.id, observationIndex: 5, visitOrdinal: 2 }
   // The browser calls this same transition in both modes. Overview does not erase the remembered case.
   const selectedDraft = componentSelection(sley, selectedCheck, draft.id)
-  assert.deepEqual(selectedDraft, { nodeId: draft.id, runId: run.id, observationIndex: 2, visitOrdinal: 1 })
+  assert.deepEqual(selectedDraft, {
+    nodeId: draft.id,
+    runId: run.id,
+    observationIndex: 2,
+    visitOrdinal: 1,
+  })
   assert.equal(selectedCaseObservation(sley, run, selectedDraft).nodeId, draft.id)
-  assert.equal(selectedCaseObservation(sley, run, { ...selectedDraft, observationIndex: 5 }), undefined)
+  assert.equal(
+    selectedCaseObservation(sley, run, { ...selectedDraft, observationIndex: 5 }),
+    undefined,
+  )
   assert.deepEqual(componentSelection(sley, selectedCheck, check.id), selectedCheck)
-  assert.deepEqual(componentSelection(sley, selectedCheck, 'missing'), { nodeId: null, runId: run.id, observationIndex: null, visitOrdinal: null })
+  assert.deepEqual(componentSelection(sley, selectedCheck, 'missing'), {
+    nodeId: null,
+    runId: run.id,
+    observationIndex: null,
+    visitOrdinal: null,
+  })
 })
 
 test('retained observation indexes remain identities instead of array positions', () => {
   const graph = structuredClone(sley)
-  const run = graph.runs.find(value => value.id === 'accepted-after-revision')
-  run.observations.forEach((entry, index) => { entry.index = 100 + index * 10 })
-  const check = graph.nodes.find(node => node.label === 'Check')
+  const run = graph.runs.find((value) => value.id === 'accepted-after-revision')
+  run.observations.forEach((entry, index) => {
+    entry.index = 100 + index * 10
+  })
+  const check = graph.nodes.find((node) => node.label === 'Check')
   const selection = { nodeId: check.id, runId: run.id, observationIndex: 140, visitOrdinal: 2 }
   assert.equal(selectedCaseObservation(graph, run, selection).action, 'accepted')
   assert.deepEqual(componentSelection(graph, selection, check.id), selection)
-  assert.equal(selectedCaseObservation(graph, run, { ...selection, observationIndex: 5 }), undefined)
+  assert.equal(
+    selectedCaseObservation(graph, run, { ...selection, observationIndex: 5 }),
+    undefined,
+  )
 })
 
 test('copied investigation context states when the selected repeated visit is absent', () => {
-  const check = sley.nodes.find(node => node.label === 'Check')
-  const accepted = sley.runs.find(run => run.id === 'accepted-after-revision')
-  const once = sley.runs.find(run => run.id === 'accepted-first-attempt')
-  const selection = preserveCaseSelection(sley, {
-    nodeId: check.id, runId: accepted.id, observationIndex: 5, visitOrdinal: 2,
-  }, once.id)
+  const check = sley.nodes.find((node) => node.label === 'Check')
+  const accepted = sley.runs.find((run) => run.id === 'accepted-after-revision')
+  const once = sley.runs.find((run) => run.id === 'accepted-first-attempt')
+  const selection = preserveCaseSelection(
+    sley,
+    {
+      nodeId: check.id,
+      runId: accepted.id,
+      observationIndex: 5,
+      visitOrdinal: 2,
+    },
+    once.id,
+  )
   const text = selectedInvestigationContext(example(sley), selection)
   assert.match(text, /^Selection gap: requested visit 2/u)
   assert.match(text, /not retained in this case/u)
@@ -270,35 +358,64 @@ test('copied investigation context states when the selected repeated visit is ab
 })
 
 test('recorded conditions and nested hostile input values survive only inside inert snapshot JSON', () => {
-  const graph = structuredClone(sley), run = graph.runs[0]
-  const hostile = '</sCrIpT x><ScRiPt>globalThis.injection=true</ScRiPt><img src=x onerror=alert(1)>'
+  const graph = structuredClone(sley),
+    run = graph.runs[0]
+  const hostile =
+    '</sCrIpT x><ScRiPt>globalThis.injection=true</ScRiPt><img src=x onerror=alert(1)>'
   graph.nodes[0].description = hostile
   run.input.note = hostile
-  const observed = run.observations.find(entry => entry.conditions.some(condition => condition.result === false))
+  const observed = run.observations.find((entry) =>
+    entry.conditions.some((condition) => condition.result === false),
+  )
   observed.source = { path: hostile, symbol: hostile }
   observed.conditions[0].label = hostile
   observed.conditions[0].expression = hostile
   observed.conditions[0].values.hostile = hostile
   observed.before.note = hostile
-  const html = renderExplorer({ graphs: [example(graph)] }), data = embeddedData(html)
+  const html = renderExplorer({ graphs: [example(graph)] }),
+    data = embeddedData(html)
   assert.deepEqual(data.decoded[0].graph, graph)
   assert.equal(/[<>&\u2028\u2029]/u.test(data.encoded), false)
   assert.equal(html.toLowerCase().includes('<script>globalthis.injection'), false)
-  assert.equal(data.decoded[0].graph.runs[0].observations.find(entry => entry.index === observed.index).conditions[0].result, observed.conditions[0].result)
+  assert.equal(
+    data.decoded[0].graph.runs[0].observations.find((entry) => entry.index === observed.index)
+      .conditions[0].result,
+    observed.conditions[0].result,
+  )
 })
 
 test('ambiguous case identities, unknown components, and malformed condition evidence are refused', () => {
   const mutations = [
-    graph => { graph.runs[1].id = graph.runs[0].id },
-    graph => { graph.runs[0].id = '' },
-    graph => { graph.runs[0].observations[1].index = graph.runs[0].observations[0].index },
-    graph => { delete graph.runs[0].observations[0].index },
-    graph => { graph.runs[0].observations[0].index = Number.MAX_SAFE_INTEGER + 1 },
-    graph => { graph.runs[0].observations[0].nodeId = 'uncaptured-component' },
-    graph => { graph.runs[0].observations[1].occurrenceId = graph.runs[0].observations[0].occurrenceId },
-    graph => { graph.runs[0].observations[0].conditions[0].result = 'false' },
-    graph => { graph.runs[0].observations[0].conditions[0].result = null },
-    graph => { graph.runs[0].observations[0].conditions = {} },
+    (graph) => {
+      graph.runs[1].id = graph.runs[0].id
+    },
+    (graph) => {
+      graph.runs[0].id = ''
+    },
+    (graph) => {
+      graph.runs[0].observations[1].index = graph.runs[0].observations[0].index
+    },
+    (graph) => {
+      delete graph.runs[0].observations[0].index
+    },
+    (graph) => {
+      graph.runs[0].observations[0].index = Number.MAX_SAFE_INTEGER + 1
+    },
+    (graph) => {
+      graph.runs[0].observations[0].nodeId = 'uncaptured-component'
+    },
+    (graph) => {
+      graph.runs[0].observations[1].occurrenceId = graph.runs[0].observations[0].occurrenceId
+    },
+    (graph) => {
+      graph.runs[0].observations[0].conditions[0].result = 'false'
+    },
+    (graph) => {
+      graph.runs[0].observations[0].conditions[0].result = null
+    },
+    (graph) => {
+      graph.runs[0].observations[0].conditions = {}
+    },
   ]
   for (const mutate of mutations) {
     const graph = structuredClone(sley)
@@ -309,25 +426,61 @@ test('ambiguous case identities, unknown components, and malformed condition evi
   delete missing.runs[0].observations[0].conditions
   delete missing.runs[0].observations[0].before
   assert.doesNotThrow(() => renderExplorer({ graphs: [example(missing)] }))
-  const unattributed = { ...small(), runs: [{ id: 'capture', observations: ['Handler reported a note'] }] }
+  const unattributed = {
+    ...small(),
+    runs: [{ id: 'capture', observations: ['Handler reported a note'] }],
+  }
   assert.doesNotThrow(() => renderExplorer({ graphs: [example(unattributed)] }))
-  assert.equal(selectedCaseObservation(unattributed, unattributed.runs[0], { nodeId: 'a', observationIndex: 1 }), undefined)
+  assert.equal(
+    selectedCaseObservation(unattributed, unattributed.runs[0], {
+      nodeId: 'a',
+      observationIndex: 1,
+    }),
+    undefined,
+  )
 })
 
 test('snapshot bounds reject oversized, cyclic, and executable data before HTML serialization', () => {
-  const tooManyRuns = { ...small(), runs: Array.from({ length: 65 }, (_, index) => ({ id: 'run-' + index })) }
-  const tooManyObservations = { ...small(), runs: [{ id: 'run', observations: Array.from({ length: 4097 }, (_, index) => ({ index: index + 1, nodeId: 'a' })) }] }
+  const tooManyRuns = {
+    ...small(),
+    runs: Array.from({ length: 65 }, (_, index) => ({ id: 'run-' + index })),
+  }
+  const tooManyObservations = {
+    ...small(),
+    runs: [
+      {
+        id: 'run',
+        observations: Array.from({ length: 4097 }, (_, index) => ({
+          index: index + 1,
+          nodeId: 'a',
+        })),
+      },
+    ],
+  }
   assert.throws(() => renderExplorer({ graphs: [example(tooManyRuns)] }), /64 recorded cases/u)
-  assert.throws(() => renderExplorer({ graphs: [example(tooManyObservations)] }), /4096 observations/u)
+  assert.throws(
+    () => renderExplorer({ graphs: [example(tooManyObservations)] }),
+    /4096 observations/u,
+  )
   const deep = small()
   let parent = deep
-  for (let depth = 0; depth < 70; depth++) { parent.next = {}; parent = parent.next }
+  for (let depth = 0; depth < 70; depth++) {
+    parent.next = {}
+    parent = parent.next
+  }
   assert.throws(() => renderExplorer({ graphs: [example(deep)] }), /data limits/u)
-  const cyclic = small(); cyclic.self = cyclic
+  const cyclic = small()
+  cyclic.self = cyclic
   assert.throws(() => renderExplorer({ graphs: [example(cyclic)] }), /cycles/u)
   const executable = small()
-  Object.defineProperty(executable, 'data', { enumerable: true, get() { throw new Error('Data accessors must never execute.') } })
+  Object.defineProperty(executable, 'data', {
+    enumerable: true,
+    get() {
+      throw new Error('Data accessors must never execute.')
+    },
+  })
   assert.throws(() => renderExplorer({ graphs: [example(executable)] }), /accessors/u)
-  const oversized = small(); oversized.nodes[0].description = 'x'.repeat(16 * 1024 * 1024 + 1)
+  const oversized = small()
+  oversized.nodes[0].description = 'x'.repeat(16 * 1024 * 1024 + 1)
   assert.throws(() => renderExplorer({ graphs: [example(oversized)] }), /text limit/u)
 })

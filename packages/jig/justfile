@@ -83,9 +83,7 @@ clean:
 # Reject a different build runtime before touching generated output
 verify-build-bun:
     #!/usr/bin/env bun
-    const expected = process.platform === 'darwin'
-      ? ['1.4.2', '744846f844374847c902b5e7fd59b4342a51ef99']
-      : ['1.3.3', '274e01c737e85f8142070a9745b43a2ba09fce4c'];
+    const expected = ['1.4.4', '38afee6c84fcf48c0edb2466aa4b27d287a59c30'];
     if (Bun.version !== expected[0] || Bun.revision !== expected[1]) {
       throw new Error(`Jig must be built with exact qualified ${process.platform} Bun ${expected[0]} revision ${expected[1]}`);
     }

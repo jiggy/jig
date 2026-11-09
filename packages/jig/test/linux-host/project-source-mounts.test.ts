@@ -158,8 +158,7 @@ for (const mode of [
         await put('packages/unrelated/private-note', 'unrelated source must stay absent')
       }
       await cp(helper, join(base, '.jig'), { recursive: true })
-      if (mode === 'protected-folded')
-        await cp(helper, join(base, '.JiG'), { recursive: true })
+      if (mode === 'protected-folded') await cp(helper, join(base, '.JiG'), { recursive: true })
       await mkdir(join(base, 'extra'))
       await writeFile(join(base, 'extra/value.json'), '{"retained":false}\n')
       const mountArgs =

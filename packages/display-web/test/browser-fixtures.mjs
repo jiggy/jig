@@ -159,7 +159,9 @@ export function compositionFixture() {
       {
         summary: 'Configured calls and retained observations remain distinct.',
         sections: [
-          { blocks: [{ kind: 'report', text: 'Inspect the retained requests in Application map.' }] },
+          {
+            blocks: [{ kind: 'report', text: 'Inspect the retained requests in Application map.' }],
+          },
         ],
       },
     ),
@@ -180,7 +182,9 @@ export function compositionFixture() {
       {
         summary: 'Material reported by the second worker request.',
         sections: [
-          { blocks: [{ kind: 'report', text: 'These notes belong to the second worker request.' }] },
+          {
+            blocks: [{ kind: 'report', text: 'These notes belong to the second worker request.' }],
+          },
         ],
       },
       'worker-two',
@@ -201,7 +205,12 @@ export function compositionFixture() {
       { id: 'worker', label: 'Worker', kind: 'binding' },
       { id: 'reviewer', label: 'Worker', kind: 'binding' },
       { id: 'http', label: 'Fetch evidence', kind: 'resource', resourceKind: 'http-request' },
-      { id: 'checkpoint', label: 'Save progress', kind: 'resource', resourceKind: 'run-checkpoint' },
+      {
+        id: 'checkpoint',
+        label: 'Save progress',
+        kind: 'resource',
+        resourceKind: 'run-checkpoint',
+      },
     ],
     edges: [
       { id: 'prepare-route', source: 'application', target: 'worker', slot: 'prepare' },
@@ -224,10 +233,12 @@ export function compositionFixture() {
   })
   body.calls = [
     call('prepare-one', 'prepare', 'active', {
-      childSourceId: 'worker-one', intent: 'Prepare the first candidate',
+      childSourceId: 'worker-one',
+      intent: 'Prepare the first candidate',
     }),
     call('prepare-two', 'prepare', 'returned', {
-      childSourceId: 'worker-two', intent: 'Prepare a separate candidate',
+      childSourceId: 'worker-two',
+      intent: 'Prepare a separate candidate',
     }),
     call('prepare-three', 'prepare', 'failed', { intent: 'Check a rejected candidate' }),
     call('prepare-four', 'prepare', 'returned', { intent: 'Prepare another candidate' }),
@@ -236,11 +247,15 @@ export function compositionFixture() {
     call('retry-three', 'retry', 'uncertain', { intent: 'Inspect an unconfirmed retry' }),
     call('approve-one', 'approve', 'returned', { intent: 'Review the selected candidate' }),
     call('fetch-one', 'fetch', 'active', {
-      sourceId: 'worker-one', sourceLabel: 'Worker', parentId: 'prepare-one',
+      sourceId: 'worker-one',
+      sourceLabel: 'Worker',
+      parentId: 'prepare-one',
       intent: 'Fetch evidence for the first candidate',
     }),
     call('unplaced-caller', 'fetch', 'uncertain', {
-      sourceId: 'missing', sourceLabel: 'Worker', intent: 'Inspect an unobserved caller',
+      sourceId: 'missing',
+      sourceLabel: 'Worker',
+      intent: 'Inspect an unobserved caller',
     }),
     call('unplaced-slot', 'missing', 'failed', { intent: 'Inspect an unavailable slot' }),
   ]

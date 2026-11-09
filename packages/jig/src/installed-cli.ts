@@ -352,9 +352,7 @@ async function runWithEnvironment(
                 ...(options?.channelOutput === undefined
                   ? {}
                   : { channelOutput: options.channelOutput }),
-                ...(options?.sourceRoots === undefined
-                  ? {}
-                  : { sourceRoots: options.sourceRoots }),
+                ...(options?.sourceRoots === undefined ? {} : { sourceRoots: options.sourceRoots }),
                 ...(options?.allowResolutionNetwork !== true
                   ? {}
                   : {
@@ -456,4 +454,3 @@ if (import.meta.main) {
   }
   applyOutcome(outcome)
 }
-

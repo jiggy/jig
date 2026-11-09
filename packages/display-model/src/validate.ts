@@ -668,7 +668,14 @@ export function validateDisplayProjectRun(value: unknown): DisplayProjectRun {
   try {
     const owned = copy(value, 16 * 1024)
     const data = record(owned.value, ['state', 'requestId', 'targetId', 'viewerUrl', 'reason'])
-    const state = choice(data.state, ['idle', 'starting', 'running', 'settled', 'refused', 'uncertain'])
+    const state = choice(data.state, [
+      'idle',
+      'starting',
+      'running',
+      'settled',
+      'refused',
+      'uncertain',
+    ])
     if (state === 'idle') {
       if (Object.keys(data).length !== 1) fail()
       return owned.value as DisplayProjectRun

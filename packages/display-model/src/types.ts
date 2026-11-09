@@ -27,11 +27,10 @@ export type DisplayCompositionResourceKind =
   | 'run-checkpoint'
   | 'child-checkpoint'
 export type DisplayCompositionNode = Readonly<
-  { id: string; label: string } &
-    (
-      | { kind: 'flow' | 'binding' }
-      | { kind: 'resource'; resourceKind: DisplayCompositionResourceKind }
-    )
+  { id: string; label: string } & (
+    | { kind: 'flow' | 'binding' }
+    | { kind: 'resource'; resourceKind: DisplayCompositionResourceKind }
+  )
 >
 export type DisplayCompositionEdge = Readonly<{
   id: string
@@ -86,9 +85,7 @@ export type DisplayProjectSelection = Readonly<{
   }>[]
   /** Outgoing channels the local host can receive for the selected root. */
   receives: readonly Readonly<{ name: string; required: boolean }>[]
-  launch:
-    | Readonly<{ state: 'available' }>
-    | Readonly<{ state: 'unavailable'; reason: string }>
+  launch: Readonly<{ state: 'available' }> | Readonly<{ state: 'unavailable'; reason: string }>
 }>
 /** Approved project meaning before execution, never a fabricated Run snapshot. */
 export type DisplayProjectSnapshot = Readonly<{

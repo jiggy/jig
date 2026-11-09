@@ -45,8 +45,7 @@ function requireFields(value, fields, label) {
 }
 
 function requirePositiveInteger(value, label) {
-  if (!Number.isSafeInteger(value) || value <= 0)
-    throw new Error(`Invalid Mac cohort ${label}`)
+  if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`Invalid Mac cohort ${label}`)
 }
 
 function requireRun(identity) {
@@ -333,7 +332,11 @@ export function createMacHostCohortWorkerReceipt({
   const start = typedEnvelope('ready', ready, run, allocatorJobId)
   const observed = typedEnvelope('announcement', announcement, run, allocatorJobId)
   const assigned = typedEnvelope('assignment', assignment, run, allocatorJobId)
-  validateMacHostCohortRecords({ identity: run, allocatorJobId, records: [start, observed, assigned] })
+  validateMacHostCohortRecords({
+    identity: run,
+    allocatorJobId,
+    records: [start, observed, assigned],
+  })
   const profile = macHostCohortProfile(prerequisites)
   if (
     !sameFields(observed.record, identity, WORKER_FIELDS) ||
@@ -388,7 +391,9 @@ export function validateMacHostCohort({ identity, workers, records, jobs }) {
     throw new Error('Mac cohort observed job inventory differs from its five workers')
   const entries = validateMacHostCohortRecords({ identity, allocatorJobId, records })
   if (entries.length !== 2 + 2 * MAC_PR_COHORT.workers)
-    throw new Error('Mac cohort requires its complete ready, announcement, assignment and ledger inventory')
+    throw new Error(
+      'Mac cohort requires its complete ready, announcement, assignment and ledger inventory',
+    )
   const byName = new Map(entries.map((entry) => [entry.artifact.name, entry]))
   const ready = byName.get(macHostCohortArtifactName('ready', identity))
   const ledger = byName.get(macHostCohortArtifactName('ledger', identity))
@@ -404,12 +409,21 @@ export function validateMacHostCohort({ identity, workers, records, jobs }) {
   const receipts = workers.map(({ receipt, prerequisites }) => {
     requireFields(
       receipt,
-      ['kind', ...OWNER_FIELDS, 'profile', 'role',
-        'readyArtifact', 'announcementArtifact', 'assignmentArtifact'],
+      [
+        'kind',
+        ...OWNER_FIELDS,
+        'profile',
+        'role',
+        'readyArtifact',
+        'announcementArtifact',
+        'assignmentArtifact',
+      ],
       'worker receipt',
     )
     requireWorker(receipt)
-    const announcement = byName.get(macHostCohortArtifactName('announcement', identity, receipt.worker))
+    const announcement = byName.get(
+      macHostCohortArtifactName('announcement', identity, receipt.worker),
+    )
     const assignment = byName.get(macHostCohortArtifactName('assignment', identity, receipt.worker))
     const workerIdentity = Object.fromEntries(WORKER_FIELDS.map((field) => [field, receipt[field]]))
     const expected = createMacHostCohortWorkerReceipt({
@@ -425,8 +439,9 @@ export function validateMacHostCohort({ identity, workers, records, jobs }) {
       !sameFields(receipt, expected, ['kind', ...OWNER_FIELDS, 'role']) ||
       !sameFields(receipt, identity, RUN_FIELDS) ||
       !sameFields(receipt.profile, expected.profile, PROFILE_FIELDS) ||
-      ['readyArtifact', 'announcementArtifact', 'assignmentArtifact'].some((field) =>
-        !sameArtifact(artifactReference(receipt[field], expected[field].name), expected[field]),
+      ['readyArtifact', 'announcementArtifact', 'assignmentArtifact'].some(
+        (field) =>
+          !sameArtifact(artifactReference(receipt[field], expected[field].name), expected[field]),
       )
     )
       throw new Error('Mac cohort worker receipt differs from its immutable assignment')
@@ -435,7 +450,8 @@ export function validateMacHostCohort({ identity, workers, records, jobs }) {
   })
   if (
     new Set(receipts.map(({ worker }) => worker)).size !== MAC_PR_COHORT.workers ||
-    new Set([allocatorJobId, readyJobId, guardJobId, ...receipts.map(({ jobId }) => jobId)]).size !==
+    new Set([allocatorJobId, readyJobId, guardJobId, ...receipts.map(({ jobId }) => jobId)])
+      .size !==
       MAC_PR_COHORT.workers + 3
   )
     throw new Error('Mac cohort repeats a worker or job')
@@ -444,13 +460,17 @@ export function validateMacHostCohort({ identity, workers, records, jobs }) {
     .map((profile) => ({
       profile,
       roles: receipts
-        .filter((owner) => owner.role !== null && sameFields(owner.profile, profile, PROFILE_FIELDS))
+        .filter(
+          (owner) => owner.role !== null && sameFields(owner.profile, profile, PROFILE_FIELDS),
+        )
         .sort((left, right) => left.role - right.role),
     }))
-    .filter(({ roles }) =>
-      roles.length === MAC_PR_COHORT.shards && roles.every((owner, role) => owner.role === role),
+    .filter(
+      ({ roles }) =>
+        roles.length === MAC_PR_COHORT.shards && roles.every((owner, role) => owner.role === role),
     )
-  if (complete.length !== 1) throw new Error('Mac cohort has no unique complete exact-profile role set')
+  if (complete.length !== 1)
+    throw new Error('Mac cohort has no unique complete exact-profile role set')
   return {
     ...identity,
     allocatorJobId,
@@ -464,7 +484,10 @@ export function validateMacHostCohort({ identity, workers, records, jobs }) {
 export function readMacHostCohortRecord(path) {
   if (!constants.O_NOFOLLOW || !constants.O_NONBLOCK)
     throw new Error('Mac cohort record reads require no-follow and nonblocking support')
-  const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+  const descriptor = openSync(
+    path,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  )
   try {
     const metadata = fstatSync(descriptor)
     if (!metadata.isFile() || metadata.size > MAX_RECORD_BYTES)
@@ -561,15 +584,20 @@ function recordRetryHeaders(headers) {
   const integer = (name) => {
     const value = headers.get(name)
     return /^[0-9]{1,15}$/.test(value ?? '') && Number.isSafeInteger(Number(value))
-      ? Number(value) : undefined
+      ? Number(value)
+      : undefined
   }
   const remaining = integer('x-ratelimit-remaining')
   const reset = integer('x-ratelimit-reset')
   const value = headers.get('retry-after')
   const date = typeof value === 'string' && value.length <= 128 ? Date.parse(value) : NaN
   const seconds = integer('retry-after')
-  let retryAfterMs = seconds !== undefined ? seconds * 1000
-    : Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined
+  let retryAfterMs =
+    seconds !== undefined
+      ? seconds * 1000
+      : Number.isFinite(date)
+        ? Math.max(0, date - Date.now())
+        : undefined
   if (remaining === 0 && reset !== undefined)
     retryAfterMs = Math.max(retryAfterMs ?? 0, reset * 1000 - Date.now(), 0)
   return { remaining, reset, retryAfterMs }
@@ -581,15 +609,22 @@ async function readMacRecordArchive(url, token, artifact, { signal, localHttp })
     let response
     try {
       response = await fetch(url, {
-        redirect: 'manual', signal,
-        headers: redirects === 0 ? {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28',
-        } : {},
+        redirect: 'manual',
+        signal,
+        headers:
+          redirects === 0
+            ? {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28',
+              }
+            : {},
       })
     } catch {
-      throw new MacRecordTransportError(signal.aborted ? 'timeout' : 'network', { phase, retryable: true })
+      throw new MacRecordTransportError(signal.aborted ? 'timeout' : 'network', {
+        phase,
+        retryable: true,
+      })
     }
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       await response.body?.cancel().catch(() => {})
@@ -601,9 +636,18 @@ async function readMacRecordArchive(url, token, artifact, { signal, localHttp })
       } catch {
         throw new MacRecordTransportError('invalid-redirect', { phase })
       }
-      if (redirects >= 3 || next.username || next.password || next.hash ||
-          (next.protocol !== 'https:' && !(localHttp && next.protocol === 'http:' &&
-            ['127.0.0.1', '[::1]'].includes(next.hostname))))
+      if (
+        redirects >= 3 ||
+        next.username ||
+        next.password ||
+        next.hash ||
+        (next.protocol !== 'https:' &&
+          !(
+            localHttp &&
+            next.protocol === 'http:' &&
+            ['127.0.0.1', '[::1]'].includes(next.hostname)
+          ))
+      )
         throw new MacRecordTransportError('invalid-redirect', { phase })
       // The API alone receives GH_TOKEN. Signed storage redirects receive no credentials.
       url = next
@@ -614,14 +658,21 @@ async function readMacRecordArchive(url, token, artifact, { signal, localHttp })
       await response.body?.cancel().catch(() => {})
       const status = response.status
       const headers = recordRetryHeaders(response.headers)
-      const rateLimited = status === 429 || (status === 403 &&
-        (headers.remaining === 0 || headers.retryAfterMs !== undefined))
+      const rateLimited =
+        status === 429 ||
+        (status === 403 && (headers.remaining === 0 || headers.retryAfterMs !== undefined))
       const created = Date.parse(artifact.created_at)
-      const fresh = Number.isFinite(created) && created <= Date.now() && Date.now() - created <= 60_000
+      const fresh =
+        Number.isFinite(created) && created <= Date.now() && Date.now() - created <= 60_000
       throw new MacRecordTransportError('http', {
-        phase, status, ...headers,
-        retryAfterMs: rateLimited ? headers.retryAfterMs ?? 60_000 : headers.retryAfterMs,
-        retryable: rateLimited || status === 408 || (status >= 500 && status <= 599) ||
+        phase,
+        status,
+        ...headers,
+        retryAfterMs: rateLimited ? (headers.retryAfterMs ?? 60_000) : headers.retryAfterMs,
+        retryable:
+          rateLimited ||
+          status === 408 ||
+          (status >= 500 && status <= 599) ||
           (status === 404 && fresh),
       })
     }
@@ -637,7 +688,10 @@ async function readMacRecordArchive(url, token, artifact, { signal, localHttp })
       }
     } catch (error) {
       if (error instanceof MacRecordTransportError) throw error
-      throw new MacRecordTransportError(signal.aborted ? 'timeout' : 'network', { phase, retryable: true })
+      throw new MacRecordTransportError(signal.aborted ? 'timeout' : 'network', {
+        phase,
+        retryable: true,
+      })
     }
     return Buffer.concat(chunks)
   }
@@ -645,7 +699,9 @@ async function readMacRecordArchive(url, token, artifact, { signal, localHttp })
 
 /** Retry only reads of one immutable artifact, within the caller's existing deadline. */
 export async function downloadMacHostCohortRecord(
-  repository, artifact, { token = process.env.GH_TOKEN, deadlineMs, apiOrigin = 'https://api.github.com' } = {},
+  repository,
+  artifact,
+  { token = process.env.GH_TOKEN, deadlineMs, apiOrigin = 'https://api.github.com' } = {},
 ) {
   if (
     typeof repository !== 'string' ||
@@ -655,22 +711,31 @@ export async function downloadMacHostCohortRecord(
     throw new Error('Invalid Mac cohort record repository')
   const selected = { ...artifact }
   const metadata = requireRecordArchiveMetadata(selected)
-  if (typeof token !== 'string' || !token) throw new Error('Mac cohort record download requires GH_TOKEN')
+  if (typeof token !== 'string' || !token)
+    throw new Error('Mac cohort record download requires GH_TOKEN')
   if (!Number.isSafeInteger(deadlineMs) || deadlineMs <= Date.now())
     throw new Error('Mac cohort record download deadline expired or invalid')
   const origin = new URL(apiOrigin)
   const localHttp = origin.protocol === 'http:' && ['127.0.0.1', '[::1]'].includes(origin.hostname)
-  if (origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/' ||
-      (origin.protocol !== 'https:' && !localHttp))
+  if (
+    origin.username ||
+    origin.password ||
+    origin.search ||
+    origin.hash ||
+    origin.pathname !== '/' ||
+    (origin.protocol !== 'https:' && !localHttp)
+  )
     throw new Error('Invalid Mac cohort record API origin')
   const url = new URL(`/repos/${repository}/actions/artifacts/${metadata.id}/zip`, origin)
   const deadline = Math.min(deadlineMs, Date.now() + 30_000)
   for (let attempt = 1; attempt <= 4; attempt++) {
     const remaining = deadline - Date.now()
-    if (remaining <= 0) throw new Error(`Mac cohort record download deadline expired (artifact=${metadata.id})`)
+    if (remaining <= 0)
+      throw new Error(`Mac cohort record download deadline expired (artifact=${metadata.id})`)
     try {
       const bytes = await readMacRecordArchive(url, token, selected, {
-        signal: AbortSignal.timeout(Math.min(20_000, remaining)), localHttp,
+        signal: AbortSignal.timeout(Math.min(20_000, remaining)),
+        localHttp,
       })
       const record = decodeMacHostCohortRecord(bytes, selected)
       if (Date.now() >= deadline)
@@ -681,7 +746,10 @@ export async function downloadMacHostCohortRecord(
       const delay = Math.max(1000 * 2 ** (attempt - 1), error.retryAfterMs ?? 0)
       const retry = error.retryable === true && attempt < 4 && delay < deadline - Date.now()
       const diagnostic = {
-        artifact: metadata.id, attempt, phase: error.phase, kind: error.kind,
+        artifact: metadata.id,
+        attempt,
+        phase: error.phase,
+        kind: error.kind,
         ...(error.status === undefined ? {} : { status: error.status }),
         ...(error.remaining === undefined ? {} : { remaining: error.remaining }),
         ...(error.reset === undefined ? {} : { reset: error.reset }),
@@ -690,7 +758,9 @@ export async function downloadMacHostCohortRecord(
       }
       console.error(`Mac cohort record download: ${JSON.stringify(diagnostic)}`)
       if (!retry)
-        throw new Error(`Unable to download the bounded Mac cohort record archive: ${JSON.stringify(diagnostic)}`)
+        throw new Error(
+          `Unable to download the bounded Mac cohort record archive: ${JSON.stringify(diagnostic)}`,
+        )
       await new Promise((resolve) => setTimeout(resolve, delay))
     }
   }
@@ -718,10 +788,14 @@ export function createMacHostCohortArtifacts(client, directory = tmpdir()) {
 }
 
 export async function loadMacHostCohortArtifacts(packageDirectory, scratch = tmpdir()) {
-  if (!isAbsolute(packageDirectory)) throw new Error('Mac cohort artifact client path must be absolute')
+  if (!isAbsolute(packageDirectory))
+    throw new Error('Mac cohort artifact client path must be absolute')
   const require = createRequire(join(packageDirectory, 'package.json'))
   const manifest = require('@actions/artifact/package.json')
-  if (manifest.name !== '@actions/artifact' || manifest.version !== MAC_COHORT_ARTIFACT_CLIENT_VERSION)
+  if (
+    manifest.name !== '@actions/artifact' ||
+    manifest.version !== MAC_COHORT_ARTIFACT_CLIENT_VERSION
+  )
     throw new Error('Mac cohort requires the pinned official artifact client')
   const { DefaultArtifactClient } = require('@actions/artifact')
   return createMacHostCohortArtifacts(new DefaultArtifactClient(), scratch)

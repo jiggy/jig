@@ -14,7 +14,7 @@ const PACKAGE_KINDS = Object.freeze({
   acp: 'agent-acp',
   jig: 'jig',
 })
-const RUNTIME_HASH = 'e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839'
+const RUNTIME_HASH = '10702245766b225e70bbf6235fd6b47214fd94b4760d00ffaed8ab0df57ac235'
 const HELP_LINES = [
   '  jig init <directory>       Create a project with a small greeting Flow',
   '  jig review [project]       Review changes and approve an exact revision',
@@ -201,12 +201,12 @@ export async function qualifyCandidate(
       await access(localBun, constants.X_OK)
       assert.equal(
         run(localBun, ['--version'], options),
-        '1.3.3',
+        '1.4.4',
         'npm installed the wrong Bun version',
       )
       assert.equal(
         run(localBun, ['--revision'], options),
-        '1.3.3+274e01c73',
+        '1.4.4+38afee6c8',
         'npm installed the wrong Bun revision',
       )
       assert.equal(

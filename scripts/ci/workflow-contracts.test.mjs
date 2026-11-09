@@ -49,11 +49,14 @@ async function macScopePlan(workflow, event) {
     assert.ifError(child.error)
     assert.equal(child.status, 0, child.stderr)
     return Object.fromEntries(
-      (await readFile(output, 'utf8')).trim().split('\n').map((line) => {
-        const equals = line.indexOf('=')
-        assert.ok(equals > 0)
-        return [line.slice(0, equals), line.slice(equals + 1)]
-      }),
+      (await readFile(output, 'utf8'))
+        .trim()
+        .split('\n')
+        .map((line) => {
+          const equals = line.indexOf('=')
+          assert.ok(equals > 0)
+          return [line.slice(0, equals), line.slice(equals + 1)]
+        }),
     )
   } finally {
     await rm(directory, { recursive: true, force: true })
@@ -146,11 +149,11 @@ test('required Mac checks select a PR ARM cohort or one complete host and retain
     const pullRequest = event === 'pull_request'
     assert.deepEqual(matrix, {
       include: [
-        ...(pullRequest
-          ? [{ arch: 'guard', worker: 'guard', guard: true }]
-          : []),
+        ...(pullRequest ? [{ arch: 'guard', worker: 'guard', guard: true }] : []),
         ...Array.from({ length: pullRequest ? 5 : 1 }, (_, worker) => ({
-          arch: 'arm64', worker, guard: false,
+          arch: 'arm64',
+          worker,
+          guard: false,
         })),
       ],
     })
@@ -217,7 +220,8 @@ test('required Mac checks select a PR ARM cohort or one complete host and retain
     assert.equal(required['continue-on-error'], undefined)
   }
   assert.equal(
-    native.steps.find((step) => step.run?.includes('qualify-macos-host.sh --shard')).env.MAC_HOST_ROLE,
+    native.steps.find((step) => step.run?.includes('qualify-macos-host.sh --shard')).env
+      .MAC_HOST_ROLE,
     '${{ steps.role.outputs.role }}',
   )
   const manual = parse(await readFile(new URL('macos-host-conformance.yml', workflows), 'utf8'))
@@ -306,21 +310,26 @@ test('Mac admission requires prepared canonical inputs and one live Ubuntu alloc
   assert.ok(acquire >= 0 && retain > acquire && readyBudget > retain && ready > readyBudget)
   assert.match(readiness.steps[acquire].run, /--after-quick true/)
   assert.equal(readiness.steps[readyBudget].if, "github.event_name == 'pull_request'")
-  assert.equal(readiness.steps[readyBudget].run,
-    'node scripts/ci/pr-time-budget.mjs remaining --github-output "$GITHUB_OUTPUT"')
+  assert.equal(
+    readiness.steps[readyBudget].run,
+    'node scripts/ci/pr-time-budget.mjs remaining --github-output "$GITHUB_OUTPUT"',
+  )
   assert.equal(readiness.steps[ready].if, "github.event_name == 'pull_request'")
-  assert.equal(readiness.steps[ready]['timeout-minutes'],
-    '${{ fromJSON(steps.ready-budget.outputs.step_timeout_minutes) }}')
-  assert.equal(expressionValue(readiness.steps[ready]['timeout-minutes'],
-    { steps: { 'ready-budget': { outputs: { step_timeout_minutes: '31' } } } }), 31)
+  assert.equal(
+    readiness.steps[ready]['timeout-minutes'],
+    '${{ fromJSON(steps.ready-budget.outputs.step_timeout_minutes) }}',
+  )
+  assert.equal(
+    expressionValue(readiness.steps[ready]['timeout-minutes'], {
+      steps: { 'ready-budget': { outputs: { step_timeout_minutes: '31' } } },
+    }),
+    31,
+  )
   const download = mac.jobs.prerequisites.steps.find((step) =>
     step.uses?.startsWith('actions/download-artifact@'),
   )
   assert.equal(readiness.steps[retain].id, 'prepared-artifacts')
-  assert.equal(
-    readiness.outputs.artifact_id,
-    '${{ steps.prepared-artifacts.outputs.artifact-id }}',
-  )
+  assert.equal(readiness.outputs.artifact_id, '${{ steps.prepared-artifacts.outputs.artifact-id }}')
   assert.equal(download.with['artifact-ids'], '${{ needs.host-artifacts.outputs.artifact_id }}')
   assert.equal(download.with['merge-multiple'], true)
   assert.equal(download.with.name, undefined)
@@ -367,20 +376,31 @@ test('Mac admission requires prepared canonical inputs and one live Ubuntu alloc
     const install = installs[0]
     assert.equal(install.if, condition)
     assert.equal(install['timeout-minutes'], 2)
-    assert.deepEqual(install.run.trim().split('\n').map((line) => line.trim()), [
-      'set -eu',
-      'mkdir "$RUNNER_TEMP/mac-cohort-client"',
-      'cp scripts/ci/mac-cohort-client/package.json scripts/ci/mac-cohort-client/bun.lock "$RUNNER_TEMP/mac-cohort-client/"',
-      'node scripts/ci/pr-time-budget.mjs run -- bun install --cwd "$RUNNER_TEMP/mac-cohort-client" --frozen-lockfile --ignore-scripts',
-    ])
-    const invocation = job.steps.find((step) =>
-      step.uses?.startsWith('actions/github-script@') &&
-      step.with.script.includes(`'${mode}'`),
+    assert.deepEqual(
+      install.run
+        .trim()
+        .split('\n')
+        .map((line) => line.trim()),
+      [
+        'set -eu',
+        'mkdir "$RUNNER_TEMP/mac-cohort-client"',
+        'cp scripts/ci/mac-cohort-client/package.json scripts/ci/mac-cohort-client/bun.lock "$RUNNER_TEMP/mac-cohort-client/"',
+        'node scripts/ci/pr-time-budget.mjs run -- bun install --cwd "$RUNNER_TEMP/mac-cohort-client" --frozen-lockfile --ignore-scripts',
+      ],
+    )
+    const invocation = job.steps.find(
+      (step) =>
+        step.uses?.startsWith('actions/github-script@') && step.with.script.includes(`'${mode}'`),
     )
     assert.ok(job.steps.indexOf(install) < job.steps.indexOf(invocation))
   }
-  assert.ok(readiness.steps.some((step) => step.run ===
-    'node scripts/ci/pr-time-budget.mjs run -- node scripts/ci/macos-host-cohort-run.mjs ready'))
+  assert.ok(
+    readiness.steps.some(
+      (step) =>
+        step.run ===
+        'node scripts/ci/pr-time-budget.mjs run -- node scripts/ci/macos-host-cohort-run.mjs ready',
+    ),
+  )
 })
 
 test('the PR deadline guard can start beside queued Macs and never executes native work', async () => {
@@ -467,7 +487,12 @@ test('PR jobs bind assigned execution separately from preparation, coordination 
   }
   for (const [id, budgetId, command, completeMinutes] of [
     ['host-artifacts', 'acquire-budget', 'candidate-transfer.mjs acquire', 45],
-    ['prerequisites', 'native-budget', 'bun test packages/jig/test/macos/macos-process-controls', 60],
+    [
+      'prerequisites',
+      'native-budget',
+      'bun test packages/jig/test/macos/macos-process-controls',
+      60,
+    ],
     ['prerequisites', 'qualify-budget', 'qualify-macos-host.sh --shard', 60],
   ]) {
     const job = mac.jobs[id]
@@ -498,7 +523,8 @@ test('PR jobs bind assigned execution separately from preparation, coordination 
     ['prerequisites', 'bun scripts/ci/install-macos-test-clients.ts', 1],
     ['prerequisites', 'scripts/ci/qualify-macos-host.sh --shard', 1],
   ]) {
-    const lines = mac.jobs[id].steps.flatMap((step) => (step.run ?? '').split('\n'))
+    const lines = mac.jobs[id].steps
+      .flatMap((step) => (step.run ?? '').split('\n'))
       .filter((line) => line.includes(command))
     assert.equal(lines.length, count, command)
     for (const line of lines)
@@ -511,9 +537,9 @@ test('PR jobs bind assigned execution separately from preparation, coordination 
   const budgetStart = native.steps.findIndex((step) =>
     step.run?.includes('pr-time-budget.mjs start'),
   )
-  assert.ok(native.steps.findIndex((step) =>
-    step.uses?.startsWith('actions/setup-node@'),
-  ) < budgetStart)
+  assert.ok(
+    native.steps.findIndex((step) => step.uses?.startsWith('actions/setup-node@')) < budgetStart,
+  )
   for (const action of ['oven-sh/setup-bun@', 'extractions/setup-just@'])
     assert.ok(native.steps.findIndex((step) => step.uses?.startsWith(action)) > budgetStart)
   const claim = native.steps.find((step) => step.id === 'role')
@@ -557,32 +583,44 @@ test('PR jobs bind assigned execution separately from preparation, coordination 
     'node scripts/ci/pr-time-budget.mjs run --reserve-seconds 0 -- node scripts/ci/macos-host-cohort-run.mjs reconcile',
   )
   assert.equal(aggregate.steps[receipt].if, undefined)
-  assert.ok(aggregate.steps.slice(summary + 1, receipt).some((step) =>
-    step.run === 'node scripts/ci/pr-time-budget.mjs check' &&
-    step.if === "github.event_name == 'pull_request'",
-  ))
+  assert.ok(
+    aggregate.steps
+      .slice(summary + 1, receipt)
+      .some(
+        (step) =>
+          step.run === 'node scripts/ci/pr-time-budget.mjs check' &&
+          step.if === "github.event_name == 'pull_request'",
+      ),
+  )
 })
 
 test('main Mac qualification admits independent runs through two bounded native queues', async () => {
   const mac = parse(await readFile(new URL('macos-hosted-candidates.yml', workflows), 'utf8'))
-  assert.equal(mac.concurrency.group,
-    "macos-hosted-${{ github.ref != 'refs/heads/main' && github.ref || github.run_id }}")
+  assert.equal(
+    mac.concurrency.group,
+    "macos-hosted-${{ github.ref != 'refs/heads/main' && github.ref || github.run_id }}",
+  )
   assert.equal(mac.concurrency['cancel-in-progress'], "${{ github.ref != 'refs/heads/main' }}")
   assert.equal(mac.jobs.scope.outputs.native_lane, '${{ steps.native-lane.outputs.lane }}')
   const native = mac.jobs.prerequisites
   assert.deepEqual(native.concurrency, {
-    group: "macos-hosted-native-${{ github.ref == 'refs/heads/main' && format('main-{0}', needs.scope.outputs.native_lane) || format('{0}-{1}', github.run_id, matrix.worker) }}",
+    group:
+      "macos-hosted-native-${{ github.ref == 'refs/heads/main' && format('main-{0}', needs.scope.outputs.native_lane) || format('{0}-{1}', github.run_id, matrix.worker) }}",
     queue: 'max',
     'cancel-in-progress': false,
   })
-  const evaluate = (template, ref, run, lane, worker = 0) => template.replace(/\$\{\{([\s\S]*?)\}\}/g,
-    (_, expression) => String(runInNewContext(expression, {
-      github: { ref, run_id: run },
-      needs: { scope: { outputs: { native_lane: lane } } },
-      matrix: { worker },
-      format: (pattern, ...values) => pattern.replace(/\{(\d+)\}/g, (_, index) => values[index]),
-    })),
-  )
+  const evaluate = (template, ref, run, lane, worker = 0) =>
+    template.replace(/\$\{\{([\s\S]*?)\}\}/g, (_, expression) =>
+      String(
+        runInNewContext(expression, {
+          github: { ref, run_id: run },
+          needs: { scope: { outputs: { native_lane: lane } } },
+          matrix: { worker },
+          format: (pattern, ...values) =>
+            pattern.replace(/\{(\d+)\}/g, (_, index) => values[index]),
+        }),
+      ),
+    )
   assert.notEqual(
     evaluate(mac.concurrency.group, 'refs/heads/main', '100', '0'),
     evaluate(mac.concurrency.group, 'refs/heads/main', '101', '1'),
@@ -599,7 +637,8 @@ test('main Mac qualification admits independent runs through two bounded native 
     evaluate(native.concurrency.group, 'refs/heads/main', String(run), String(run % 2)),
   )
   assert.deepEqual([...new Set(nativeGroups)].sort(), [
-    'macos-hosted-native-main-0', 'macos-hosted-native-main-1',
+    'macos-hosted-native-main-0',
+    'macos-hosted-native-main-1',
   ])
   assert.notEqual(
     evaluate(native.concurrency.group, 'refs/pull/1/merge', '100', ''),
@@ -611,10 +650,9 @@ test('main Mac qualification admits independent runs through two bounded native 
   assert.equal(new Set(prGroups).size, 6, 'PR workers and guard must not queue behind one another')
   // Main retains one complete ARM worker in each of its two bounded queues.
   const outputs = await macScopePlan(mac, 'push')
-  assert.deepEqual(
-    expressionValue(native.strategy.matrix, { needs: { scope: { outputs } } }),
-    { include: [{ arch: 'arm64', worker: 0, guard: false }] },
-  )
+  assert.deepEqual(expressionValue(native.strategy.matrix, { needs: { scope: { outputs } } }), {
+    include: [{ arch: 'arm64', worker: 0, guard: false }],
+  })
   assert.ok(native.needs.includes('scope'))
   assert.ok(native.needs.includes('host-artifacts'))
   for (const id of ['scope', 'host-artifacts', 'qualified-architecture', 'affected-macos'])
@@ -624,11 +662,17 @@ test('main Mac qualification admits independent runs through two bounded native 
   const directory = await mkdtemp(join(tmpdir(), 'jig-mac-native-lane-'))
   try {
     const lanes = new Set()
-    for (const [number, expected] of [['1', '1'], ['2', '0'], ['101', '1'], ['9007199254740993', '1']]) {
+    for (const [number, expected] of [
+      ['1', '1'],
+      ['2', '0'],
+      ['101', '1'],
+      ['9007199254740993', '1'],
+    ]) {
       const output = join(directory, number)
       const result = spawnSync('/bin/bash', ['-e', '-o', 'pipefail', '-c', select.run], {
         env: { PATH: process.env.PATH, GITHUB_RUN_NUMBER: number, GITHUB_OUTPUT: output },
-        encoding: 'utf8', timeout: 5_000,
+        encoding: 'utf8',
+        timeout: 5_000,
       })
       assert.ifError(result.error)
       assert.equal(result.status, 0, result.stderr)
@@ -640,7 +684,8 @@ test('main Mac qualification admits independent runs through two bounded native 
       const output = join(directory, 'invalid')
       const result = spawnSync('/bin/bash', ['-e', '-o', 'pipefail', '-c', select.run], {
         env: { PATH: process.env.PATH, GITHUB_RUN_NUMBER: number, GITHUB_OUTPUT: output },
-        encoding: 'utf8', timeout: 5_000,
+        encoding: 'utf8',
+        timeout: 5_000,
       })
       assert.ifError(result.error)
       assert.notEqual(result.status, 0)
@@ -1003,13 +1048,22 @@ test('npm readiness ignores PRs and skipped descendants while retaining failed m
   assert.equal(qualifies(event({ head_repository: { full_name: 'fork/jig' } })), false)
   assert.equal(qualifies(event({ conclusion: 'failure' })), true)
   for (const nativeEvent of ['workflow_run', 'workflow_dispatch']) {
-    const native = { event: nativeEvent, path: '.github/workflows/native-agent-api-qualification.yml' }
+    const native = {
+      event: nativeEvent,
+      path: '.github/workflows/native-agent-api-qualification.yml',
+    }
     assert.equal(qualifies(event({ ...native, conclusion: 'skipped' })), false)
     assert.equal(qualifies(event({ ...native, conclusion: 'failure' })), true)
     assert.equal(qualifies(event({ ...native, conclusion: 'success' })), true)
   }
   assert.equal(qualifies({ event_name: 'workflow_dispatch', ref: 'refs/heads/main' }), true)
-  assert.equal(qualifies({ event_name: 'workflow_dispatch', ref: 'refs/heads/main' }, { mode: 'authentication' }), false)
+  assert.equal(
+    qualifies(
+      { event_name: 'workflow_dispatch', ref: 'refs/heads/main' },
+      { mode: 'authentication' },
+    ),
+    false,
+  )
   assert.equal(qualifies({ event_name: 'workflow_dispatch', ref: 'refs/heads/feature' }), false)
 })
 
@@ -1037,7 +1091,11 @@ test('native live jobs require release scope while manual main diagnostics remai
   })
   const contexts = [
     [event(), true, 'a'.repeat(40)],
-    [{ event_name: 'workflow_dispatch', ref: 'refs/heads/main', sha: 'c'.repeat(40) }, true, 'c'.repeat(40)],
+    [
+      { event_name: 'workflow_dispatch', ref: 'refs/heads/main', sha: 'c'.repeat(40) },
+      true,
+      'c'.repeat(40),
+    ],
     [{ event_name: 'workflow_dispatch', ref: 'refs/heads/feature' }, false],
     [{ event_name: 'pull_request' }, false],
     [{ event_name: 'pull_request_target' }, false],
@@ -1064,14 +1122,23 @@ test('native live jobs require release scope while manual main diagnostics remai
   for (const [context, selected, revision] of contexts) {
     assert.equal(evaluate(scope.if, context), selected)
     for (const step of [checkout, nativeCheckout]) {
-      assert.equal(evaluate(step.if, context), selected, 'Checkout must enforce trust independently')
-      if (selected) assert.equal(evaluate(step.with.ref.slice(3, -2), context),
-        step === checkout ? context.sha : revision)
+      assert.equal(
+        evaluate(step.if, context),
+        selected,
+        'Checkout must enforce trust independently',
+      )
+      if (selected)
+        assert.equal(
+          evaluate(step.with.ref.slice(3, -2), context),
+          step === checkout ? context.sha : revision,
+        )
     }
   }
   assert.equal(checkout.with.ref, '${{ github.sha }}')
-  assert.equal(nativeCheckout.with.ref,
-    "${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}")
+  assert.equal(
+    nativeCheckout.with.ref,
+    "${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}",
+  )
   for (const step of [checkout, nativeCheckout]) {
     assert.equal(step.with['persist-credentials'], false)
   }
@@ -1113,7 +1180,9 @@ test('native live jobs require release scope while manual main diagnostics remai
 })
 
 test('native recovery summary preserves failures without exposing credentials', async () => {
-  const workflow = parse(await readFile(new URL('native-agent-api-qualification.yml', workflows), 'utf8'))
+  const workflow = parse(
+    await readFile(new URL('native-agent-api-qualification.yml', workflows), 'utf8'),
+  )
   const job = workflow.jobs.qualification
   const step = job.steps.find((step) => step.name === 'Explain native qualification and recovery')
   assert.equal(step.if, 'always()')
@@ -1178,8 +1247,13 @@ test('version planning explains pending and consumed changesets without claiming
       assert.equal(child.status, 0, child.stderr)
       const rendered = await readFile(summary, 'utf8')
       assert.ok(rendered.includes('https://github.com/jiggy/jig/actions/workflows/npm-publish.yml'))
-      assert.match(rendered, pendingChangesets.length ? /Pending changesets/ : /No pending changesets/)
-      assert.ok((await readFile(output, 'utf8')).includes('pending=' + (pendingChangesets.length > 0)))
+      assert.match(
+        rendered,
+        pendingChangesets.length ? /Pending changesets/ : /No pending changesets/,
+      )
+      assert.ok(
+        (await readFile(output, 'utf8')).includes('pending=' + (pendingChangesets.length > 0)),
+      )
     }
   } finally {
     await rm(temporary, { recursive: true, force: true })

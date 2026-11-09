@@ -1,32 +1,48 @@
-import { caseComparison, evidenceGaps, investigationContext, nodeOccurrences, valueChanges } from './behavior.mjs'
+import {
+  caseComparison,
+  evidenceGaps,
+  investigationContext,
+  nodeOccurrences,
+  valueChanges,
+} from './behavior.mjs'
 
 /** Read-only renderer for already redacted graph data. It embeds that snapshot in JSON. */
 export function graphRoots(graph) {
-  const known = new Set(graph.nodes.map(node => node.id))
-  const explicit = [graph.entry, graph.root, graph.provenance?.root].filter(id => known.has(id))
+  const known = new Set(graph.nodes.map((node) => node.id))
+  const explicit = [graph.entry, graph.root, graph.provenance?.root].filter((id) => known.has(id))
   if (explicit.length) return [...new Set(explicit)]
-  const targets = new Set(graph.edges.map(edge => edge.target ?? edge.to))
-  const structural = graph.nodes.filter(node => !targets.has(node.id)).map(node => node.id)
+  const targets = new Set(graph.edges.map((edge) => edge.target ?? edge.to))
+  const structural = graph.nodes.filter((node) => !targets.has(node.id)).map((node) => node.id)
   if (structural.length) return structural
   // Inventory roots are available Run targets, including targets with callers.
   // They are not all structural roots. A cyclic graph needs only a layout seed.
-  const candidate = (graph.provenance?.roots || []).find(id => known.has(id))
-  return [candidate ?? graph.nodes[0]?.id].filter(id => id !== undefined)
+  const candidate = (graph.provenance?.roots || []).find((id) => known.has(id))
+  return [candidate ?? graph.nodes[0]?.id].filter((id) => id !== undefined)
 }
 
 export function edgeLabel(edge) {
-  return edge.label ?? edge.slot ?? edge.action ?? (edge.meaning === 'scope-entry' ? 'entry' : 'unlabelled')
+  return (
+    edge.label ??
+    edge.slot ??
+    edge.action ??
+    (edge.meaning === 'scope-entry' ? 'entry' : 'unlabelled')
+  )
 }
 
 export function scopeExits(graph, node) {
   if (Array.isArray(node.declaredExits)) return node.declaredExits
   if (Array.isArray(node.exits)) return node.exits
-  const scope = (graph.scopes || []).find(item => item.owner === node.id || item.ownerElementId === node.id)
+  const scope = (graph.scopes || []).find(
+    (item) => item.owner === node.id || item.ownerElementId === node.id,
+  )
   return scope?.declaredExits ?? scope?.exits ?? []
 }
 
 export function isRuntimeGraph(graph) {
-  return graph.layer === 'runtime-topology' || graph.provenance?.semantics === 'declared-runtime-topology'
+  return (
+    graph.layer === 'runtime-topology' ||
+    graph.provenance?.semantics === 'declared-runtime-topology'
+  )
 }
 
 export function displayNodeKind(node, graph) {
@@ -34,66 +50,114 @@ export function displayNodeKind(node, graph) {
   if (node.kind === 'unknown') return 'Unresolved'
   if (node.kind === 'external') return 'External package'
   if (node.kind === 'binding') return 'Binding'
-  if (node.kind === 'flow') return isRuntimeGraph(graph) ? 'Scope' : node.runnable === false ? 'Flow · not direct' : 'Flow'
+  if (node.kind === 'flow')
+    return isRuntimeGraph(graph) ? 'Scope' : node.runnable === false ? 'Flow · not direct' : 'Flow'
   return node.kind === 'scope' ? 'Scope' : node.kind === 'node' ? 'Step' : node.kind
 }
 
 export function nodeSource(node) {
-  return node.location ?? node.source ?? (typeof node.evidence === 'object' ? node.evidence : undefined)
+  return (
+    node.location ?? node.source ?? (typeof node.evidence === 'object' ? node.evidence : undefined)
+  )
 }
 
 export function evidenceText(graph) {
   if (isRuntimeGraph(graph)) {
     const measured = graph.provenance?.checks?.handlersDuringInspection === 0
     return {
-      heading: graph.runs?.length ? 'Declared topology + recorded probe runs' : 'Declared runtime topology',
-      text: (measured ? 'The recorded probe reports zero handler entries during inspection. ' : 'This viewer does not verify how the runtime description was obtained. ') + 'Highlights show recorded handler entries. Edge traversal is not inferred.',
+      heading: graph.runs?.length
+        ? 'Declared topology + recorded probe runs'
+        : 'Declared runtime topology',
+      text:
+        (measured
+          ? 'The recorded probe reports zero handler entries during inspection. '
+          : 'This viewer does not verify how the runtime description was obtained. ') +
+        'Highlights show recorded handler entries. Edge traversal is not inferred.',
     }
   }
   return {
-    heading: graph.provenance?.source === 'jig.lock' ? 'Generated from the supplied lock' : 'Generated from supplied declarations',
+    heading:
+      graph.provenance?.source === 'jig.lock'
+        ? 'Generated from the supplied lock'
+        : 'Generated from supplied declarations',
     text: 'Connections describe available calls. They do not prove execution order, use, or approval.',
   }
 }
 
 export function edgeGeometry(edge, index, positions, lane = 0) {
-  const a = positions.get(edge.source ?? edge.from), b = positions.get(edge.target ?? edge.to)
+  const a = positions.get(edge.source ?? edge.from),
+    b = positions.get(edge.target ?? edge.to)
   if (!a || !b) return null
-  const ax = a.x + 100, ay = a.y + 81, bx = b.x + 100, by = b.y
-  let points, labelX, labelY, labelWidth = 200
+  const ax = a.x + 100,
+    ay = a.y + 81,
+    bx = b.x + 100,
+    by = b.y
+  let points,
+    labelX,
+    labelY,
+    labelWidth = 200
   if (by > ay + 12) {
-    const mid = (ay + by) / 2, offset = lane * 16
-    points = [[ax + offset, ay], [ax + offset, mid], [bx + offset, mid], [bx + offset, by]]
+    const mid = (ay + by) / 2,
+      offset = lane * 16
+    points = [
+      [ax + offset, ay],
+      [ax + offset, mid],
+      [bx + offset, mid],
+      [bx + offset, by],
+    ]
     labelX = (ax + bx) / 2 + offset
     labelY = mid - 6 + offset
   } else if (by === a.y) {
-    const right = b.x > a.x, start = right ? a.x + 200 : a.x, end = right ? b.x : b.x + 200
+    const right = b.x > a.x,
+      start = right ? a.x + 200 : a.x,
+      end = right ? b.x : b.x + 200
     const gap = Math.abs(b.x - a.x) - 200
     if (gap >= 80 && gap < 200) {
       // Adjacent siblings have a clear gutter. Keep this edge below the
       // incoming-label zone instead of arching into the preceding row.
-      const mid = (start + end) / 2, line = a.y + 41 + lane * 12
-      points = [[start, line], [mid, line], [mid, line], [end, line]]
-      labelX = mid; labelY = line - 8; labelWidth = gap - 16
+      const mid = (start + end) / 2,
+        line = a.y + 41 + lane * 12
+      points = [
+        [start, line],
+        [mid, line],
+        [mid, line],
+        [end, line],
+      ]
+      labelX = mid
+      labelY = line - 8
+      labelWidth = gap - 16
     } else {
       // An intervening card (or a self-loop) needs an outer route.
       const curve = a.y - 40 - (index % 3) * 14 - lane * 12
-      points = [[start, a.y + 35], [start, curve], [end, curve], [end, b.y + 35]]
+      points = [
+        [start, a.y + 35],
+        [start, curve],
+        [end, curve],
+        [end, b.y + 35],
+      ]
       labelX = (start + end) / 2
       labelY = curve + 13
     }
   } else {
     const bend = Math.max(a.x + 200, b.x + 200) + 40 + (index % 3) * 16 + lane * 12
-    points = [[a.x + 200, a.y + 48], [bend, a.y + 48], [bend, b.y + 35], [b.x + 200, b.y + 35]]
+    points = [
+      [a.x + 200, a.y + 48],
+      [bend, a.y + 48],
+      [bend, b.y + 35],
+      [b.x + 200, b.y + 35],
+    ]
     labelX = bend + 3
     labelY = (a.y + b.y) / 2 + 38 + lane * 16
   }
   // A cubic Bezier stays inside its control-point hull. Include label margins
   // and the arrowhead, rather than fitting only the node rectangles.
-  const xs = points.map(point => point[0]), ys = points.map(point => point[1])
+  const xs = points.map((point) => point[0]),
+    ys = points.map((point) => point[1])
   return {
     path: `M ${points[0].join(' ')} C ${points[1].join(' ')}, ${points[2].join(' ')}, ${points[3].join(' ')}`,
-    labelX, labelY, labelWidth,
+    labelX,
+    labelY,
+    labelWidth,
     bounds: {
       left: Math.min(...xs, labelX - 110) - 12,
       right: Math.max(...xs, labelX + 110) + 12,
@@ -104,16 +168,22 @@ export function edgeGeometry(edge, index, positions, lane = 0) {
 }
 
 export function layoutGraph(graph) {
-  const adjacent = new Map(graph.nodes.map(node => [node.id, []]))
+  const adjacent = new Map(graph.nodes.map((node) => [node.id, []]))
   for (const edge of graph.edges) {
-    const source = edge.source ?? edge.from, target = edge.target ?? edge.to
+    const source = edge.source ?? edge.from,
+      target = edge.target ?? edge.to
     if (adjacent.has(source) && adjacent.has(target)) adjacent.get(source).push(target)
   }
-  const rank = new Map(), queue = graphRoots(graph)
+  const rank = new Map(),
+    queue = graphRoots(graph)
   for (const id of queue) rank.set(id, 0)
   for (let cursor = 0; cursor < queue.length; cursor++) {
     const id = queue[cursor]
-    for (const target of adjacent.get(id) || []) if (!rank.has(target)) { rank.set(target, rank.get(id) + 1); queue.push(target) }
+    for (const target of adjacent.get(id) || [])
+      if (!rank.has(target)) {
+        rank.set(target, rank.get(id) + 1)
+        queue.push(target)
+      }
   }
   const levels = new Map()
   for (const node of graph.nodes) {
@@ -121,57 +191,92 @@ export function layoutGraph(graph) {
     if (!levels.has(level)) levels.set(level, [])
     levels.get(level).push(node)
   }
-  const columns = Math.max(1, ...[...levels.values()].map(nodes => Math.min(nodes.length, 4)))
-  const gap = 96, stride = 200 + gap
-  const width = Math.max(660, columns * 200 + (columns - 1) * gap + 166), positions = new Map()
+  const columns = Math.max(1, ...[...levels.values()].map((nodes) => Math.min(nodes.length, 4)))
+  const gap = 96,
+    stride = 200 + gap
+  const width = Math.max(660, columns * 200 + (columns - 1) * gap + 166),
+    positions = new Map()
   let y = 54
   for (const [level, nodes] of [...levels].sort((a, b) => a[0] - b[0])) {
     for (let start = 0; start < nodes.length; start += 4) {
-      const row = nodes.slice(start, start + 4), total = row.length * 200 + (row.length - 1) * gap
-      row.forEach((node, index) => positions.set(node.id, { x: (width - total) / 2 + index * stride, y, width: 200, height: 81, rank: level }))
+      const row = nodes.slice(start, start + 4),
+        total = row.length * 200 + (row.length - 1) * gap
+      row.forEach((node, index) =>
+        positions.set(node.id, {
+          x: (width - total) / 2 + index * stride,
+          y,
+          width: 200,
+          height: 81,
+          rank: level,
+        }),
+      )
       y += 153
     }
   }
-  const pairs = new Map(), pairKey = edge => JSON.stringify([edge.source ?? edge.from, edge.target ?? edge.to])
-  for (const edge of graph.edges) { const key = pairKey(edge); pairs.set(key, (pairs.get(key) || 0) + 1) }
-  const occurrences = new Map(), edgePaths = new Map()
-  let left = 0, top = 0, right = width, bottom = Math.max(410, y - 45)
+  const pairs = new Map(),
+    pairKey = (edge) => JSON.stringify([edge.source ?? edge.from, edge.target ?? edge.to])
+  for (const edge of graph.edges) {
+    const key = pairKey(edge)
+    pairs.set(key, (pairs.get(key) || 0) + 1)
+  }
+  const occurrences = new Map(),
+    edgePaths = new Map()
+  let left = 0,
+    top = 0,
+    right = width,
+    bottom = Math.max(410, y - 45)
   graph.edges.forEach((edge, index) => {
-    const key = pairKey(edge), occurrence = occurrences.get(key) || 0, count = pairs.get(key)
+    const key = pairKey(edge),
+      occurrence = occurrences.get(key) || 0,
+      count = pairs.get(key)
     occurrences.set(key, occurrence + 1)
     const lane = (occurrence - (count - 1) / 2) * Math.min(1, 4 / Math.max(1, count - 1))
     const geometry = edgeGeometry(edge, index, positions, lane)
     if (!geometry) return
     edgePaths.set(edge.id, geometry)
-    left = Math.min(left, geometry.bounds.left); top = Math.min(top, geometry.bounds.top)
-    right = Math.max(right, geometry.bounds.right); bottom = Math.max(bottom, geometry.bounds.bottom)
+    left = Math.min(left, geometry.bounds.left)
+    top = Math.min(top, geometry.bounds.top)
+    right = Math.max(right, geometry.bounds.right)
+    bottom = Math.max(bottom, geometry.bounds.bottom)
   })
   return {
-    positions, edgePaths,
-    dimensions: { x: Math.floor(left) - 16, y: Math.floor(top) - 16, width: Math.ceil(right - left) + 32, height: Math.ceil(bottom - top) + 32 },
+    positions,
+    edgePaths,
+    dimensions: {
+      x: Math.floor(left) - 16,
+      y: Math.floor(top) - 16,
+      width: Math.ceil(right - left) + 32,
+      height: Math.ceil(bottom - top) + 32,
+    },
   }
 }
 
 /** Prefer an application with actual cases, without assigning meaning from its name. */
 export function defaultGraphIndex(items) {
-  const runtime = items.findIndex(item => isRuntimeGraph(item.graph) && item.graph.runs?.length)
+  const runtime = items.findIndex((item) => isRuntimeGraph(item.graph) && item.graph.runs?.length)
   if (runtime >= 0) return runtime
-  const recorded = items.findIndex(item => item.graph.runs?.length)
+  const recorded = items.findIndex((item) => item.graph.runs?.length)
   return recorded >= 0 ? recorded : 0
 }
 
 /** Preserve component and visit identity. A missing visit does not silently select another. */
 export function preserveCaseSelection(graph, selection, nextRunId) {
-  const nodeId = graph.nodes.some(node => node.id === selection.nodeId) ? selection.nodeId : null
-  const previous = (graph.runs || []).find(run => run.id === selection.runId)
-  const next = (graph.runs || []).find(run => run.id === nextRunId)
+  const nodeId = graph.nodes.some((node) => node.id === selection.nodeId) ? selection.nodeId : null
+  const previous = (graph.runs || []).find((run) => run.id === selection.runId)
+  const next = (graph.runs || []).find((run) => run.id === nextRunId)
   const oldVisits = nodeId && previous ? nodeOccurrences(graph, previous, nodeId) : []
-  const oldOrdinal = oldVisits.findIndex(entry => entry.index === selection.observationIndex)
-  const visitOrdinal = nodeId ? oldOrdinal >= 0 ? oldOrdinal + 1 : selection.visitOrdinal || 1 : null
+  const oldOrdinal = oldVisits.findIndex((entry) => entry.index === selection.observationIndex)
+  const visitOrdinal = nodeId
+    ? oldOrdinal >= 0
+      ? oldOrdinal + 1
+      : selection.visitOrdinal || 1
+    : null
   const visits = nodeId && next ? nodeOccurrences(graph, next, nodeId) : []
   const observation = visits[(visitOrdinal || 1) - 1]
   return {
-    nodeId, runId: next?.id ?? null, visitOrdinal,
+    nodeId,
+    runId: next?.id ?? null,
+    visitOrdinal,
     observationIndex: Number.isSafeInteger(observation?.index) ? observation.index : null,
   }
 }
@@ -179,58 +284,92 @@ export function preserveCaseSelection(graph, selection, nextRunId) {
 /** Component selection also updates the remembered case while Overview is visible. */
 export function componentSelection(graph, selection, nodeId) {
   const changed = selection.nodeId !== nodeId
-  return preserveCaseSelection(graph, {
-    ...selection, nodeId,
-    observationIndex: changed ? null : selection.observationIndex,
-    visitOrdinal: changed ? 1 : selection.visitOrdinal,
-  }, selection.runId)
+  return preserveCaseSelection(
+    graph,
+    {
+      ...selection,
+      nodeId,
+      observationIndex: changed ? null : selection.observationIndex,
+      visitOrdinal: changed ? 1 : selection.visitOrdinal,
+    },
+    selection.runId,
+  )
 }
 
 /** Never present a retained observation under another component's inspector. */
 export function selectedCaseObservation(graph, run, selection) {
-  return (run?.observations || []).find(entry => entry && typeof entry === 'object' &&
-    entry.index === selection.observationIndex &&
-    (selection.nodeId ? entry.nodeId === selection.nodeId : !graph.nodes.some(node => node.id === entry.nodeId)))
+  return (run?.observations || []).find(
+    (entry) =>
+      entry &&
+      typeof entry === 'object' &&
+      entry.index === selection.observationIndex &&
+      (selection.nodeId
+        ? entry.nodeId === selection.nodeId
+        : !graph.nodes.some((node) => node.id === entry.nodeId)),
+  )
 }
 
 /** The copied case excerpt must retain a missing selected visit as an explicit gap. */
 export function selectedInvestigationContext(item, selection) {
   const context = investigationContext(item, selection)
-  const run = (item.graph.runs || []).find(value => value.id === selection.runId)
+  const run = (item.graph.runs || []).find((value) => value.id === selection.runId)
   const visits = nodeOccurrences(item.graph, run, selection.nodeId)
-  const gap = run && selection.nodeId && Number.isSafeInteger(selection.visitOrdinal) &&
-    selection.visitOrdinal > 0 && selection.observationIndex === null && !visits[selection.visitOrdinal - 1]
-  return gap ? 'Selection gap: requested visit ' + selection.visitOrdinal + ' of component ' + selection.nodeId +
-    ' is not retained in this case. Any included observations are other available visits.\n\n' + context : context
+  const gap =
+    run &&
+    selection.nodeId &&
+    Number.isSafeInteger(selection.visitOrdinal) &&
+    selection.visitOrdinal > 0 &&
+    selection.observationIndex === null &&
+    !visits[selection.visitOrdinal - 1]
+  return gap
+    ? 'Selection gap: requested visit ' +
+        selection.visitOrdinal +
+        ' of component ' +
+        selection.nodeId +
+        ' is not retained in this case. Any included observations are other available visits.\n\n' +
+        context
+    : context
 }
 
 /** Bound ordinary snapshot data before serialization; accessors and custom objects are not data. */
 function validateSnapshotData(value) {
-  const pending = [{ value, depth: 0, leave: false }], ancestors = new Set()
-  let entries = 0, textLength = 0
+  const pending = [{ value, depth: 0, leave: false }],
+    ancestors = new Set()
+  let entries = 0,
+    textLength = 0
   while (pending.length) {
-    const frame = pending.pop(), current = frame.value
-    if (frame.leave) { ancestors.delete(current); continue }
-    if (++entries > 250000 || frame.depth > 64) throw new TypeError('Snapshot exceeds the viewer data limits.')
+    const frame = pending.pop(),
+      current = frame.value
+    if (frame.leave) {
+      ancestors.delete(current)
+      continue
+    }
+    if (++entries > 250000 || frame.depth > 64)
+      throw new TypeError('Snapshot exceeds the viewer data limits.')
     if (current === null || current === undefined || typeof current === 'boolean') continue
     if (typeof current === 'string') {
       textLength += current.length
-      if (textLength > 16 * 1024 * 1024) throw new TypeError('Snapshot exceeds the viewer text limit.')
+      if (textLength > 16 * 1024 * 1024)
+        throw new TypeError('Snapshot exceeds the viewer text limit.')
       continue
     }
     if (typeof current === 'number' && Number.isFinite(current)) continue
-    if (typeof current !== 'object') throw new TypeError('Snapshot must contain ordinary JSON data.')
+    if (typeof current !== 'object')
+      throw new TypeError('Snapshot must contain ordinary JSON data.')
     const prototype = Object.getPrototypeOf(current)
-    if (!Array.isArray(current) && prototype !== Object.prototype && prototype !== null) throw new TypeError('Snapshot must contain ordinary JSON objects.')
+    if (!Array.isArray(current) && prototype !== Object.prototype && prototype !== null)
+      throw new TypeError('Snapshot must contain ordinary JSON objects.')
     if (ancestors.has(current)) throw new TypeError('Snapshot data must not contain cycles.')
     ancestors.add(current)
     pending.push({ value: current, depth: frame.depth, leave: true })
     const descriptors = Object.getOwnPropertyDescriptors(current)
     const keys = Reflect.ownKeys(descriptors)
-    if (keys.length + entries + pending.length > 250000) throw new TypeError('Snapshot exceeds the viewer data limits.')
+    if (keys.length + entries + pending.length > 250000)
+      throw new TypeError('Snapshot exceeds the viewer data limits.')
     for (const key of keys) {
       const descriptor = descriptors[key]
-      if (typeof key !== 'string' || !Object.hasOwn(descriptor, 'value')) throw new TypeError('Snapshot data must not contain accessors or symbol keys.')
+      if (typeof key !== 'string' || !Object.hasOwn(descriptor, 'value'))
+        throw new TypeError('Snapshot data must not contain accessors or symbol keys.')
       textLength += key.length
       pending.push({ value: descriptor.value, depth: frame.depth + 1, leave: false })
     }
@@ -239,65 +378,199 @@ function validateSnapshotData(value) {
 
 function validateGraphs(items) {
   validateSnapshotData(items)
-  if (!Array.isArray(items) || items.length === 0 || items.length > 64) throw new TypeError('Supply between one and 64 graph examples.')
+  if (!Array.isArray(items) || items.length === 0 || items.length > 64)
+    throw new TypeError('Supply between one and 64 graph examples.')
   for (const item of items) {
     const graph = item?.graph
-    if (!item || typeof item.title !== 'string' || !graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) throw new TypeError('Each example needs a title and a graph with nodes and edges.')
-    if (graph.nodes.length > 4096 || graph.edges.length > 16384) throw new TypeError('Graph exceeds the viewer limits.')
-    const ids = new Set(), edgeIds = new Set()
+    if (
+      !item ||
+      typeof item.title !== 'string' ||
+      !graph ||
+      !Array.isArray(graph.nodes) ||
+      !Array.isArray(graph.edges)
+    )
+      throw new TypeError('Each example needs a title and a graph with nodes and edges.')
+    if (graph.nodes.length > 4096 || graph.edges.length > 16384)
+      throw new TypeError('Graph exceeds the viewer limits.')
+    const ids = new Set(),
+      edgeIds = new Set()
     for (const node of graph.nodes) {
-      if (!node || typeof node.id !== 'string' || !node.id || ids.has(node.id) || typeof node.kind !== 'string' || !node.kind) throw new TypeError('Graph nodes need unique string IDs and a kind.')
-      if (node.runnable !== undefined && typeof node.runnable !== 'boolean') throw new TypeError('Node runnable flags must be boolean.')
-      if (['label', 'name', 'description', 'descriptionSource'].some(key => node[key] !== undefined && typeof node[key] !== 'string')) throw new TypeError('Node labels and descriptions must be strings.')
-      if (['declaredExits', 'exits'].some(key => node[key] !== undefined && !Array.isArray(node[key]))) throw new TypeError('Node scope exits must be arrays.')
+      if (
+        !node ||
+        typeof node.id !== 'string' ||
+        !node.id ||
+        ids.has(node.id) ||
+        typeof node.kind !== 'string' ||
+        !node.kind
+      )
+        throw new TypeError('Graph nodes need unique string IDs and a kind.')
+      if (node.runnable !== undefined && typeof node.runnable !== 'boolean')
+        throw new TypeError('Node runnable flags must be boolean.')
+      if (
+        ['label', 'name', 'description', 'descriptionSource'].some(
+          (key) => node[key] !== undefined && typeof node[key] !== 'string',
+        )
+      )
+        throw new TypeError('Node labels and descriptions must be strings.')
+      if (
+        ['declaredExits', 'exits'].some(
+          (key) => node[key] !== undefined && !Array.isArray(node[key]),
+        )
+      )
+        throw new TypeError('Node scope exits must be arrays.')
       ids.add(node.id)
     }
     for (const edge of graph.edges) {
-      if (!edge || typeof edge.id !== 'string' || !edge.id || edgeIds.has(edge.id) || !ids.has(edge.source ?? edge.from) || !ids.has(edge.target ?? edge.to) || typeof edge.meaning !== 'string') throw new TypeError('Graph edges need unique IDs, known endpoints, and a meaning.')
-      if (['label', 'slot', 'action'].some(key => edge[key] !== undefined && edge[key] !== null && typeof edge[key] !== 'string')) throw new TypeError('Edge labels must be strings.')
+      if (
+        !edge ||
+        typeof edge.id !== 'string' ||
+        !edge.id ||
+        edgeIds.has(edge.id) ||
+        !ids.has(edge.source ?? edge.from) ||
+        !ids.has(edge.target ?? edge.to) ||
+        typeof edge.meaning !== 'string'
+      )
+        throw new TypeError('Graph edges need unique IDs, known endpoints, and a meaning.')
+      if (
+        ['label', 'slot', 'action'].some(
+          (key) => edge[key] !== undefined && edge[key] !== null && typeof edge[key] !== 'string',
+        )
+      )
+        throw new TypeError('Edge labels must be strings.')
       edgeIds.add(edge.id)
     }
-    if (graph.warnings !== undefined && (!Array.isArray(graph.warnings) || graph.warnings.some(warning => typeof warning !== 'string' && (!warning || typeof (warning.message ?? warning.code) !== 'string')))) throw new TypeError('Graph warnings must contain text diagnostics.')
-    if (graph.scopes !== undefined && (!Array.isArray(graph.scopes) || graph.scopes.some(scope => !scope || !Array.isArray(scope.declaredExits ?? scope.exits ?? []) || (scope.declaredExits ?? scope.exits ?? []).some(exit => typeof exit !== 'string')))) throw new TypeError('Scope exits must contain strings.')
-    for (const node of graph.nodes) if (!Array.isArray(scopeExits(graph, node)) || scopeExits(graph, node).some(exit => typeof exit !== 'string')) throw new TypeError('Node scope exits must contain strings.')
-    if (graph.runs !== undefined && (!Array.isArray(graph.runs) || graph.runs.length > 64)) throw new TypeError('A graph can contain at most 64 recorded cases.')
+    if (
+      graph.warnings !== undefined &&
+      (!Array.isArray(graph.warnings) ||
+        graph.warnings.some(
+          (warning) =>
+            typeof warning !== 'string' &&
+            (!warning || typeof (warning.message ?? warning.code) !== 'string'),
+        ))
+    )
+      throw new TypeError('Graph warnings must contain text diagnostics.')
+    if (
+      graph.scopes !== undefined &&
+      (!Array.isArray(graph.scopes) ||
+        graph.scopes.some(
+          (scope) =>
+            !scope ||
+            !Array.isArray(scope.declaredExits ?? scope.exits ?? []) ||
+            (scope.declaredExits ?? scope.exits ?? []).some((exit) => typeof exit !== 'string'),
+        ))
+    )
+      throw new TypeError('Scope exits must contain strings.')
+    for (const node of graph.nodes)
+      if (
+        !Array.isArray(scopeExits(graph, node)) ||
+        scopeExits(graph, node).some((exit) => typeof exit !== 'string')
+      )
+        throw new TypeError('Node scope exits must contain strings.')
+    if (graph.runs !== undefined && (!Array.isArray(graph.runs) || graph.runs.length > 64))
+      throw new TypeError('A graph can contain at most 64 recorded cases.')
     const runIds = new Set()
     for (const run of graph.runs || []) {
-      if (!run || typeof run !== 'object' || typeof run.id !== 'string' || !run.id || runIds.has(run.id)) throw new TypeError('Recorded cases need unique string IDs.')
+      if (
+        !run ||
+        typeof run !== 'object' ||
+        typeof run.id !== 'string' ||
+        !run.id ||
+        runIds.has(run.id)
+      )
+        throw new TypeError('Recorded cases need unique string IDs.')
       runIds.add(run.id)
-      if (['label', 'name', 'title', 'status', 'outcome', 'summary'].some(key => run[key] !== undefined && typeof run[key] !== 'string')) throw new TypeError('Recorded case labels and summaries must be strings.')
-      if (run.nodeCounts !== undefined && (!run.nodeCounts || typeof run.nodeCounts !== 'object' || Array.isArray(run.nodeCounts) || Object.entries(run.nodeCounts).some(([id, count]) => !ids.has(id) || !Number.isSafeInteger(count) || count < 0))) throw new TypeError('Recorded node counts must name graph nodes and contain nonnegative integers.')
-      if (run.observations !== undefined && (!Array.isArray(run.observations) || run.observations.length > 4096)) throw new TypeError('A recorded case can contain at most 4096 observations.')
-      const indexes = new Set(), occurrences = new Set()
+      if (
+        ['label', 'name', 'title', 'status', 'outcome', 'summary'].some(
+          (key) => run[key] !== undefined && typeof run[key] !== 'string',
+        )
+      )
+        throw new TypeError('Recorded case labels and summaries must be strings.')
+      if (
+        run.nodeCounts !== undefined &&
+        (!run.nodeCounts ||
+          typeof run.nodeCounts !== 'object' ||
+          Array.isArray(run.nodeCounts) ||
+          Object.entries(run.nodeCounts).some(
+            ([id, count]) => !ids.has(id) || !Number.isSafeInteger(count) || count < 0,
+          ))
+      )
+        throw new TypeError(
+          'Recorded node counts must name graph nodes and contain nonnegative integers.',
+        )
+      if (
+        run.observations !== undefined &&
+        (!Array.isArray(run.observations) || run.observations.length > 4096)
+      )
+        throw new TypeError('A recorded case can contain at most 4096 observations.')
+      const indexes = new Set(),
+        occurrences = new Set()
       for (const entry of run.observations || []) {
         if (typeof entry === 'string') continue
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new TypeError('Recorded observations must contain data records.')
-        if (['label', 'nodeId', 'occurrenceId', 'action', 'kind'].some(key => entry[key] !== undefined && typeof entry[key] !== 'string')) throw new TypeError('Observation identities and actions must be strings.')
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry))
+          throw new TypeError('Recorded observations must contain data records.')
+        if (
+          ['label', 'nodeId', 'occurrenceId', 'action', 'kind'].some(
+            (key) => entry[key] !== undefined && typeof entry[key] !== 'string',
+          )
+        )
+          throw new TypeError('Observation identities and actions must be strings.')
         {
-          if (!Number.isSafeInteger(entry.index) || entry.index < 1 || indexes.has(entry.index)) throw new TypeError('Observation indexes must be distinct positive integers within a case.')
+          if (!Number.isSafeInteger(entry.index) || entry.index < 1 || indexes.has(entry.index))
+            throw new TypeError(
+              'Observation indexes must be distinct positive integers within a case.',
+            )
           indexes.add(entry.index)
         }
-        if (entry.nodeId !== undefined && !ids.has(entry.nodeId)) throw new TypeError('Observation node IDs must identify graph components.')
+        if (entry.nodeId !== undefined && !ids.has(entry.nodeId))
+          throw new TypeError('Observation node IDs must identify graph components.')
         if (entry.occurrenceId !== undefined) {
-          if (!entry.occurrenceId || occurrences.has(entry.occurrenceId)) throw new TypeError('Occurrence IDs must be distinct within a case.')
+          if (!entry.occurrenceId || occurrences.has(entry.occurrenceId))
+            throw new TypeError('Occurrence IDs must be distinct within a case.')
           occurrences.add(entry.occurrenceId)
         }
-        if (entry.conditions !== undefined && (!Array.isArray(entry.conditions) || entry.conditions.length > 64)) throw new TypeError('An observation can contain at most 64 evaluated conditions.')
+        if (
+          entry.conditions !== undefined &&
+          (!Array.isArray(entry.conditions) || entry.conditions.length > 64)
+        )
+          throw new TypeError('An observation can contain at most 64 evaluated conditions.')
         for (const condition of entry.conditions || []) {
-          if (!condition || typeof condition !== 'object' || typeof condition.result !== 'boolean' || ['id', 'label', 'expression'].some(key => typeof condition[key] !== 'string') || !condition.values || typeof condition.values !== 'object' || Array.isArray(condition.values)) throw new TypeError('Recorded conditions need text, operand values, and a boolean result.')
+          if (
+            !condition ||
+            typeof condition !== 'object' ||
+            typeof condition.result !== 'boolean' ||
+            ['id', 'label', 'expression'].some((key) => typeof condition[key] !== 'string') ||
+            !condition.values ||
+            typeof condition.values !== 'object' ||
+            Array.isArray(condition.values)
+          )
+            throw new TypeError(
+              'Recorded conditions need text, operand values, and a boolean result.',
+            )
         }
       }
     }
-    if (item.revision !== undefined && typeof item.revision !== 'string') throw new TypeError('Source revisions must be strings.')
-    if (graph.provenance?.roots !== undefined && (!Array.isArray(graph.provenance.roots) || graph.provenance.roots.some(id => typeof id !== 'string'))) throw new TypeError('Graph root inventories must contain strings.')
-    if ([graph.entry, graph.root, graph.provenance?.root].some(id => id !== undefined && !ids.has(id))) throw new TypeError('A selected graph root must identify a known node.')
+    if (item.revision !== undefined && typeof item.revision !== 'string')
+      throw new TypeError('Source revisions must be strings.')
+    if (
+      graph.provenance?.roots !== undefined &&
+      (!Array.isArray(graph.provenance.roots) ||
+        graph.provenance.roots.some((id) => typeof id !== 'string'))
+    )
+      throw new TypeError('Graph root inventories must contain strings.')
+    if (
+      [graph.entry, graph.root, graph.provenance?.root].some(
+        (id) => id !== undefined && !ids.has(id),
+      )
+    )
+      throw new TypeError('A selected graph root must identify a known node.')
   }
 }
 
 /** Browser code consumes the same pure helpers as the Node-side tests. It performs no network IO. */
 function startExplorer() {
   const DATA = JSON.parse(document.getElementById('graph-data').textContent)
-  const $ = id => document.getElementById(id), NS = 'http://www.w3.org/2000/svg'
+  const $ = (id) => document.getElementById(id),
+    NS = 'http://www.w3.org/2000/svg'
   const h = (tag, text, className) => {
     const element = document.createElement(tag)
     if (text !== undefined) element.textContent = String(text)
@@ -321,28 +594,49 @@ function startExplorer() {
     const text = String(value ?? '')
     return text.length > length ? text.slice(0, length - 1) + '…' : text
   }
-  const label = value => value?.label || value?.name || value?.title || value?.id || 'Unattributed observation'
-  const json = value => value === undefined ? 'Not captured' : JSON.stringify(value, null, 2)
-  const own = (value, key) => value !== null && typeof value === 'object' && Object.hasOwn(value, key)
-  const edgeFrom = edge => edge.source ?? edge.from, edgeTo = edge => edge.target ?? edge.to
-  const memories = DATA.map(item => ({
-    mode: 'overview', nodeId: null, inspectorOpen: false, runId: item.graph.runs?.[0]?.id ?? null,
-    compare: false, compareRunId: item.graph.runs?.[1]?.id ?? null, side: 'left',
-    observationIndex: null, visitOrdinal: null, view: null,
+  const label = (value) =>
+    value?.label || value?.name || value?.title || value?.id || 'Unattributed observation'
+  const json = (value) => (value === undefined ? 'Not captured' : JSON.stringify(value, null, 2))
+  const own = (value, key) =>
+    value !== null && typeof value === 'object' && Object.hasOwn(value, key)
+  const edgeFrom = (edge) => edge.source ?? edge.from,
+    edgeTo = (edge) => edge.target ?? edge.to
+  const memories = DATA.map((item) => ({
+    mode: 'overview',
+    nodeId: null,
+    inspectorOpen: false,
+    runId: item.graph.runs?.[0]?.id ?? null,
+    compare: false,
+    compareRunId: item.graph.runs?.[1]?.id ?? null,
+    side: 'left',
+    observationIndex: null,
+    visitOrdinal: null,
+    view: null,
   }))
-  let current = defaultGraphIndex(DATA), positions = new Map(), edgePaths = new Map(), dimensions, drag = null
+  let current = defaultGraphIndex(DATA),
+    positions = new Map(),
+    edgePaths = new Map(),
+    dimensions,
+    drag = null
   const state = () => memories[current]
   const item = () => DATA[current]
   const graph = () => item().graph
   const runs = () => graph().runs || []
-  const runById = id => runs().find(run => run.id === id)
-  const rememberedRun = () => runById(state().compare && state().side === 'right' ? state().compareRunId : state().runId)
-  const activeRun = () => state().mode === 'cases' ? rememberedRun() : undefined
+  const runById = (id) => runs().find((run) => run.id === id)
+  const rememberedRun = () =>
+    runById(state().compare && state().side === 'right' ? state().compareRunId : state().runId)
+  const activeRun = () => (state().mode === 'cases' ? rememberedRun() : undefined)
   const observation = () => selectedCaseObservation(graph(), activeRun(), state())
-  const selectedNode = () => graph().nodes.find(node => node.id === state().nodeId)
-  const notify = text => { $('status').textContent = text }
+  const selectedNode = () => graph().nodes.find((node) => node.id === state().nodeId)
+  const notify = (text) => {
+    $('status').textContent = text
+  }
   const paragraph = (parent, text, className = 'muted') => parent.append(h('p', text, className))
-  const heading = (parent, text, level = 'h3') => { const element = h(level, text); parent.append(element); return element }
+  const heading = (parent, text, level = 'h3') => {
+    const element = h(level, text)
+    parent.append(element)
+    return element
+  }
   const disclosure = (parent, title, content) => {
     const details = h('details', undefined, 'disclosure')
     details.append(h('summary', title))
@@ -357,10 +651,13 @@ function startExplorer() {
     return pre
   }
   function keepFocus(render) {
-    const focused = document.activeElement, key = focused?.dataset?.focusKey
+    const focused = document.activeElement,
+      key = focused?.dataset?.focusKey
     render()
     if (key && !focused.isConnected) {
-      const next = [...document.querySelectorAll('[data-focus-key]')].find(element => element.dataset.focusKey === key)
+      const next = [...document.querySelectorAll('[data-focus-key]')].find(
+        (element) => element.dataset.focusKey === key,
+      )
       next?.focus({ preventScroll: true })
     }
   }
@@ -369,7 +666,11 @@ function startExplorer() {
     if (!source || typeof source !== 'object') return ''
     const path = source.path || source.file
     if (!path) return source.symbol || ''
-    return path + (source.line ? ':' + source.line + (source.column ? ':' + source.column : '') : '') + (source.symbol ? ' · ' + source.symbol : '')
+    return (
+      path +
+      (source.line ? ':' + source.line + (source.column ? ':' + source.column : '') : '') +
+      (source.symbol ? ' · ' + source.symbol : '')
+    )
   }
   function sourceBlock(parent, source) {
     const text = sourceText(source)
@@ -381,58 +682,105 @@ function startExplorer() {
   function description(node) {
     if (node.description) return node.description
     if (node.reason) return node.reason
-    if (node.kind === 'binding') return 'A configured use of this package. Its routes stay distinct from other bindings of the same package.'
-    if (node.kind === 'grant') return 'A configured host resource. Its policy values and credentials are omitted.'
+    if (node.kind === 'binding')
+      return 'A configured use of this package. Its routes stay distinct from other bindings of the same package.'
+    if (node.kind === 'grant')
+      return 'A configured host resource. Its policy values and credentials are omitted.'
     if (node.kind === 'unknown') return 'The supplied declarations do not establish this target.'
-    if (node.kind === 'external') return 'This package is referenced, but its contents are outside this source snapshot.'
-    return isRuntimeGraph(graph()) ? 'An element in the runtime’s declared structure.' : 'A reusable method. Its internal ordering and decisions are not captured in this view.'
+    if (node.kind === 'external')
+      return 'This package is referenced, but its contents are outside this source snapshot.'
+    return isRuntimeGraph(graph())
+      ? 'An element in the runtime’s declared structure.'
+      : 'A reusable method. Its internal ordering and decisions are not captured in this view.'
   }
   function visitCounts(run) {
     const counts = new Map()
-    for (const entry of run?.observations || []) if (entry && typeof entry === 'object' && graph().nodes.some(node => node.id === entry.nodeId)) counts.set(entry.nodeId, (counts.get(entry.nodeId) || 0) + 1)
+    for (const entry of run?.observations || [])
+      if (
+        entry &&
+        typeof entry === 'object' &&
+        graph().nodes.some((node) => node.id === entry.nodeId)
+      )
+        counts.set(entry.nodeId, (counts.get(entry.nodeId) || 0) + 1)
     return counts
   }
   function enterCase(side, runId) {
-    const previous = activeRun(), next = runById(runId)
-    const selection = preserveCaseSelection(graph(), {
-      nodeId: state().nodeId, runId: previous?.id, observationIndex: state().observationIndex, visitOrdinal: state().visitOrdinal,
-    }, next?.id)
+    const previous = activeRun(),
+      next = runById(runId)
+    const selection = preserveCaseSelection(
+      graph(),
+      {
+        nodeId: state().nodeId,
+        runId: previous?.id,
+        observationIndex: state().observationIndex,
+        visitOrdinal: state().visitOrdinal,
+      },
+      next?.id,
+    )
     if (side === 'right') state().compareRunId = next?.id ?? null
     else state().runId = next?.id ?? null
-    Object.assign(state(), { side, nodeId: selection.nodeId, observationIndex: selection.observationIndex, visitOrdinal: selection.visitOrdinal })
+    Object.assign(state(), {
+      side,
+      nodeId: selection.nodeId,
+      observationIndex: selection.observationIndex,
+      visitOrdinal: selection.visitOrdinal,
+    })
     keepFocus(render)
   }
   function selectObservation(run, entry, side) {
     if (!Number.isSafeInteger(entry?.index)) return
     state().mode = 'cases'
     state().side = side
-    state().nodeId = graph().nodes.some(node => node.id === entry.nodeId) ? entry.nodeId : null
+    state().nodeId = graph().nodes.some((node) => node.id === entry.nodeId) ? entry.nodeId : null
     state().observationIndex = entry.index
-    state().visitOrdinal = state().nodeId ? nodeOccurrences(graph(), run, state().nodeId).findIndex(value => value.index === entry.index) + 1 : null
+    state().visitOrdinal = state().nodeId
+      ? nodeOccurrences(graph(), run, state().nodeId).findIndex(
+          (value) => value.index === entry.index,
+        ) + 1
+      : null
     state().inspectorOpen = true
     keepFocus(render)
-    notify(label(entry) + ', recorded observation ' + entry.index + (state().visitOrdinal ? ', visit ' + state().visitOrdinal : ''))
+    notify(
+      label(entry) +
+        ', recorded observation ' +
+        entry.index +
+        (state().visitOrdinal ? ', visit ' + state().visitOrdinal : ''),
+    )
     revealInspector()
   }
   function selectNode(nodeId) {
-    const selection = componentSelection(graph(), {
-      nodeId: state().nodeId, runId: rememberedRun()?.id,
-      observationIndex: state().observationIndex, visitOrdinal: state().visitOrdinal,
-    }, nodeId)
-    Object.assign(state(), { nodeId: selection.nodeId, observationIndex: selection.observationIndex, visitOrdinal: selection.visitOrdinal })
+    const selection = componentSelection(
+      graph(),
+      {
+        nodeId: state().nodeId,
+        runId: rememberedRun()?.id,
+        observationIndex: state().observationIndex,
+        visitOrdinal: state().visitOrdinal,
+      },
+      nodeId,
+    )
+    Object.assign(state(), {
+      nodeId: selection.nodeId,
+      observationIndex: selection.observationIndex,
+      visitOrdinal: selection.visitOrdinal,
+    })
     state().inspectorOpen = true
     keepFocus(render)
     revealInspector()
   }
   function revealInspector() {
-    if (window.matchMedia('(max-width: 1000px)').matches) $('inspector').scrollIntoView({ block: 'start', behavior: 'auto' })
+    if (window.matchMedia('(max-width: 1000px)').matches)
+      $('inspector').scrollIntoView({ block: 'start', behavior: 'auto' })
   }
   function closeInspector() {
     state().inspectorOpen = false
     render()
-    const target = [...$('canvas').querySelectorAll('[data-focus-key]')].find(element => element.dataset.focusKey === 'node:' + state().nodeId)
+    const target = [...$('canvas').querySelectorAll('[data-focus-key]')].find(
+      (element) => element.dataset.focusKey === 'node:' + state().nodeId,
+    )
     target?.focus({ preventScroll: true })
-    if (window.matchMedia('(max-width: 1000px)').matches) $('diagram-wrap').scrollIntoView({ block: 'start', behavior: 'auto' })
+    if (window.matchMedia('(max-width: 1000px)').matches)
+      $('diagram-wrap').scrollIntoView({ block: 'start', behavior: 'auto' })
   }
   function changeMode(mode) {
     state().mode = mode
@@ -440,10 +788,21 @@ function startExplorer() {
   }
   function setComparison(enabled) {
     if (!enabled && state().side === 'right') {
-      const selection = preserveCaseSelection(graph(), {
-        nodeId: state().nodeId, runId: activeRun()?.id, observationIndex: state().observationIndex, visitOrdinal: state().visitOrdinal,
-      }, state().runId)
-      Object.assign(state(), { nodeId: selection.nodeId, observationIndex: selection.observationIndex, visitOrdinal: selection.visitOrdinal })
+      const selection = preserveCaseSelection(
+        graph(),
+        {
+          nodeId: state().nodeId,
+          runId: activeRun()?.id,
+          observationIndex: state().observationIndex,
+          visitOrdinal: state().visitOrdinal,
+        },
+        state().runId,
+      )
+      Object.assign(state(), {
+        nodeId: selection.nodeId,
+        observationIndex: selection.observationIndex,
+        visitOrdinal: selection.visitOrdinal,
+      })
     }
     state().compare = enabled
     state().side = 'left'
@@ -453,11 +812,21 @@ function startExplorer() {
     const view = state().view || dimensions
     $('diagram').setAttribute('viewBox', [view.x, view.y, view.width, view.height].join(' '))
   }
-  function fit() { state().view = { ...dimensions }; applyView() }
+  function fit() {
+    state().view = { ...dimensions }
+    applyView()
+  }
   function zoom(factor) {
-    const view = state().view || dimensions, width = view.width * factor, height = view.height * factor
+    const view = state().view || dimensions,
+      width = view.width * factor,
+      height = view.height * factor
     if (width < 200 || width > dimensions.width * 5) return
-    state().view = { x: view.x + (view.width - width) / 2, y: view.y + (view.height - height) / 2, width, height }
+    state().view = {
+      x: view.x + (view.width - width) / 2,
+      y: view.y + (view.height - height) / 2,
+      width,
+      height,
+    }
     applyView()
   }
   function fitText(element, width) {
@@ -467,48 +836,135 @@ function startExplorer() {
     }
   }
   function draw() {
-    const g = graph(), layer = $('canvas'), mode = state().mode, comparing = mode === 'cases' && state().compare
+    const g = graph(),
+      layer = $('canvas'),
+      mode = state().mode,
+      comparing = mode === 'cases' && state().compare
     const left = mode === 'cases' ? visitCounts(runById(state().runId)) : new Map()
     const right = comparing ? visitCounts(runById(state().compareRunId)) : new Map()
     layer.replaceChildren()
     for (const edge of g.edges) {
       const geometry = edgePaths.get(edge.id)
       if (!geometry) continue
-      const related = state().nodeId && (edgeFrom(edge) === state().nodeId || edgeTo(edge) === state().nodeId)
-      const className = ['edge', related ? 'related' : '', edge.meaning === 'scope-entry' ? 'scope-entry' : '', String(edge.evidence).includes('unmapped') ? 'unresolved' : ''].join(' ')
-      const path = svg('path', { d: geometry.path, class: className, 'marker-end': related ? 'url(#arrow-related)' : 'url(#arrow)' })
+      const related =
+        state().nodeId && (edgeFrom(edge) === state().nodeId || edgeTo(edge) === state().nodeId)
+      const className = [
+        'edge',
+        related ? 'related' : '',
+        edge.meaning === 'scope-entry' ? 'scope-entry' : '',
+        String(edge.evidence).includes('unmapped') ? 'unresolved' : '',
+      ].join(' ')
+      const path = svg('path', {
+        d: geometry.path,
+        class: className,
+        'marker-end': related ? 'url(#arrow-related)' : 'url(#arrow)',
+      })
       path.append(svg('title', {}, edgeLabel(edge) + ' · ' + edge.meaning))
-      layer.append(path, svg('text', { x: geometry.labelX, y: geometry.labelY, 'text-anchor': 'middle', class: 'edge-label', 'data-fit-width': geometry.labelWidth }, short(edgeLabel(edge), 27)))
+      layer.append(
+        path,
+        svg(
+          'text',
+          {
+            x: geometry.labelX,
+            y: geometry.labelY,
+            'text-anchor': 'middle',
+            class: 'edge-label',
+            'data-fit-width': geometry.labelWidth,
+          },
+          short(edgeLabel(edge), 27),
+        ),
+      )
     }
     g.nodes.forEach((node, index) => {
-      const position = positions.get(node.id), a = left.get(node.id) || 0, b = right.get(node.id) || 0
-      const selected = state().nodeId === node.id, observed = a > 0 || b > 0
-      const className = ['graph-node', selected ? 'selected' : '', observed ? 'observed' : '', comparing && a > 0 && b > 0 ? 'both-cases' : '', comparing && b > 0 && a === 0 ? 'case-b-only' : ''].join(' ')
-      const countText = comparing ? 'A ' + a + ' · B ' + b : a + ' recorded ' + (a === 1 ? 'entry' : 'entries')
+      const position = positions.get(node.id),
+        a = left.get(node.id) || 0,
+        b = right.get(node.id) || 0
+      const selected = state().nodeId === node.id,
+        observed = a > 0 || b > 0
+      const className = [
+        'graph-node',
+        selected ? 'selected' : '',
+        observed ? 'observed' : '',
+        comparing && a > 0 && b > 0 ? 'both-cases' : '',
+        comparing && b > 0 && a === 0 ? 'case-b-only' : '',
+      ].join(' ')
+      const countText = comparing
+        ? 'A ' + a + ' · B ' + b
+        : a + ' recorded ' + (a === 1 ? 'entry' : 'entries')
       const group = svg('g', {
-        class: className, transform: 'translate(' + position.x + ',' + position.y + ')', role: 'button',
-        tabindex: selected || (!state().nodeId && index === 0) ? '0' : '-1', 'aria-pressed': String(selected),
-        'aria-label': label(node) + ', ' + displayNodeKind(node, g) + (mode === 'cases' ? ', ' + countText : ''),
+        class: className,
+        transform: 'translate(' + position.x + ',' + position.y + ')',
+        role: 'button',
+        tabindex: selected || (!state().nodeId && index === 0) ? '0' : '-1',
+        'aria-pressed': String(selected),
+        'aria-label':
+          label(node) +
+          ', ' +
+          displayNodeKind(node, g) +
+          (mode === 'cases' ? ', ' + countText : ''),
       })
       group.dataset.focusKey = 'node:' + node.id
-      const color = node.kind === 'binding' ? '#7262a1' : node.kind === 'grant' ? '#a57a35' : ['unknown', 'external'].includes(node.kind) ? '#8b9396' : '#337c70'
+      const color =
+        node.kind === 'binding'
+          ? '#7262a1'
+          : node.kind === 'grant'
+            ? '#a57a35'
+            : ['unknown', 'external'].includes(node.kind)
+              ? '#8b9396'
+              : '#337c70'
       group.append(svg('rect', { width: 200, height: 81, rx: 12, class: 'node' }))
       group.append(svg('rect', { x: 13, y: 13, width: 24, height: 24, rx: 7, fill: color }))
-      group.append(svg('text', { x: 25, y: 30, 'text-anchor': 'middle', class: 'node-symbol' }, node.kind === 'binding' ? 'B' : node.kind === 'grant' ? '↗' : node.kind === 'unknown' ? '?' : node.kind === 'flow' && isRuntimeGraph(g) ? '◇' : 'ƒ'))
-      group.append(svg('text', { x: 45, y: 25, class: 'node-kind' }, displayNodeKind(node, g).toUpperCase()))
+      group.append(
+        svg(
+          'text',
+          { x: 25, y: 30, 'text-anchor': 'middle', class: 'node-symbol' },
+          node.kind === 'binding'
+            ? 'B'
+            : node.kind === 'grant'
+              ? '↗'
+              : node.kind === 'unknown'
+                ? '?'
+                : node.kind === 'flow' && isRuntimeGraph(g)
+                  ? '◇'
+                  : 'ƒ',
+        ),
+      )
+      group.append(
+        svg('text', { x: 45, y: 25, class: 'node-kind' }, displayNodeKind(node, g).toUpperCase()),
+      )
       group.append(svg('text', { x: 14, y: 51, class: 'node-title' }, short(label(node), 28)))
-      const subtitle = node.packagePath || node.package || (node.kind === 'flow' && isRuntimeGraph(g) ? 'Declared scope' : node.kind === 'node' ? 'Runtime step' : sourceText(nodeSource(node)) || node.id)
+      const subtitle =
+        node.packagePath ||
+        node.package ||
+        (node.kind === 'flow' && isRuntimeGraph(g)
+          ? 'Declared scope'
+          : node.kind === 'node'
+            ? 'Runtime step'
+            : sourceText(nodeSource(node)) || node.id)
       group.append(svg('text', { x: 14, y: 68, class: 'node-subtitle' }, short(subtitle, 34)))
       if (observed) {
-        const text = comparing ? 'A ' + (a > 99 ? '99+' : a) + '  B ' + (b > 99 ? '99+' : b) : (a > 999 ? '999+' : a) + '×'
-        const width = comparing ? 79 : 34, x = 202 - width
+        const text = comparing
+          ? 'A ' + (a > 99 ? '99+' : a) + '  B ' + (b > 99 ? '99+' : b)
+          : (a > 999 ? '999+' : a) + '×'
+        const width = comparing ? 79 : 34,
+          x = 202 - width
         group.append(svg('rect', { x, y: -12, width, height: 24, rx: 12, class: 'node-count' }))
-        group.append(svg('text', { x: x + width / 2, y: 4, 'text-anchor': 'middle', class: 'node-count-text' }, text))
+        group.append(
+          svg(
+            'text',
+            { x: x + width / 2, y: 4, 'text-anchor': 'middle', class: 'node-count-text' },
+            text,
+          ),
+        )
       }
       group.append(svg('title', {}, label(node) + '\n' + description(node)))
       group.addEventListener('click', () => selectNode(node.id))
-      group.addEventListener('keydown', event => {
-        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectNode(node.id); return }
+      group.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          selectNode(node.id)
+          return
+        }
         const directions = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }
         if (own(directions, event.key)) {
           event.preventDefault()
@@ -519,31 +975,46 @@ function startExplorer() {
       layer.append(group)
     })
     for (const text of layer.querySelectorAll('.node-title,.node-subtitle')) fitText(text, 174)
-    for (const text of layer.querySelectorAll('.edge-label')) fitText(text, Number(text.getAttribute('data-fit-width')) || 200)
+    for (const text of layer.querySelectorAll('.edge-label'))
+      fitText(text, Number(text.getAttribute('data-fit-width')) || 200)
     $('empty-graph').hidden = g.nodes.length !== 0
     applyView()
   }
 
   function changesTable(parent, diff, emptyText, labels = ['Before', 'After']) {
     if (!diff.changes.length) {
-      paragraph(parent, diff.truncated ? 'The comparison reached its bound before establishing a difference.' : emptyText)
+      paragraph(
+        parent,
+        diff.truncated
+          ? 'The comparison reached its bound before establishing a difference.'
+          : emptyText,
+      )
       return
     }
-    const wrapper = h('div', undefined, 'table-scroll'), table = h('table', undefined, 'changes')
-    const head = h('thead'), row = h('tr')
+    const wrapper = h('div', undefined, 'table-scroll'),
+      table = h('table', undefined, 'changes')
+    const head = h('thead'),
+      row = h('tr')
     for (const text of ['Field', ...labels]) {
-      const th = h('th', text); th.scope = 'col'; row.append(th)
+      const th = h('th', text)
+      th.scope = 'col'
+      row.append(th)
     }
-    head.append(row); table.append(head)
+    head.append(row)
+    table.append(head)
     const body = h('tbody')
     for (const change of diff.changes) {
-      const tr = h('tr'), path = h('th')
-      path.scope = 'row'; path.append(h('code', change.path || '(root)')); tr.append(path)
+      const tr = h('tr'),
+        path = h('th')
+      path.scope = 'row'
+      path.append(h('code', change.path || '(root)'))
+      tr.append(path)
       for (const side of ['before', 'after']) {
         const cell = h('td')
         if (!change[side + 'Present']) cell.append(h('span', 'Not present', 'not-present'))
         else {
-          const value = json(change[side]), code = h('code', short(value, 260))
+          const value = json(change[side]),
+            code = h('code', short(value, 260))
           if (value.length > 260) code.title = value
           cell.append(code)
         }
@@ -551,8 +1022,15 @@ function startExplorer() {
       }
       body.append(tr)
     }
-    table.append(body); wrapper.append(table); parent.append(wrapper)
-    if (diff.truncated) paragraph(parent, 'The comparison is bounded. Additional differences may be present.', 'small muted')
+    table.append(body)
+    wrapper.append(table)
+    parent.append(wrapper)
+    if (diff.truncated)
+      paragraph(
+        parent,
+        'The comparison is bounded. Additional differences may be present.',
+        'small muted',
+      )
   }
   function conditionCards(parent, entry) {
     heading(parent, 'Evaluated conditions')
@@ -560,14 +1038,26 @@ function startExplorer() {
       paragraph(parent, 'No condition evaluations were recorded for this visit.')
       return
     }
-    paragraph(parent, 'These checks were recorded during this visit. Unrecorded checks are not treated as false.', 'small muted')
+    paragraph(
+      parent,
+      'These checks were recorded during this visit. Unrecorded checks are not treated as false.',
+      'small muted',
+    )
     for (const condition of entry.conditions) {
       const card = h('article', undefined, 'condition')
       const title = h('div', undefined, 'condition-title')
-      title.append(h('strong', condition.label), h('span', condition.result ? 'true' : 'false', 'result-pill ' + (condition.result ? 'true' : 'false')))
+      title.append(
+        h('strong', condition.label),
+        h(
+          'span',
+          condition.result ? 'true' : 'false',
+          'result-pill ' + (condition.result ? 'true' : 'false'),
+        ),
+      )
       card.append(title, h('code', condition.expression, 'expression'))
       const operands = h('dl', undefined, 'operands')
-      for (const [name, value] of Object.entries(condition.values)) operands.append(h('dt', name), h('dd', json(value)))
+      for (const [name, value] of Object.entries(condition.values))
+        operands.append(h('dt', name), h('dd', json(value)))
       card.append(operands)
       parent.append(card)
     }
@@ -575,33 +1065,64 @@ function startExplorer() {
   function visitNavigation(parent, node, run) {
     const visits = nodeOccurrences(graph(), run, node.id)
     if (!visits.length) {
-      paragraph(parent, 'No handler entry for this component is retained in this case.', 'empty-note')
+      paragraph(
+        parent,
+        'No handler entry for this component is retained in this case.',
+        'empty-note',
+      )
       return
     }
-    const ordinal = state().visitOrdinal || 1, currentEntry = observation()
+    const ordinal = state().visitOrdinal || 1,
+      currentEntry = observation()
     const toolbar = h('div', undefined, 'visit-navigation')
-    const labelText = currentEntry ? 'Visit ' + ordinal + ' of ' + visits.length : 'Requested visit ' + ordinal + ' is not captured'
+    const labelText = currentEntry
+      ? 'Visit ' + ordinal + ' of ' + visits.length
+      : 'Requested visit ' + ordinal + ' is not captured'
     toolbar.append(h('strong', labelText))
     const controls = h('div', undefined, 'compact-controls')
-    const previous = button('←', () => {
-      const index = Math.min(visits.length - 1, ordinal - 2)
-      if (visits[index]) selectObservation(run, visits[index], state().side)
-    }, 'icon-button', 'previous-visit')
+    const previous = button(
+      '←',
+      () => {
+        const index = Math.min(visits.length - 1, ordinal - 2)
+        if (visits[index]) selectObservation(run, visits[index], state().side)
+      },
+      'icon-button',
+      'previous-visit',
+    )
     previous.setAttribute('aria-label', 'Previous recorded visit to this component')
     previous.disabled = ordinal <= 1
-    const next = button('→', () => {
-      if (visits[ordinal]) selectObservation(run, visits[ordinal], state().side)
-    }, 'icon-button', 'next-visit')
+    const next = button(
+      '→',
+      () => {
+        if (visits[ordinal]) selectObservation(run, visits[ordinal], state().side)
+      },
+      'icon-button',
+      'next-visit',
+    )
     next.setAttribute('aria-label', 'Next recorded visit to this component')
     next.disabled = ordinal >= visits.length
     controls.append(previous, next)
-    toolbar.append(controls); parent.append(toolbar)
-    if (!currentEntry) paragraph(parent, visits.length + ' ' + (visits.length === 1 ? 'visit is' : 'visits are') + ' recorded. Choose an available visit below.', 'small muted')
+    toolbar.append(controls)
+    parent.append(toolbar)
+    if (!currentEntry)
+      paragraph(
+        parent,
+        visits.length +
+          ' ' +
+          (visits.length === 1 ? 'visit is' : 'visits are') +
+          ' recorded. Choose an available visit below.',
+        'small muted',
+      )
     if (visits.length > 1 || !currentEntry) {
       const picker = h('div', undefined, 'visit-picks')
       visits.forEach((entry, index) => {
         if (!Number.isSafeInteger(entry.index)) return
-        const pick = button('Visit ' + (index + 1), () => selectObservation(run, entry, state().side), 'visit-pick', 'visit:' + entry.index)
+        const pick = button(
+          'Visit ' + (index + 1),
+          () => selectObservation(run, entry, state().side),
+          'visit-pick',
+          'visit:' + entry.index,
+        )
         pick.setAttribute('aria-pressed', String(entry.index === currentEntry?.index))
         picker.append(pick)
       })
@@ -609,23 +1130,44 @@ function startExplorer() {
     }
   }
   function observationDetails(parent, entry, run) {
-    const position = run.observations.findIndex(value => value === entry)
+    const position = run.observations.findIndex((value) => value === entry)
     const navigation = h('div', undefined, 'observation-navigation')
-    navigation.append(h('span', 'Recorded entry ' + (position + 1) + ' of ' + run.observations.length, 'eyebrow'))
+    navigation.append(
+      h('span', 'Recorded entry ' + (position + 1) + ' of ' + run.observations.length, 'eyebrow'),
+    )
     const controls = h('div', undefined, 'compact-controls')
-    const previous = button('←', () => selectObservation(run, run.observations[position - 1], state().side), 'icon-button', 'previous-observation')
+    const previous = button(
+      '←',
+      () => selectObservation(run, run.observations[position - 1], state().side),
+      'icon-button',
+      'previous-observation',
+    )
     previous.setAttribute('aria-label', 'Previous recorded observation')
-    previous.disabled = position <= 0 || !Number.isSafeInteger(run.observations[position - 1]?.index)
-    const next = button('→', () => selectObservation(run, run.observations[position + 1], state().side), 'icon-button', 'next-observation')
+    previous.disabled =
+      position <= 0 || !Number.isSafeInteger(run.observations[position - 1]?.index)
+    const next = button(
+      '→',
+      () => selectObservation(run, run.observations[position + 1], state().side),
+      'icon-button',
+      'next-observation',
+    )
     next.setAttribute('aria-label', 'Next recorded observation')
-    next.disabled = position >= run.observations.length - 1 || !Number.isSafeInteger(run.observations[position + 1]?.index)
-    controls.append(previous, next); navigation.append(controls); parent.append(navigation)
+    next.disabled =
+      position >= run.observations.length - 1 ||
+      !Number.isSafeInteger(run.observations[position + 1]?.index)
+    controls.append(previous, next)
+    navigation.append(controls)
+    parent.append(navigation)
     conditionCards(parent, entry)
     if (own(entry, 'action')) {
       const action = h('div', undefined, 'recorded-action')
       action.append(h('span', 'Emitted action', 'eyebrow'), h('code', entry.action))
       parent.append(action)
-      paragraph(parent, 'The recorded emission does not identify a traversed graph edge.', 'small muted')
+      paragraph(
+        parent,
+        'The recorded emission does not identify a traversed graph edge.',
+        'small muted',
+      )
     }
     if (own(entry, 'terminal')) {
       heading(parent, 'Terminal value recorded')
@@ -633,31 +1175,66 @@ function startExplorer() {
     }
     heading(parent, 'Captured state changes')
     if (own(entry, 'before') && own(entry, 'after')) {
-      changesTable(parent, valueChanges(entry.before, entry.after), 'No change in the captured fields.')
+      changesTable(
+        parent,
+        valueChanges(entry.before, entry.after),
+        'No change in the captured fields.',
+      )
       const snapshots = h('div', undefined, 'snapshot-pair')
-      heading(snapshots, 'Before', 'h4'); snapshots.append(codeBlock(entry.before, 'Captured state before the selected handler'))
-      heading(snapshots, 'After', 'h4'); snapshots.append(codeBlock(entry.after, 'Captured state after the selected handler'))
+      heading(snapshots, 'Before', 'h4')
+      snapshots.append(codeBlock(entry.before, 'Captured state before the selected handler'))
+      heading(snapshots, 'After', 'h4')
+      snapshots.append(codeBlock(entry.after, 'Captured state after the selected handler'))
       disclosure(parent, 'Full before and after snapshots', snapshots)
     } else {
-      paragraph(parent, 'A complete before/after pair was not captured for this observation.', 'empty-note')
-      if (own(entry, 'before')) disclosure(parent, 'Available before snapshot', codeBlock(entry.before, 'Available before snapshot'))
-      if (own(entry, 'after')) disclosure(parent, 'Available after snapshot', codeBlock(entry.after, 'Available after snapshot'))
+      paragraph(
+        parent,
+        'A complete before/after pair was not captured for this observation.',
+        'empty-note',
+      )
+      if (own(entry, 'before'))
+        disclosure(
+          parent,
+          'Available before snapshot',
+          codeBlock(entry.before, 'Available before snapshot'),
+        )
+      if (own(entry, 'after'))
+        disclosure(
+          parent,
+          'Available after snapshot',
+          codeBlock(entry.after, 'Available after snapshot'),
+        )
     }
     sourceBlock(parent, entry.source)
   }
   function routeDetails(parent, node) {
-    const routes = graph().edges.filter(edge => edgeFrom(edge) === node.id)
+    const routes = graph().edges.filter((edge) => edgeFrom(edge) === node.id)
     if (routes.length) {
       heading(parent, isRuntimeGraph(graph()) ? 'Declared connections' : 'Available calls')
       for (const edge of routes) {
-        const target = graph().nodes.find(value => value.id === edgeTo(edge))
+        const target = graph().nodes.find((value) => value.id === edgeTo(edge))
         const route = button('', () => selectNode(edgeTo(edge)), 'route-button', 'route:' + edge.id)
-        route.append(h('code', edgeLabel(edge)), h('span', label(target)), h('span', '↗', 'route-symbol'))
+        route.append(
+          h('code', edgeLabel(edge)),
+          h('span', label(target)),
+          h('span', '↗', 'route-symbol'),
+        )
         route.setAttribute('aria-label', edgeLabel(edge) + ': inspect ' + label(target))
         parent.append(route)
-        if (edge.attachments) paragraph(parent, 'File ports: ' + Object.keys(edge.attachments).join(', '), 'small muted')
+        if (edge.attachments)
+          paragraph(
+            parent,
+            'File ports: ' + Object.keys(edge.attachments).join(', '),
+            'small muted',
+          )
       }
-      paragraph(parent, isRuntimeGraph(graph()) ? 'These connections come from the declared structure.' : 'A call may use its configured slot. Ordering and use are not established here.', 'small muted')
+      paragraph(
+        parent,
+        isRuntimeGraph(graph())
+          ? 'These connections come from the declared structure.'
+          : 'A call may use its configured slot. Ordering and use are not established here.',
+        'small muted',
+      )
     }
     const exits = scopeExits(graph(), node)
     if (exits.length) {
@@ -665,27 +1242,58 @@ function startExplorer() {
       const pills = h('div', undefined, 'pills')
       for (const exit of exits) pills.append(h('code', exit, 'pill'))
       parent.append(pills)
-      paragraph(parent, 'The compiled description does not identify each callback that can emit these exits.', 'small muted')
+      paragraph(
+        parent,
+        'The compiled description does not identify each callback that can emit these exits.',
+        'small muted',
+      )
     }
   }
   function renderInspector() {
-    const panel = $('inspector'), content = $('inspector-content'), node = selectedNode(), entry = observation(), run = activeRun()
+    const panel = $('inspector'),
+      content = $('inspector-content'),
+      node = selectedNode(),
+      entry = observation(),
+      run = activeRun()
     const open = state().inspectorOpen && Boolean(node || entry)
     panel.hidden = !open
     $('workspace').classList.toggle('inspecting', open)
     if (!open) return
     content.replaceChildren()
     $('inspector-title').textContent = node ? label(node) : label(entry)
-    $('inspector-kind').textContent = node ? displayNodeKind(node, graph()) : 'Unattributed observation'
+    $('inspector-kind').textContent = node
+      ? displayNodeKind(node, graph())
+      : 'Unattributed observation'
     if (node) {
       paragraph(content, description(node), 'component-description')
-      if (node.descriptionSource) paragraph(content, node.descriptionSource === 'package-metadata' ? 'Description supplied by the package.' : node.descriptionSource === 'probe-authored' ? 'Description supplied by the probe.' : 'Description source: ' + node.descriptionSource, 'small muted')
+      if (node.descriptionSource)
+        paragraph(
+          content,
+          node.descriptionSource === 'package-metadata'
+            ? 'Description supplied by the package.'
+            : node.descriptionSource === 'probe-authored'
+              ? 'Description supplied by the probe.'
+              : 'Description source: ' + node.descriptionSource,
+          'small muted',
+        )
       if (node.reason && node.description) paragraph(content, node.reason, 'small muted')
-      if (node.runnable === false) paragraph(content, 'This package is not a direct Run target in the lock. A binding may configure another use.', 'small muted')
+      if (node.runnable === false)
+        paragraph(
+          content,
+          'This package is not a direct Run target in the lock. A binding may configure another use.',
+          'small muted',
+        )
     }
     if (run) {
       const capture = h('div', undefined, 'inspector-capture')
-      capture.append(h('span', state().compare ? (state().side === 'right' ? 'Case B' : 'Case A') : 'Recorded case', 'eyebrow'), h('strong', label(run)))
+      capture.append(
+        h(
+          'span',
+          state().compare ? (state().side === 'right' ? 'Case B' : 'Case A') : 'Recorded case',
+          'eyebrow',
+        ),
+        h('strong', label(run)),
+      )
       content.append(capture)
       if (node) visitNavigation(content, node, run)
       if (entry) observationDetails(content, entry, run)
@@ -697,10 +1305,15 @@ function startExplorer() {
       else content.append(routes)
       if (!entry || !sourceText(entry.source)) sourceBlock(content, nodeSource(node))
       const identity = h('div')
-      heading(identity, 'Component ID', 'h4'); identity.append(h('code', node.id))
-      if (node.packagePath) { heading(identity, 'Package', 'h4'); identity.append(h('code', node.packagePath)) }
+      heading(identity, 'Component ID', 'h4')
+      identity.append(h('code', node.id))
+      if (node.packagePath) {
+        heading(identity, 'Package', 'h4')
+        identity.append(h('code', node.packagePath))
+      }
       if (node.packageDigest) {
-        heading(identity, 'Recorded package digest', 'h4'); identity.append(h('code', node.packageDigest))
+        heading(identity, 'Recorded package digest', 'h4')
+        identity.append(h('code', node.packageDigest))
         paragraph(identity, 'This viewer has not verified the package bytes.', 'small muted')
       }
       disclosure(content, 'Component identity', identity)
@@ -716,57 +1329,140 @@ function startExplorer() {
     const card = h('section', undefined, 'data-card')
     heading(card, title)
     if (available) card.append(codeBlock(value, name))
-    else paragraph(card, title === 'Input supplied' ? 'Input values were not captured.' : 'No separate output value was captured.', 'empty-note')
+    else
+      paragraph(
+        card,
+        title === 'Input supplied'
+          ? 'Input values were not captured.'
+          : 'No separate output value was captured.',
+        'empty-note',
+      )
     parent.append(card)
     return card
   }
   function observationList(parent, run, side, prefix = 0, firstDifference = null) {
     const list = h('ol', undefined, 'observation-list')
-    const counts = visitCounts(run), seen = new Map()
+    const counts = visitCounts(run),
+      seen = new Map()
     for (const [position, entry] of (run.observations || []).entries()) {
-      const row = h('li', undefined, position < prefix ? 'shared' : position + 1 === firstDifference ? 'divergent' : '')
-      const attributed = entry && typeof entry === 'object', nodeId = attributed ? entry.nodeId : undefined
+      const row = h(
+        'li',
+        undefined,
+        position < prefix ? 'shared' : position + 1 === firstDifference ? 'divergent' : '',
+      )
+      const attributed = entry && typeof entry === 'object',
+        nodeId = attributed ? entry.nodeId : undefined
       const ordinal = nodeId ? (seen.get(nodeId) || 0) + 1 : 0
       if (nodeId) seen.set(nodeId, ordinal)
       const interactive = attributed && Number.isSafeInteger(entry.index)
-      const content = interactive ? button('', () => selectObservation(run, entry, side), 'observation-button', 'observation:' + side + ':' + entry.index) : h('div', undefined, 'observation-button unavailable')
-      const selected = interactive && activeRun()?.id === run.id && state().side === side && state().observationIndex === entry.index
+      const content = interactive
+        ? button(
+            '',
+            () => selectObservation(run, entry, side),
+            'observation-button',
+            'observation:' + side + ':' + entry.index,
+          )
+        : h('div', undefined, 'observation-button unavailable')
+      const selected =
+        interactive &&
+        activeRun()?.id === run.id &&
+        state().side === side &&
+        state().observationIndex === entry.index
       if (interactive) content.setAttribute('aria-pressed', String(selected))
       content.append(h('span', String(position + 1).padStart(2, '0'), 'observation-number'))
       const copy = h('span', undefined, 'observation-copy')
       copy.append(h('strong', attributed ? label(entry) : entry))
-      let detail = !attributed || !nodeId ? 'Unattributed observation' : entry.kind === 'handler-enter' ? 'Handler entered' : entry.kind || 'Recorded observation'
+      let detail =
+        !attributed || !nodeId
+          ? 'Unattributed observation'
+          : entry.kind === 'handler-enter'
+            ? 'Handler entered'
+            : entry.kind || 'Recorded observation'
       if (attributed && own(entry, 'action')) detail = 'Emitted ' + entry.action
-      else if (attributed && own(entry, 'terminal')) detail = 'Recorded terminal' + (typeof entry.terminal?.outcome === 'string' ? ': ' + entry.terminal.outcome : '')
+      else if (attributed && own(entry, 'terminal'))
+        detail =
+          'Recorded terminal' +
+          (typeof entry.terminal?.outcome === 'string' ? ': ' + entry.terminal.outcome : '')
       copy.append(h('small', detail))
       content.append(copy)
-      if ((counts.get(nodeId) || 0) > 1) content.append(h('span', 'visit ' + ordinal, 'visit-label'))
-      if (interactive) content.setAttribute('aria-label', 'Observation ' + (position + 1) + ': ' + label(entry) + (ordinal ? ', visit ' + ordinal : '') + ', ' + detail)
-      row.append(content); list.append(row)
+      if ((counts.get(nodeId) || 0) > 1)
+        content.append(h('span', 'visit ' + ordinal, 'visit-label'))
+      if (interactive)
+        content.setAttribute(
+          'aria-label',
+          'Observation ' +
+            (position + 1) +
+            ': ' +
+            label(entry) +
+            (ordinal ? ', visit ' + ordinal : '') +
+            ', ' +
+            detail,
+        )
+      row.append(content)
+      list.append(row)
     }
-    if (!(run.observations || []).length) paragraph(parent, 'No handler observations are retained for this case.', 'empty-note')
+    if (!(run.observations || []).length)
+      paragraph(parent, 'No handler observations are retained for this case.', 'empty-note')
     else parent.append(list)
   }
   function caseHeading(parent, run, side) {
-    const top = h('div', undefined, 'case-heading'), title = h('div')
-    title.append(h('span', state().compare ? 'Case ' + (side === 'left' ? 'A' : 'B') : 'Captured execution', 'eyebrow'))
+    const top = h('div', undefined, 'case-heading'),
+      title = h('div')
+    title.append(
+      h(
+        'span',
+        state().compare ? 'Case ' + (side === 'left' ? 'A' : 'B') : 'Captured execution',
+        'eyebrow',
+      ),
+    )
     heading(title, label(run), 'h2')
     top.append(title)
     if (run.outcome) top.append(h('span', run.outcome, 'outcome-pill'))
     parent.append(top)
     if (run.summary) paragraph(parent, run.summary, 'case-summary')
-    else paragraph(parent, (run.observations || []).length + ' recorded observations' + (run.status ? ' · ' + run.status : ''), 'case-summary')
+    else
+      paragraph(
+        parent,
+        (run.observations || []).length +
+          ' recorded observations' +
+          (run.status ? ' · ' + run.status : ''),
+        'case-summary',
+      )
   }
   function renderSingleCase(parent, run) {
     caseHeading(parent, run, 'left')
-    const layout = h('div', undefined, 'case-layout'), timeline = h('section', undefined, 'timeline-panel'), data = h('div', undefined, 'case-values')
+    const layout = h('div', undefined, 'case-layout'),
+      timeline = h('section', undefined, 'timeline-panel'),
+      data = h('div', undefined, 'case-values')
     heading(timeline, 'Recorded observations')
-    paragraph(timeline, 'Select a visit to inspect its conditions and captured state.', 'small muted')
+    paragraph(
+      timeline,
+      'Select a visit to inspect its conditions and captured state.',
+      'small muted',
+    )
     observationList(timeline, run, 'left')
-    dataCard(data, 'Input supplied', run.input, own(run, 'input'), 'Input supplied to this recorded case')
-    const output = dataCard(data, 'Output returned', run.output, own(run, 'output'), 'Output captured from this recorded case')
-    if (own(run, 'result')) disclosure(output, 'Full runtime result', codeBlock(run.result, 'Full recorded runtime result'))
-    layout.append(timeline, data); parent.append(layout)
+    dataCard(
+      data,
+      'Input supplied',
+      run.input,
+      own(run, 'input'),
+      'Input supplied to this recorded case',
+    )
+    const output = dataCard(
+      data,
+      'Output returned',
+      run.output,
+      own(run, 'output'),
+      'Output captured from this recorded case',
+    )
+    if (own(run, 'result'))
+      disclosure(
+        output,
+        'Full runtime result',
+        codeBlock(run.result, 'Full recorded runtime result'),
+      )
+    layout.append(timeline, data)
+    parent.append(layout)
   }
   function comparisonHint(parent, title, detail, action) {
     const box = h('div', undefined, 'comparison-hint')
@@ -775,50 +1471,125 @@ function startExplorer() {
     parent.append(box)
   }
   function captureDifferences(parent, left, right, key, difference) {
-    const presentA = own(left, key), presentB = own(right, key)
+    const presentA = own(left, key),
+      presentB = own(right, key)
     if (!presentA && !presentB) paragraph(parent, 'No ' + key + ' values are available to compare.')
-    else if (!presentA || !presentB) paragraph(parent, 'Incomplete capture: case ' + (presentA ? 'B' : 'A') + ' has no separate ' + key + ' value. A value comparison is unavailable.')
-    else changesTable(parent, difference, 'No differences in captured ' + key + ' values.', ['Case A', 'Case B'])
+    else if (!presentA || !presentB)
+      paragraph(
+        parent,
+        'Incomplete capture: case ' +
+          (presentA ? 'B' : 'A') +
+          ' has no separate ' +
+          key +
+          ' value. A value comparison is unavailable.',
+      )
+    else
+      changesTable(parent, difference, 'No differences in captured ' + key + ' values.', [
+        'Case A',
+        'Case B',
+      ])
   }
   function renderComparison(parent, left, right) {
     const comparison = caseComparison(graph(), left, right)
     const header = h('div', undefined, 'case-heading')
     heading(header, 'Compare recorded cases', 'h2')
-    header.append(h('span', 'A / B', 'comparison-mark')); parent.append(header)
+    header.append(h('span', 'A / B', 'comparison-mark'))
+    parent.append(header)
     const hints = h('div', undefined, 'comparison-hints')
     const same = left.id === right.id
-    comparisonHint(hints, same ? 'The same captured case is selected twice' : comparison.commonPrefix + ' matching handler entries at the start',
-      same ? 'Choose another case to compare its recorded behavior.' : 'Matching entries identify the same component. Their data and decisions can still differ.')
+    comparisonHint(
+      hints,
+      same
+        ? 'The same captured case is selected twice'
+        : comparison.commonPrefix + ' matching handler entries at the start',
+      same
+        ? 'Choose another case to compare its recorded behavior.'
+        : 'Matching entries identify the same component. Their data and decisions can still differ.',
+    )
     if (comparison.decisionDifference) {
       const difference = comparison.decisionDifference
-      comparisonHint(hints, 'Recorded check results or actions differ at position ' + difference.position,
+      comparisonHint(
+        hints,
+        'Recorded check results or actions differ at position ' + difference.position,
         'Compare the captured checks, actions, and terminal values. Missing capture is not proof of a different decision.',
-        () => selectObservation(left, difference.left, 'left'))
+        () => selectObservation(left, difference.left, 'left'),
+      )
     }
     if (comparison.firstDifference) {
       const difference = comparison.firstDifference
-      comparisonHint(hints, 'The entry lists differ at record position ' + difference.position,
-        (difference.left ? 'A: ' + label(difference.left) : 'A: no retained entry') + ' · ' + (difference.right ? 'B: ' + label(difference.right) : 'B: no retained entry'),
-        Number.isSafeInteger(difference.left?.index) ? () => selectObservation(left, difference.left, 'left') : Number.isSafeInteger(difference.right?.index) ? () => selectObservation(right, difference.right, 'right') : null)
+      comparisonHint(
+        hints,
+        'The entry lists differ at record position ' + difference.position,
+        (difference.left ? 'A: ' + label(difference.left) : 'A: no retained entry') +
+          ' · ' +
+          (difference.right ? 'B: ' + label(difference.right) : 'B: no retained entry'),
+        Number.isSafeInteger(difference.left?.index)
+          ? () => selectObservation(left, difference.left, 'left')
+          : Number.isSafeInteger(difference.right?.index)
+            ? () => selectObservation(right, difference.right, 'right')
+            : null,
+      )
     } else if (!comparison.decisionDifference && !same) {
-      comparisonHint(hints, 'No recorded entry or decision-result difference', 'Available entry identities, check results, actions, and terminal values match. Captured operands or other inputs can still differ.')
+      comparisonHint(
+        hints,
+        'No recorded entry or decision-result difference',
+        'Available entry identities, check results, actions, and terminal values match. Captured operands or other inputs can still differ.',
+      )
     }
     parent.append(hints)
     const differences = h('div', undefined, 'comparison-differences')
-    const inputs = h('section'), outputs = h('section')
-    heading(inputs, 'Input differences'); captureDifferences(inputs, left, right, 'input', comparison.inputChanges)
-    heading(outputs, 'Output differences'); captureDifferences(outputs, left, right, 'output', comparison.outputChanges)
-    differences.append(inputs, outputs); parent.append(differences)
-    paragraph(parent, 'These are observations from two cases. Input differences alone do not establish what caused a different result.', 'small muted')
+    const inputs = h('section'),
+      outputs = h('section')
+    heading(inputs, 'Input differences')
+    captureDifferences(inputs, left, right, 'input', comparison.inputChanges)
+    heading(outputs, 'Output differences')
+    captureDifferences(outputs, left, right, 'output', comparison.outputChanges)
+    differences.append(inputs, outputs)
+    parent.append(differences)
+    paragraph(
+      parent,
+      'These are observations from two cases. Input differences alone do not establish what caused a different result.',
+      'small muted',
+    )
     const columns = h('div', undefined, 'comparison-columns')
-    for (const [run, side] of [[left, 'left'], [right, 'right']]) {
-      const column = h('section', undefined, 'comparison-column ' + (side === 'left' ? 'case-a' : 'case-b'))
+    for (const [run, side] of [
+      [left, 'left'],
+      [right, 'right'],
+    ]) {
+      const column = h(
+        'section',
+        undefined,
+        'comparison-column ' + (side === 'left' ? 'case-a' : 'case-b'),
+      )
       caseHeading(column, run, side)
-      observationList(column, run, side, comparison.commonPrefix, comparison.firstDifference?.position)
+      observationList(
+        column,
+        run,
+        side,
+        comparison.commonPrefix,
+        comparison.firstDifference?.position,
+      )
       const values = h('div')
-      dataCard(values, 'Input supplied', run.input, own(run, 'input'), 'Input supplied to case ' + (side === 'left' ? 'A' : 'B'))
-      const output = dataCard(values, 'Output returned', run.output, own(run, 'output'), 'Output captured from case ' + (side === 'left' ? 'A' : 'B'))
-      if (own(run, 'result')) disclosure(output, 'Full runtime result', codeBlock(run.result, 'Full recorded runtime result'))
+      dataCard(
+        values,
+        'Input supplied',
+        run.input,
+        own(run, 'input'),
+        'Input supplied to case ' + (side === 'left' ? 'A' : 'B'),
+      )
+      const output = dataCard(
+        values,
+        'Output returned',
+        run.output,
+        own(run, 'output'),
+        'Output captured from case ' + (side === 'left' ? 'A' : 'B'),
+      )
+      if (own(run, 'result'))
+        disclosure(
+          output,
+          'Full runtime result',
+          codeBlock(run.result, 'Full recorded runtime result'),
+        )
       disclosure(column, 'Captured input and output', values)
       columns.append(column)
     }
@@ -833,18 +1604,25 @@ function startExplorer() {
     if (!run) {
       const empty = h('div', undefined, 'empty-state')
       heading(empty, 'No cases captured for this application', 'h2')
-      paragraph(empty, 'You can inspect its configured calls and source locations. This snapshot contains no execution evidence.')
+      paragraph(
+        empty,
+        'You can inspect its configured calls and source locations. This snapshot contains no execution evidence.',
+      )
       empty.append(button('Explore the overview', () => changeMode('overview'), 'button'))
       parent.append(empty)
       return
     }
-    if (state().compare && runById(state().compareRunId)) renderComparison(parent, run, runById(state().compareRunId))
+    if (state().compare && runById(state().compareRunId))
+      renderComparison(parent, run, runById(state().compareRunId))
     else renderSingleCase(parent, run)
   }
   function renderEvidence() {
-    const parent = $('evidence-content'), g = graph(), evidence = evidenceText(g)
+    const parent = $('evidence-content'),
+      g = graph(),
+      evidence = evidenceText(g)
     parent.replaceChildren()
-    heading(parent, evidence.heading, 'h3'); paragraph(parent, evidence.text)
+    heading(parent, evidence.heading, 'h3')
+    paragraph(parent, evidence.text)
     if (item().revision) {
       paragraph(parent, 'Source revision supplied with this view', 'small muted')
       parent.append(h('code', item().revision))
@@ -862,8 +1640,14 @@ function startExplorer() {
     const warnings = g.warnings || []
     if (warnings.length) {
       const list = h('ul', undefined, 'evidence-list')
-      for (const warning of warnings.slice(0, 30)) list.append(h('li', typeof warning === 'string' ? warning : warning.message || warning.code))
-      if (warnings.length > 30) list.append(h('li', (warnings.length - 30) + ' additional diagnostics are retained in the graph JSON.'))
+      for (const warning of warnings.slice(0, 30))
+        list.append(
+          h('li', typeof warning === 'string' ? warning : warning.message || warning.code),
+        )
+      if (warnings.length > 30)
+        list.append(
+          h('li', warnings.length - 30 + ' additional diagnostics are retained in the graph JSON.'),
+        )
       disclosure(parent, warnings.length + ' source diagnostics', list)
     }
     const buttons = h('div', undefined, 'evidence-actions')
@@ -871,40 +1655,87 @@ function startExplorer() {
     parent.append(buttons)
   }
   function renderChrome() {
-    const g = graph(), runtime = isRuntimeGraph(g), mode = state().mode, availableRuns = runs()
-    const root = graphRoots(g).map(id => g.nodes.find(node => node.id === id)).find(node => node?.description)
+    const g = graph(),
+      runtime = isRuntimeGraph(g),
+      mode = state().mode,
+      availableRuns = runs()
+    const root = graphRoots(g)
+      .map((id) => g.nodes.find((node) => node.id === id))
+      .find((node) => node?.description)
     $('app-select').value = String(current)
     $('application-title').textContent = item().title
-    $('application-summary').textContent = root?.description || item().summary || (runtime ? 'Inspect the declared structure, then follow a captured case through its recorded observations.' : 'Explore the components and configured calls in this application.')
-    $('capture-kind').textContent = runtime ? 'Declared runtime structure' : 'Configured component calls'
-    $('capture-count').textContent = g.nodes.length + ' components' + (availableRuns.length ? ' · ' + availableRuns.length + ' recorded cases' : '')
+    $('application-summary').textContent =
+      root?.description ||
+      item().summary ||
+      (runtime
+        ? 'Inspect the declared structure, then follow a captured case through its recorded observations.'
+        : 'Explore the components and configured calls in this application.')
+    $('capture-kind').textContent = runtime
+      ? 'Declared runtime structure'
+      : 'Configured component calls'
+    $('capture-count').textContent =
+      g.nodes.length +
+      ' components' +
+      (availableRuns.length ? ' · ' + availableRuns.length + ' recorded cases' : '')
     $('overview-tab').setAttribute('aria-selected', String(mode === 'overview'))
     $('cases-tab').setAttribute('aria-selected', String(mode === 'cases'))
     $('overview-tab').tabIndex = mode === 'overview' ? 0 : -1
     $('cases-tab').tabIndex = mode === 'cases' ? 0 : -1
     $('cases-count').textContent = String(availableRuns.length)
-    $('view-panel').setAttribute('aria-labelledby', mode === 'overview' ? 'overview-tab' : 'cases-tab')
+    $('view-panel').setAttribute(
+      'aria-labelledby',
+      mode === 'overview' ? 'overview-tab' : 'cases-tab',
+    )
     $('view-panel').dataset.mode = mode
     $('case-controls').hidden = mode !== 'cases' || !availableRuns.length
     $('run-label').textContent = state().compare ? 'Case A' : 'Recorded case'
-    for (const [id, selected] of [['run-select', state().runId], ['compare-select', state().compareRunId]]) {
+    for (const [id, selected] of [
+      ['run-select', state().runId],
+      ['compare-select', state().compareRunId],
+    ]) {
       const select = $(id)
-      select.replaceChildren(...availableRuns.map(run => new Option(label(run), run.id)))
+      select.replaceChildren(...availableRuns.map((run) => new Option(label(run), run.id)))
       if (selected) select.value = selected
     }
     $('compare-button').disabled = availableRuns.length < 2
     $('compare-button').setAttribute('aria-pressed', String(state().compare))
     $('compare-button').textContent = state().compare ? 'Close comparison' : 'Compare cases'
     $('compare-field').hidden = !state().compare
-    $('map-title').textContent = mode === 'overview' ? 'Application map' : state().compare ? 'Recorded visits · A / B' : 'Recorded visits'
-    $('map-note').textContent = mode === 'cases' && availableRuns.length ? 'Nodes show recorded handler entries. Connections remain declared.' : runtime ? 'Connections are declared by the runtime. Select a component to inspect it.' : 'Connections show available calls. Order and conditions remain in the method source.'
-    $('map-legend').textContent = mode === 'cases' && availableRuns.length ? state().compare ? 'A · first case    B · second case' : 'Number badges count recorded visits' : runtime ? 'Dashed connection · scope entry' : 'Bindings · flows · resources'
-    $('diagram-description').textContent = $('map-note').textContent + ' Use arrow keys to move between components. Press Enter to inspect.'
-    $('map-footnote').textContent = mode === 'cases' && availableRuns.length ? 'This is a recorded capture. It does not run a workflow or stream live events.' : runtime ? 'Scope exits and callback conditions are separate evidence. Inspect a recorded case to see captured decisions.' : 'Internal order, branches, data transformations, and repeated calls are not established by this composition view.'
+    $('map-title').textContent =
+      mode === 'overview'
+        ? 'Application map'
+        : state().compare
+          ? 'Recorded visits · A / B'
+          : 'Recorded visits'
+    $('map-note').textContent =
+      mode === 'cases' && availableRuns.length
+        ? 'Nodes show recorded handler entries. Connections remain declared.'
+        : runtime
+          ? 'Connections are declared by the runtime. Select a component to inspect it.'
+          : 'Connections show available calls. Order and conditions remain in the method source.'
+    $('map-legend').textContent =
+      mode === 'cases' && availableRuns.length
+        ? state().compare
+          ? 'A · first case    B · second case'
+          : 'Number badges count recorded visits'
+        : runtime
+          ? 'Dashed connection · scope entry'
+          : 'Bindings · flows · resources'
+    $('diagram-description').textContent =
+      $('map-note').textContent +
+      ' Use arrow keys to move between components. Press Enter to inspect.'
+    $('map-footnote').textContent =
+      mode === 'cases' && availableRuns.length
+        ? 'This is a recorded capture. It does not run a workflow or stream live events.'
+        : runtime
+          ? 'Scope exits and callback conditions are separate evidence. Inspect a recorded case to see captured decisions.'
+          : 'Internal order, branches, data transformations, and repeated calls are not established by this composition view.'
     $('overview-hint').hidden = mode !== 'overview'
     $('explore-cases').hidden = !availableRuns.length
     $('explore-cases').textContent = 'Explore ' + availableRuns.length + ' recorded cases'
-    $('overview-hint-text').textContent = runtime ? 'Select a component for its role, declared connections, and source. Recorded cases reveal the behavior captured for specific inputs.' : 'Select a component for its authored description, configured collaborators, and source location.'
+    $('overview-hint-text').textContent = runtime
+      ? 'Select a component for its role, declared connections, and source. Recorded cases reveal the behavior captured for specific inputs.'
+      : 'Select a component for its authored description, configured collaborators, and source location.'
     $('node-select').value = state().nodeId || ''
   }
   function render() {
@@ -918,7 +1749,9 @@ function startExplorer() {
     if (!Number.isInteger(index) || !DATA[index]) return
     current = index
     const layout = layoutGraph(graph())
-    positions = layout.positions; edgePaths = layout.edgePaths; dimensions = layout.dimensions
+    positions = layout.positions
+    edgePaths = layout.edgePaths
+    dimensions = layout.dimensions
     if (!state().view) state().view = { ...dimensions }
     const select = $('node-select')
     select.replaceChildren(new Option('Inspect a component…', ''))
@@ -929,8 +1762,14 @@ function startExplorer() {
   function contextText() {
     const run = activeRun()
     return selectedInvestigationContext(item(), {
-      nodeId: state().nodeId, runId: run?.id,
-      compareRunId: state().compare && state().mode === 'cases' ? (state().side === 'right' ? state().runId : state().compareRunId) : undefined,
+      nodeId: state().nodeId,
+      runId: run?.id,
+      compareRunId:
+        state().compare && state().mode === 'cases'
+          ? state().side === 'right'
+            ? state().runId
+            : state().compareRunId
+          : undefined,
       observationIndex: state().mode === 'cases' ? state().observationIndex : undefined,
       visitOrdinal: state().mode === 'cases' ? state().visitOrdinal : undefined,
     })
@@ -946,16 +1785,27 @@ function startExplorer() {
   async function copyContext() {
     const text = contextText()
     try {
-      if (!navigator.clipboard?.writeText) { showContext(text); return }
+      if (!navigator.clipboard?.writeText) {
+        showContext(text)
+        return
+      }
       await navigator.clipboard.writeText(text)
-      notify('Investigation context copied. It includes the selected evidence and source locations.')
-    } catch { showContext(text) }
+      notify(
+        'Investigation context copied. It includes the selected evidence and source locations.',
+      )
+    } catch {
+      showContext(text)
+    }
   }
   function exportGraph() {
     const blob = new Blob([JSON.stringify(graph(), null, 2) + '\n'], { type: 'application/json' })
-    const url = URL.createObjectURL(blob), anchor = h('a')
+    const url = URL.createObjectURL(blob),
+      anchor = h('a')
     anchor.href = url
-    anchor.download = String(item().id || 'flow-graph').replace(/[^a-zA-Z0-9._-]+/gu, '-').slice(0, 100) + '.json'
+    anchor.download =
+      String(item().id || 'flow-graph')
+        .replace(/[^a-zA-Z0-9._-]+/gu, '-')
+        .slice(0, 100) + '.json'
     anchor.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
@@ -963,18 +1813,29 @@ function startExplorer() {
   $('app-select').addEventListener('change', () => chooseApplication(Number($('app-select').value)))
   $('overview-tab').addEventListener('click', () => changeMode('overview'))
   $('cases-tab').addEventListener('click', () => changeMode('cases'))
-  $('mode-tabs').addEventListener('keydown', event => {
+  $('mode-tabs').addEventListener('keydown', (event) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     event.preventDefault()
-    const mode = event.key === 'Home' ? 'overview' : event.key === 'End' ? 'cases' : state().mode === 'overview' ? 'cases' : 'overview'
+    const mode =
+      event.key === 'Home'
+        ? 'overview'
+        : event.key === 'End'
+          ? 'cases'
+          : state().mode === 'overview'
+            ? 'cases'
+            : 'overview'
     changeMode(mode)
     $(mode === 'overview' ? 'overview-tab' : 'cases-tab').focus()
   })
   $('run-select').addEventListener('change', () => enterCase('left', $('run-select').value))
-  $('compare-select').addEventListener('change', () => enterCase('right', $('compare-select').value))
+  $('compare-select').addEventListener('change', () =>
+    enterCase('right', $('compare-select').value),
+  )
   $('compare-button').addEventListener('click', () => setComparison(!state().compare))
   $('explore-cases').addEventListener('click', () => changeMode('cases'))
-  $('node-select').addEventListener('change', () => { if ($('node-select').value) selectNode($('node-select').value) })
+  $('node-select').addEventListener('change', () => {
+    if ($('node-select').value) selectNode($('node-select').value)
+  })
   $('close-inspector').addEventListener('click', closeInspector)
   $('copy-context').addEventListener('click', copyContext)
   $('inspector-copy-context').addEventListener('click', copyContext)
@@ -982,32 +1843,50 @@ function startExplorer() {
     if (typeof $('context-dialog').close === 'function') $('context-dialog').close()
     else $('context-dialog').removeAttribute('open')
   })
-  $('context-select').addEventListener('click', () => { $('context-text').focus(); $('context-text').select() })
-  $('zoom-in').addEventListener('click', () => zoom(.8))
+  $('context-select').addEventListener('click', () => {
+    $('context-text').focus()
+    $('context-text').select()
+  })
+  $('zoom-in').addEventListener('click', () => zoom(0.8))
   $('zoom-out').addEventListener('click', () => zoom(1.25))
   $('fit').addEventListener('click', fit)
-  $('diagram').addEventListener('pointerdown', event => {
+  $('diagram').addEventListener('pointerdown', (event) => {
     if (event.button !== 0 || event.target.closest('.graph-node')) return
     drag = { x: event.clientX, y: event.clientY, view: { ...state().view } }
     $('diagram').setPointerCapture(event.pointerId)
   })
-  $('diagram').addEventListener('pointermove', event => {
+  $('diagram').addEventListener('pointermove', (event) => {
     if (!drag) return
     const rect = $('diagram').getBoundingClientRect()
     if (!rect.width || !rect.height) return
     const scale = Math.max(drag.view.width / rect.width, drag.view.height / rect.height)
-    state().view = { ...drag.view, x: drag.view.x - (event.clientX - drag.x) * scale, y: drag.view.y - (event.clientY - drag.y) * scale }
+    state().view = {
+      ...drag.view,
+      x: drag.view.x - (event.clientX - drag.x) * scale,
+      y: drag.view.y - (event.clientY - drag.y) * scale,
+    }
     applyView()
   })
-  $('diagram').addEventListener('pointerup', () => { drag = null })
-  $('diagram').addEventListener('pointercancel', () => { drag = null })
-  $('diagram').addEventListener('wheel', event => {
-    if (!event.ctrlKey && !event.metaKey) return
-    event.preventDefault()
-    zoom(event.deltaY > 0 ? 1.1 : .9)
-  }, { passive: false })
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && state().inspectorOpen && !$('context-dialog').open) { event.preventDefault(); closeInspector() }
+  $('diagram').addEventListener('pointerup', () => {
+    drag = null
+  })
+  $('diagram').addEventListener('pointercancel', () => {
+    drag = null
+  })
+  $('diagram').addEventListener(
+    'wheel',
+    (event) => {
+      if (!event.ctrlKey && !event.metaKey) return
+      event.preventDefault()
+      zoom(event.deltaY > 0 ? 1.1 : 0.9)
+    },
+    { passive: false },
+  )
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && state().inspectorOpen && !$('context-dialog').open) {
+      event.preventDefault()
+      closeInspector()
+    }
   })
   chooseApplication(current)
 }
@@ -1035,20 +1914,50 @@ const styles = [
 
 export function renderExplorer({ title = 'Jig behavior explorer', graphs }) {
   validateGraphs(graphs)
-  if (typeof title !== 'string' || title.length > 4096) throw new TypeError('The viewer title must be bounded text.')
-  const escapeHtml = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
+  if (typeof title !== 'string' || title.length > 4096)
+    throw new TypeError('The viewer title must be bounded text.')
+  const escapeHtml = (value) =>
+    String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
   const serialized = JSON.stringify(graphs)
-  if (new TextEncoder().encode(serialized).length > 16 * 1024 * 1024) throw new TypeError('Snapshot exceeds the 16 MiB viewer limit.')
-  const data = serialized.replaceAll('<', '\\u003c').replaceAll('>', '\\u003e').replaceAll('&', '\\u0026').replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029')
+  if (new TextEncoder().encode(serialized).length > 16 * 1024 * 1024)
+    throw new TypeError('Snapshot exceeds the 16 MiB viewer limit.')
+  const data = serialized
+    .replaceAll('<', '\\u003c')
+    .replaceAll('>', '\\u003e')
+    .replaceAll('&', '\\u0026')
+    .replaceAll('\u2028', '\\u2028')
+    .replaceAll('\u2029', '\\u2029')
   const helpers = [
-    graphRoots, edgeLabel, scopeExits, isRuntimeGraph, displayNodeKind, nodeSource, evidenceText,
-    edgeGeometry, layoutGraph, valueChanges, nodeOccurrences, caseComparison, evidenceGaps, investigationContext,
-    defaultGraphIndex, preserveCaseSelection, componentSelection, selectedCaseObservation, selectedInvestigationContext,
-  ].map(fn => 'const ' + fn.name + ' = ' + fn.toString() + ';').join('\n')
+    graphRoots,
+    edgeLabel,
+    scopeExits,
+    isRuntimeGraph,
+    displayNodeKind,
+    nodeSource,
+    evidenceText,
+    edgeGeometry,
+    layoutGraph,
+    valueChanges,
+    nodeOccurrences,
+    caseComparison,
+    evidenceGaps,
+    investigationContext,
+    defaultGraphIndex,
+    preserveCaseSelection,
+    componentSelection,
+    selectedCaseObservation,
+    selectedInvestigationContext,
+  ]
+    .map((fn) => 'const ' + fn.name + ' = ' + fn.toString() + ';')
+    .join('\n')
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
-    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data:; connect-src \'none\'; base-uri \'none\'; form-action \'none\'">',
+    "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'\">",
     '<title>' + escapeHtml(title) + '</title><style>' + styles + '</style></head><body>',
     '<a class="skip-link" href="#main">Skip to application</a>',
     '<header class="appbar"><div class="appbar-inner"><div class="brand"><span class="brand-mark" aria-hidden="true">ƒ</span><div><strong>Jig behavior explorer</strong><small>Read-only visibility experiment</small></div></div><div class="application-picker"><label for="app-select">Application</label><select id="app-select"></select></div><button type="button" class="button" id="copy-context" aria-label="Copy investigation context">Copy context</button></div></header>',
@@ -1063,6 +1972,10 @@ export function renderExplorer({ title = 'Jig behavior explorer', graphs }) {
     '<dialog id="context-dialog" class="context-dialog" aria-labelledby="context-title"><div class="dialog-heading"><h2 id="context-title">Investigation context</h2><button type="button" class="close-button" id="context-close" aria-label="Close investigation context">×</button></div><p class="muted">Copy this evidence and source context into a coding agent. Add the question you want it to investigate.</p><label class="sr-only" for="context-text">Read-only investigation context</label><textarea id="context-text" readonly spellcheck="false"></textarea><div class="dialog-actions"><button type="button" class="button" id="context-select">Select all text</button></div></dialog>',
     '<div id="status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>',
     '<script id="graph-data" type="application/json">' + data + '</script>',
-    '<script>\n\'use strict\';\n' + helpers + '\n(' + startExplorer.toString() + ')();\n</script></body></html>',
+    "<script>\n'use strict';\n" +
+      helpers +
+      '\n(' +
+      startExplorer.toString() +
+      ')();\n</script></body></html>',
   ].join('\n')
 }

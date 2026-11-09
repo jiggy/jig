@@ -86,9 +86,7 @@ export function privateInvocationOperationPath(
   parentFlow: PrivateParentFlow | undefined,
 ): readonly string[] {
   let parent =
-    parentFlow === undefined
-      ? null
-      : normalizeParentFlow(parentFlow, parentFlow.operationId)
+    parentFlow === undefined ? null : normalizeParentFlow(parentFlow, parentFlow.operationId)
   const path: string[] = []
   while (parent !== null) {
     path.push(parent.operationId)

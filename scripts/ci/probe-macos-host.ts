@@ -7,7 +7,7 @@ import { MAC_HOST_PROFILES, requireMacHostPrerequisites } from './macos-host-pro
 assert.equal(process.platform, 'darwin')
 assert.ok(process.arch === 'x64' || process.arch === 'arm64')
 assert.notEqual(process.getuid?.(), 0)
-assert.equal(Bun.version, '1.4.2')
+assert.equal(Bun.version, '1.4.4')
 assert.ok(
   process.argv.length === 2 || (process.argv.length === 3 && process.argv[2] === '--hosted'),
 )

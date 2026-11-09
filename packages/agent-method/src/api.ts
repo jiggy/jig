@@ -15,7 +15,8 @@ export function prepareApiRequest(
   if (
     value === undefined ||
     Object.keys(value).some(
-      (key) => !['model', 'maxCompletionTokens', 'api', 'structuredOutput', 'omitStore'].includes(key),
+      (key) =>
+        !['model', 'maxCompletionTokens', 'api', 'structuredOutput', 'omitStore'].includes(key),
     ) ||
     typeof value.model !== 'string' ||
     value.model.trim().length === 0 ||

@@ -27,8 +27,8 @@ const workflowPath = '.github/workflows/ci.yml'
 const buildProfile = {
   platform: 'linux',
   architecture: 'x64',
-  version: '1.3.3',
-  revision: '274e01c737e85f8142070a9745b43a2ba09fce4c',
+  version: '1.4.4',
+  revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
   nodeVersion: '24.0.0',
   npmVersion: '11.6.2',
   justVersion: 'just 1.43.1',
@@ -42,15 +42,29 @@ test('candidate acquisition refuses blank and malformed timeout arguments before
     ['timeout-seconds', '-1'],
     ['timeout-seconds', '9007199254740993'],
   ]) {
-    const child = spawnSync(process.execPath, [
-      new URL('./candidate-transfer.mjs', import.meta.url).pathname,
-      'acquire', '/tmp/candidate-should-not-exist',
-      '--source', source, `--${option}`, value,
-    ], {
-      encoding: 'utf8', timeout: 10_000,
-      env: { PATH: process.env.PATH, GITHUB_REPOSITORY: repository, GITHUB_SHA: source,
-        GITHUB_REF: 'refs/heads/main', GITHUB_EVENT_NAME: 'push' },
-    })
+    const child = spawnSync(
+      process.execPath,
+      [
+        new URL('./candidate-transfer.mjs', import.meta.url).pathname,
+        'acquire',
+        '/tmp/candidate-should-not-exist',
+        '--source',
+        source,
+        `--${option}`,
+        value,
+      ],
+      {
+        encoding: 'utf8',
+        timeout: 10_000,
+        env: {
+          PATH: process.env.PATH,
+          GITHUB_REPOSITORY: repository,
+          GITHUB_SHA: source,
+          GITHUB_REF: 'refs/heads/main',
+          GITHUB_EVENT_NAME: 'push',
+        },
+      },
+    )
     assert.equal(child.error, undefined)
     assert.equal(child.status, 1)
     assert.match(child.stderr, /requires a nonempty integer/)
@@ -748,10 +762,7 @@ test('Mac hosts queue after Quick and exact candidate preparation', async () => 
     hostAcquisition['timeout-minutes'],
     "${{ github.event_name == 'pull_request' && 2 || 10 }}",
   )
-  assert.equal(
-    hostAcquisition.if,
-    "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}",
-  )
+  assert.equal(hostAcquisition.if, "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}")
   assert.ok(!workers.steps.some((entry) => entry.run?.includes('candidate-transfer.mjs acquire')))
   const acquisitionIndex = workers.steps.indexOf(hostAcquisition)
   for (const name of [
@@ -777,10 +788,7 @@ test('Mac hosts queue after Quick and exact candidate preparation', async () => 
     'scripts/ci/qualify-macos-host.sh --shard',
   ]) {
     const index = workers.steps.findIndex((entry) => entry.run?.includes(command))
-    assert.ok(
-      index > verificationIndex,
-      `${command} requires Quick and verified canonical inputs`,
-    )
+    assert.ok(index > verificationIndex, `${command} requires Quick and verified canonical inputs`)
   }
   assert.ok(workflow.jobs['qualified-architecture'].needs.includes('host-artifacts'))
 })
@@ -1042,41 +1050,68 @@ test('Linux acquisition separates producer readiness from transfer within its ou
 })
 
 for (const producerTimeoutSeconds of [0, 1800]) {
-test(`PR native acquisition retains the original immutable producer with a ${producerTimeoutSeconds}-second readiness wait`, async () => {
-  const ci = run(100, 'pull_request', { head_sha: prHead, head_branch: 'feature' })
-  await withFixture([ci], async (fixture) => {
-    ci.run_attempt = 2
-    const expected = { repository, workflowPath, event: 'pull_request', headSha: prHead, headBranch: 'feature', headRepository: repository }
-    const envelope = await acquireAfterQuick(fixture, { expected, producerTimeoutSeconds })
-    assert.equal(envelope.runAttempt, 1)
-    assert.equal(envelope.artifactId, 1000)
-    assert.equal((await verifyCandidateBundle(join(fixture.temporary, 'download'))).producer.runAttempt, 1)
-    const eventPath = join(fixture.temporary, 'event.json')
-    await writeFile(eventPath, JSON.stringify({
-      pull_request: { head: { sha: prHead, ref: 'feature', repo: { full_name: repository } } },
-    }))
-    const inputsPath = join(fixture.temporary, 'inputs.json')
-    const binding = await acquireMergeInput({
-      kind: 'canonical',
-      destination: join(fixture.temporary, 'ci-consumer'),
-      inputsPath,
-      client: fixture.client,
-      extract: fixture.extract,
-      env: {
-        GITHUB_SHA: source, GITHUB_REPOSITORY: repository, GITHUB_EVENT_NAME: 'pull_request',
-        GITHUB_RUN_ID: '100', GITHUB_RUN_ATTEMPT: '2', GITHUB_EVENT_PATH: eventPath,
-        GITHUB_WORKFLOW_REF: repository + '/.github/workflows/ci.yml@refs/pull/1/merge',
-      },
+  test(`PR native acquisition retains the original immutable producer with a ${producerTimeoutSeconds}-second readiness wait`, async () => {
+    const ci = run(100, 'pull_request', { head_sha: prHead, head_branch: 'feature' })
+    await withFixture([ci], async (fixture) => {
+      ci.run_attempt = 2
+      const expected = {
+        repository,
+        workflowPath,
+        event: 'pull_request',
+        headSha: prHead,
+        headBranch: 'feature',
+        headRepository: repository,
+      }
+      const envelope = await acquireAfterQuick(fixture, { expected, producerTimeoutSeconds })
+      assert.equal(envelope.runAttempt, 1)
+      assert.equal(envelope.artifactId, 1000)
+      assert.equal(
+        (await verifyCandidateBundle(join(fixture.temporary, 'download'))).producer.runAttempt,
+        1,
+      )
+      const eventPath = join(fixture.temporary, 'event.json')
+      await writeFile(
+        eventPath,
+        JSON.stringify({
+          pull_request: { head: { sha: prHead, ref: 'feature', repo: { full_name: repository } } },
+        }),
+      )
+      const inputsPath = join(fixture.temporary, 'inputs.json')
+      const binding = await acquireMergeInput({
+        kind: 'canonical',
+        destination: join(fixture.temporary, 'ci-consumer'),
+        inputsPath,
+        client: fixture.client,
+        extract: fixture.extract,
+        env: {
+          GITHUB_SHA: source,
+          GITHUB_REPOSITORY: repository,
+          GITHUB_EVENT_NAME: 'pull_request',
+          GITHUB_RUN_ID: '100',
+          GITHUB_RUN_ATTEMPT: '2',
+          GITHUB_EVENT_PATH: eventPath,
+          GITHUB_WORKFLOW_REF: repository + '/.github/workflows/ci.yml@refs/pull/1/merge',
+        },
+      })
+      assert.equal(binding.producerAttempt, 1)
+      assert.equal(binding.artifactId, 1000)
+      assert.deepEqual(JSON.parse(await readFile(inputsPath, 'utf8')), [binding])
+      const previous = fixture.jobsByRun.get(100)
+      fixture.jobsByRun.set(100, [
+        ...previous,
+        quickJob(ci, { id: 10002, name: 'candidate-build', conclusion: 'failure' }),
+      ])
+      await assert.rejects(
+        acquireAfterQuick(fixture, {
+          expected,
+          producerTimeoutSeconds,
+          destination: join(fixture.temporary, 'refused'),
+        }),
+        /Latest merge candidate build did not succeed/,
+      )
+      assert.deepEqual(fixture.downloaded, [1000, 1000])
     })
-    assert.equal(binding.producerAttempt, 1)
-    assert.equal(binding.artifactId, 1000)
-    assert.deepEqual(JSON.parse(await readFile(inputsPath, 'utf8')), [binding])
-    const previous = fixture.jobsByRun.get(100)
-    fixture.jobsByRun.set(100, [...previous, quickJob(ci, { id: 10002, name: 'candidate-build', conclusion: 'failure' })])
-    await assert.rejects(acquireAfterQuick(fixture, { expected, producerTimeoutSeconds, destination: join(fixture.temporary, 'refused') }), /Latest merge candidate build did not succeed/)
-    assert.deepEqual(fixture.downloaded, [1000, 1000])
   })
-})
 }
 
 for (const change of ['job identity', 'producer attempt', 'workflow attempt']) {

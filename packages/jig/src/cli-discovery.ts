@@ -264,4 +264,3 @@ ${['yes', 'details', 'allow-resolution-network', 'allow-authority-changes', 'gen
 `
   return undefined
 }
-

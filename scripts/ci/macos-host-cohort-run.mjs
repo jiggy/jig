@@ -39,9 +39,7 @@ export function macHostWorkerMatrix(event) {
   if (event === 'pull_request') requireMacHostCohortProfiles()
   return {
     include: [
-      ...(event === 'pull_request'
-        ? [{ arch: 'guard', worker: 'guard', guard: true }]
-        : []),
+      ...(event === 'pull_request' ? [{ arch: 'guard', worker: 'guard', guard: true }] : []),
       ...Array.from(
         { length: event === 'pull_request' ? MAC_PR_COHORT.workers : 1 },
         (_, worker) => ({ arch: 'arm64', worker, guard: false }),
@@ -95,8 +93,10 @@ function observeAllocatorJob(jobs, identity) {
   if (!matches.length) return null
   const job = matches[0]
   if (
-    !Number.isSafeInteger(job.id) || job.id <= 0 ||
-    job.run_id !== identity.runId || job.run_attempt !== identity.runAttempt ||
+    !Number.isSafeInteger(job.id) ||
+    job.id <= 0 ||
+    job.run_id !== identity.runId ||
+    job.run_attempt !== identity.runAttempt ||
     !['queued', 'in_progress', 'completed'].includes(job.status) ||
     (job.status !== 'completed' && job.conclusion !== null)
   )
@@ -119,9 +119,19 @@ function requireDeadline(deadlineMs, now) {
 }
 
 export function macHostCohortCoordinationDeadline(mode, workDeadlineMs, now = Date.now()) {
-  const limits = { start: 60_000, ready: Infinity, 'ready-active': 180_000, claim: 120_000, allocate: Infinity }
-  if (!Object.hasOwn(limits, mode) || !Number.isSafeInteger(now) || now < 0 ||
-      !Number.isSafeInteger(workDeadlineMs))
+  const limits = {
+    start: 60_000,
+    ready: Infinity,
+    'ready-active': 180_000,
+    claim: 120_000,
+    allocate: Infinity,
+  }
+  if (
+    !Object.hasOwn(limits, mode) ||
+    !Number.isSafeInteger(now) ||
+    now < 0 ||
+    !Number.isSafeInteger(workDeadlineMs)
+  )
     throw new Error('Invalid Mac cohort coordination mode or time')
   const deadline = Math.min(workDeadlineMs, now + limits[mode])
   requireDeadline(deadline, () => now)
@@ -150,15 +160,20 @@ export function macHostCohortPollDelay(lastArrival, now = Date.now()) {
 export function requireMacHostAllocationProgress(jobs, identity, allocatorJobId) {
   if (selectMacHostAllocatorJob(jobs, identity) !== allocatorJobId)
     throw new Error('Mac cohort allocator job changed')
-  for (const job of jobs.filter((job) =>
-    job.name?.startsWith('Native host worker — arm64 / ') ||
-    [
-      MAC_COHORT_READY_JOB_NAME,
-      'Enforce Mac PR deadline', 'prerequisites', skippedWorkerMatrixName,
-    ].includes(job.name),
+  for (const job of jobs.filter(
+    (job) =>
+      job.name?.startsWith('Native host worker — arm64 / ') ||
+      [
+        MAC_COHORT_READY_JOB_NAME,
+        'Enforce Mac PR deadline',
+        'prerequisites',
+        skippedWorkerMatrixName,
+      ].includes(job.name),
   ))
     if (job.status === 'completed' && job.conclusion !== 'success')
-      throw new Error('Mac cohort prerequisite or worker did not succeed before allocation completed')
+      throw new Error(
+        'Mac cohort prerequisite or worker did not succeed before allocation completed',
+      )
 }
 
 async function pollPause(deadlineMs, now, sleep, milliseconds = 5000) {
@@ -181,7 +196,10 @@ function jobReader(readJobs, now, refreshMs = 60_000) {
 
 /** Job metadata can lag the running process; no readiness is published while waiting. */
 export async function waitForMacHostAllocatorStart({
-  identity, readJobs, deadlineMs, pollIntervalMs = 5000,
+  identity,
+  readJobs,
+  deadlineMs,
+  pollIntervalMs = 5000,
 }) {
   const deadline = macHostCohortCoordinationDeadline('start', deadlineMs)
   if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs <= 0 || pollIntervalMs > 5000)
@@ -191,7 +209,9 @@ export async function waitForMacHostAllocatorStart({
   let previous
   const requireTime = () => {
     if (Date.now() >= deadline)
-      throw new Error(`Mac allocator startup deadline expired (status=${status}, job=${jobId ?? 'missing'})`)
+      throw new Error(
+        `Mac allocator startup deadline expired (status=${status}, job=${jobId ?? 'missing'})`,
+      )
   }
   for (;;) {
     requireTime()
@@ -230,9 +250,10 @@ export function macHostCohortRecordReader({ identity, listArtifacts, download })
   return async () => {
     const listing = await listArtifacts()
     if (!Array.isArray(listing)) throw new Error('Missing Mac cohort artifact inventory')
-    const selected = listing.filter((artifact) =>
-      /^macos-cohort-(?:ready|announcement|assignment|ledger)-/.test(artifact.name ?? '') &&
-      artifact.name.endsWith(suffix),
+    const selected = listing.filter(
+      (artifact) =>
+        /^macos-cohort-(?:ready|announcement|assignment|ledger)-/.test(artifact.name ?? '') &&
+        artifact.name.endsWith(suffix),
     )
     if (
       new Set(selected.map(({ id }) => id)).size !== selected.length ||
@@ -242,7 +263,11 @@ export function macHostCohortRecordReader({ identity, listArtifacts, download })
     const records = []
     for (const artifact of selected) {
       const signature = JSON.stringify([
-        artifact.id, artifact.name, artifact.digest, artifact.size_in_bytes, artifact.expired,
+        artifact.id,
+        artifact.name,
+        artifact.digest,
+        artifact.size_in_bytes,
+        artifact.expired,
       ])
       let stored = cached.get(artifact.id)
       if (stored && stored.signature !== signature)
@@ -259,13 +284,22 @@ export function macHostCohortRecordReader({ identity, listArtifacts, download })
 
 /** A short Linux gate releases Mac workers only after their allocator is active. */
 export async function waitForMacHostAllocator({
-  identity, readJobs, readRecords, deadlineMs, pollIntervalMs = 5000, metadataRefreshMs = 60_000,
+  identity,
+  readJobs,
+  readRecords,
+  deadlineMs,
+  pollIntervalMs = 5000,
+  metadataRefreshMs = 60_000,
 }) {
   const now = Date.now
   const deadline = macHostCohortCoordinationDeadline('ready', deadlineMs, now())
   if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs <= 0 || pollIntervalMs > 60_000)
     throw new Error('Invalid Mac readiness polling interval')
-  if (!Number.isSafeInteger(metadataRefreshMs) || metadataRefreshMs <= 0 || metadataRefreshMs > 60_000)
+  if (
+    !Number.isSafeInteger(metadataRefreshMs) ||
+    metadataRefreshMs <= 0 ||
+    metadataRefreshMs > 60_000
+  )
     throw new Error('Invalid Mac readiness metadata refresh interval')
   const jobs = jobReader(readJobs, now, metadataRefreshMs)
   let allocatorJobId
@@ -284,7 +318,9 @@ export async function waitForMacHostAllocator({
     if (allocator?.status === 'in_progress') {
       activeDeadline ??= macHostCohortCoordinationDeadline('ready-active', deadline, now())
       const records = validateMacHostCohortRecords({
-        identity, allocatorJobId: allocator.id, records: await readRecords(),
+        identity,
+        allocatorJobId: allocator.id,
+        records: await readRecords(),
       })
       const ready = recordFor(records, 'ready', identity)
       if (ready) {
@@ -302,13 +338,19 @@ export async function waitForMacHostAllocator({
 
 /** One Ubuntu process assigns roles; workers never wait for queued Mac peers. */
 export async function allocateMacHostRoles({
-  identity, artifacts, readJobs, readRecords, deadlineMs,
+  identity,
+  artifacts,
+  readJobs,
+  readRecords,
+  deadlineMs,
 }) {
   const now = Date.now
   requireDeadline(deadlineMs, now)
   const jobs = jobReader(readJobs, now)
   const allocatorJobId = await waitForMacHostAllocatorStart({
-    identity, readJobs: (deadline) => jobs(true, deadline), deadlineMs,
+    identity,
+    readJobs: (deadline) => jobs(true, deadline),
+    deadlineMs,
   })
   const ready = await publishRecord(
     artifacts,
@@ -325,7 +367,9 @@ export async function allocateMacHostRoles({
     const observedJobs = await jobs()
     requireMacHostAllocationProgress(observedJobs, identity, allocatorJobId)
     const records = validateMacHostCohortRecords({
-      identity, allocatorJobId, records: await readRecords(),
+      identity,
+      allocatorJobId,
+      records: await readRecords(),
     })
     for (const entry of [ready, ...assignments]) {
       const listed = records.find((record) => record.artifact.name === entry.artifact.name)
@@ -347,14 +391,22 @@ export async function allocateMacHostRoles({
       requireMacHostAllocationProgress(activeJobs, identity, allocatorJobId)
       for (const announcement of pending) {
         const worker = announcement.record.worker
-        if (selectMacHostWorkerJob(activeJobs, { ...identity, worker }) !== announcement.record.jobId)
+        if (
+          selectMacHostWorkerJob(activeJobs, { ...identity, worker }) !== announcement.record.jobId
+        )
           throw new Error('Mac cohort announcement belongs to another worker job')
         const record = createMacHostCohortAssignment({
-          identity, allocatorJobId, announcement, assignments,
+          identity,
+          allocatorJobId,
+          announcement,
+          assignments,
         })
         const assigned = await publishRecord(
-          artifacts, macHostCohortArtifactName('assignment', identity, worker),
-          record, deadlineMs, now,
+          artifacts,
+          macHostCohortArtifactName('assignment', identity, worker),
+          record,
+          deadlineMs,
+          now,
         )
         assignments.push(assigned)
         announced.set(worker, announcement)
@@ -382,7 +434,12 @@ export async function allocateMacHostRoles({
 
 /** Publish one announcement and await only this worker's allocator decision. */
 export async function awaitMacHostRole({
-  identity, prerequisites, artifacts, readJobs, readRecords, deadlineMs,
+  identity,
+  prerequisites,
+  artifacts,
+  readJobs,
+  readRecords,
+  deadlineMs,
 }) {
   const now = Date.now
   const run = Object.fromEntries(
@@ -396,12 +453,16 @@ export async function awaitMacHostRole({
     throw new Error('Mac cohort worker job changed')
   const allocatorJobId = selectMacHostAllocatorJob(initialJobs, identity)
   const records = validateMacHostCohortRecords({
-    identity: run, allocatorJobId, records: await readRecords(),
+    identity: run,
+    allocatorJobId,
+    records: await readRecords(),
   })
   const ready = recordFor(records, 'ready', run)
   if (!ready) throw new Error('Mac cohort worker has no verified allocator readiness')
-  if (recordFor(records, 'announcement', run, identity.worker) ||
-      recordFor(records, 'assignment', run, identity.worker))
+  if (
+    recordFor(records, 'announcement', run, identity.worker) ||
+    recordFor(records, 'assignment', run, identity.worker)
+  )
     throw new Error('Mac cohort worker already announced or received an assignment')
   const announcement = await publishRecord(
     artifacts,
@@ -416,7 +477,9 @@ export async function awaitMacHostRole({
     if (!allocator || allocator.id !== allocatorJobId || allocator.status === 'queued')
       throw new Error('Mac cohort active allocator disappeared or changed')
     const current = validateMacHostCohortRecords({
-      identity: run, allocatorJobId, records: await readRecords(),
+      identity: run,
+      allocatorJobId,
+      records: await readRecords(),
     })
     for (const entry of [ready, announcement]) {
       const listed = current.find((record) => record.artifact.name === entry.artifact.name)
@@ -426,7 +489,12 @@ export async function awaitMacHostRole({
     const assignment = recordFor(current, 'assignment', run, identity.worker)
     if (assignment) {
       const receipt = createMacHostCohortWorkerReceipt({
-        identity, allocatorJobId, ready, announcement, assignment, prerequisites,
+        identity,
+        allocatorJobId,
+        ready,
+        announcement,
+        assignment,
+        prerequisites,
       })
       requireDeadline(deadline, now)
       return receipt
@@ -438,17 +506,29 @@ export async function awaitMacHostRole({
 const maxMetadataBytes = 4 * 1024 * 1024
 
 async function githubMetadataPage(
-  environment, suffix, key, deadlineMs,
+  environment,
+  suffix,
+  key,
+  deadlineMs,
   { apiOrigin = 'https://api.github.com', maxBytes = maxMetadataBytes } = {},
 ) {
   const repository = environment.GITHUB_REPOSITORY
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? '') ||
-      repository.split('/').some((part) => part === '.' || part === '..') || !environment.GH_TOKEN)
+  if (
+    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? '') ||
+    repository.split('/').some((part) => part === '.' || part === '..') ||
+    !environment.GH_TOKEN
+  )
     throw new Error('Mac cohort requires repository-scoped Actions read access')
   const origin = new URL(apiOrigin)
-  if (origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/' ||
-      (origin.protocol !== 'https:' && !(origin.protocol === 'http:' &&
-        ['127.0.0.1', '[::1]'].includes(origin.hostname))))
+  if (
+    origin.username ||
+    origin.password ||
+    origin.search ||
+    origin.hash ||
+    origin.pathname !== '/' ||
+    (origin.protocol !== 'https:' &&
+      !(origin.protocol === 'http:' && ['127.0.0.1', '[::1]'].includes(origin.hostname)))
+  )
     throw new Error('Invalid Mac cohort metadata API origin')
   const remaining = deadlineMs - Date.now()
   if (!Number.isSafeInteger(remaining) || remaining <= 0)
@@ -490,8 +570,11 @@ async function githubMetadataPage(
     throw new Error(`Mac cohort ${key} metadata body exceeded its byte or time allowance`)
   }
   let result
-  try { result = JSON.parse(Buffer.concat(chunks).toString('utf8')) }
-  catch { throw new Error(`Mac cohort ${key} metadata response was not valid JSON`) }
+  try {
+    result = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  } catch {
+    throw new Error(`Mac cohort ${key} metadata response was not valid JSON`)
+  }
   if (
     !Number.isSafeInteger(result?.total_count) ||
     result.total_count < 0 ||
@@ -510,7 +593,12 @@ async function githubMetadata(environment, suffix, key, deadlineMs) {
 }
 
 /** Retained earlier attempts may span pages; current-attempt selection follows a complete read. */
-export async function listMacHostCohortArtifacts(environment, identity, deadlineMs, { apiOrigin } = {}) {
+export async function listMacHostCohortArtifacts(
+  environment,
+  identity,
+  deadlineMs,
+  { apiOrigin } = {},
+) {
   const runId = positiveInteger(identity?.runId, 'artifact run ID')
   requireDeadline(deadlineMs, Date.now)
   const deadline = Math.min(deadlineMs, Date.now() + 30_000)
@@ -522,8 +610,11 @@ export async function listMacHostCohortArtifacts(environment, identity, deadline
     let changed = false
     for (let page = 1; page <= 10; page++) {
       const { result, bytes } = await githubMetadataPage(
-        environment, `actions/runs/${runId}/artifacts?per_page=100&page=${page}`,
-        'artifacts', deadline, { apiOrigin, maxBytes: remainingBytes },
+        environment,
+        `actions/runs/${runId}/artifacts?per_page=100&page=${page}`,
+        'artifacts',
+        deadline,
+        { apiOrigin, maxBytes: remainingBytes },
       )
       remainingBytes -= bytes
       requireDeadline(deadline, Date.now)
@@ -532,14 +623,18 @@ export async function listMacHostCohortArtifacts(environment, identity, deadline
       const expected = Math.min(100, Math.max(0, result.total_count - (page - 1) * 100))
       const pageIds = new Set()
       for (const artifact of result.artifacts) {
-        if (!Number.isSafeInteger(artifact?.id) || artifact.id <= 0 ||
-            typeof artifact.name !== 'string' || !artifact.name || pageIds.has(artifact.id))
+        if (
+          !Number.isSafeInteger(artifact?.id) ||
+          artifact.id <= 0 ||
+          typeof artifact.name !== 'string' ||
+          !artifact.name ||
+          pageIds.has(artifact.id)
+        )
           throw new Error('Mac cohort artifact inventory has malformed or duplicate identities')
         pageIds.add(artifact.id)
       }
       if (result.artifacts.length !== expected) {
-        if (pass === 2)
-          throw new Error('Mac cohort refuses an incomplete artifact inventory page')
+        if (pass === 2) throw new Error('Mac cohort refuses an incomplete artifact inventory page')
         changed = true
         break
       }
@@ -557,7 +652,9 @@ export async function listMacHostCohortArtifacts(environment, identity, deadline
       if (artifacts.length === total) return artifacts
     }
     if (!changed || pass === 2)
-      throw new Error('Mac cohort artifact inventory did not stabilize within its bounded pagination passes')
+      throw new Error(
+        'Mac cohort artifact inventory did not stabilize within its bounded pagination passes',
+      )
     await pollPause(deadline, Date.now, pause, 1000 * (pass + 1))
   }
 }
@@ -597,9 +694,7 @@ export function macHostCohortJobTimings({ identity, workers, jobs }) {
       const epoch = Date.parse(value)
       if (!Number.isFinite(epoch)) return null
       const normalized = new Date(epoch).toISOString()
-      return normalized === value || normalized.replace('.000Z', 'Z') === value
-        ? normalized
-        : null
+      return normalized === value || normalized.replace('.000Z', 'Z') === value ? normalized : null
     })
     if (
       timestamps.some((value) => value === null) ||
@@ -669,7 +764,9 @@ export async function reconcileMacHostCohortReports({
     if (
       receipt.role === null &&
       files.some((file) =>
-        /(?:\.xml$|\.complete$|^test-plan\.json$|^(?:CANDIDATE|ARTIFACT)\.json$|^host-conformance\.txt$)/.test(file),
+        /(?:\.xml$|\.complete$|^test-plan\.json$|^(?:CANDIDATE|ARTIFACT)\.json$|^host-conformance\.txt$)/.test(
+          file,
+        ),
       )
     )
       throw new Error('Surplus Mac cohort worker cannot retain execution proof')
@@ -705,7 +802,9 @@ export async function reconcileMacHostCohortReports({
       plan: 'pull-request',
     })
     if (
-      Object.keys(receipt.profile).some((field) => receipt.profile[field] !== report.hostProfile[field])
+      Object.keys(receipt.profile).some(
+        (field) => receipt.profile[field] !== report.hostProfile[field],
+      )
     )
       throw new Error('Mac cohort report differs from its claimed host profile')
     reports.push({ worker: receipt.worker, role: receipt.role, executed: report.executed })
@@ -715,7 +814,10 @@ export async function reconcileMacHostCohortReports({
   for (const receipt of assignment.roles)
     await cp(
       join(evidenceDirectory, workerDirectory(identity, receipt.worker)),
-      join(normalizedDirectory, `macos-prerequisites-arm64-${receipt.role}-${identity.sourceRevision}`),
+      join(
+        normalizedDirectory,
+        `macos-prerequisites-arm64-${receipt.role}-${identity.sourceRevision}`,
+      ),
       { recursive: true, errorOnExist: true, force: false },
     )
   return { ...assignment, reports }
@@ -725,7 +827,9 @@ async function outputs(environment, values) {
   if (!environment.GITHUB_OUTPUT) throw new Error('Mac cohort requires the Actions output file')
   await appendFile(
     environment.GITHUB_OUTPUT,
-    Object.entries(values).map(([name, value]) => `${name}=${value}\n`).join(''),
+    Object.entries(values)
+      .map(([name, value]) => `${name}=${value}\n`)
+      .join(''),
   )
 }
 
@@ -776,7 +880,10 @@ async function main(mode, environment) {
   if (mode === 'plan') {
     await outputs(environment, {
       workers: JSON.stringify(macHostWorkerMatrix(event)),
-      shard_count: macHostShardCount('arm64', event === 'pull_request' ? 'pull-request' : 'complete'),
+      shard_count: macHostShardCount(
+        'arm64',
+        event === 'pull_request' ? 'pull-request' : 'complete',
+      ),
     })
     return
   }
@@ -792,34 +899,55 @@ async function main(mode, environment) {
   const identity = runIdentity(environment)
   const scratch = environment.RUNNER_TEMP
   if (!isAbsolute(scratch ?? '')) throw new Error('Mac cohort requires absolute runner scratch')
-  const deadlineMs = mode === 'reconcile'
-    ? positiveInteger(environment.JIG_PR_DEADLINE_EPOCH_MS, 'final deadline')
-    : macHostCohortCoordinationDeadline(
-      mode, positiveInteger(environment.JIG_PR_WORK_DEADLINE_EPOCH_MS, 'work deadline'), enteredAt,
-    )
-  const readJobs = (deadline = deadlineMs) => currentJobs(environment, identity, Math.min(deadline, deadlineMs))
+  const deadlineMs =
+    mode === 'reconcile'
+      ? positiveInteger(environment.JIG_PR_DEADLINE_EPOCH_MS, 'final deadline')
+      : macHostCohortCoordinationDeadline(
+          mode,
+          positiveInteger(environment.JIG_PR_WORK_DEADLINE_EPOCH_MS, 'work deadline'),
+          enteredAt,
+        )
+  const readJobs = (deadline = deadlineMs) =>
+    currentJobs(environment, identity, Math.min(deadline, deadlineMs))
   const readRecords = macHostCohortRecordReader({
     identity,
     listArtifacts: () => listMacHostCohortArtifacts(environment, identity, deadlineMs),
-    download: (artifact) => downloadMacHostCohortRecord(environment.GITHUB_REPOSITORY, artifact, {
-      token: environment.GH_TOKEN, deadlineMs,
-    }),
+    download: (artifact) =>
+      downloadMacHostCohortRecord(environment.GITHUB_REPOSITORY, artifact, {
+        token: environment.GH_TOKEN,
+        deadlineMs,
+      }),
   })
   if (mode === 'ready' || mode === 'allocate') {
     if (mode === 'ready') {
       const ready = await waitForMacHostAllocator({
-        identity, readJobs, readRecords, deadlineMs,
+        identity,
+        readJobs,
+        readRecords,
+        deadlineMs,
       })
       console.log(JSON.stringify({ allocatorJobId: ready.record.allocatorJobId, ready: true }))
     } else {
-      const artifacts = await loadMacHostCohortArtifacts(join(scratch, 'mac-cohort-client'), scratch)
+      const artifacts = await loadMacHostCohortArtifacts(
+        join(scratch, 'mac-cohort-client'),
+        scratch,
+      )
       const allocation = await allocateMacHostRoles({
-        identity, artifacts, readJobs, readRecords, deadlineMs,
+        identity,
+        artifacts,
+        readJobs,
+        readRecords,
+        deadlineMs,
       })
-      console.log(JSON.stringify({
-        allocatorJobId: allocation.allocatorJobId,
-        workers: allocation.assignments.map(({ record }) => ({ worker: record.worker, role: record.role })),
-      }))
+      console.log(
+        JSON.stringify({
+          allocatorJobId: allocation.allocatorJobId,
+          workers: allocation.assignments.map(({ record }) => ({
+            worker: record.worker,
+            role: record.role,
+          })),
+        }),
+      )
     }
     return
   }

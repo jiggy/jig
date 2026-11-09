@@ -81,7 +81,12 @@ const compositionSnapshot = () => ({
       { id: 'application', label: 'Review', kind: 'flow' },
       { id: 'draft', label: 'Worker', kind: 'binding' },
       { id: 'approval', label: 'Worker', kind: 'binding' },
-      { id: 'http', label: '<SCRIPT>literal text</SCRIPT>', kind: 'resource', resourceKind: 'http-request' },
+      {
+        id: 'http',
+        label: '<SCRIPT>literal text</SCRIPT>',
+        kind: 'resource',
+        resourceKind: 'http-request',
+      },
     ],
     edges: [
       { id: 'draft-route', source: 'application', target: 'draft', slot: 'prepare' },
@@ -91,9 +96,37 @@ const compositionSnapshot = () => ({
     ],
   },
   calls: [
-    { id: 'first', sourceId: 'root', childSourceId: 'worker-one', sourceLabel: 'Review', operationId: 'attempt-one', slot: 'prepare', state: 'returned', firstObservedAt: 0, observedAt: 2 },
-    { id: 'second', sourceId: 'root', sourceLabel: 'Review', operationId: 'attempt-two', slot: 'prepare', state: 'requested', firstObservedAt: 3, observedAt: 3 },
-    { id: 'unknown', sourceId: 'missing', sourceLabel: 'Worker', operationId: 'unplaced', slot: '<fetch>', state: 'uncertain', firstObservedAt: 4, observedAt: 4 },
+    {
+      id: 'first',
+      sourceId: 'root',
+      childSourceId: 'worker-one',
+      sourceLabel: 'Review',
+      operationId: 'attempt-one',
+      slot: 'prepare',
+      state: 'returned',
+      firstObservedAt: 0,
+      observedAt: 2,
+    },
+    {
+      id: 'second',
+      sourceId: 'root',
+      sourceLabel: 'Review',
+      operationId: 'attempt-two',
+      slot: 'prepare',
+      state: 'requested',
+      firstObservedAt: 3,
+      observedAt: 3,
+    },
+    {
+      id: 'unknown',
+      sourceId: 'missing',
+      sourceLabel: 'Worker',
+      operationId: 'unplaced',
+      slot: '<fetch>',
+      state: 'uncertain',
+      firstObservedAt: 4,
+      observedAt: 4,
+    },
   ],
 })
 const compositionProps = (data, selectedNodeId, referencesEnabled = true) => ({
@@ -130,8 +163,10 @@ test('map cards publish CSS lengths in the SVG coordinate space', () => {
   const boxes = cards.map((card) => {
     const style = card.props.style
     return {
-      x: pixels(style.left), y: pixels(style.top),
-      width: pixels(style.width), height: pixels(style.height),
+      x: pixels(style.left),
+      y: pixels(style.top),
+      width: pixels(style.width),
+      height: pixels(style.height),
     }
   })
   for (const box of boxes) {
@@ -141,8 +176,10 @@ test('map cards publish CSS lengths in the SVG coordinate space', () => {
   for (const [index, box] of boxes.entries())
     for (const other of boxes.slice(index + 1))
       assert(
-        box.x + box.width <= other.x || other.x + other.width <= box.x ||
-        box.y + box.height <= other.y || other.y + other.height <= box.y,
+        box.x + box.width <= other.x ||
+          other.x + other.width <= box.x ||
+          box.y + box.height <= other.y ||
+          other.y + other.height <= box.y,
         'Component cards must occupy distinct rectangles',
       )
 })
@@ -152,7 +189,10 @@ test('application maps retain repeated exact requests and distinguish duplicate 
   data.omissions.calls = 3
   const page = CompositionPage(compositionProps(data, 'draft'))
   const entries = walk(page).filter((node) => node.props['data-composition-call'])
-  assert.deepEqual(entries.map((node) => node.props['data-composition-call']), ['first', 'second'])
+  assert.deepEqual(
+    entries.map((node) => node.props['data-composition-call']),
+    ['first', 'second'],
+  )
   assert(text(entries[0]).includes('Observed state: returned'))
   assert(text(entries[1]).includes('Observed state: requested'))
   assert(entries[0].props['aria-label'].includes('Observed state: returned'))
@@ -161,10 +201,23 @@ test('application maps retain repeated exact requests and distinguish duplicate 
   assert(text(page).includes('1 retained observation cannot be placed on this map'))
   assert(text(page).includes('Caller relationship unavailable: 1'))
   const options = walk(page).filter((node) => node.type === 'option')
-  assert(text(options.find((node) => node.props.value === 'draft')).includes('Worker · Binding · from Review / prepare'))
-  assert(text(options.find((node) => node.props.value === 'approval')).includes('Worker · Binding · from Review / approve'))
+  assert(
+    text(options.find((node) => node.props.value === 'draft')).includes(
+      'Worker · Binding · from Review / prepare',
+    ),
+  )
+  assert(
+    text(options.find((node) => node.props.value === 'approval')).includes(
+      'Worker · Binding · from Review / approve',
+    ),
+  )
   assert.equal(walk(page).filter((node) => node.props['data-component']).length, 4)
-  assert.equal(walk(page).filter((node) => node.type === 'script' || node.type === '<SCRIPT>literal text</SCRIPT>').length, 0)
+  assert.equal(
+    walk(page).filter(
+      (node) => node.type === 'script' || node.type === '<SCRIPT>literal text</SCRIPT>',
+    ).length,
+    0,
+  )
   assert(text(page).includes('<SCRIPT>literal text</SCRIPT>'))
   assert(text(page).includes('HTTP request'))
   assert(walk(page).every((node) => !Object.hasOwn(node.props, 'dangerouslySetInnerHTML')))
@@ -183,40 +236,59 @@ test('map zoom scales the shared canvas without changing card or connection coor
   const viewport = walk(zoomed).find((node) => node.props.id === 'composition-scroll')
   assert.equal(canvas.props.style.transform, 'scale(0.75)')
   assert.equal(canvas.props.style.transformOrigin, '0 0')
-  assert.equal(parseFloat(scaled.props.style.width), viewport.props['data-composition-width'] * 0.75)
-  assert.equal(parseFloat(scaled.props.style.height), viewport.props['data-composition-height'] * 0.75)
+  assert.equal(
+    parseFloat(scaled.props.style.width),
+    viewport.props['data-composition-width'] * 0.75,
+  )
+  assert.equal(
+    parseFloat(scaled.props.style.height),
+    viewport.props['data-composition-height'] * 0.75,
+  )
   assert.equal(viewport.props['data-composition-scale'], 0.75)
-  const coordinates = (page) => walk(page)
-    .filter((node) => node.props['data-component'])
-    .map((node) => node.props.style)
+  const coordinates = (page) =>
+    walk(page)
+      .filter((node) => node.props['data-component'])
+      .map((node) => node.props.style)
   assert.deepEqual(coordinates(zoomed), coordinates(natural))
-  const routes = (page) => walk(page)
-    .filter((node) => node.props.class === 'composition-route')
-    .map((node) => node.props.d)
+  const routes = (page) =>
+    walk(page)
+      .filter((node) => node.props.class === 'composition-route')
+      .map((node) => node.props.d)
   assert.deepEqual(routes(zoomed), routes(natural))
   const controls = walk(zoomed).find((node) => node.props['aria-label'] === 'Map zoom')
   assert.equal(walk(controls).filter((node) => node.type === 'button').length, 4)
-  assert(walk(controls).filter((node) => node.type === 'button').every((node) => node.props['aria-label']))
+  assert(
+    walk(controls)
+      .filter((node) => node.type === 'button')
+      .every((node) => node.props['aria-label']),
+  )
 })
 
 test('shared targets retain separate visible slot counts and incoming caller context', () => {
   const data = compositionSnapshot()
   const page = CompositionPage(compositionProps(data, 'draft'))
   const counts = walk(page).filter((node) => node.props['data-composition-edge'])
-  assert.deepEqual(Object.fromEntries(counts.map((node) => [node.props['data-composition-edge'], text(node)])), {
-    'draft-route': '2',
-    'retry-route': '0',
-    'approval-route': '0',
-    'http-route': '0',
-  })
+  assert.deepEqual(
+    Object.fromEntries(counts.map((node) => [node.props['data-composition-edge'], text(node)])),
+    {
+      'draft-route': '2',
+      'retry-route': '0',
+      'approval-route': '0',
+      'http-route': '0',
+    },
+  )
   assert.equal(counts.length, data.composition.edges.length)
   const detail = walk(page).find((node) => node.type === 'aside')
-  const callers = walk(detail).find((node) => node.props.class === 'composition-route-list composition-incoming')
+  const callers = walk(detail).find(
+    (node) => node.props.class === 'composition-route-list composition-incoming',
+  )
   const rows = walk(callers).filter((node) => node.type === 'li')
   assert.equal(rows.length, 2)
   assert(text(rows[0]).includes('Reviewprepare2 retained requests'))
   assert(text(rows[1]).includes('ReviewretryNo matching retained requests'))
-  const leaf = walk(CompositionPage(compositionProps(data, 'http'))).find((node) => node.type === 'aside')
+  const leaf = walk(CompositionPage(compositionProps(data, 'http'))).find(
+    (node) => node.type === 'aside',
+  )
   assert(text(leaf).includes('Configured callers'))
   assert(text(leaf).includes('Worker'))
   assert(text(leaf).includes('<fetch>'))
@@ -271,9 +343,17 @@ test('missing and stale observations remain explicit without replacing exact com
   assert(text(detail).includes('No matching invocation observations are retained'))
   assert.equal(walk(detail).filter((node) => node.props['data-composition-call']).length, 0)
   const stale = CompositionPage(compositionProps(data, 'draft', false))
-  assert(walk(stale).filter((node) => node.props['data-composition-call']).every((node) => node.props.disabled))
+  assert(
+    walk(stale)
+      .filter((node) => node.props['data-composition-call'])
+      .every((node) => node.props.disabled),
+  )
   assert(text(stale).includes('stale or incomplete'))
-  assert.equal(walk(CompositionPage(compositionProps(data, 'removed'))).filter((node) => node.type === 'aside').length, 0)
+  assert.equal(
+    walk(CompositionPage(compositionProps(data, 'removed'))).filter((node) => node.type === 'aside')
+      .length,
+    0,
+  )
   data.composition = { state: 'unavailable', reason: 'limit' }
   const unavailable = CompositionPage(compositionProps(data, 'draft'))
   assert(text(unavailable).includes('No partial map is shown'))
@@ -839,8 +919,9 @@ test('small collections retain search and sort behind a disclosure with compact 
   assert(text(filtered).includes('1 of 2 records'))
   options.local.collectionTools.set('people', false)
   const collapsed = ApplicationPage({ ...options, records: browserRecords(view, options.local) })
-  const summary = walk(collapsed).find((node) =>
-    node.type === 'summary' && text(node).includes('Search and sort'))
+  const summary = walk(collapsed).find(
+    (node) => node.type === 'summary' && text(node).includes('Search and sort'),
+  )
   assert(text(summary).includes('Blair'), 'active query must be visible when tools are closed')
   people.total = 25
   assert(text(ApplicationPage(options)).includes('1 of 2 retained · 25 reported'))
