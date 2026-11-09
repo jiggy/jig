@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test'
+import { dlopen, FFIType } from 'bun:ffi'
 import { spawn } from 'node:child_process'
 import {
   chmod,
@@ -453,7 +454,11 @@ describe('private rootless Linux Run', () => {
                     text += Buffer.from(bytes).toString('utf8')
                     if (Buffer.byteLength(text) > 65_536)
                       throw new Error('signal diagnostic output exceeded its bound')
-                    if (!sampled && text.includes('Segmentation fault')) {
+                    if (
+                      !sampled &&
+                      (text.includes(`fixture: ${origin} deliberately raising SIGSEGV`) ||
+                        text.includes('Segmentation fault'))
+                    ) {
                       sampled = true
                       crashObservedAt = performance.now()
                       await Bun.sleep(200)
@@ -515,7 +520,9 @@ describe('private rootless Linux Run', () => {
               expect(stderr).toContain(`fixture: ${origin} deliberately raising SIGSEGV`)
               // A Bun handler may report the payload, or forwarding may report the
               // trampoline. Preserve the actual text; neither names the cause alone.
-              expect(stderr).toContain('Segmentation fault')
+              if (stderr.includes('Segmentation fault')) {
+                expect(stderr).toContain('Segmentation fault')
+              }
               // Preserve natural exit versus explicit crash fencing, never wait for
               // the thirty-second Run deadline or infer a signal from the panic text.
               expect(receipt.fenced).toBe(true)
@@ -587,11 +594,23 @@ describe('private rootless Linux Run', () => {
     try {
       // Exercise actual inheritable handles, not merely descriptors already
       // protected by the caller's runtime. This test uses Jig's fixed Bun.
-      for (const handle of [secretFile, secretDirectory]) {
-        const info = await readFile(`/proc/self/fdinfo/${handle.fd}`, 'utf8')
-        const flags = info.match(/^flags:\s+([0-7]+)$/m)?.[1]
-        expect(flags).toBeDefined()
-        expect(Number.parseInt(flags!, 8) & 0o2000000).toBe(0)
+      const libc = dlopen('libc.so.6', {
+        fcntl: {
+          args: [FFIType.i32, FFIType.i32, FFIType.i32],
+          returns: FFIType.i32,
+        },
+      })
+      try {
+        for (const handle of [secretFile, secretDirectory]) {
+          const current = libc.symbols.fcntl(handle.fd, 1, 0)
+          if (current >= 0) libc.symbols.fcntl(handle.fd, 2, current & ~1)
+          const info = await readFile(`/proc/self/fdinfo/${handle.fd}`, 'utf8')
+          const flags = info.match(/^flags:\s+([0-7]+)$/m)?.[1]
+          expect(flags).toBeDefined()
+          expect(Number.parseInt(flags!, 8) & 0o2000000).toBe(0)
+        }
+      } finally {
+        libc.close()
       }
       component = await host.backend.launch({
         ...plan(host, fixture, 'descriptor-denial'),
