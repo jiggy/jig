@@ -63,8 +63,13 @@ console.log(`Updated ${updatedDeps} @oven/bun dependencies in packages/jig/packa
 
 // Helper to replace text in files
 async function replaceInFile(path: string, search: string | RegExp, replacement: string) {
-  if (!existsSync(path)) return false
-  const content = await readFile(path, 'utf8')
+  let content: string
+  try {
+    content = await readFile(path, 'utf8')
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
   const updated = content.replace(search, replacement)
   if (content !== updated) {
     await writeFile(path, updated)

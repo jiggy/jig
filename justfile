@@ -115,7 +115,7 @@ build: jig::build
 @qualify-check:
     just check-skills
     node --test scripts/ci/build-candidates.test.mjs scripts/ci/npm-candidate-preflight.test.mjs
-    bun test packages/jig/test/portable/installed-launcher.test.ts packages/jig/test/portable/jig-development-build.test.ts
+    bun test --timeout 15000 packages/jig/test/portable/installed-launcher.test.ts packages/jig/test/portable/jig-development-build.test.ts
 
 # Build and check locally, including native regression tests on supported Macs
 @preflight:

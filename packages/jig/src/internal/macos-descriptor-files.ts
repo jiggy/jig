@@ -3,9 +3,10 @@ import {
   closeSync,
   constants,
   type Dirent,
+  fstatSync,
+  openSync,
   readFileSync,
   realpathSync,
-  lstatSync,
 } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
@@ -61,14 +62,22 @@ function calls(): Native {
             : '../support/macos-descriptor-bridge.dylib',
         )
   const canonical = realpathSync(bridge)
-  const metadata = lstatSync(bridge)
+  const fd = openSync(bridge, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
+  let metadata: ReturnType<typeof fstatSync>
+  let bytes: Buffer
+  try {
+    metadata = fstatSync(fd)
+    bytes = readFileSync(fd)
+  } finally {
+    closeSync(fd)
+  }
   if (
     canonical !== bridge ||
     !metadata.isFile() ||
     metadata.size > 1024 * 1024 ||
     (metadata.mode & 0o022) !== 0 ||
     // biome-ignore format: checked literally by scripts/native-support.mjs
-    createHash('sha256').update(readFileSync(bridge)).digest('hex') !== 'c8418f5bfc1bd2b346eb962c9379605df12f79b6d7395eefb2fde4ff7ded9b4e'
+    createHash('sha256').update(bytes).digest('hex') !== 'c8418f5bfc1bd2b346eb962c9379605df12f79b6d7395eefb2fde4ff7ded9b4e'
   )
     throw new Error('native descriptor bridge identity is invalid')
   const declarations = {
