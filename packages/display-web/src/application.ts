@@ -67,6 +67,11 @@ function sectionPresentation(section: Section): string {
   return 'application-section-context'
 }
 
+function conciseCell(value: Value): boolean {
+  const text = privateBrowserValue(value)
+  return text.length <= 24 && !/[\r\n\t]/.test(text)
+}
+
 /** Keep wide collections readable and make offscreen columns discoverable. */
 function TableViewport({
   label,
@@ -325,7 +330,15 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
                   'tr',
                   {},
                   block.columns.map((column) =>
-                    h('th', { key: column.key, scope: 'col' }, text(column.label)),
+                    h(
+                      'th',
+                      {
+                        key: column.key,
+                        scope: 'col',
+                        class: conciseCell(column.label) ? 'concise-value' : '',
+                      },
+                      text(column.label),
+                    ),
                   ),
                 ),
               ),
@@ -343,7 +356,10 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
                     block.columns.map((column, index) =>
                       h(
                         'td',
-                        { key: column.key },
+                        {
+                          key: column.key,
+                          class: conciseCell(row.cells[column.key] ?? null) ? 'concise-value' : '',
+                        },
                         index === 0 && hasDetail(record)
                           ? inspect(record, privateBrowserValue(row.cells[column.key] ?? null))
                           : props.renderValue(row.cells[column.key] ?? null, record),
