@@ -127,14 +127,14 @@ async function qualifyMacosStartup(
       startup.fill(0)
     }
     const initialized = await request(1, 'initialize', {
-      protocolVersion: 1,
-      clientCapabilities: runtime.authentication?.clientAuthCapabilities
+      protocolVersion: 2,
+      capabilities: runtime.authentication?.clientAuthCapabilities
         ? { auth: runtime.authentication.clientAuthCapabilities }
         : {},
-      clientInfo: { name: 'jig-native-startup-test', version: '1' },
+      info: { name: 'jig-native-startup-test', version: '2' },
     })
-    expect(initialized.protocolVersion).toBe(1)
-    if (runtime.authentication) await request(2, 'authenticate', runtime.authentication.request)
+    expect(initialized.protocolVersion).toBe(2)
+    if (runtime.authentication) await request(2, 'auth/login', runtime.authentication.request)
     if (!createSession) return
     const session = await request(3, 'session/new', {
       cwd,
@@ -369,16 +369,16 @@ for (const client of ['codex', 'claude', 'pi'] as const) {
           }
         }
         const initialized = await request(1, 'initialize', {
-          protocolVersion: 1,
-          clientCapabilities: {
+          protocolVersion: 2,
+          capabilities: {
             ...(runtime.authentication?.clientAuthCapabilities
               ? { auth: runtime.authentication.clientAuthCapabilities }
               : {}),
           },
-          clientInfo: { name: 'jig-native-startup-test', version: '1' },
+          info: { name: 'jig-native-startup-test', version: '2' },
         })
-        expect(initialized.protocolVersion).toBe(1)
-        if (runtime.authentication) await request(2, 'authenticate', runtime.authentication.request)
+        expect(initialized.protocolVersion).toBe(2)
+        if (runtime.authentication) await request(2, 'auth/login', runtime.authentication.request)
         const session = await request(3, 'session/new', {
           cwd: '/work',
           mcpServers: [],

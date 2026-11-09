@@ -951,12 +951,16 @@ differences. The operand is also bound into retained capture identity; replay
 or reuse cannot pair another argument with the captured proposal.
 
 A same-client choice preserves every field and still qualifies. An actual
-cross-client change with an authored model pin or incompatible `retainSessions`
-refuses the entire request. Never clear, translate or infer model/retention
+cross-client change with an authored authentication profile, model pin, or
+incompatible `retainSessions` refuses the entire request. Profile names belong
+to the selected client's operator authentication method and cannot be translated
+by `--agent`.
+
+Never clear, translate or infer model/retention
 policy, and preserve `maxTurns`. A pinned-model refusal states the operand's
 restriction, not an unproved claim about model compatibility or native setup.
 Refuse an inapplicable request when no ACP resources are selected. Global scope
-includes mixed source clients; there are no per-slot exceptions, force modes,
+includes mixed source clients. There are no per-slot exceptions, force modes,
 automatic alternatives or partial semantic success.
 
 The operand does not grant execution, resolution networking, contract generation

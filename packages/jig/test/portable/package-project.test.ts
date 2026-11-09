@@ -299,6 +299,11 @@ describe('private package-project linker', () => {
           'PROJECT_AGENT_OVERRIDE_MODEL',
         ],
         [
+          { kind: 'acp', client: 'pi', authProfile: 'pi-personal' },
+          'codex',
+          'PROJECT_AGENT_OVERRIDE_PROFILE',
+        ],
+        [
           { kind: 'acp', client: 'codex', retainSessions: true, maxTurns: 2 },
           'pi',
           'PROJECT_AGENT_OVERRIDE_RETENTION',
@@ -341,6 +346,34 @@ describe('private package-project linker', () => {
         slots: { native: 'grant:pinned' },
       })
       const input = { flows, bindings: [named], grants: { pinned: policy } }
+      const namedProfile = linkPackageProject({
+        ...input,
+        grants: {
+          pinned: {
+            kind: 'acp',
+            client: 'codex',
+            authProfile: 'named-codex',
+            maxTurns: 4,
+          },
+        },
+      })
+      expect(
+        linkPackageProject(
+          {
+            ...input,
+            grants: {
+              pinned: {
+                kind: 'acp',
+                client: 'codex',
+                authProfile: 'named-codex',
+                maxTurns: 4,
+              },
+            },
+          },
+          undefined,
+          'codex',
+        ),
+      ).toEqual(namedProfile)
       const authored = linkPackageProject(input)
       expect(linkPackageProject(input, undefined, 'codex')).toEqual(authored)
       expect(buildPrivateActivationRequests(linkPackageProject(input, undefined, 'codex'))).toEqual(
@@ -369,6 +402,40 @@ describe('private package-project linker', () => {
         kind: 'grant',
         policy: { kind: 'acp', client: 'codex', maxTurns: 2 },
       })
+    })
+  })
+  test('same-client --agent qualifies multi-slot recovery Bindings targeting that client', async () => {
+    const recoveryFlows = {
+      ...nativeAgentTrees(),
+      'flows/recovery': {
+        ...run('recovery'),
+        'FLOW.meta.json': metadata({
+          name: 'recovery',
+          uses: {
+            native: { contract: './contracts/finite-acp/contract.json' },
+            backup1: { contract: './contracts/finite-acp/contract.json', optional: true },
+          },
+        }),
+        'contracts/finite-acp/contract.json':
+          nativeAgentTrees()['flows/native']!['contracts/finite-acp/contract.json']!,
+        'contracts/finite-acp/requests.json':
+          nativeAgentTrees()['flows/native']!['contracts/finite-acp/requests.json']!,
+        'contracts/finite-acp/responses.json':
+          nativeAgentTrees()['flows/native']!['contracts/finite-acp/responses.json']!,
+      },
+    }
+    await withFlows(recoveryFlows, (flows) => {
+      const recoveryBinding = binding('bindings/recovery.ts', {
+        package: 'flows/recovery',
+        slots: {
+          native: { kind: 'acp', client: 'codex', authProfile: 'primary', maxTurns: 2 },
+          backup1: { kind: 'acp', client: 'codex', authProfile: 'secondary', maxTurns: 2 },
+        },
+      })
+      const authored = linkPackageProject({ flows, bindings: [recoveryBinding] })
+      expect(
+        linkPackageProject({ flows, bindings: [recoveryBinding] }, undefined, 'codex'),
+      ).toEqual(authored)
     })
   })
   test('mapped child interfaces retain the exact reviewed map and refuse incompatible authority', async () => {

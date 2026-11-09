@@ -2,4 +2,4 @@
 export const FINITE_ACP_CONTRACT_ID = 'https://jig.md/contracts/finite-acp'
 export const FINITE_ACP_CONTRACT_VERSION = '0.1.0'
 export const FINITE_ACP_CONTRACT_DIGEST =
-  'sha256:808fc2e06261843a86ca6d346e0e3385582b859868f796a6427cc319d57dfbb1'
+  'sha256:9e8ec203f8b9b816653a51f426ab23d80349adb06af03c9daaae8da5fd93de04'

@@ -64,7 +64,7 @@ test('finite ACP grants pin the complete public invocation and channel closure',
     ).toThrow()
   contract.channelContracts.get('responses.json')!.itemSchema.validate({
     kind: 'ready',
-    protocolVersion: 1,
+    protocolVersion: 2,
     cwd: '/work',
     configuration: [],
     maxTurns: 1,

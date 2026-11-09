@@ -398,3 +398,21 @@ test('known rejected override identifies the operator field without its private 
   expect(text).toContain('Operator PATH was not used')
   expect(text).toContain('To keep Pi:')
 })
+
+test('authProfile pinned issue renders the profile name and suppresses --agent switching', () => {
+  const text = renderReviewAgentSetup(
+    report([
+      issue({
+        client: 'codex',
+        sourceClient: 'codex',
+        code: 'PROJECT_ACP_CODEX_AUTHENTICATION',
+        policy: { kind: 'acp', client: 'codex', authProfile: 'work-account' },
+        alternatives: ['claude', 'pi'],
+      }),
+    ]),
+    options,
+  )
+  expect(text).toContain('Authentication profile: "work-account".')
+  expect(text).not.toContain('--agent claude')
+  expect(text).not.toContain('--agent pi')
+})

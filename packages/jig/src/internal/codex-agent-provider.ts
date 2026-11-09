@@ -67,6 +67,7 @@ export const PRIVATE_CODEX_REQUIREMENTS = [
 ].join('\n')
 
 export interface PrivateCodexAgentSupport {
+  readonly authProfile?: string
   /** Exact Jig-owned startup launcher selected by trusted host policy. */
   readonly launcherPath: string
   /** Exact official codex-acp adapter selected by trusted host policy. */
@@ -113,6 +114,7 @@ export async function openPrivateCodexAgentProvider(
   environment: Readonly<Record<string, string | undefined>> = process.env,
   projectDirectory: string = process.cwd(),
   selectedModel?: string,
+  authProfile?: string,
 ): Promise<PrivateAcpAgentProvider> {
   environment = Object.freeze({ ...environment })
   let executablePath: string
@@ -175,6 +177,7 @@ export async function openPrivateCodexAgentProvider(
     mounts.set(mount.destination, mount)
   }
   const support = Object.freeze({
+    ...(authProfile === undefined ? {} : { authProfile }),
     launcherPath: join(releaseRoot, 'libexec', 'agent', 'codex-agent-launcher.js'),
     adapterPath: join(releaseRoot, 'libexec', 'agent', 'codex-acp.js'),
     executablePath,
@@ -320,6 +323,7 @@ export async function createPrivateCodexSubscriptionAgentProvider(
   const model = value.model
   return await createPrivateAcpAgentProvider({
     client: CODEX_CLIENT,
+    ...(value.authProfile === undefined ? {} : { authProfile: value.authProfile }),
     model: model ?? CLIENT_DEFAULT_MODEL,
     credentialMode: 'openai-subscription',
     adapterPath: value.launcherPath,
@@ -378,6 +382,7 @@ export async function createPrivateCodexOpenAIApiAgentProvider(
   await requireManagedRequirements(value.requirementsPath)
   return await createPrivateAcpAgentProvider({
     client: CODEX_CLIENT,
+    ...(value.authProfile === undefined ? {} : { authProfile: value.authProfile }),
     model: value.model,
     credentialMode: 'openai-responses-api-key',
     adapterPath: value.launcherPath,

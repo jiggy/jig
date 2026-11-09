@@ -86,6 +86,42 @@ test('session retention is separately reviewed and restricted to qualified Codex
     expect(() => normalizeGrant({ kind: 'acp', client: 'codex', retainSessions })).toThrow()
   for (const client of ['claude', 'pi'])
     expect(() => normalizeGrant({ kind: 'acp', client, retainSessions: true })).toThrow()
+  expect(
+    normalizeGrant({
+      kind: 'acp',
+      client: 'codex',
+      authProfile: 'personal-codex',
+      retainSessions: true,
+    }),
+  ).toEqual({
+    kind: 'acp',
+    client: 'codex',
+    authProfile: 'personal-codex',
+    retainSessions: true,
+  })
+})
+test('named ACP authentication profiles are reviewed, bounded and model-independent', () => {
+  const named = normalizeGrant({ kind: 'acp', client: 'codex', authProfile: 'personal-codex' })
+  expect(named).toEqual({ kind: 'acp', client: 'codex', authProfile: 'personal-codex' })
+  for (const authProfile of ['', 'A', 'a_b', 'a--b', 'a-', '.env', 'a'.repeat(65), 42, null])
+    expect(() => normalizeGrant({ kind: 'acp', client: 'codex', authProfile })).toThrow()
+  const lock = (authProfile: string) => ({
+    packages: { 'flows/agent': { digest: 'code', directRun: false, uses: { native: finiteAcp } } },
+    bindings: {
+      agent: {
+        packagePath: 'flows/agent',
+        settings: {},
+        slots: {
+          native: {
+            kind: 'grant' as const,
+            policy: normalizeGrant({ kind: 'acp', client: 'codex', authProfile }),
+          },
+        },
+      },
+    },
+  })
+  expect(requiresAuthorityApproval(lock('personal-codex'), lock('work-codex'))).toBeTrue()
+  expect(requiresAuthorityApproval(lock('personal-codex'), lock('personal-codex'))).toBeFalse()
 })
 test('ACP additional turns are an explicit bounded reviewed grant', () => {
   expect(normalizeGrant({ kind: 'acp', client: 'codex', maxTurns: 3 })).toEqual({

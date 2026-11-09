@@ -23,6 +23,7 @@ const encoder = new TextEncoder()
 export const PRIVATE_CLAUDE_DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com' as const
 
 export interface PrivateClaudeAgentSupport {
+  readonly authProfile?: string
   /** Exact Jig-owned startup launcher selected by trusted host policy. */
   readonly launcherPath: string
   /** Exact release-owned Claude ACP adapter selected by trusted host policy. */
@@ -62,6 +63,7 @@ export async function openPrivateClaudeAgentProvider(
   environment: Readonly<Record<string, string | undefined>> = process.env,
   projectDirectory: string = process.cwd(),
   selectedModel?: string,
+  authProfile?: string,
 ): Promise<PrivateAcpAgentProvider> {
   environment = Object.freeze({ ...environment })
   const executablePath = await resolvePrivateNativeAgentExecutable(
@@ -73,6 +75,7 @@ export async function openPrivateClaudeAgentProvider(
     inspectPrivateNativeAgentRuntime(executablePath, projectDirectory),
   )
   const support = Object.freeze({
+    ...(authProfile === undefined ? {} : { authProfile }),
     launcherPath: join(releaseRoot, 'libexec', 'agent', 'claude-agent-launcher.js'),
     adapterPath: join(releaseRoot, 'libexec', 'agent', 'claude-agent-acp.js'),
     executablePath,
@@ -175,6 +178,8 @@ function baseConfiguration(
 ) {
   return {
     client: CLAUDE_CLIENT,
+    // The installed Claude adapter uses ACP v2; do not negotiate down.
+    ...(value.authProfile === undefined ? {} : { authProfile: value.authProfile }),
     model,
     adapterPath: value.launcherPath,
     sandboxAdapterPath: SANDBOX_LAUNCHER_PATH,
@@ -192,6 +197,8 @@ function baseConfiguration(
       CLAUDE_CODE_DISABLE_TERMINAL_TITLE: '1',
       CLAUDE_CODE_DISABLE_THINKING: '1',
       CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: 'false',
+      // V2 only. Fail at the adapter rather than silently entering v1.
+      CLAUDE_AGENT_ACP_PROTOCOL: 'v2',
       CLAUDE_CODE_MAX_RETRIES: '0',
       CLAUDE_CODE_SUBAGENT_MODEL: model,
       CLAUDE_CODE_EXECUTABLE: value.executablePath,

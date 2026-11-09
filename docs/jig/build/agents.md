@@ -188,6 +188,75 @@ consult its
 [configuration profile](../spec/finite-acp.md#native-client-profiles). The
 package has no second client selector.
 
+For multiple operator-owned authentication sources of one native client,
+add an optional `authProfile` LocalName to the ACP grant. Set the matching
+`JIG_ACP_PROFILE_<NAME>__<FIELD>` environment selector **before** invoking
+`jig review`, for example:
+
+```sh
+export JIG_ACP_PROFILE_PERSONAL_CODEX__CODEX_HOME=/absolute/path/to/personal-codex
+export JIG_ACP_PROFILE_WORK_API__OPENAI_API_KEY="$MY_WORK_OPENAI_API_KEY"
+```
+
+```ts
+slots: { native: { kind: 'acp', client: 'codex',
+                   authProfile: 'personal-codex' } }
+```
+
+The native method receives only the chosen profile's validated credential
+projection. A selected profile never falls back to ambient or sibling secrets.
+For API-key mode, select the workload's `model` in the grant. This is profile
+selection, not automatic failover or native history migration. Named profiles
+support session retention when combined with `retainSessions: true` on qualified Codex. See
+[ACP grants](../spec/grants.md).
+
+### Native candidate recovery
+
+The ordinary native ACP package (`npm:@jigging/agent-acp`) supports ordered candidate recovery.
+When an active slot fails at an authorized boundary with confirmed process cleanup, execution advances safely to a backup slot (`backup1`, `backup2`, or `backup3`).
+Recovery boundaries include unforwarded task prompts and first-turn rejection without output.
+
+```ts
+import { defineBinding } from '@jigging/jig'
+
+export default defineBinding({
+  package: 'npm:@jigging/agent-acp',
+  slots: {
+    native: {
+      kind: 'acp',
+      client: 'codex',
+      authProfile: 'subscription-a',
+    },
+    backup1: {
+      kind: 'acp',
+      client: 'codex',
+      authProfile: 'api-key',
+      model: 'o3-mini',
+    },
+    backup2: {
+      kind: 'acp',
+      client: 'claude',
+      authProfile: 'work-claude',
+    },
+  },
+})
+```
+
+Backup slots are optional and declared on the same single Flow level without
+extra wrapper packages or protocol-level shims. Calls maintain full `events`,
+`conversation`, and `sessions` support.
+
+Configure candidate advancement with optional `settings.recovery` fields on the
+binding:
+
+- `beforePrompt` (`"next"` default, or `"stop"`): controls failover after a
+  confirmed unforwarded failure on turn 0.
+- `afterRejectedPrompt` (`"stop"` default, `"next-on-limit-or-service"`, or
+  `"next-on-auth-limit-or-service"`): controls failover when turn 0 is rejected
+  before output.
+- `sameClientSession` (`"resume-if-qualified"` default, or `"fresh"`): controls
+  whether compatible same-client profiles reuse retained Codex sessions.
+
 Add `model: 'your-model-id'` beside `client` in the grant to select a model for
 that Binding. Omission uses the operator environment or the client's documented
 default. Authentication stays with the operator. Review shows the exact grant,

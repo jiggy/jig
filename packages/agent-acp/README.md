@@ -5,10 +5,12 @@ explicit instructions, guidance and selected Skill text, receives the native
 answer, and checks structured output through `@jigging/agent-method`.
 
 The caller uses the same Agent Run input and result as any other implementation.
-The package's sole `native` slot requires the finite ACP resource described in
-`contracts/finite-acp/`. The host supplies its reviewed client configuration
-and private authentication; this Flow has no provider, model, credential or
-permission settings of its own.
+Its required `native` slot and optional `backup1`, `backup2`, and `backup3` slots
+consume the finite ACP resource described in `contracts/finite-acp/`. The host
+supplies reviewed client configurations and private authentication. This Flow accepts
+only optional `settings.recovery` (`beforePrompt`, `afterRejectedPrompt`, and
+`sameClientSession`) and has no provider, model, credential, or permission settings
+of its own.
 
 `FLOW.ts` runs the bundled implementation. `src/flow.ts` contains the complete
 finite protocol dialogue, not a call back to a privileged Agent method. It uses
@@ -39,7 +41,9 @@ Conversational callers explicitly supply command/reply channels and use a grant
 with `maxTurns` (1–8). Ordinary calls still perform one turn. Native retention and
 restoration use an explicit session request and separate reviewed authority,
 described below.
-Tools, retries and implicit filesystem context are not supplied.
+Tools, speculative retries and implicit filesystem context are not supplied.
+Candidate advancement runs only across explicitly granted slots after confirmed
+host fencing at an authorized turn-0 recovery boundary, configured via `settings.recovery`.
 
 Native warnings are separate, sanitized console diagnostics rather than answer
 text or Agent events. Authoritative native errors remain invocation failures.
@@ -95,8 +99,15 @@ state to cross-Run retention. Storage or cleanup failures remain failures.
 The Flow passes the request to its finite resource. For restoration it requires
 the host-owned session identifier in ready and advertised ACP resume support,
 resumes that exact session, and reapplies current reviewed configuration before
-the prompt. It does not read native files, replay a transcript or fall back to
-a fresh conversation. Current grants and credentials remain host-owned.
+the prompt. It does not read native files or replay a transcript. Current grants
+and credentials remain host-owned.
+
+With default `sameClientSession: 'resume-if-qualified'`, candidate recovery
+keeps `{ restore }` and skips incompatible slots rather than falling back to
+a fresh conversation. With explicit `sameClientSession: 'fresh'`, backup retries
+omit prior history and report `session: { status: 'unavailable', reason: 'unsupported-history' }`.
+A `{ retain: true }` failover to a slot without retention also reports
+`unsupported-history`.
 
 Only the final invocation output contains a requested receipt:
 `session: { status: 'retained', reference }` or
@@ -109,12 +120,13 @@ validated collection, complete fencing and cleanup, and atomic store commit.
 Forced closure yields unavailable retention; a separately valid answer remains
 usable. Calls without a session request omit the receipt.
 
-A reference is claimed once under the current authorized recipient, ancestry
-and exact native profile. Expired, foreign, changed-profile or reused references
-fail visibly. A failed claimed invocation does not make its old reference
-reusable. The project permits 16 available snapshots of at most 8 MiB each,
-with 24-hour logical expiry and pruning on the next store access. State excludes
-credentials and arbitrary workspaces; expiry is not a secure-erasure promise.
+A reference is claimed once under the current authorized recipient, ancestry,
+client, adapter, and executable identity. Pre-acceptance failures before
+`session/resume` restore the claimed snapshot for compatible same-client backup
+profiles. Expired, foreign, incompatible, or already resumed references fail
+visibly. The project permits 16 available snapshots of at most 8 MiB each, with
+24-hour logical expiry and pruning on the next store access. State excludes
+credentials and arbitrary workspaces, and expiry is not a secure-erasure promise.
 See the [restoration guide](https://jig.md/build/conversation-restoration)
 for calls and [Finite ACP](https://jig.md/spec/finite-acp#retained-native-state)
 for exact authorization, collection and settlement requirements.

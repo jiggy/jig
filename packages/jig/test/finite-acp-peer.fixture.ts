@@ -15,8 +15,9 @@ for await (const line of createInterface({ input: process.stdin })) {
       jsonrpc: '2.0',
       id: mode === 'wrong-id' ? 'unrequested' : frame.id,
       result: {
-        protocolVersion: 1,
-        agentCapabilities: {},
+        protocolVersion: 2,
+        capabilities: { session: {} },
+        info: { name: 'peer-agent', version: '2' },
         authMethods: [{ id: 'token' }],
         _meta: { secret: 'private-server-meta' },
       },
@@ -72,12 +73,47 @@ for await (const line of createInterface({ input: process.stdin })) {
         params: {
           sessionId: 'owned',
           update: {
+            sessionUpdate: 'user_message',
+            messageId: 'user-turn',
+          },
+        },
+      })
+      emit({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: 'owned',
+          update: {
+            sessionUpdate: 'state_update',
+            state: 'running',
+          },
+        },
+      })
+      emit({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: 'owned',
+          update: {
             sessionUpdate: 'agent_message_chunk',
+            messageId: 'answer-chunk',
             content: { type: 'text', text: 'answer', _meta: { secret: 'not-public' } },
           },
         },
       })
-      reply({ stopReason: 'end_turn', _meta: { secret: 'private-result' } })
+      emit({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: 'owned',
+          update: {
+            sessionUpdate: 'state_update',
+            state: 'idle',
+            stopReason: 'end_turn',
+          },
+        },
+      })
+      reply({ messageId: 'user-turn', _meta: { secret: 'private-result' } })
     }
   } else if (frame.result?.outcome?.outcome === 'cancelled') {
     process.stderr.write('permission denied\n')

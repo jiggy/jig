@@ -12,7 +12,7 @@
             "const": "ready"
           },
           "protocolVersion": {
-            "const": 1
+            "const": 2
           },
           "cwd": {
             "const": "/work"

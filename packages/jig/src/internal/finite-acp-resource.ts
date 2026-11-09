@@ -31,6 +31,7 @@ import {
   PrivateFiniteAcpPolicy,
   PrivateFiniteAcpPolicyError,
 } from './finite-acp-policy.js'
+import { PrivateFiniteAcpTaskPromptEvidence } from './finite-acp-prompt-evidence.js'
 import { PRIVATE_NATIVE_TURN_POLICY } from './native-agent-turn-policy.js'
 
 const encoder = new TextEncoder()
@@ -79,6 +80,25 @@ export interface PrivateFiniteAcpEndpoints {
 }
 
 /** Data-plane seam only. The caller must admit, own, fence and release the process. */
+export function privateFiniteAcpMacosPreparedRequest(
+  ownerKind: string,
+  ownerAllocationDirectory: string,
+  accepted: JsonObject,
+): JsonObject {
+  if (
+    ownerKind !== 'private-macos-prepared-owner/1' ||
+    !['session/new', 'session/load', 'session/resume'].includes(accepted.method as string)
+  )
+    return accepted
+  return {
+    ...accepted,
+    params: {
+      ...(accepted.params as JsonObject),
+      cwd: join(ownerAllocationDirectory, 'data', 'work'),
+    },
+  }
+}
+
 export async function runPrivateFiniteAcpResource(
   component: PrivateExecutionComponentProcess,
   runtime: PrivateAcpAgentRuntime,
@@ -89,6 +109,7 @@ export async function runPrivateFiniteAcpResource(
     readonly bootstrap: Uint8Array
     readonly restoreSessionId?: string
     readonly credentialBootstrap?: Uint8Array
+    readonly onResumeAccepted?: () => void
   },
 ): Promise<{
   readonly fence: PrivateExecutionConfirmedEnforcementReceipt
@@ -100,6 +121,8 @@ export async function runPrivateFiniteAcpResource(
     (receipt): PrivateExecutionConfirmedEnforcementReceipt => receipt,
   )
   const stopped = (): void => local.abort(signal.reason)
+  const protocolVersion: 2 = 2
+  const promptEvidence = new PrivateFiniteAcpTaskPromptEvidence()
   const policy = new PrivateFiniteAcpPolicy(
     {
       maxTurns,
@@ -113,7 +136,7 @@ export async function runPrivateFiniteAcpResource(
   )
   const ready = readFiniteAcpReady({
     kind: 'ready',
-    protocolVersion: 1,
+    protocolVersion: 2,
     cwd: '/work',
     maxTurns,
     configuration: runtime.configuration,
@@ -122,10 +145,6 @@ export async function runPrivateFiniteAcpResource(
       ? {}
       : { restoreSessionId: session.restoreSessionId }),
   })
-  // Validate before native startup; configuration is public policy, never auth.
-  PRIVATE_FINITE_ACP_CHANNELS.responses!.contract!.validate(ready as unknown as JsonValue)
-  if (canonicalJson(ready as unknown as JsonValue).byteLength > CHANNEL_LIMITS.itemBytes)
-    invalid('Finite ACP ready record exceeds the channel item bound')
   signal.addEventListener('abort', stopped, { once: true })
   if (signal.aborted) stopped()
   const frames = new FiniteAcpFrames('requests')
@@ -180,14 +199,19 @@ export async function runPrivateFiniteAcpResource(
           ...accepted,
           params: {
             ...(accepted.params as JsonObject),
-            clientCapabilities: {
-              // Request typed notices, never native warnings disguised as answer text.
-              // This metadata grants no tools, filesystem or session-control powers.
+            capabilities: {
               _meta: { jetbrains: { air: { version: 1, capabilities: ['sessionFailure'] } } },
               ...(runtime.authentication?.clientAuthCapabilities === undefined
                 ? {}
                 : {
-                    auth: runtime.authentication.clientAuthCapabilities as unknown as JsonValue,
+                    auth: {
+                      ...(runtime.authentication.clientAuthCapabilities._meta === undefined
+                        ? {}
+                        : {
+                            _meta: runtime.authentication.clientAuthCapabilities
+                              ._meta as unknown as JsonValue,
+                          }),
+                    },
                   }),
             },
           },
@@ -201,18 +225,12 @@ export async function runPrivateFiniteAcpResource(
           },
         }
       }
-      if (
-        component.owner.kind === 'private-macos-prepared-owner/1' &&
-        ['session/new', 'session/load'].includes(accepted.method as string)
-      ) {
-        native = {
-          ...native,
-          params: {
-            ...(native.params as JsonObject),
-            cwd: join(component.owner.owner.allocation.directory, 'data', 'work'),
-          },
-        }
-      }
+      const ownerDirectory =
+        component.owner.kind === 'private-macos-prepared-owner/1'
+          ? component.owner.owner.allocation.directory
+          : ''
+      native = privateFiniteAcpMacosPreparedRequest(component.owner.kind, ownerDirectory, native)
+      promptEvidence.beforeNativeWrite(accepted.method)
       await write(native)
     }
     frames.finish()
@@ -260,15 +278,24 @@ export async function runPrivateFiniteAcpResource(
         await write({
           jsonrpc: '2.0',
           id: authenticationId,
-          method: 'authenticate',
+          method: 'auth/login',
           params: runtime.authentication.request as unknown as JsonValue,
         })
         continue
       }
+      const wasTurnActive = policy.turnActive
+      const hadResumeAccepted = policy.hasAcceptedResume
       const delivery = policy.fromClient(bytes)
-      if (!policy.turnActive && interruptTimer !== undefined) {
-        clearTimeout(interruptTimer)
-        interruptTimer = undefined
+      if (!hadResumeAccepted && policy.hasAcceptedResume) session?.onResumeAccepted?.()
+      if (policy.hasAcceptedOrInsertedPrompt) promptEvidence.recordPromptAccepted()
+      if (policy.hasExplicitPromptRejection) promptEvidence.recordPreInsertionRejection()
+      if (policy.hasProducedTurnOutput) promptEvidence.recordOutput()
+      if (wasTurnActive && !policy.turnActive && !policy.hasPeerFailed) {
+        promptEvidence.recordTurnSettled()
+        if (interruptTimer !== undefined) {
+          clearTimeout(interruptTimer)
+          interruptTimer = undefined
+        }
       }
       if (delivery.toClient !== undefined) await write(delivery.toClient)
       if (delivery.toAdapter !== undefined) await send(delivery.toAdapter)
@@ -283,11 +310,16 @@ export async function runPrivateFiniteAcpResource(
     if (initializedReply || !Object.hasOwn(value, 'result') || value.method !== undefined)
       return false
     const result = object(value.result)
-    if (result.protocolVersion !== 1) return false
+    if (result.protocolVersion !== protocolVersion) return false
     initializedReply = true
     return true
   }
   try {
+    // Validation must be inside the owned failure boundary. An invalid native
+    // ready record otherwise leaves the transferred caller channel waiting.
+    PRIVATE_FINITE_ACP_CHANNELS.responses!.contract!.validate(ready as unknown as JsonValue)
+    if (canonicalJson(ready as unknown as JsonValue).byteLength > CHANNEL_LIMITS.itemBytes)
+      invalid('Finite ACP ready record exceeds the channel item bound')
     local.signal.throwIfAborted()
     secrets = runtime.secretBytes()
     assertPrivateFiniteAcpPublicOutput(ready as unknown as JsonValue, secrets)
@@ -325,6 +357,13 @@ export async function runPrivateFiniteAcpResource(
     )
     await component.terminate().catch(() => undefined)
     await Promise.allSettled(tasks)
+    if (policy.hasAcceptedOrInsertedPrompt) promptEvidence.recordPromptAccepted()
+    if (policy.hasExplicitPromptRejection) promptEvidence.recordPreInsertionRejection()
+    if (policy.hasProducedTurnOutput) promptEvidence.recordOutput()
+    const isSessionFailure =
+      error instanceof PrivateFiniteAcpPolicyError &&
+      (error.reason === 'native-session' || error.nativeCategory !== undefined)
+    promptEvidence.noteFailure(error, isSessionFailure)
     throw error
   } finally {
     for (const secret of secrets) secret.fill(0)

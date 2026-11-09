@@ -16,7 +16,7 @@ export type FiniteAcpConfiguration =
 
 export interface FiniteAcpReady {
   readonly kind: 'ready'
-  readonly protocolVersion: 1
+  readonly protocolVersion: 2
   readonly cwd: '/work'
   readonly maxTurns: number
   readonly configuration: readonly FiniteAcpConfiguration[]
@@ -101,7 +101,7 @@ export function readFiniteAcpReady(value: unknown): FiniteAcpReady {
   )
   if (
     record.kind !== 'ready' ||
-    record.protocolVersion !== 1 ||
+    record.protocolVersion !== 2 ||
     record.cwd !== '/work' ||
     typeof record.maxTurns !== 'number' ||
     !Number.isSafeInteger(record.maxTurns) ||
@@ -137,7 +137,7 @@ export function readFiniteAcpReady(value: unknown): FiniteAcpReady {
   })
   const ready: FiniteAcpReady = Object.freeze({
     kind: 'ready',
-    protocolVersion: 1,
+    protocolVersion: 2,
     cwd: '/work',
     maxTurns: record.maxTurns as number,
     configuration: Object.freeze(configuration),

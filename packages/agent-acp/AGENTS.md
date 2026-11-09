@@ -25,8 +25,14 @@ host retains credential, process, and dispatch authority.
 
 - Use only public dependency exports. No Jig imports, provider calls, process
   launches, implicit filesystem context, or credential access.
-- One `native` slot supplies a finite ACP resource through required direct
-  requests/responses channels. Its ready record supplies reviewed configuration.
+- One primary `native` slot and up to three optional backup slots (`backup1`,
+  `backup2`, `backup3`) supply finite ACP resources through direct channels.
+  Execution advances to the next candidate when an active slot fails at an
+  authorized boundary with confirmed host process cleanup.
+  Authorized boundaries include unforwarded prompts and first-turn rejection
+  without output.
+  Compatible same-client profiles continue session restoration, while incompatible clients start fresh.
+  A slot's ready record supplies reviewed configuration.
   The Flow has no duplicate model, provider, mode or credential settings.
 - Metadata declares `events`, `conversation`, and `sessions` as implemented
   Agent mechanisms. Those unconditional claims concern the method. Current
@@ -68,7 +74,9 @@ host retains credential, process, and dispatch authority.
   results in `src/conversation.ts`. Native maxTurns, serial dispatch and
   interruption settlement remain host-enforced. One-shot calls retain their
   simple interface. Essential replies never use the lossy progress relay. Tools,
-  MCP, binary transport, implicit replacement and retries are not provided.
+  MCP, binary transport, and speculative replay are not provided. Advance to
+  reviewed backup slots only under `settings.recovery` after confirmed cleanup at
+  authorized turn-0 boundaries.
 - The Flow relays optional session intent to the native resource. Ordinary input
   remains null. Restoration requires the ready record's owned session ID and
   advertised resume support, never a new-session fallback. Resume returns an
@@ -81,8 +89,8 @@ host retains credential, process, and dispatch authority.
   receipts require the contract's closed reason. Omission or unknown reasons are
   invalid. Storage, current authority, one-use claims and actual collection
   remain host-owned.
-- Prompt settlement followed by clean request EOF delegates bounded process
-  closure to its owner. The adapter does not wait for optional ACP close.
+- Prompt settlement requires clean ACP `session/close` followed by clean request
+  EOF and bounded process settlement owned by the host.
 - `./transport` is bounded framing, not an alternative host authority filter. A
   frame receipt does not prove dispatch, completion, or cleanup.
 ## Work Guidance

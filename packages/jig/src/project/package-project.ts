@@ -312,6 +312,13 @@ export function linkPackageProject(
           selected++
           const policy = route.policy
           if (policy.client !== agentOverride) {
+            if (policy.authProfile !== undefined)
+              invalid(
+                'PROJECT_AGENT_OVERRIDE_PROFILE',
+                'This ACP policy selects an operator authentication profile. A client-only override cannot move that profile to another client. Edit the ACP grant and review the new selection.',
+                binding.declarationPath,
+                `/slots/${pointerToken(slot)}`,
+              )
             if (policy.model !== undefined)
               invalid(
                 'PROJECT_AGENT_OVERRIDE_MODEL',
@@ -459,6 +466,7 @@ export function projectInvocationRequirements(
       version,
       digest: reference.contract.digest,
       ...(declaration.requires === undefined ? {} : { requires: declaration.requires }),
+      ...(declaration.optional === undefined ? {} : { optional: declaration.optional }),
     })
   }
   return Object.freeze(output)
@@ -658,7 +666,8 @@ function prepareDefaults(
     for (const [slot, required] of Object.entries(flow.value.uses))
       if (
         (required.id === undefined || isHostOnlyInvocationId(required.id)) &&
-        !Object.hasOwn(slots, slot)
+        !Object.hasOwn(slots, slot) &&
+        !('optional' in required && required.optional === true)
       )
         return
     const key = providerKey(contract)
@@ -689,7 +698,12 @@ function defaultSlots(
 ): Readonly<Record<string, RunTargetIdentity>> {
   const slots: Record<string, RunTargetIdentity> = Object.create(null)
   for (const [slot, required] of Object.entries(uses)) {
-    if (Object.hasOwn(explicit, slot) || required.id === undefined) continue
+    if (
+      Object.hasOwn(explicit, slot) ||
+      required.id === undefined ||
+      ('optional' in required && required.optional === true)
+    )
+      continue
     let selected = defaults.explicit.get(required.id)
     if (selected === undefined && !isHostOnlyInvocationId(required.id)) {
       const matches = defaults.candidates.get(providerKey(required)) ?? []

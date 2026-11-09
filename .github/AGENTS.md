@@ -289,6 +289,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 ## Work Guidance
 
 - Put substantial shell or TypeScript logic in `scripts/` and call it here.
+- Wait at least five minutes before rechecking remote CI status. Repository CI suites are extensive and take time to finish.
 - Preserve zero-residue checks around provisioned Jig host tests. Mac snapshots
   retain explicit lowercase `jig-` paths and automatic `/Volumes/Jig-` volume
   names. The self-hosted workflow uses the same qualifier. These are

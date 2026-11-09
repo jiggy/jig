@@ -1,12 +1,12 @@
 import { describe, expect, spyOn, test } from 'bun:test'
 import {
-  OperationError,
   type ChannelPair,
   type ChannelReceiver,
   type ChannelSender,
   type FlowCall,
   type JsonObject,
   type JsonValue,
+  OperationError,
   type RunContext,
   type RunResult,
 } from '@jigging/flow'
@@ -19,7 +19,7 @@ const completed: RunResult = {
 }
 const ready = {
   kind: 'ready',
-  protocolVersion: 1,
+  protocolVersion: 2,
   cwd: '/work',
   maxTurns: 3,
   configuration: [
@@ -122,7 +122,10 @@ interface Options {
   readonly commands?: ChannelReceiver
   readonly replies?: ChannelSender
   readonly signal?: AbortSignal
-  readonly emit?: (frame: Frame, send: ChannelSender) => Promise<boolean>
+  readonly emit?: (frame: Frame, send: ChannelSender, attempt: number) => Promise<boolean>
+  readonly initialNativeFailure?: OperationError
+  readonly rejectAttempt?: (call: FlowCall, attempt: number) => void
+  readonly selection?: readonly { readonly slot: string; readonly operationId: string }[]
   readonly disposeFailure?: Error
 }
 
@@ -154,7 +157,7 @@ function fixture(options: Options = {}) {
     signal: options.signal ?? new AbortController().signal,
     async channel(settings: { contract: string }) {
       expect(settings.contract).toBe(
-        channels.length === 0
+        channels.length % 2 === 0
           ? './contracts/finite-acp/requests.json'
           : './contracts/finite-acp/responses.json',
       )
@@ -167,15 +170,16 @@ function fixture(options: Options = {}) {
       return value
     },
     async call(call: FlowCall, settings: { signal: AbortSignal }) {
-      calls++
+      const attempt = calls++
       const session = (run.input as JsonObject).session
+      const candidate = options.selection?.[attempt] ?? { slot: 'native', operationId: 'native' }
       expect(call).toMatchObject({
-        operationId: 'native',
-        slot: 'native',
-        input: session === undefined ? null : { session },
+        operationId: candidate.operationId,
+        slot: candidate.slot,
+        ...(options.rejectAttempt ? {} : { input: session === undefined ? null : { session } }),
       })
-      expect(call.channels?.requests).toBe(channels[0]!.receive)
-      expect(call.channels?.responses).toBe(channels[1]!.send)
+      expect(call.channels?.requests).toBe(channels[attempt * 2]!.receive)
+      expect(call.channels?.responses).toBe(channels[attempt * 2 + 1]!.send)
       const receive = call.channels!.requests as ChannelReceiver
       const send = call.channels!.responses as ChannelSender
       const fragments = new FiniteAcpFrames('requests')
@@ -187,6 +191,8 @@ function fixture(options: Options = {}) {
         { once: true },
       )
       try {
+        options.rejectAttempt?.(call, attempt)
+        if (attempt === 0 && options.initialNativeFailure) throw options.initialNativeFailure
         await send.send(options.ready ?? ready)
         for (;;) {
           const item = await receive.next({ signal: settings.signal })
@@ -198,36 +204,88 @@ function fixture(options: Options = {}) {
           if (data === undefined) continue
           const frame = JSON.parse(data) as Frame
           frames.push(frame)
-          if (await options.emit?.(frame, send)) continue
+          if (await options.emit?.(frame, send, attempt)) continue
           let result: JsonValue = {}
           switch (frame.method) {
             case 'initialize':
               result = {
-                protocolVersion: 1,
-                agentCapabilities: { sessionCapabilities: { close: {}, resume: {} } },
+                protocolVersion: 2,
+                capabilities: { session: {} },
+                info: { name: 'flow-agent-acp', version: '2' },
               }
               break
             case 'session/new':
-              result = { sessionId: 'owned-session' }
+              result = { sessionId: 'owned-session', configOptions: [] }
+              break
+            case 'session/resume':
+              result = { configOptions: [] }
               break
             case 'session/set_config_option': {
               const params = frame.params as JsonObject
-              result = { configOptions: [{ id: params.configId!, currentValue: params.value! }] }
+              result = {
+                configOptions: [
+                  {
+                    configId: params.configId!,
+                    type: params.type ?? 'id',
+                    currentValue: params.value!,
+                  },
+                ],
+              }
               break
             }
-            case 'session/prompt':
+            case 'session/prompt': {
+              const sessionId = (frame.params as JsonObject).sessionId!
               await frameSend(send, {
                 jsonrpc: '2.0',
                 method: 'session/update',
                 params: {
-                  sessionId: (frame.params as JsonObject).sessionId!,
+                  sessionId,
+                  update: {
+                    sessionUpdate: 'user_message',
+                    messageId: 'accepted-user',
+                  },
+                },
+              })
+              await frameSend(send, {
+                jsonrpc: '2.0',
+                method: 'session/update',
+                params: {
+                  sessionId,
+                  update: {
+                    sessionUpdate: 'state_update',
+                    state: 'running',
+                  },
+                },
+              })
+              await frameSend(send, {
+                jsonrpc: '2.0',
+                method: 'session/update',
+                params: {
+                  sessionId,
                   update: {
                     sessionUpdate: 'agent_message_chunk',
+                    messageId: 'answer',
                     content: { type: 'text', text: options.output ?? 'The answer.' },
                   },
                 },
               })
-              result = { stopReason: options.stop ?? 'end_turn' }
+              await frameSend(send, {
+                jsonrpc: '2.0',
+                method: 'session/update',
+                params: {
+                  sessionId,
+                  update: {
+                    sessionUpdate: 'state_update',
+                    state: 'idle',
+                    stopReason: options.stop ?? 'end_turn',
+                  },
+                },
+              })
+              result = { messageId: 'accepted-user' }
+              break
+            }
+            case 'session/close':
+              result = {}
               break
           }
           await frameSend(send, { jsonrpc: '2.0', id: frame.id!, result })
@@ -245,6 +303,7 @@ function fixture(options: Options = {}) {
     stats: () => ({ calls, cancelled, settled }),
     frameSend,
     failResponses: (error: OperationError) => channels[1]!.fail(error),
+    selection: options.selection,
   }
 }
 
@@ -254,8 +313,8 @@ describe('native request failure diagnostics', () => {
     'session/new',
     'session/resume',
     'session/set_config_option',
-    'session/set_mode',
     'session/prompt',
+    'session/close',
   ])(
     'identifies %s without exposing native error text or sending further requests',
     async (method) => {
@@ -395,15 +454,50 @@ describe('ordinary session retention and restoration', () => {
                 params: {
                   sessionId: 'owned-session',
                   update: {
+                    sessionUpdate: 'user_message',
+                    messageId: 'accepted-user',
+                  },
+                },
+              })
+              await f.frameSend(send, {
+                jsonrpc: '2.0',
+                method: 'session/update',
+                params: {
+                  sessionId: 'owned-session',
+                  update: {
+                    sessionUpdate: 'state_update',
+                    state: 'running',
+                  },
+                },
+              })
+              await f.frameSend(send, {
+                jsonrpc: '2.0',
+                method: 'session/update',
+                params: {
+                  sessionId: 'owned-session',
+                  update: {
                     sessionUpdate: 'agent_message_chunk',
+                    messageId: 'answer',
                     content: { type: 'text', text: 'The answer.' },
                   },
                 },
               })
               await f.frameSend(send, {
                 jsonrpc: '2.0',
+                method: 'session/update',
+                params: {
+                  sessionId: 'owned-session',
+                  update: {
+                    sessionUpdate: 'state_update',
+                    state: 'idle',
+                    stopReason: 'end_turn',
+                  },
+                },
+              })
+              await f.frameSend(send, {
+                jsonrpc: '2.0',
                 id: frame.id!,
-                result: { stopReason: 'end_turn' },
+                result: { messageId: 'accepted-user' },
               })
             }
             await f.frameSend(send, {
@@ -475,8 +569,9 @@ describe('ordinary session retention and restoration', () => {
       'session/resume',
       'session/set_config_option',
       'session/set_config_option',
-      'session/set_mode',
+      'session/set_config_option',
       'session/prompt',
+      'session/close',
     ])
     expect(f.frames[1]!.params).toEqual({
       sessionId: 'restored-native-session',
@@ -593,7 +688,7 @@ describe('ordinary continuing Agent', () => {
       replies = pair(),
       events = pair()
     let prompts = 0
-    let held: JsonValue = null
+    const held: JsonValue = null
     const f = fixture({
       input: { instructions: 'Initial context.', conversation: true },
       commands: commands.receive,
@@ -601,11 +696,38 @@ describe('ordinary continuing Agent', () => {
       events: events.send,
       async emit(frame, send) {
         if (frame.method === 'session/prompt' && ++prompts === 2) {
-          held = frame.id!
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            id: frame.id!,
+            result: { messageId: 'turn-1-msg' },
+          })
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            method: 'session/update',
+            params: {
+              sessionId: 'owned-session',
+              update: { sessionUpdate: 'user_message', messageId: 'turn-1-msg' },
+            },
+          })
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            method: 'session/update',
+            params: {
+              sessionId: 'owned-session',
+              update: { sessionUpdate: 'state_update', state: 'running' },
+            },
+          })
           return true
         }
         if (frame.method === 'session/cancel') {
-          await f.frameSend(send, { jsonrpc: '2.0', id: held, result: { stopReason: 'cancelled' } })
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            method: 'session/update',
+            params: {
+              sessionId: 'owned-session',
+              update: { sessionUpdate: 'state_update', state: 'idle', stopReason: 'cancelled' },
+            },
+          })
           return true
         }
         return false
@@ -792,8 +914,9 @@ describe('ordinary finite ACP Agent Flow', () => {
       'session/new',
       'session/set_config_option',
       'session/set_config_option',
-      'session/set_mode',
+      'session/set_config_option',
       'session/prompt',
+      'session/close',
     ])
     const prompt = JSON.stringify(consumer.frames.find((f) => f.method === 'session/prompt'))
     expect(prompt).toContain('Selected Skill.')
@@ -801,6 +924,7 @@ describe('ordinary finite ACP Agent Flow', () => {
     expect(consumer.frames[2]!.params).toEqual({
       sessionId: 'owned-session',
       configId: 'model',
+      type: 'id',
       value: 'reviewed-model',
     })
     expect(consumer.frames[3]!.params).toEqual({
@@ -1124,4 +1248,690 @@ test.each([
   expect(failure.code).toBe('INVALID_RESULT')
   expect(failure.message).not.toContain('private')
   expect(f.frames.at(-1)?.method).toBe('session/new')
+})
+
+describe('ACP v2 native method qualification', () => {
+  const v2Ready = {
+    kind: 'ready',
+    protocolVersion: 2,
+    cwd: '/work',
+    maxTurns: 1,
+    configuration: [{ configId: 'model', value: 'reviewed-model' }],
+    modeId: 'read-only',
+  }
+  const notification = (update: JsonObject) => ({
+    jsonrpc: '2.0',
+    method: 'session/update',
+    params: { sessionId: 'owned-session', update },
+  })
+  const make = (reason: string, firstFailure?: OperationError) => {
+    const f = fixture({
+      ready: v2Ready,
+      ...(firstFailure === undefined
+        ? {}
+        : {
+            initialNativeFailure: firstFailure,
+            selection: [
+              { slot: 'primary', operationId: 'primary-native' },
+              { slot: 'backup', operationId: 'backup-native' },
+            ],
+          }),
+      async emit(frame, send) {
+        let result: JsonValue
+        if (frame.method === 'initialize') {
+          expect(frame.params).toMatchObject({ protocolVersion: 2, capabilities: {} })
+          result = {
+            protocolVersion: 2,
+            capabilities: { session: {} },
+            info: { name: 'qualified-agent', version: '2' },
+          }
+        } else if (frame.method === 'session/new') {
+          result = { sessionId: 'owned-session', configOptions: [] }
+        } else if (frame.method === 'session/set_config_option') {
+          const params = frame.params as JsonObject
+          expect(params.type).toBe('id')
+          result = {
+            configOptions: [
+              {
+                configId: params.configId!,
+                type: 'select',
+                currentValue: params.value!,
+              },
+            ],
+          }
+        } else if (frame.method === 'session/prompt') {
+          // Insertion and foreground state are independent of RPC completion.
+          await f.frameSend(
+            send,
+            notification({
+              sessionUpdate: 'user_message',
+              messageId: 'accepted-user',
+            }),
+          )
+          await f.frameSend(
+            send,
+            notification({
+              sessionUpdate: 'state_update',
+              state: 'running',
+            }),
+          )
+          await f.frameSend(
+            send,
+            notification({
+              sessionUpdate: 'agent_message_chunk',
+              messageId: 'answer',
+              content: { type: 'text', text: 'outdated' },
+            }),
+          )
+          await f.frameSend(
+            send,
+            notification({
+              sessionUpdate: 'agent_message',
+              messageId: 'answer',
+              content: [{ type: 'text', text: 'correct' }],
+            }),
+          )
+          await f.frameSend(
+            send,
+            notification({
+              sessionUpdate: 'agent_message_chunk',
+              messageId: 'answer',
+              content: { type: 'text', text: 'ed' },
+            }),
+          )
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            id: frame.id!,
+            result: { messageId: 'accepted-user' },
+          })
+          await f.frameSend(
+            send,
+            notification({
+              sessionUpdate: 'state_update',
+              state: 'idle',
+              stopReason: reason,
+              ...(reason === 'error'
+                ? {
+                    error: { code: -32603, message: '/private/secret-token' },
+                  }
+                : {}),
+            }),
+          )
+          return true
+        } else if (frame.method === 'session/close') {
+          result = {}
+        } else {
+          throw new Error('ACP v2 must not call legacy operations: ' + frame.method)
+        }
+        await f.frameSend(send, { jsonrpc: '2.0', id: frame.id!, result })
+        return true
+      },
+    })
+    return f
+  }
+
+  test('falls back exactly once after host-attested pre-prompt failure', async () => {
+    const first = new OperationError('EXECUTION_FAILED', 'native setup failed', {
+      nativePrompt: { forwarding: 'not-forwarded', cleanup: 'confirmed', turnsSettled: 0 },
+    })
+    const f = make('end_turn', first)
+    expect(await agentAcpFlow(f.run, f.selection)).toEqual({
+      outcome: 'done',
+      output: { text: 'corrected' },
+    })
+    expect(f.stats().calls).toBe(2)
+    expect(f.frames.map((frame) => frame.method)).toEqual([
+      'initialize',
+      'session/new',
+      'session/set_config_option',
+      'session/set_config_option',
+      'session/prompt',
+      'session/close',
+    ])
+  })
+
+  test('an uncertain native failure without rejected-without-output never dispatches a backup', async () => {
+    const first = new OperationError('UNCERTAIN', 'prompt may have executed', {
+      nativePrompt: { forwarding: 'not-forwarded', cleanup: 'confirmed' },
+    })
+    const f = make('end_turn', first)
+    const failure = await agentAcpFlow(f.run, f.selection).catch((error) => error)
+    expect(failure).toBe(first)
+    expect(f.stats().calls).toBe(1)
+    expect(f.frames).toEqual([])
+  })
+
+  test('zero-output first-turn rejection respects afterRejectedPrompt policy', async () => {
+    const rejectedFirst = new OperationError('UNCERTAIN', 'rate limit reached', {
+      nativePrompt: {
+        forwarding: 'rejected-without-output',
+        cleanup: 'confirmed',
+        turnsSettled: 0,
+      },
+      nativeSession: { category: 'limit', httpStatusCode: 429 },
+    })
+
+    // Default afterRejectedPrompt is 'stop' -> does not fail over
+    const fDefault = make('end_turn', rejectedFirst)
+    const failure = await agentAcpFlow(fDefault.run, fDefault.selection).catch((e) => e)
+    expect(failure).toBe(rejectedFirst)
+    expect(fDefault.stats().calls).toBe(1)
+
+    // With afterRejectedPrompt: 'next-on-limit-or-service' -> fails over to backup
+    const fPermit = make('end_turn', rejectedFirst)
+    const runPermit = {
+      ...fPermit.run,
+      settings: { recovery: { afterRejectedPrompt: 'next-on-limit-or-service' } },
+    }
+    expect(await agentAcpFlow(runPermit as RunContext, fPermit.selection)).toEqual({
+      outcome: 'done',
+      output: { text: 'corrected' },
+    })
+    expect(fPermit.stats().calls).toBe(2)
+  })
+
+  test('unconfirmed cleanup never advances to backup candidate', async () => {
+    const unconfirmed = new OperationError('EXECUTION_FAILED', 'process leaked', {
+      nativePrompt: { forwarding: 'not-forwarded', cleanup: 'unconfirmed', turnsSettled: 0 },
+    })
+    const f = make('end_turn', unconfirmed)
+    const failure = await agentAcpFlow(f.run, f.selection).catch((e) => e)
+    expect(failure).toBe(unconfirmed)
+    expect(f.stats().calls).toBe(1)
+  })
+
+  test('unbound backup slot returning UNAVAILABLE rethrows the original error', async () => {
+    const first = new OperationError('EXECUTION_FAILED', 'native setup failed', {
+      nativePrompt: { forwarding: 'not-forwarded', cleanup: 'confirmed', turnsSettled: 0 },
+    })
+    const f = fixture({
+      initialNativeFailure: first,
+      selection: [
+        { slot: 'native', operationId: 'native' },
+        { slot: 'backup1', operationId: 'backup1' },
+      ],
+    })
+    // Simulate backup1 being unavailable
+    const origCall = f.run.call.bind(f.run)
+    f.run.call = async (call, opts) => {
+      if (call.slot === 'backup1') {
+        throw new OperationError('UNAVAILABLE', 'invocation slot is not admitted')
+      }
+      return origCall(call, opts)
+    }
+    const failure = await agentAcpFlow(f.run, f.selection).catch((e) => e)
+    expect(failure).toBe(first)
+  })
+
+  test('accepted message, patches and terminal idle settle without a legacy prompt completion', async () => {
+    const f = make('end_turn')
+    expect(await agentAcpFlow(f.run)).toEqual({
+      outcome: 'done',
+      output: { text: 'corrected' },
+    })
+    expect(f.frames.map((frame) => frame.method)).toEqual([
+      'initialize',
+      'session/new',
+      'session/set_config_option',
+      'session/set_config_option',
+      'session/prompt',
+      'session/close',
+    ])
+    expect(f.stats()).toEqual({ calls: 1, cancelled: false, settled: true })
+  })
+
+  test('post-insertion error is not reclassified as successful acceptance', async () => {
+    const f = make('error')
+    const error = await agentAcpFlow(f.run).catch((cause) => cause)
+    expect(error).toBeInstanceOf(OperationError)
+    expect(error.code).toBe('EXECUTION_FAILED')
+    expect(JSON.stringify({ message: error.message, details: error.details })).not.toContain(
+      'secret-token',
+    )
+    expect(f.frames.some((frame) => frame.method === 'session/close')).toBeFalse()
+  })
+
+  test('beforePrompt: stop suppresses failover even on host-attested pre-prompt failure', async () => {
+    const firstFailure = new OperationError('EXECUTION_FAILED', 'native setup failed', {
+      nativePrompt: { forwarding: 'not-forwarded', cleanup: 'confirmed', turnsSettled: 0 },
+    })
+    const f = make('end_turn', firstFailure)
+    const run = { ...f.run, settings: { recovery: { beforePrompt: 'stop' } } }
+    const failure = await agentAcpFlow(run as RunContext, f.selection).catch((e) => e)
+    expect(failure).toBe(firstFailure)
+    expect(f.stats().calls).toBe(1)
+  })
+
+  test('HTTP 502 and 504 trigger next-on-limit-or-service recovery when rejected without output', async () => {
+    for (const httpStatusCode of [502, 504]) {
+      const rejected = new OperationError('UNCERTAIN', `gateway ${httpStatusCode}`, {
+        nativePrompt: {
+          forwarding: 'rejected-without-output',
+          cleanup: 'confirmed',
+          turnsSettled: 0,
+        },
+        nativeSession: { httpStatusCode },
+      })
+      const f = make('end_turn', rejected)
+      const run = {
+        ...f.run,
+        settings: { recovery: { afterRejectedPrompt: 'next-on-limit-or-service' } },
+      }
+      expect(await agentAcpFlow(run as RunContext, f.selection)).toEqual({
+        outcome: 'done',
+        output: { text: 'corrected' },
+      })
+      expect(f.stats().calls).toBe(2)
+    }
+  })
+
+  test('Turn 2 pre-prompt failure (turnsSettled > 0) does not replay Turn 0 on backup', async () => {
+    const laterFailure = new OperationError('EXECUTION_FAILED', 'turn 2 aborted pre-prompt', {
+      nativePrompt: { forwarding: 'not-forwarded', cleanup: 'confirmed', turnsSettled: 1 },
+    })
+    const f = make('end_turn', laterFailure)
+    const failure = await agentAcpFlow(f.run, f.selection).catch((e) => e)
+    expect(failure).toBe(laterFailure)
+    expect(f.stats().calls).toBe(1)
+  })
+
+  test('skips unbound optional backup1 slot and succeeds on backup2', async () => {
+    const first = new OperationError('EXECUTION_FAILED', 'native setup failed', {
+      nativePrompt: { forwarding: 'not-forwarded', cleanup: 'confirmed', turnsSettled: 0 },
+    })
+    const calledSlots: string[] = []
+    const f = fixture({
+      ready: v2Ready,
+      initialNativeFailure: first,
+      selection: [
+        { slot: 'native', operationId: 'native' },
+        { slot: 'backup1', operationId: 'backup1' },
+        { slot: 'backup2', operationId: 'backup2' },
+      ],
+      rejectAttempt(call) {
+        calledSlots.push(call.slot)
+        if (call.slot === 'backup1')
+          throw new OperationError('UNAVAILABLE', 'invocation slot is not admitted')
+      },
+      async emit(frame, send) {
+        if (frame.method === 'initialize') {
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            id: frame.id!,
+            result: {
+              protocolVersion: 2,
+              capabilities: { session: {} },
+              info: { name: 'b2', version: '2' },
+            },
+          })
+          return true
+        }
+        if (frame.method === 'session/new') {
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            id: frame.id!,
+            result: { sessionId: 'owned-session', configOptions: [] },
+          })
+          return true
+        }
+        if (frame.method === 'session/set_config_option') {
+          const params = frame.params as JsonObject
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            id: frame.id!,
+            result: {
+              configOptions: [
+                { configId: params.configId!, type: 'select', currentValue: params.value! },
+              ],
+            },
+          })
+          return true
+        }
+        if (frame.method === 'session/prompt') {
+          await f.frameSend(send, notification({ sessionUpdate: 'user_message', messageId: 'u2' }))
+          await f.frameSend(send, notification({ sessionUpdate: 'state_update', state: 'running' }))
+          await f.frameSend(
+            send,
+            notification({
+              sessionUpdate: 'agent_message',
+              messageId: 'a2',
+              content: [{ type: 'text', text: 'from-b2' }],
+            }),
+          )
+          await f.frameSend(send, { jsonrpc: '2.0', id: frame.id!, result: { messageId: 'u2' } })
+          await f.frameSend(
+            send,
+            notification({ sessionUpdate: 'state_update', state: 'idle', stopReason: 'end_turn' }),
+          )
+          return true
+        }
+        if (frame.method === 'session/close') {
+          await f.frameSend(send, { jsonrpc: '2.0', id: frame.id!, result: {} })
+          return true
+        }
+        return false
+      },
+    })
+    expect(await agentAcpFlow(f.run, f.selection)).toEqual({
+      outcome: 'done',
+      output: { text: 'from-b2' },
+    })
+    expect(calledSlots).toEqual(['native', 'backup1', 'backup2'])
+  })
+
+  test('cross-client fallback strips unsupported { session } and retries candidate fresh', async () => {
+    const first = new OperationError('EXECUTION_FAILED', 'native limit', {
+      nativePrompt: { forwarding: 'not-forwarded', cleanup: 'confirmed', turnsSettled: 0 },
+    })
+    const seenInputs: JsonValue[] = []
+    const f = fixture({
+      ready: v2Ready,
+      input: { instructions: 'Answer.', session: { retain: true } },
+      selection: [
+        { slot: 'native', operationId: 'native' },
+        { slot: 'backup1', operationId: 'backup1' },
+        { slot: 'backup1', operationId: 'backup1' },
+      ],
+      rejectAttempt(call, attempt) {
+        seenInputs.push(call.input as JsonValue)
+        if (attempt === 0) throw first
+        if (attempt === 1)
+          throw new OperationError(
+            'UNAVAILABLE',
+            'finite ACP session retention requires a reviewed grant',
+          )
+      },
+      async emit(frame, send) {
+        if (frame.method === 'initialize') {
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            id: frame.id!,
+            result: {
+              protocolVersion: 2,
+              capabilities: { session: {} },
+              info: { name: 'b1', version: '2' },
+            },
+          })
+          return true
+        }
+        if (frame.method === 'session/new') {
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            id: frame.id!,
+            result: { sessionId: 'owned-session', configOptions: [] },
+          })
+          return true
+        }
+        if (frame.method === 'session/set_config_option') {
+          const params = frame.params as JsonObject
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            id: frame.id!,
+            result: {
+              configOptions: [
+                { configId: params.configId!, type: 'select', currentValue: params.value! },
+              ],
+            },
+          })
+          return true
+        }
+        if (frame.method === 'session/prompt') {
+          await f.frameSend(send, notification({ sessionUpdate: 'user_message', messageId: 'u1' }))
+          await f.frameSend(send, notification({ sessionUpdate: 'state_update', state: 'running' }))
+          await f.frameSend(
+            send,
+            notification({
+              sessionUpdate: 'agent_message',
+              messageId: 'a1',
+              content: [{ type: 'text', text: 'fresh-backup' }],
+            }),
+          )
+          await f.frameSend(send, { jsonrpc: '2.0', id: frame.id!, result: { messageId: 'u1' } })
+          await f.frameSend(
+            send,
+            notification({ sessionUpdate: 'state_update', state: 'idle', stopReason: 'end_turn' }),
+          )
+          return true
+        }
+        if (frame.method === 'session/close') {
+          await f.frameSend(send, { jsonrpc: '2.0', id: frame.id!, result: {} })
+          return true
+        }
+        return false
+      },
+    })
+    expect(
+      await agentAcpFlow(f.run, [
+        { slot: 'native', operationId: 'native' },
+        { slot: 'backup1', operationId: 'backup1' },
+      ]),
+    ).toEqual({
+      outcome: 'done',
+      output: {
+        text: 'fresh-backup',
+        session: { status: 'unavailable', reason: 'unsupported-history' },
+      },
+    })
+    expect(seenInputs).toEqual([{ session: { retain: true } }, { session: { retain: true } }, null])
+  })
+
+  test('sameClientSession: fresh strips session input on backup retry and reports unsupported-history', async () => {
+    const first = new OperationError('EXECUTION_FAILED', 'native setup failed', {
+      nativePrompt: { forwarding: 'not-forwarded', cleanup: 'confirmed', turnsSettled: 0 },
+    })
+    const seenInputs: JsonValue[] = []
+    const reference = '013579ab-cdef-4567-89ab-0123456789ab'
+    const f = fixture({
+      ready: v2Ready,
+      initialNativeFailure: first,
+      input: { instructions: 'Answer.', session: { restore: reference } },
+      settings: { recovery: { sameClientSession: 'fresh' } },
+      result: {
+        outcome: 'done',
+        output: { stopReason: 'exited', exitCode: 0, signal: null, cleanup: 'complete' },
+      },
+      selection: [
+        { slot: 'native', operationId: 'native' },
+        { slot: 'backup1', operationId: 'backup1' },
+      ],
+      rejectAttempt(call) {
+        seenInputs.push(call.input as JsonValue)
+      },
+      async emit(frame, send) {
+        if (frame.method === 'initialize') {
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            id: frame.id!,
+            result: {
+              protocolVersion: 2,
+              capabilities: { session: {} },
+              info: { name: 'b1', version: '2' },
+            },
+          })
+          return true
+        }
+        if (frame.method === 'session/new') {
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            id: frame.id!,
+            result: { sessionId: 'owned-session', configOptions: [] },
+          })
+          return true
+        }
+        if (frame.method === 'session/set_config_option') {
+          const params = frame.params as JsonObject
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            id: frame.id!,
+            result: {
+              configOptions: [
+                { configId: params.configId!, type: 'select', currentValue: params.value! },
+              ],
+            },
+          })
+          return true
+        }
+        if (frame.method === 'session/prompt') {
+          await f.frameSend(send, notification({ sessionUpdate: 'user_message', messageId: 'u1' }))
+          await f.frameSend(send, notification({ sessionUpdate: 'state_update', state: 'running' }))
+          await f.frameSend(
+            send,
+            notification({
+              sessionUpdate: 'agent_message',
+              messageId: 'a1',
+              content: [{ type: 'text', text: 'backup-fresh' }],
+            }),
+          )
+          await f.frameSend(send, { jsonrpc: '2.0', id: frame.id!, result: { messageId: 'u1' } })
+          await f.frameSend(
+            send,
+            notification({ sessionUpdate: 'state_update', state: 'idle', stopReason: 'end_turn' }),
+          )
+          return true
+        }
+        if (frame.method === 'session/close') {
+          await f.frameSend(send, { jsonrpc: '2.0', id: frame.id!, result: {} })
+          return true
+        }
+        return false
+      },
+    })
+    expect(await agentAcpFlow(f.run, f.selection)).toEqual({
+      outcome: 'done',
+      output: {
+        text: 'backup-fresh',
+        session: { status: 'unavailable', reason: 'unsupported-history' },
+      },
+    })
+    expect(seenInputs).toEqual([{ session: { restore: reference } }, null])
+  })
+
+  test('resume-if-qualified keeps { restore } on failover: skips non-retaining backup1 and resumes on backup2 or fails', async () => {
+    const first = new OperationError('EXECUTION_FAILED', 'native setup failed', {
+      nativePrompt: { forwarding: 'not-forwarded', cleanup: 'confirmed', turnsSettled: 0 },
+    })
+    const seenCalls: Array<{ slot: string; input: JsonValue }> = []
+    const reference = '013579ab-cdef-4567-89ab-0123456789ab'
+    const successor = 'fedcba98-7654-4321-89ab-0123456789ab'
+    const f = fixture({
+      ready: { ...v2Ready, restoreSessionId: 'owned-session' },
+      input: { instructions: 'Continue.', session: { restore: reference } },
+      result: {
+        outcome: 'done',
+        output: {
+          stopReason: 'exited',
+          exitCode: 0,
+          signal: null,
+          cleanup: 'complete',
+          session: { status: 'retained', reference: successor },
+        },
+      },
+      selection: [
+        { slot: 'native', operationId: 'native' },
+        { slot: 'backup1', operationId: 'backup1' },
+        { slot: 'backup2', operationId: 'backup2' },
+      ],
+      rejectAttempt(call) {
+        seenCalls.push({ slot: call.slot, input: call.input as JsonValue })
+        if (call.slot === 'native') throw first
+        if (call.slot === 'backup1')
+          throw new OperationError(
+            'UNAVAILABLE',
+            'this native client does not support retained sessions',
+          )
+      },
+      async emit(frame, send) {
+        if (frame.method === 'initialize') {
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            id: frame.id!,
+            result: {
+              protocolVersion: 2,
+              capabilities: { session: {} },
+              info: { name: 'b2', version: '2' },
+            },
+          })
+          return true
+        }
+        if (frame.method === 'session/resume') {
+          await f.frameSend(send, { jsonrpc: '2.0', id: frame.id!, result: { configOptions: [] } })
+          return true
+        }
+        if (frame.method === 'session/set_config_option') {
+          const params = frame.params as JsonObject
+          await f.frameSend(send, {
+            jsonrpc: '2.0',
+            id: frame.id!,
+            result: {
+              configOptions: [
+                { configId: params.configId!, type: 'select', currentValue: params.value! },
+              ],
+            },
+          })
+          return true
+        }
+        if (frame.method === 'session/prompt') {
+          await f.frameSend(send, notification({ sessionUpdate: 'user_message', messageId: 'u1' }))
+          await f.frameSend(send, notification({ sessionUpdate: 'state_update', state: 'running' }))
+          await f.frameSend(
+            send,
+            notification({
+              sessionUpdate: 'agent_message',
+              messageId: 'a1',
+              content: [{ type: 'text', text: 'resumed-on-b2' }],
+            }),
+          )
+          await f.frameSend(send, { jsonrpc: '2.0', id: frame.id!, result: { messageId: 'u1' } })
+          await f.frameSend(
+            send,
+            notification({ sessionUpdate: 'state_update', state: 'idle', stopReason: 'end_turn' }),
+          )
+          return true
+        }
+        if (frame.method === 'session/close') {
+          await f.frameSend(send, { jsonrpc: '2.0', id: frame.id!, result: {} })
+          return true
+        }
+        return false
+      },
+    })
+    expect(await agentAcpFlow(f.run, f.selection)).toEqual({
+      outcome: 'done',
+      output: {
+        text: 'resumed-on-b2',
+        session: { status: 'retained', reference: successor },
+      },
+    })
+    expect(seenCalls).toEqual([
+      { slot: 'native', input: { session: { restore: reference } } },
+      { slot: 'backup1', input: { session: { restore: reference } } },
+      { slot: 'backup2', input: { session: { restore: reference } } },
+    ])
+
+    const failOnlySeen: JsonValue[] = []
+    const failOnly = fixture({
+      ready: { ...v2Ready, restoreSessionId: 'owned-session' },
+      input: { instructions: 'Continue.', session: { restore: reference } },
+      selection: [
+        { slot: 'native', operationId: 'native' },
+        { slot: 'backup1', operationId: 'backup1' },
+      ],
+      rejectAttempt(call) {
+        failOnlySeen.push(call.input as JsonValue)
+        if (call.slot === 'native') throw first
+        throw new OperationError(
+          'UNAVAILABLE',
+          'finite ACP session retention requires a reviewed grant',
+        )
+      },
+      async emit() {
+        return false
+      },
+    })
+    await expect(agentAcpFlow(failOnly.run, failOnly.selection)).rejects.toBe(first)
+    expect(failOnlySeen).toEqual([
+      { session: { restore: reference } },
+      { session: { restore: reference } },
+    ])
+  })
 })

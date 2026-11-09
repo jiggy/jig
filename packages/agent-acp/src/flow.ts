@@ -12,7 +12,6 @@ import {
   type ChannelSender,
   handle,
   type JsonObject,
-  type JsonValue,
   OperationError,
   type RunContext,
   type RunResult,
@@ -37,85 +36,246 @@ type NativeRequestMethod =
   | 'session/new'
   | 'session/resume'
   | 'session/set_config_option'
-  | 'session/set_mode'
   | 'session/prompt'
+  | 'session/close'
+
+/** Static, reviewed invocation selection. Never use an LLM-generated slot. */
+export interface AgentAcpNativeSelection {
+  readonly slot: string
+  readonly operationId: string
+  readonly requireV2?: true
+}
+
+export type AgentAcpSelectionInput = AgentAcpNativeSelection | readonly AgentAcpNativeSelection[]
+
+const DEFAULT_CANDIDATES: readonly AgentAcpNativeSelection[] = Object.freeze([
+  { slot: 'native', operationId: 'native' },
+  { slot: 'backup1', operationId: 'backup1' },
+  { slot: 'backup2', operationId: 'backup2' },
+  { slot: 'backup3', operationId: 'backup3' },
+])
 
 /** One replaceable method; process, credentials and reviewed policy stay outside. */
-export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
+export async function agentAcpFlow(
+  run: RunContext,
+  native: AgentAcpSelectionInput = { slot: 'native', operationId: 'native' },
+): Promise<RunResult> {
+  if (
+    run.input === null ||
+    typeof run.input !== 'object' ||
+    Array.isArray(run.input) ||
+    Object.keys(run.input).some(
+      (key) =>
+        ![
+          'instructions',
+          'guidance',
+          'skills',
+          'responseSchema',
+          'conversation',
+          'session',
+        ].includes(key),
+    )
+  )
+    throw new OperationError(
+      'INVALID_INPUT',
+      'Supply Agent instructions and optional explicit guidance, Skills or responseSchema',
+    )
+  const input = run.input as JsonObject
+  if (Object.hasOwn(input, 'conversation') && input.conversation !== true)
+    throw new OperationError('INVALID_INPUT', 'conversation must be true when supplied')
+  const conversational = input.conversation === true
+  const commands = run.channels.commands
+  const replies = run.channels.replies
+  if (
+    conversational
+      ? commands?.direction !== 'receive' ||
+        commands.delivery !== 'direct' ||
+        replies?.direction !== 'send' ||
+        replies.delivery !== 'direct'
+      : commands !== undefined || replies !== undefined
+  )
+    throw new OperationError(
+      'INVALID_INPUT',
+      'Conversational calls require paired direct commands and replies channels',
+    )
+  if (
+    Object.keys(run.attachments).length ||
+    Object.keys(run.channels).some((key) => !['events', 'commands', 'replies'].includes(key))
+  )
+    throw new OperationError(
+      'INVALID_INPUT',
+      'The ACP Agent accepts no attachments or undeclared channels',
+    )
+
+  const settings = run.settings as JsonObject
+  if (Object.keys(settings).some((key) => key !== 'recovery'))
+    throw new OperationError(
+      'INVALID_INPUT',
+      'The ACP Agent accepts no settings other than optional recovery policy',
+    )
+  const recovery = settings.recovery as JsonObject | undefined
+  if (recovery !== undefined) {
+    if (typeof recovery !== 'object' || recovery === null || Array.isArray(recovery))
+      throw new OperationError('INVALID_INPUT', 'recovery settings must be an object')
+    for (const [key, val] of Object.entries(recovery)) {
+      if (key === 'beforePrompt') {
+        if (val !== 'next' && val !== 'stop')
+          throw new OperationError('INVALID_INPUT', 'beforePrompt must be next or stop')
+      } else if (key === 'afterRejectedPrompt') {
+        if (
+          val !== 'stop' &&
+          val !== 'next-on-limit-or-service' &&
+          val !== 'next-on-auth-limit-or-service'
+        )
+          throw new OperationError(
+            'INVALID_INPUT',
+            'afterRejectedPrompt must be stop, next-on-limit-or-service, or next-on-auth-limit-or-service',
+          )
+      } else if (key === 'sameClientSession') {
+        if (val !== 'resume-if-qualified' && val !== 'fresh')
+          throw new OperationError(
+            'INVALID_INPUT',
+            'sameClientSession must be resume-if-qualified or fresh',
+          )
+      } else {
+        throw new OperationError('INVALID_INPUT', `unexpected recovery setting: ${key}`)
+      }
+    }
+  }
+
+  const beforePrompt = (recovery?.beforePrompt as 'next' | 'stop' | undefined) ?? 'next'
+  const afterRejectedPrompt =
+    (recovery?.afterRejectedPrompt as
+      | 'stop'
+      | 'next-on-limit-or-service'
+      | 'next-on-auth-limit-or-service'
+      | undefined) ?? 'stop'
+  const sameClientSession =
+    (recovery?.sameClientSession as 'resume-if-qualified' | 'fresh' | undefined) ??
+    'resume-if-qualified'
+
+  const events = run.channels.events
+  if (events !== undefined && events.direction !== 'send')
+    throw new OperationError('INVALID_INPUT', 'Agent events require a send endpoint')
+
+  const { skills, conversation: _, ...methodInput } = input
+  const prepared = prepareAgent(
+    methodInput as unknown as AgentInput,
+    (skills === undefined ? [] : skills) as unknown as readonly SkillText[],
+  )
+
+  const candidates: readonly AgentAcpNativeSelection[] = Array.isArray(native)
+    ? (native as readonly AgentAcpNativeSelection[])
+    : (native as AgentAcpNativeSelection).slot === 'native'
+      ? DEFAULT_CANDIDATES
+      : [native as AgentAcpNativeSelection]
+
+  let previousFailoverError: unknown
+  for (const [candidateIndex, candidate] of candidates.entries()) {
+    let sessionInput =
+      prepared.session === undefined
+        ? undefined
+        : candidateIndex > 0 && sameClientSession === 'fresh' && 'restore' in prepared.session
+          ? undefined
+          : { ...prepared.session }
+
+    for (;;) {
+      try {
+        return await executeCandidate(
+          run,
+          candidate,
+          sessionInput,
+          prepared,
+          conversational,
+          events,
+          commands,
+          replies,
+        )
+      } catch (error) {
+        if (candidateIndex > 0 && error instanceof OperationError && error.code === 'UNAVAILABLE') {
+          if (sessionInput !== undefined && isUnsupportedSessionError(error)) {
+            if ('retain' in sessionInput) {
+              sessionInput = undefined
+              continue
+            }
+            break
+          }
+          if (isUnboundSlotError(error)) {
+            break
+          }
+          throw previousFailoverError
+        }
+        if (
+          candidateIndex + 1 < candidates.length &&
+          canRecover(error, beforePrompt, afterRejectedPrompt)
+        ) {
+          previousFailoverError = error
+          break
+        }
+        throw error
+      }
+    }
+  }
+  throw previousFailoverError
+}
+
+function isUnsupportedSessionError(error: OperationError): boolean {
+  return (
+    error.message === 'finite ACP session retention requires a reviewed grant' ||
+    error.message === 'this native client does not support retained sessions'
+  )
+}
+
+function isUnboundSlotError(error: OperationError): boolean {
+  return error.message === 'invocation slot is not admitted'
+}
+
+async function executeCandidate(
+  run: RunContext,
+  candidate: AgentAcpNativeSelection,
+  sessionInput: ReturnType<typeof prepareAgent>['session'],
+  prepared: ReturnType<typeof prepareAgent>,
+  conversational: boolean,
+  events: RunContext['channels'][string] | undefined,
+  commands: RunContext['channels'][string] | undefined,
+  replies: RunContext['channels'][string] | undefined,
+): Promise<RunResult> {
   let requests: ChannelPair | undefined
   let responses: ChannelPair | undefined
   let work: Promise<Settlement> | undefined
   let updates: OptionalUpdates | undefined
-  let failed = false
+  let closedChannels = false
   const owned = new AbortController()
   const signal = AbortSignal.any([run.signal, owned.signal])
+
+  async function closeChannels(strict: boolean): Promise<void> {
+    if (closedChannels) return
+    closedChannels = true
+    await updates?.finish()
+    const closures: Promise<void>[] = []
+    if (responses) closures.push(responses.receive.close())
+    if (requests) closures.push(requests.send.close())
+    if (!work) {
+      if (responses) closures.push(responses.send.close())
+      if (requests) closures.push(requests.receive.close())
+    }
+    const settled = await Promise.allSettled(closures)
+    if (strict) {
+      for (const item of settled) if (item.status === 'rejected') throw item.reason
+      run.signal.throwIfAborted()
+    }
+  }
+
   try {
-    if (
-      run.input === null ||
-      typeof run.input !== 'object' ||
-      Array.isArray(run.input) ||
-      Object.keys(run.input).some(
-        (key) =>
-          ![
-            'instructions',
-            'guidance',
-            'skills',
-            'responseSchema',
-            'conversation',
-            'session',
-          ].includes(key),
-      )
-    )
-      throw new OperationError(
-        'INVALID_INPUT',
-        'Supply Agent instructions and optional explicit guidance, Skills or responseSchema',
-      )
-    const input = run.input as JsonObject
-    if (Object.hasOwn(input, 'conversation') && input.conversation !== true)
-      throw new OperationError('INVALID_INPUT', 'conversation must be true when supplied')
-    const conversational = input.conversation === true
-    const commands = run.channels.commands
-    const replies = run.channels.replies
-    if (
-      conversational
-        ? !commands ||
-          commands.direction !== 'receive' ||
-          commands.delivery !== 'direct' ||
-          !replies ||
-          replies.direction !== 'send' ||
-          replies.delivery !== 'direct'
-        : commands !== undefined || replies !== undefined
-    )
-      throw new OperationError(
-        'INVALID_INPUT',
-        'Conversational calls require paired direct commands and replies channels',
-      )
-    if (
-      Object.keys(run.settings).length ||
-      Object.keys(run.attachments).length ||
-      Object.keys(run.channels).some((key) => !['events', 'commands', 'replies'].includes(key))
-    )
-      throw new OperationError(
-        'INVALID_INPUT',
-        'The ACP Agent accepts no settings, attachments, or undeclared channels',
-      )
-    const events = run.channels.events
-    if (events !== undefined && events.direction !== 'send')
-      throw new OperationError('INVALID_INPUT', 'Agent events require a send endpoint')
-    const { skills, conversation: _, ...methodInput } = input
-    const prepared = prepareAgent(
-      methodInput as unknown as AgentInput,
-      (skills === undefined ? [] : skills) as unknown as readonly SkillText[],
-    )
     requests = await run.channel({ contract: REQUESTS }, { signal })
     responses = await run.channel({ contract: RESPONSES }, { signal })
     updates = new OptionalUpdates(events as ChannelSender | undefined, run.signal)
     work = run
       .call(
         {
-          operationId: 'native',
-          slot: 'native',
-          input: prepared.session === undefined ? null : { session: { ...prepared.session } },
+          operationId: candidate.operationId,
+          slot: candidate.slot,
+          input: sessionInput === undefined ? null : { session: { ...sessionInput } },
           channels: { requests: requests.receive, responses: responses.send },
         },
         { signal },
@@ -128,49 +288,64 @@ export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
         },
       )
     const first = await essential(responses.receive.next({ signal }))
-    if (first.done) failure('Native ACP transport omitted its ready record')
+    if (first.done)
+      throw new EssentialTransportFailure(
+        new OperationError('CHANNEL_LOST', 'Native ACP transport omitted its ready record'),
+      )
     const ready = readFiniteAcpReady(first.value)
-    const restoring = prepared.session !== undefined && 'restore' in prepared.session
-    if (restoring !== (ready.restoreSessionId !== undefined))
+    if (ready.protocolVersion !== 2) failure('ACP recovery requires a qualified v2 native client')
+    const restoreId = ready.restoreSessionId
+    const restoring = sessionInput !== undefined && 'restore' in sessionInput
+    if (restoring !== (restoreId !== undefined))
       failure('Native ACP ready record does not match the session request')
     const peer = new FinitePeer(requests.send, responses.receive, signal, updates)
     const initialized = await peer.request('initialize', {
-      protocolVersion: ready.protocolVersion,
-      clientCapabilities: {},
-      clientInfo: { name: 'flow-agent-acp', version: '1' },
+      protocolVersion: 2,
+      capabilities: {},
+      info: { name: 'flow-agent-acp', version: '2' },
     })
-    if (initialized.protocolVersion !== 1)
+    if (initialized.protocolVersion !== 2)
       failure('Native ACP transport selected an unsupported version')
-    if (restoring) {
-      const capabilities = object(object(initialized.agentCapabilities).sessionCapabilities)
-      if (!Object.hasOwn(capabilities, 'resume'))
-        failure('Native ACP transport does not advertise session resume')
-      object(capabilities.resume)
-      peer.sessionId = ready.restoreSessionId!
+    if (restoreId !== undefined) {
+      peer.sessionId = restoreId
       const resumed = await peer.request('session/resume', {
         sessionId: peer.sessionId,
         cwd: ready.cwd,
         mcpServers: [],
       })
-      keys(resumed, [])
+      keys(resumed, [], ['configOptions', 'availableCommands'])
     } else {
       const created = await peer.request('session/new', { cwd: ready.cwd, mcpServers: [] })
-      keys(created, ['sessionId'])
+      keys(created, ['sessionId'], ['configOptions', 'availableCommands'])
       peer.sessionId = identifier(created.sessionId)
     }
     for (const configuration of ready.configuration) {
       const result = await peer.request('session/set_config_option', {
         sessionId: peer.sessionId,
         ...configuration,
+        type: 'type' in configuration && configuration.type === 'boolean' ? 'boolean' : 'id',
       })
       const options = result.configOptions
       if (!Array.isArray(options)) failure('Native ACP transport omitted reviewed configuration')
-      const matching = options.filter((item) => object(item).id === configuration.configId)
+      const matching = options.filter((item) => object(item).configId === configuration.configId)
       if (matching.length !== 1 || object(matching[0]).currentValue !== configuration.value)
         failure('Native ACP transport did not confirm reviewed configuration')
     }
-    if (ready.modeId !== undefined)
-      await peer.request('session/set_mode', { sessionId: peer.sessionId, modeId: ready.modeId })
+    if (ready.modeId !== undefined) {
+      const result = await peer.request('session/set_config_option', {
+        sessionId: peer.sessionId,
+        configId: 'mode',
+        type: 'id',
+        value: ready.modeId,
+      })
+      if (
+        !Array.isArray(result.configOptions) ||
+        !result.configOptions.some(
+          (item) => object(item).configId === 'mode' && object(item).currentValue === ready.modeId,
+        )
+      )
+        failure('Native ACP v2 did not confirm the reviewed session mode')
+    }
     const answer = conversational
       ? await converse(
           peer,
@@ -181,15 +356,19 @@ export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
           signal,
         )
       : await peer.prompt(prepared)
-    // Prompt settlement plus request EOF delegates bounded process closure to
-    // its owner. An optional ACP close response must not hold up that cleanup.
+    await peer.request('session/close', { sessionId: peer.sessionId })
     await essential(requests.send.close())
     await peer.end()
     const settled = await work
     if ('error' in settled) throw settled.error
-    const session = checkSettlement(settled.result, prepared.session !== undefined)
+    const checkedSession = checkSettlement(settled.result, sessionInput !== undefined)
+    const session =
+      checkedSession === undefined && prepared.session !== undefined
+        ? ({ status: 'unavailable', reason: 'unsupported-history' } as const)
+        : checkedSession
     signal.throwIfAborted()
     if (conversational) await (replies as ChannelSender).close()
+    await closeChannels(true)
     return session === undefined
       ? answer
       : {
@@ -197,14 +376,11 @@ export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
           output: { ...object(answer.output), session: { ...session } },
         }
   } catch (error) {
-    failed = true
     const resourceFailed = owned.signal.aborted
     const transportFailed = error instanceof EssentialTransportFailure
-    // The owner can close its failed transport before returning its independently
-    // settled execution error. Cancelling that call now would replace UNCERTAIN
-    // with a cancelled SDK wait. Root cancellation/deadline still bounds the call.
     if (!transportFailed) owned.abort()
     const settled = await work
+    run.signal.throwIfAborted()
     if (settled && 'error' in settled && (resourceFailed || transportFailed)) throw settled.error
     if (transportFailed) throw error.cause
     if (error instanceof AgentMethodError) throw new OperationError(error.code, error.message)
@@ -212,21 +388,61 @@ export async function agentAcpFlow(run: RunContext): Promise<RunResult> {
       throw new OperationError('INVALID_RESULT', error.message)
     throw error
   } finally {
-    // Transferred endpoints belong to the resource; dispose only our own halves.
-    // If allocation failed before the call, all four halves remain local.
-    await updates?.finish()
-    const closures: Promise<void>[] = []
-    if (responses) closures.push(responses.receive.close())
-    if (requests) closures.push(requests.send.close())
-    if (!work) {
-      if (responses) closures.push(responses.send.close())
-      if (requests) closures.push(requests.receive.close())
-    }
-    const settled = await Promise.allSettled(closures)
-    // Ordinary channel disposal can expose a late essential transport failure.
-    for (const item of settled) if (!failed && item.status === 'rejected') throw item.reason
-    run.signal.throwIfAborted()
+    await closeChannels(false)
   }
+}
+
+function canRecover(
+  error: unknown,
+  beforePrompt: 'next' | 'stop',
+  afterRejectedPrompt: 'stop' | 'next-on-limit-or-service' | 'next-on-auth-limit-or-service',
+): boolean {
+  if (!(error instanceof OperationError)) return false
+  const details = error.details
+  if (details === null || typeof details !== 'object' || Array.isArray(details)) return false
+  const nativePrompt = (details as JsonObject).nativePrompt
+  if (nativePrompt === null || typeof nativePrompt !== 'object' || Array.isArray(nativePrompt))
+    return false
+  const prompt = nativePrompt as JsonObject
+  if (prompt.cleanup !== 'confirmed') return false
+
+  // Case 1: Pre-prompt failure (turn 0 only; never replay settled multi-turn conversations)
+  if (prompt.forwarding === 'not-forwarded') {
+    return error.code === 'EXECUTION_FAILED' && beforePrompt === 'next' && prompt.turnsSettled === 0
+  }
+
+  // Case 2: Rejected first-turn prompt without output
+  if (prompt.forwarding === 'rejected-without-output') {
+    if (error.code !== 'UNCERTAIN' || prompt.turnsSettled !== 0) return false
+    if (afterRejectedPrompt === 'stop') return false
+    const nativeSession = (details as JsonObject).nativeSession
+    const category =
+      nativeSession && typeof nativeSession === 'object' && !Array.isArray(nativeSession)
+        ? (nativeSession as JsonObject).category
+        : undefined
+    const httpStatusCode =
+      nativeSession && typeof nativeSession === 'object' && !Array.isArray(nativeSession)
+        ? (nativeSession as JsonObject).httpStatusCode
+        : undefined
+    const isLimitOrService =
+      category === 'limit' ||
+      category === 'service' ||
+      httpStatusCode === 429 ||
+      httpStatusCode === 502 ||
+      httpStatusCode === 503 ||
+      httpStatusCode === 504
+    if (afterRejectedPrompt === 'next-on-limit-or-service') return isLimitOrService
+    if (afterRejectedPrompt === 'next-on-auth-limit-or-service')
+      return (
+        isLimitOrService ||
+        category === 'access' ||
+        httpStatusCode === 401 ||
+        httpStatusCode === 403
+      )
+    return false
+  }
+
+  return false
 }
 
 class EssentialTransportFailure extends Error {
@@ -260,6 +476,10 @@ class FinitePeer {
   private turn: number | undefined
   private writes: Promise<void> = Promise.resolve()
   private readonly frames = new FiniteAcpFrames('responses')
+  private v2Running = false
+  private v2Stop: string | undefined
+  private readonly v2Users = new Set<string>()
+  private readonly v2Messages = new Map<string, string>()
 
   constructor(
     private readonly send: ChannelSender,
@@ -295,8 +515,8 @@ class FinitePeer {
           'session/new': 'start an AI session',
           'session/resume': 'restore an AI session',
           'session/set_config_option': 'configure the AI session',
-          'session/set_mode': 'select the AI session mode',
           'session/prompt': 'get an AI response',
+          'session/close': 'close the AI session',
         }[method]
         const reason =
           method === 'session/new' &&
@@ -334,12 +554,26 @@ class FinitePeer {
     this.running = true
     this.text = ''
     this.turn = turn
+    this.v2Running = false
+    this.v2Stop = undefined
+    this.v2Users.clear()
+    this.v2Messages.clear()
     let completed: JsonObject
     try {
       completed = await this.request('session/prompt', {
         sessionId: this.sessionId,
         prompt: [{ type: 'text', text: prepared.request.prompt }],
       })
+      keys(completed, ['messageId'])
+      const accepted = identifier(completed.messageId)
+      while (!this.v2Users.has(accepted) || this.v2Stop === undefined) {
+        const next = await this.next()
+        if (next === undefined) failure('Native ACP v2 ended without a settled turn')
+        if (next.method === undefined)
+          failure('Unexpected native ACP response while waiting for foreground completion')
+        this.update(next)
+      }
+      completed = { stopReason: this.v2Stop }
     } finally {
       this.running = false
     }
@@ -354,7 +588,11 @@ class FinitePeer {
             : undefined
     if (stop === undefined)
       throw new OperationError(
-        completed.stopReason === 'cancelled' ? 'CANCELLED' : 'INVALID_RESULT',
+        completed.stopReason === 'cancelled'
+          ? 'CANCELLED'
+          : completed.stopReason === 'error'
+            ? 'EXECUTION_FAILED'
+            : 'INVALID_RESULT',
         'Native ACP turn did not produce a completed response',
       )
     const result = finishAgent(prepared, { outcome: 'done', output: { text: this.text, stop } })
@@ -381,7 +619,6 @@ class FinitePeer {
   }
 
   async end(): Promise<void> {
-    // No late update may change the text already completed by session/prompt.
     for (;;) {
       const frame = await this.next()
       if (frame === undefined) return
@@ -417,6 +654,55 @@ class FinitePeer {
     keys(params, ['sessionId', 'update'])
     if (params.sessionId !== this.sessionId) failure('Native ACP update belongs to another session')
     const update = object(params.update)
+    if (update.sessionUpdate === 'user_message' || update.sessionUpdate === 'user_message_chunk') {
+      if (!this.running) return
+      this.v2Users.add(identifier(update.messageId))
+      return
+    }
+    if (update.sessionUpdate === 'state_update') {
+      if (!this.running) return
+      if (update.state === 'running') {
+        this.v2Running = true
+      } else if (update.state === 'requires_action') {
+        // The finite caller grants no approval or elicitation authority.
+      } else if (update.state === 'idle') {
+        if (this.v2Running && this.v2Stop === undefined) {
+          if (typeof update.stopReason !== 'string')
+            failure('ACP v2 turn ended without an attributable stop reason')
+          this.v2Stop = update.stopReason
+        }
+      } else failure('Unknown native ACP v2 foreground state')
+      return
+    }
+    if (update.sessionUpdate === 'agent_message') {
+      if (!this.running) failure('Native ACP v2 text arrived outside a turn')
+      const id = identifier(update.messageId)
+      if (update.content !== undefined) {
+        if (update.content !== null && !Array.isArray(update.content))
+          failure('Native ACP v2 message patch is invalid')
+        const blocks = update.content === null ? [] : update.content
+        if (!Array.isArray(blocks)) failure('Native ACP v2 message patch is invalid')
+        let text = ''
+        for (const value of blocks) {
+          const block = object(value)
+          if (block.type !== 'text' || typeof block.text !== 'string')
+            failure('Native ACP v2 message patch contains non-text data')
+          this.textBytes += encoder.encode(block.text).byteLength
+          text += block.text
+        }
+        this.v2Messages.set(id, text)
+      } else if (!this.v2Messages.has(id)) this.v2Messages.set(id, '')
+      if (this.textBytes > MAX_TEXT_BYTES)
+        throw new OperationError('RESOURCE_EXHAUSTED', 'Native ACP text exceeds 8 MiB')
+      this.text = [...this.v2Messages.values()].join('')
+      return
+    }
+    if (
+      update.sessionUpdate === 'plan_update' ||
+      update.sessionUpdate === 'tool_call_update' ||
+      update.sessionUpdate === 'usage_update'
+    )
+      return
     if (update.sessionUpdate === 'session_info_update') {
       keys(update, ['sessionUpdate', '_meta'])
       const metadata = object(update._meta)
@@ -434,11 +720,12 @@ class FinitePeer {
       keys(content, ['type', 'text'])
       if (content.type !== 'text' || typeof content.text !== 'string')
         failure('Native ACP update is not public text')
-      if (update.messageId !== undefined) identifier(update.messageId)
+      const id = update.messageId !== undefined ? identifier(update.messageId) : ''
+      this.v2Messages.set(id, (this.v2Messages.get(id) ?? '') + content.text)
       this.textBytes += encoder.encode(content.text).byteLength
       if (this.textBytes > MAX_TEXT_BYTES)
         throw new OperationError('RESOURCE_EXHAUSTED', 'Native ACP text exceeds 8 MiB')
-      this.text += content.text
+      this.text = [...this.v2Messages.values()].join('')
     } else if (update.sessionUpdate === 'plan') {
       keys(update, ['sessionUpdate', 'entries'])
       if (!Array.isArray(update.entries)) failure('Native ACP plan is invalid')

@@ -382,6 +382,9 @@
                 "minLength": 1,
                 "maxLength": 64
               }
+            },
+            "optional": {
+              "type": "boolean"
             }
           },
           "required": ["id", "version", "digest"],
@@ -422,6 +425,11 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 256
+            },
+            "authProfile": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
             },
             "maxTurns": {
               "type": "integer",

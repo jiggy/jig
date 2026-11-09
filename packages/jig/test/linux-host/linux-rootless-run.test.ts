@@ -20,12 +20,13 @@ import { FiniteAcpFrames, fragmentFiniteAcpFrame } from '@jigging/agent-acp/tran
 import type { PrivateAcpAgentRuntime } from '../../src/internal/acp-agent-provider.js'
 import { capturePrivateOutput } from '../../src/internal/captured-output.js'
 import { privateCaptureAttachments } from '../../src/internal/file-input.js'
+import { privateFiniteAcpTaskPromptNotForwarded } from '../../src/internal/finite-acp-prompt-evidence.js'
 import {
   PRIVATE_FINITE_ACP_CHANNELS,
   runPrivateFiniteAcpResource,
 } from '../../src/internal/finite-acp-resource.js'
 import {
-  PrivateLinuxCgroupBackend,
+  type PrivateLinuxCgroupBackend,
   releasePrivateLinuxOwnerState,
   requirePrivateLinuxMechanismUnchanged,
 } from '../../src/internal/linux-rootless-backend.js'
@@ -190,6 +191,9 @@ describe('private rootless Linux Run', () => {
     [
       'exit',
       'signal',
+      'pre-prompt-exit',
+      'pre-prompt-v2-exit',
+      'v2-success',
       'linger',
       'credential-text',
       'credential-id',
@@ -205,7 +209,11 @@ describe('private rootless Linux Run', () => {
           async (scenario) => {
             const host = await hostConfiguration()
             // Direct resource transport, not native client selection or provider qualification.
-            const fixture = await createFixture(rawFiniteAcpPeerProgram())
+            const fixture = await createFixture(
+              rawFiniteAcpPeerProgram(
+                scenario === 'pre-prompt-exit' || scenario === 'pre-prompt-v2-exit',
+              ),
+            )
             const evidence = await mkdtemp(join(tmpdir(), 'jig-acp-settlement-evidence-'))
             const started = performance.now()
             const phases: { phase: string; timeMs: number }[] = []
@@ -213,6 +221,8 @@ describe('private rootless Linux Run', () => {
               phases.push({ phase, timeMs: Math.round(performance.now() - started) })
             const key = 'synthetic-settlement-only'
             const abort = new AbortController()
+            let v2WatchdogFired = false
+            let v2Watchdog: ReturnType<typeof setTimeout> | undefined
             const server = Bun.serve({
               hostname: '127.0.0.1',
               port: 0,
@@ -245,11 +255,25 @@ describe('private rootless Linux Run', () => {
                 network: 'inherited',
               })
               mark('contained-peer-started')
+              // Fail diagnostically rather than hanging this entire privileged
+              // suite when the v2 initialization or shutdown path stalls.
+              if (scenario === 'pre-prompt-v2-exit') {
+                v2Watchdog = setTimeout(() => {
+                  v2WatchdogFired = true
+                  console.error(
+                    'ACP v2 raw peer stall',
+                    phases.map((p) => p.phase),
+                  )
+                  abort.abort(new Error('ACP v2 native pre-prompt test stalled'))
+                  void component?.terminate().catch(() => undefined)
+                }, 8_000)
+              }
               const patterns = [new TextEncoder().encode(key)]
               let fatal = false
               const runtime: PrivateAcpAgentRuntime = {
                 secretBytes: () => patterns,
                 client: 'fixture',
+                protocolVersion: 2 as const,
                 adapterPath: join(fixture, 'FLOW.ts'),
                 sandboxAdapterPath: '/package/FLOW.ts',
                 adapterExecutable: false,
@@ -261,6 +285,7 @@ describe('private rootless Linux Run', () => {
                 readOnlyMounts: [],
                 authentication: {
                   identity: { method: 'fixture' },
+                  clientAuthCapabilities: { _meta: { fixture: true } },
                   request: {
                     methodId: 'fixture',
                     _meta: {
@@ -330,24 +355,63 @@ describe('private rootless Linux Run', () => {
                 await expect(next()).rejects.toThrow()
               } else {
                 expect((await next()).kind).toBe('ready')
-                await request(1, 'initialize', { protocolVersion: 1, clientCapabilities: {} })
-                expect((await next()).id).toBe(1)
-                await request(2, 'session/new', { cwd: '/work', mcpServers: [] })
-                expect((await next()).result).toEqual({ sessionId: 'fixture-session' })
-                await request(3, 'session/prompt', {
-                  sessionId: 'fixture-session',
-                  prompt: [{ type: 'text', text: `scenario:${scenario}` }],
+                if (scenario === 'pre-prompt-v2-exit') mark('v2-ready')
+                await request(1, 'initialize', {
+                  protocolVersion: 2,
+                  capabilities: {},
+                  info: { name: 'test-fixture', version: '2' },
                 })
-                if (scenario === 'linger') {
-                  expect((await next()).method).toBe('session/update')
-                  expect((await next()).result).toEqual({ stopReason: 'end_turn' })
-                  mark('turn-completed')
-                  app.close(requests.send.endpoint)
-                } else {
+                expect((await next()).id).toBe(1)
+                if (scenario === 'pre-prompt-v2-exit') mark('v2-initialized')
+                await request(2, 'session/new', { cwd: '/work', mcpServers: [] })
+                if (scenario === 'pre-prompt-v2-exit') mark('v2-new-request')
+                if (scenario === 'pre-prompt-exit' || scenario === 'pre-prompt-v2-exit') {
+                  // The native process exits before any task prompt can be
+                  // forwarded. Host evidence must not depend on error text.
                   await expect(next()).rejects.toThrow()
+                  if (scenario === 'pre-prompt-v2-exit') mark('v2-pre-prompt-fenced')
+                } else {
+                  expect((await next()).result).toEqual({ sessionId: 'fixture-session' })
+                  await request(3, 'session/prompt', {
+                    sessionId: 'fixture-session',
+                    prompt: [{ type: 'text', text: `scenario:${scenario}` }],
+                  })
+                  if (scenario === 'v2-success' || scenario === 'linger') {
+                    let accepted = false
+                    let inserted = false
+                    let completed = false
+                    while (!completed) {
+                      const frame = await next()
+                      if (frame.id === 3) {
+                        expect(frame.result).toEqual({ messageId: 'fixture-user' })
+                        accepted = true
+                      } else {
+                        expect(frame.method).toBe('session/update')
+                        const update = (frame.params as JsonObject).update as JsonObject
+                        if (update.sessionUpdate === 'user_message') {
+                          expect(update.messageId).toBe('fixture-user')
+                          inserted = true
+                        } else if (
+                          update.sessionUpdate === 'state_update' &&
+                          update.state === 'idle'
+                        ) {
+                          expect(update.stopReason).toBe('end_turn')
+                          completed = true
+                        }
+                      }
+                    }
+                    expect(accepted && inserted).toBe(true)
+                    await request(4, 'session/close', { sessionId: 'fixture-session' })
+                    expect((await next()).result).toEqual({})
+                    mark('turn-completed')
+                    app.close(requests.send.endpoint)
+                  } else {
+                    await expect(next()).rejects.toThrow()
+                  }
                 }
               }
               const settled = await work
+              if (scenario === 'pre-prompt-v2-exit') expect(v2WatchdogFired).toBe(false)
               expect(JSON.stringify(exposed)).not.toContain(key)
               expect(patterns.every((pattern) => pattern.every((byte) => byte === 0))).toBe(true)
               if (scenario.startsWith('credential-')) {
@@ -374,9 +438,16 @@ describe('private rootless Linux Run', () => {
               expect(fence.fenced).toBe(true)
               expect(fence.stopReason).not.toBe('deadline')
               expect(phases.filter((item) => item.phase === 'prompt-dispatched')).toHaveLength(
-                scenario === 'credential-ready' ? 0 : 1,
+                ['credential-ready', 'pre-prompt-exit', 'pre-prompt-v2-exit'].includes(scenario)
+                  ? 0
+                  : 1,
               )
-              if (scenario === 'linger') {
+              if (scenario === 'v2-success') {
+                expect(settled.result).toMatchObject({
+                  closed: false,
+                  fence: { stopReason: 'payload_exit', exitCode: 0, signal: null },
+                })
+              } else if (scenario === 'linger') {
                 expect(settled.result).toMatchObject({
                   closed: true,
                   fence: { stopReason: 'cancelled' },
@@ -385,12 +456,22 @@ describe('private rootless Linux Run', () => {
               } else {
                 expect(settled.error).toBeDefined()
                 expect(fence.exitCode === 0 && fence.signal === null).toBe(false)
-                if (scenario === 'exit')
+                if (scenario === 'pre-prompt-exit' || scenario === 'pre-prompt-v2-exit') {
+                  expect(privateFiniteAcpTaskPromptNotForwarded(settled.error)).toBe(true)
                   expect(fence).toMatchObject({
                     stopReason: 'payload_exit',
                     exitCode: 17,
                     signal: null,
                   })
+                }
+                if (scenario === 'exit') {
+                  expect(privateFiniteAcpTaskPromptNotForwarded(settled.error)).toBe(false)
+                  expect(fence).toMatchObject({
+                    stopReason: 'payload_exit',
+                    exitCode: 17,
+                    signal: null,
+                  })
+                }
                 if (scenario === 'signal') {
                   expect(['payload_exit', 'core_dump']).toContain(fence.stopReason)
                   expect(abort.signal.aborted).toBe(false)
@@ -405,6 +486,7 @@ describe('private rootless Linux Run', () => {
               expect(await missing(component.owner.owner.ownerStateDirectory)).toBe(true)
               clean = true
             } finally {
+              if (v2Watchdog !== undefined) clearTimeout(v2Watchdog)
               abort.abort()
               try {
                 await work

@@ -40,6 +40,7 @@ export async function openPrivatePiAgentProvider(
   environment: Readonly<Record<string, string | undefined>> = process.env,
   projectDirectory: string = process.cwd(),
   selectedModel?: string,
+  authProfile?: string,
 ): Promise<PrivateAcpAgentProvider> {
   environment = Object.freeze({ ...environment })
   const executablePath = await resolvePrivateNativeAgentExecutable(
@@ -61,6 +62,7 @@ export async function openPrivatePiAgentProvider(
   const nativeRoot = dirname(executablePath)
   const support: PrivatePiAgentSupport = await checkAcpSetup('installation', async () =>
     Object.freeze({
+      ...(authProfile === undefined ? {} : { authProfile }),
       launcherPath: join(releaseRoot, 'libexec', 'agent', 'pi-agent-launcher.js'),
       adapterPath: join(releaseRoot, 'libexec', 'agent', 'pi-acp.js'),
       executablePath,
@@ -139,6 +141,7 @@ export async function openPrivatePiAgentProvider(
 }
 
 export interface PrivatePiAgentSupport {
+  readonly authProfile?: string
   /** Exact Jig-owned launcher selected by trusted host policy. */
   readonly launcherPath: string
   /** Exact release-owned pi-acp adapter selected by trusted host policy. */
@@ -240,6 +243,9 @@ async function createPiProvider(value: {
   try {
     return await createPrivateAcpAgentProvider({
       client: PI_CLIENT,
+      ...(value.support.authProfile === undefined
+        ? {}
+        : { authProfile: value.support.authProfile }),
       model: selection,
       credentialMode: value.credentialMode,
       adapterPath: value.support.launcherPath,

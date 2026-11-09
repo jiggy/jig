@@ -872,6 +872,7 @@ describe('private finite project session', () => {
       'CONTRACT_LIMIT',
       'CONTRACT_REFERENCE',
       'PROJECT_AGENT_OVERRIDE_MODEL',
+      'PROJECT_AGENT_OVERRIDE_PROFILE',
       'PROJECT_AGENT_OVERRIDE_RETENTION',
       'PROJECT_AGENT_OVERRIDE_UNUSED',
     ]) {

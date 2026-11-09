@@ -102,6 +102,15 @@ describe('Project Authoring SDK/1 shape schema', () => {
       item.slots.native = { kind: 'acp', client: 'codex', retainSessions: true }
     })
     expect(() => schema.validate(value, 'INVALID_PROJECT_AUTHORING')).not.toThrow()
+    const withProfile = changed(binding, (item) => {
+      item.slots.native = {
+        kind: 'acp',
+        client: 'codex',
+        authProfile: 'work-account',
+        retainSessions: true,
+      }
+    })
+    expect(() => schema.validate(withProfile, 'INVALID_PROJECT_AUTHORING')).not.toThrow()
     for (const patch of [{ client: 'pi' }, { client: 'claude' }, { retainSessions: false }]) {
       const invalid = changed(value, (item) => Object.assign(item.slots.native, patch))
       expect(() => schema.validate(invalid, 'INVALID_PROJECT_AUTHORING')).toThrow(SchemaDiagnostic)

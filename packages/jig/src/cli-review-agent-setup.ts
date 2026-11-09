@@ -166,13 +166,20 @@ function renderCompactIssue(
     )
   lines.push('', '  Next step', `    ${repair}`, `    $ ${options.retryCommand}`)
   if (executable) {
+    if (issue.policy.authProfile !== undefined)
+      lines.push(
+        `    This policy selects authentication profile ${asciiJsonString(issue.policy.authProfile)}. Edit it before switching clients.`,
+      )
     if (issue.policy.model !== undefined)
       lines.push('    This policy pins a model. Edit the policy before switching clients.')
     if (issue.policy.retainSessions === true)
       lines.push(
         '    This policy requests Codex session retention. Edit it before switching clients.',
       )
-    const canSwitch = issue.policy.model === undefined && issue.policy.retainSessions !== true
+    const canSwitch =
+      issue.policy.authProfile === undefined &&
+      issue.policy.model === undefined &&
+      issue.policy.retainSessions !== true
     if (canSwitch) {
       for (const client of executableAlternatives(issue)) {
         lines.push(
@@ -284,6 +291,9 @@ function renderIssue(
       : [
           `  Source client: ${asciiJsonString(issue.sourceClient)}; effective client: ${asciiJsonString(issue.client)} from --agent ${issue.override}.`,
         ]),
+    ...(issue.policy.authProfile === undefined
+      ? []
+      : [`  Authentication profile: ${asciiJsonString(issue.policy.authProfile)}.`]),
   ]
   let omittedRecipients = issue.omittedRecipients
   let bytes = Buffer.byteLength(lines.join('\n'))
@@ -334,12 +344,17 @@ function renderIssue(
     }
     if (
       alternatives.length > 0 &&
+      issue.policy.authProfile === undefined &&
       issue.policy.model === undefined &&
       issue.policy.retainSessions !== true
     )
       lines.push(
         `  To try another client without editing source, ${issue.override === undefined ? 'add' : 'replace the current option with'} ${alternatives.map((client) => `--agent ${client}`).join(' or ')} on the retry below.`,
-        '  This proposes that client for every selected ACP policy; other model pins or session requirements can refuse it. Repeat the option on later reviews.',
+        '  This proposes that client for every selected ACP policy; other model pins, authentication profiles, or session requirements can refuse it. Repeat the option on later reviews.',
+      )
+    if (issue.policy.authProfile !== undefined)
+      lines.push(
+        `  This policy selects authentication profile ${asciiJsonString(issue.policy.authProfile)}. For a different client, update or remove the profile selection in source.`,
       )
     if (issue.policy.model !== undefined)
       lines.push(

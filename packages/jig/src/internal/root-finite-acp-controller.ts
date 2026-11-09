@@ -1,6 +1,5 @@
-import { join } from 'node:path'
 import { CheckError } from '../diagnostics.js'
-import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
+import type { JsonValue } from '../json.js'
 import { nativeInvocationKind } from '../project/invocation-slots.js'
 import {
   type ChannelBroker,
@@ -21,10 +20,12 @@ import {
   claimPrivateNativeSession,
   closePrivateRootChildOwner,
   listPrivateRootChildOwners,
+  type PrivateNativeSessionSnapshot,
   type PrivateRootChildOwnerLifecycle,
   recordPrivateRootChildCleanup,
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
+  releaseClaimedPrivateNativeSession,
   savePrivateNativeSession,
 } from './activation-admission-store.js'
 import { PrivateOutputProfileError } from './captured-output.js'
@@ -74,6 +75,7 @@ import {
   resolvePrivateExecutionOutput,
 } from './execution-output.js'
 import { PrivateFiniteAcpPolicyError } from './finite-acp-policy.js'
+import { privateFiniteAcpTaskPromptEvidence } from './finite-acp-prompt-evidence.js'
 import {
   PRIVATE_FINITE_ACP_CHANNELS,
   type PrivateFiniteAcpEndpoints,
@@ -233,10 +235,14 @@ export async function executePrivateRootFiniteAcp(
           input.call.channels ?? {},
           PRIVATE_FINITE_ACP_CHANNELS,
         )
+        const requestsEndpoint = grants.requests?.endpoint
+        const responsesEndpoint = grants.responses?.endpoint
+        if (requestsEndpoint === undefined || responsesEndpoint === undefined)
+          throw new ChannelOperationError('UNAVAILABLE', 'finite ACP requires channel support')
         return {
           owner: participant,
-          requests: grants.requests!.endpoint,
-          responses: grants.responses!.endpoint,
+          requests: requestsEndpoint,
+          responses: responsesEndpoint,
           onFatalOperation: input.onFatalOperation,
         }
       },
@@ -352,23 +358,24 @@ async function executeOwnedProvider(
 
   let attemptedDispatch = false
   let phase = 'verifying the admitted runtime'
-  let execution: ProviderExecution
+  let execution: ProviderExecution | undefined
   let output: PrivateExecutionOutput | undefined
   let retained: PrivateCodexSessionState | undefined
+  let restored: PrivateNativeSessionSnapshot | undefined
   let lifetime =
     operation.session !== undefined && 'retain' in operation.session
       ? operation.session.lifetime
       : undefined
   let unavailableReason = 'not-cleanly-closed'
   let credentialBootstrap: Uint8Array | undefined
+  let resumeAccepted = false
   const runtime = privateAcpAgentRuntime(provider)
-  const scopeDigest = nativeSessionScope(input, provider)
+  const scopeDigest = privateFiniteAcpSessionScope(input, provider)
   let failurePhase: PrivateFiniteAcpFailurePhase = 'preparation'
   try {
     await privateProfileSpan('finite-acp-revalidation', () =>
       revalidateProviderSupport(recipe, provider, input),
     )
-    let restored: PrivateCodexSessionState | undefined
     if (operation.session !== undefined && 'restore' in operation.session) {
       phase = 'restoring the authorized session'
       const snapshot = await claimPrivateNativeSession({
@@ -444,6 +451,9 @@ async function executeOwnedProvider(
                 bootstrap: privateCodexSessionBootstrap(restored),
                 ...(restored === undefined ? {} : { restoreSessionId: restored.nativeId }),
                 ...(credentialBootstrap === undefined ? {} : { credentialBootstrap }),
+                onResumeAccepted: () => {
+                  resumeAccepted = true
+                },
               },
             ]),
       ),
@@ -474,17 +484,22 @@ async function executeOwnedProvider(
       }
     }
     phase = 'fencing and cleanup'
+    if (execution === undefined) throw new Error('Finite ACP execution settled without result')
+    const completedExecution = execution
     await privateProfileSpan('finite-acp-release', () =>
-      releaseKnownAcp(input, lifecycle, execution.fence),
+      releaseKnownAcp(input, lifecycle, completedExecution.fence),
     )
   } catch (error) {
     reportFailure(input, failurePhase, error)
+    let cleanupRecovered = false
     try {
       const active = await findLifecycle(input, input.call.operationId)
-      if (active !== undefined)
+      if (active !== undefined) {
         await privateProfileSpan('finite-acp-recovery', () =>
           recoverPrivateRootFiniteAcpOwner(input, active),
         )
+        cleanupRecovered = true
+      }
     } catch (cleanupError) {
       reportFailure(input, 'cleanup', cleanupError)
       throw new RunHostFatalOperationError(
@@ -497,60 +512,25 @@ async function executeOwnedProvider(
         },
       )
     }
+    if (restored !== undefined && !resumeAccepted && execution?.sessionId === undefined) {
+      await releaseClaimedPrivateNativeSession({
+        coordinator: input.coordinator,
+        projectRoot: input.projectRoot,
+        parentRunId: input.parent.run.runId,
+        scopeDigest,
+        snapshot: restored,
+      }).catch(() => undefined)
+    }
     if (error instanceof RunHostFatalOperationError) throw error
-    if (input.signal.aborted)
-      return failed('CANCELLED', `the finite ACP operation was cancelled while ${phase}`)
-    if (privateBootRemaining(effectiveBootDeadline) <= 0) {
-      return failed(
-        'DEADLINE_EXCEEDED',
-        `the finite ACP operation deadline elapsed while ${phase}; ${attemptedDispatch ? 'dispatch may have occurred and no result was proved' : 'dispatch was not attempted'}`,
-      )
-    }
-    if (error instanceof NativeSessionUnavailable)
-      return failed('UNAVAILABLE', 'the retained session is unavailable for this admitted caller')
-    if (
-      !attemptedDispatch &&
-      runtime.client === 'openai-codex' &&
-      error instanceof PrivateAcpSetupError
-    ) {
-      if (error.stage === 'managed-policy')
-        return failed(
-          'EXECUTION_FAILED',
-          'Codex cannot start: configured macOS managed policy is unsupported by this contained profile. Keep operator-managed settings intact and select a supported Agent integration. No native dispatch was attempted.',
-        )
-      if (error.stage === 'preferences')
-        return failed(
-          'EXECUTION_FAILED',
-          'Codex cannot start: macOS preferences could not be synchronized and verified. Check preference-service availability and the installed Jig runtime. No native dispatch was attempted.',
-        )
-    }
-    const explanation =
-      error instanceof PrivateFiniteAcpPolicyError
-        ? error.reason === 'native-session'
-          ? ' The native client reported a session failure; private details were withheld.'
-          : ' The finite ACP exchange violated its validated protocol.'
-        : ''
-    const nativeSession =
-      error instanceof PrivateFiniteAcpPolicyError &&
-      error.reason === 'native-session' &&
-      error.nativeCategory !== undefined
-        ? {
-            category: error.nativeCategory,
-            ...(error.nativeReportedReason === undefined
-              ? {}
-              : { reportedReason: error.nativeReportedReason }),
-            ...(error.nativeHttpStatusCode === undefined
-              ? {}
-              : { httpStatusCode: error.nativeHttpStatusCode }),
-          }
-        : undefined
-    return attemptedDispatch
-      ? failed(
-          'UNCERTAIN',
-          `Finite ACP dispatch may have occurred but no result was proved while ${phase}.${explanation}`,
-          nativeSession === undefined ? undefined : { nativeSession },
-        )
-      : failed('EXECUTION_FAILED', `finite ACP execution failed before dispatch while ${phase}`)
+    return privateFiniteAcpFailureTerminal({
+      error,
+      phase,
+      aborted: input.signal.aborted,
+      bootRemainingMs: privateBootRemaining(effectiveBootDeadline),
+      attemptedDispatch,
+      cleanupRecovered,
+      client: runtime.client,
+    })
   } finally {
     credentialBootstrap?.fill(0)
     try {
@@ -626,15 +606,131 @@ async function executeOwnedProvider(
 
 class NativeSessionUnavailable extends Error {}
 
-function nativeSessionScope(input: ProviderCallInput, provider: PrivateAcpAgentProvider): string {
+export function privateFiniteAcpFailureTerminal(input: {
+  readonly error: unknown
+  readonly phase: string
+  readonly aborted: boolean
+  readonly bootRemainingMs: number
+  readonly attemptedDispatch: boolean
+  readonly cleanupRecovered: boolean
+  readonly client: string
+}): RunHostOperationTerminal {
+  const { error, phase, aborted, bootRemainingMs, attemptedDispatch, cleanupRecovered, client } =
+    input
+  if (aborted) return failed('CANCELLED', `the finite ACP operation was cancelled while ${phase}`)
+  if (bootRemainingMs <= 0) {
+    return failed(
+      'DEADLINE_EXCEEDED',
+      `the finite ACP operation deadline elapsed while ${phase}; ${attemptedDispatch ? 'dispatch may have occurred and no result was proved' : 'dispatch was not attempted'}`,
+    )
+  }
+  if (error instanceof NativeSessionUnavailable)
+    return failed('UNAVAILABLE', 'the retained session is unavailable for this admitted caller')
+  // Only the trusted writer can attest that Jig never attempted to forward
+  // a task prompt, or that the first turn failed without output. A successful native fence/release is additionally required.
+  // This is not proof that native startup had no remote side effects.
+  const promptRecord = privateFiniteAcpTaskPromptEvidence(error)
+  const safeCleanup = cleanupRecovered && !aborted && bootRemainingMs > 0
+  const explanation =
+    error instanceof PrivateFiniteAcpPolicyError
+      ? error.reason === 'native-session'
+        ? ' The native client reported a session failure; private details were withheld.'
+        : ' The finite ACP exchange violated its validated protocol.'
+      : ''
+  const nativeSession =
+    error instanceof PrivateFiniteAcpPolicyError &&
+    error.reason === 'native-session' &&
+    error.nativeCategory !== undefined
+      ? {
+          category: error.nativeCategory,
+          ...(error.nativeReportedReason === undefined
+            ? {}
+            : { reportedReason: error.nativeReportedReason }),
+          ...(error.nativeHttpStatusCode === undefined
+            ? {}
+            : { httpStatusCode: error.nativeHttpStatusCode }),
+        }
+      : undefined
+  if (safeCleanup && promptRecord?.forwarding === 'not-forwarded')
+    return failed(
+      'EXECUTION_FAILED',
+      'The native ACP client failed before Jig forwarded the task prompt, and its local work was fenced and released.',
+      {
+        nativePrompt: {
+          forwarding: 'not-forwarded',
+          cleanup: 'confirmed',
+          turnsSettled: promptRecord.turnsSettled,
+        },
+      },
+    )
+  if (safeCleanup && promptRecord?.forwarding === 'rejected-without-output')
+    return failed(
+      'UNCERTAIN',
+      `Finite ACP dispatch may have occurred but no result was proved while ${phase}.${explanation}`,
+      {
+        nativePrompt: {
+          forwarding: 'rejected-without-output',
+          cleanup: 'confirmed',
+          turnsSettled: 0,
+        },
+        ...(nativeSession === undefined ? {} : { nativeSession }),
+      },
+    )
+  const preDispatchDetails = safeCleanup
+    ? {
+        nativePrompt: {
+          forwarding: 'not-forwarded',
+          cleanup: 'confirmed',
+          turnsSettled: 0,
+        },
+      }
+    : undefined
+  if (!attemptedDispatch && client === 'openai-codex' && error instanceof PrivateAcpSetupError) {
+    if (error.stage === 'managed-policy')
+      return failed(
+        'EXECUTION_FAILED',
+        'Codex cannot start: configured macOS managed policy is unsupported by this contained profile. Keep operator-managed settings intact and select a supported Agent integration. No native dispatch was attempted.',
+        preDispatchDetails,
+      )
+    if (error.stage === 'preferences')
+      return failed(
+        'EXECUTION_FAILED',
+        'Codex cannot start: macOS preferences could not be synchronized and verified. Check preference-service availability and the installed Jig runtime. No native dispatch was attempted.',
+        preDispatchDetails,
+      )
+  }
+  return attemptedDispatch
+    ? failed(
+        'UNCERTAIN',
+        `Finite ACP dispatch may have occurred but no result was proved while ${phase}.${explanation}`,
+        nativeSession === undefined ? undefined : { nativeSession },
+      )
+    : failed(
+        'EXECUTION_FAILED',
+        `finite ACP execution failed before dispatch while ${phase}`,
+        preDispatchDetails,
+      )
+}
+
+export function privateFiniteAcpSessionScope(
+  input: {
+    readonly parent: {
+      readonly run: { readonly target: JsonValue }
+      readonly intent: { readonly requestDigest: string }
+    }
+    readonly parentFlow?: PrivateParentFlow | undefined
+  },
+  provider: PrivateAcpAgentProvider,
+): string {
   const ancestors = []
   for (let parent = input.parentFlow; parent; parent = parent.parent ?? undefined)
     ancestors.unshift({ target: parent.target, requestDigest: parent.requestDigest })
   return privateDomainDigest('JIG-Private-Native-Session-Scope/1', {
     root: { target: input.parent.run.target, requestDigest: input.parent.intent.requestDigest },
     ancestors,
-    slot: input.call.slot,
-    providerDigest: provider.digest,
+    client: provider.client,
+    executableDigest: provider.executableDigest,
+    adapterDigest: provider.adapterDigest,
   } as unknown as JsonValue)
 }
 

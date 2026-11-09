@@ -15,15 +15,16 @@ const notification = (method: string, params: unknown) => bytes({ jsonrpc: '2.0'
 function initialize(policy: PrivateFiniteAcpPolicy, close = true): void {
   policy.fromAdapter(
     request(1, 'initialize', {
-      protocolVersion: 1,
-      clientCapabilities: {},
-      clientInfo: { name: 'ordinary-flow', version: '1' },
+      protocolVersion: 2,
+      capabilities: {},
+      info: { name: 'ordinary-flow', version: '1' },
     }),
   )
   policy.fromClient(
     reply(1, {
-      protocolVersion: 1,
-      agentCapabilities: close ? { sessionCapabilities: { close: {} } } : {},
+      protocolVersion: 2,
+      capabilities: close ? { session: {} } : {},
+      info: { name: 'agent', version: '2' },
     }),
   )
 }
@@ -42,13 +43,62 @@ function prompt(policy: PrivateFiniteAcpPolicy, text = 'Answer once.'): void {
     request(10, 'session/prompt', { sessionId: 'owned-session', prompt: [{ type: 'text', text }] }),
   )
 }
+function settleTurn(
+  policy: PrivateFiniteAcpPolicy,
+  promptId: string | number = 10,
+  stopReason = 'end_turn',
+  messageId = 'turn-msg',
+  meta?: unknown,
+  sessionId = 'owned-session',
+): void {
+  policy.fromClient(
+    update(
+      {
+        sessionUpdate: 'user_message',
+        messageId,
+      },
+      sessionId,
+    ),
+  )
+  policy.fromClient(
+    update(
+      {
+        sessionUpdate: 'state_update',
+        state: 'running',
+      },
+      sessionId,
+    ),
+  )
+  policy.fromClient(
+    update(
+      {
+        sessionUpdate: 'state_update',
+        state: 'idle',
+        stopReason,
+      },
+      sessionId,
+    ),
+  )
+  policy.fromClient(
+    reply(promptId, {
+      messageId,
+      ...(meta !== undefined ? { _meta: meta } : {}),
+    }),
+  )
+}
 const update = (value: unknown, sessionId = 'owned-session'): Uint8Array =>
   notification('session/update', { sessionId, update: value })
 function deniesAndCloses(policy: PrivateFiniteAcpPolicy, action: () => unknown): void {
   expect(action).toThrow(PrivateFiniteAcpPolicyError)
-  expect(() => policy.fromAdapter(request(99, 'initialize', { protocolVersion: 1 }))).toThrow(
-    'closed after failure',
-  )
+  expect(() =>
+    policy.fromAdapter(
+      request(99, 'initialize', {
+        protocolVersion: 2,
+        capabilities: {},
+        info: { name: 'flow', version: '2' },
+      }),
+    ),
+  ).toThrow('closed after failure')
   expect(() => policy.assertSettled()).toThrow('closed after failure')
 }
 
@@ -83,7 +133,7 @@ describe('finite ACP authority policy', () => {
       },
     })
     expect(JSON.stringify(projected)).not.toContain('private')
-    policy.fromClient(reply(10, { stopReason: 'end_turn' }))
+    settleTurn(policy, 10, 'end_turn')
     expect(policy.settledSessionId).toBe('owned-session')
   })
   test('coalesces startup warnings behind the correlated owned identity and preserves late notices', () => {
@@ -106,8 +156,27 @@ describe('finite ACP authority policy', () => {
       },
     })
     prompt(policy)
+    policy.fromClient(
+      update({
+        sessionUpdate: 'user_message',
+        messageId: 'turn-msg',
+      }),
+    )
+    policy.fromClient(
+      update({
+        sessionUpdate: 'state_update',
+        state: 'running',
+      }),
+    )
+    policy.fromClient(
+      update({
+        sessionUpdate: 'state_update',
+        state: 'idle',
+        stopReason: 'end_turn',
+      }),
+    )
     const completed = policy.fromClient(
-      reply(10, { stopReason: 'end_turn', _meta: diagnostic('warning') }),
+      reply(10, { messageId: 'turn-msg', _meta: diagnostic('warning') }),
     )
     expect(completed.afterResponse).toMatchObject({ params: { sessionId: 'owned-session' } })
     expect(policy.fromClient(update(warning)).toAdapter).toBeDefined()
@@ -121,12 +190,12 @@ describe('finite ACP authority policy', () => {
         policy.fromAdapter(request(2, 'session/new', { cwd: '/work', mcpServers: [] }))
       } else {
         prompt(policy)
-        if (phase === 'late') policy.fromClient(reply(10, { stopReason: 'end_turn' }))
+        if (phase === 'late') settleTurn(policy, 10, 'end_turn')
       }
       deniesAndCloses(policy, () =>
         policy.fromClient(
           phase === 'result'
-            ? reply(10, { stopReason: 'end_turn', _meta: diagnostic('error') })
+            ? reply(10, { messageId: 'turn-msg', _meta: diagnostic('error') })
             : update({ sessionUpdate: 'session_info_update', _meta: diagnostic('error') }),
         ),
       )
@@ -141,7 +210,7 @@ describe('finite ACP authority policy', () => {
           policy.fromAdapter(request(2, 'session/new', { cwd: '/work', mcpServers: [] }))
         } else {
           prompt(policy)
-          if (phase === 'late') policy.fromClient(reply(10, { stopReason: 'end_turn' }))
+          if (phase === 'late') settleTurn(policy, 10, 'end_turn')
         }
         const metadata = diagnostic('error')
         metadata.jetbrains.air.sessionFailure.category = category
@@ -149,7 +218,7 @@ describe('finite ACP authority policy', () => {
         try {
           policy.fromClient(
             phase === 'result'
-              ? reply(10, { stopReason: 'end_turn', _meta: metadata })
+              ? reply(10, { messageId: 'turn-msg', _meta: metadata })
               : update({ sessionUpdate: 'session_info_update', _meta: metadata }),
           )
         } catch (error) {
@@ -185,7 +254,7 @@ describe('finite ACP authority policy', () => {
       for (const phase of ['turn', 'result', 'late']) {
         const policy = session()
         prompt(policy)
-        if (phase === 'late') policy.fromClient(reply(10, { stopReason: 'end_turn' }))
+        if (phase === 'late') settleTurn(policy, 10, 'end_turn')
         const metadata = diagnostic('error')
         metadata.jetbrains.air.sessionFailure.category = 'service'
         metadata.jetbrains.air.sessionFailure.title = title
@@ -193,7 +262,7 @@ describe('finite ACP authority policy', () => {
         try {
           policy.fromClient(
             phase === 'result'
-              ? reply(10, { stopReason: 'end_turn', _meta: metadata })
+              ? reply(10, { messageId: 'turn-msg', _meta: metadata })
               : update({ sessionUpdate: 'session_info_update', _meta: metadata }),
           )
         } catch (error) {
@@ -287,14 +356,24 @@ describe('finite ACP authority policy', () => {
   })
   test('resume names only the claimed session, never a fallback new session', () => {
     const policy = new PrivateFiniteAcpPolicy({ restoreSessionId: 'saved-session' })
-    policy.fromAdapter(request(1, 'initialize', { protocolVersion: 1 }))
+    policy.fromAdapter(
+      request(1, 'initialize', {
+        protocolVersion: 2,
+        capabilities: {},
+        info: { name: 'flow', version: '2' },
+      }),
+    )
     policy.fromClient(
-      reply(1, { protocolVersion: 1, agentCapabilities: { sessionCapabilities: { resume: {} } } }),
+      reply(1, {
+        protocolVersion: 2,
+        capabilities: { session: {} },
+        info: { name: 'agent', version: '2' },
+      }),
     )
     policy.fromAdapter(
       request(2, 'session/resume', { sessionId: 'saved-session', cwd: '/work', mcpServers: [] }),
     )
-    expect(policy.fromClient(reply(2, { configOptions: [] }))).toEqual({
+    expect(policy.fromClient(reply(2, {}))).toEqual({
       toAdapter: { jsonrpc: '2.0', id: 2, result: {} },
     })
     policy.fromAdapter(
@@ -303,15 +382,22 @@ describe('finite ACP authority policy', () => {
         prompt: [{ type: 'text', text: 'Continue' }],
       }),
     )
-    policy.fromClient(reply(3, { stopReason: 'end_turn' }))
+    settleTurn(policy, 3, 'end_turn', 'turn-msg', undefined, 'saved-session')
     expect(policy.settledSessionId).toBe('saved-session')
     for (const method of ['session/new', 'session/resume']) {
       const other = new PrivateFiniteAcpPolicy({ restoreSessionId: 'saved-session' })
-      other.fromAdapter(request(1, 'initialize', { protocolVersion: 1 }))
+      other.fromAdapter(
+        request(1, 'initialize', {
+          protocolVersion: 2,
+          capabilities: {},
+          info: { name: 'flow', version: '2' },
+        }),
+      )
       other.fromClient(
         reply(1, {
-          protocolVersion: 1,
-          agentCapabilities: { sessionCapabilities: { resume: {} } },
+          protocolVersion: 2,
+          capabilities: { session: {} },
+          info: { name: 'agent', version: '2' },
         }),
       )
       expect(() =>
@@ -321,8 +407,22 @@ describe('finite ACP authority policy', () => {
       ).toThrow()
     }
     const noSupport = new PrivateFiniteAcpPolicy({ restoreSessionId: 'saved-session' })
-    noSupport.fromAdapter(request(1, 'initialize', { protocolVersion: 1 }))
-    expect(() => noSupport.fromClient(reply(1, { protocolVersion: 1 }))).toThrow('does not support')
+    noSupport.fromAdapter(
+      request(1, 'initialize', {
+        protocolVersion: 2,
+        capabilities: {},
+        info: { name: 'flow', version: '2' },
+      }),
+    )
+    expect(() =>
+      noSupport.fromClient(
+        reply(1, {
+          protocolVersion: 2,
+          capabilities: {},
+          info: { name: 'agent', version: '2' },
+        }),
+      ),
+    ).toThrow('does not advertise baseline sessions')
     const ordinary = new PrivateFiniteAcpPolicy()
     initialize(ordinary)
     expect(() =>
@@ -336,7 +436,7 @@ describe('finite ACP authority policy', () => {
     prompt(policy)
     policy.fromAdapter(notification('session/cancel', { sessionId: 'owned-session' }))
     expect(policy.turnActive).toBe(true)
-    policy.fromClient(reply(10, { stopReason: 'cancelled' }))
+    settleTurn(policy, 10, 'cancelled')
     expect(policy.turnActive).toBe(false)
     policy.assertSettled()
     policy.fromAdapter(
@@ -357,7 +457,7 @@ describe('finite ACP authority policy', () => {
           prompt: [{ type: 'text', text: 'Next.' }],
         }),
       )
-      policy.fromClient(reply(id, { stopReason: 'end_turn' }))
+      settleTurn(policy, id, 'end_turn', `turn-${id}`)
     }
     deniesAndCloses(policy, () =>
       policy.fromAdapter(
@@ -371,10 +471,14 @@ describe('finite ACP authority policy', () => {
   test('public answer text between turns is rejected rather than attributed to another turn', () => {
     const policy = session({ maxTurns: 2 })
     prompt(policy)
-    policy.fromClient(reply(10, { stopReason: 'end_turn' }))
+    settleTurn(policy, 10, 'end_turn')
     deniesAndCloses(policy, () =>
       policy.fromClient(
-        update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Late.' } }),
+        update({
+          sessionUpdate: 'agent_message_chunk',
+          messageId: 'late',
+          content: { type: 'text', text: 'Late.' },
+        }),
       ),
     )
   })
@@ -387,6 +491,7 @@ describe('finite ACP authority policy', () => {
       request(3, 'session/set_config_option', {
         sessionId: 'owned-session',
         configId: 'model',
+        type: 'id',
         value: 'reviewed-model',
       }),
     )
@@ -394,7 +499,7 @@ describe('finite ACP authority policy', () => {
       policy.fromClient(
         reply(3, {
           configOptions: [
-            { id: 'model', currentValue: 'reviewed-model', _meta: { private: 'hidden' } },
+            { configId: 'model', currentValue: 'reviewed-model', _meta: { private: 'hidden' } },
           ],
         }),
       ).toAdapter,
@@ -404,7 +509,7 @@ describe('finite ACP authority policy', () => {
       result: {
         configOptions: [
           {
-            id: 'model',
+            configId: 'model',
             name: 'model',
             type: 'select',
             currentValue: 'reviewed-model',
@@ -414,14 +519,22 @@ describe('finite ACP authority policy', () => {
       },
     })
     policy.fromAdapter(
-      request(4, 'session/set_mode', { sessionId: 'owned-session', modeId: 'read-only' }),
+      request(4, 'session/set_config_option', {
+        sessionId: 'owned-session',
+        configId: 'mode',
+        type: 'id',
+        value: 'read-only',
+      }),
     )
-    policy.fromClient(reply(4, {}))
+    policy.fromClient(
+      reply(4, { configOptions: [{ configId: 'mode', currentValue: 'read-only' }] }),
+    )
     prompt(policy)
     expect(
       policy.fromClient(
         update({
           sessionUpdate: 'agent_message_chunk',
+          messageId: 'turn-msg',
           content: { type: 'text', text: 'Useful answer.', _meta: { hidden: true } },
           _meta: { private: true },
         }),
@@ -434,14 +547,34 @@ describe('finite ACP authority policy', () => {
           sessionId: 'owned-session',
           update: {
             sessionUpdate: 'agent_message_chunk',
+            messageId: 'turn-msg',
             content: { type: 'text', text: 'Useful answer.' },
           },
         },
       },
     })
+    policy.fromClient(
+      update({
+        sessionUpdate: 'user_message',
+        messageId: 'turn-msg',
+      }),
+    )
+    policy.fromClient(
+      update({
+        sessionUpdate: 'state_update',
+        state: 'running',
+      }),
+    )
+    policy.fromClient(
+      update({
+        sessionUpdate: 'state_update',
+        state: 'idle',
+        stopReason: 'end_turn',
+      }),
+    )
     expect(
-      policy.fromClient(reply(10, { stopReason: 'end_turn', _meta: { private: true } })),
-    ).toEqual({ toAdapter: { jsonrpc: '2.0', id: 10, result: { stopReason: 'end_turn' } } })
+      policy.fromClient(reply(10, { messageId: 'turn-msg', _meta: { private: true } })),
+    ).toEqual({ toAdapter: { jsonrpc: '2.0', id: 10, result: { messageId: 'turn-msg' } } })
     policy.assertSettled()
     policy.fromAdapter(request(11, 'session/close', { sessionId: 'owned-session' }))
     policy.fromClient(reply(11, {}))
@@ -501,17 +634,31 @@ describe('finite ACP authority policy', () => {
         value: false,
       }),
     )
-    policy.fromClient(reply(3, { configOptions: [{ id: 'fast', currentValue: false }] }))
+    policy.fromClient(reply(3, { configOptions: [{ configId: 'fast', currentValue: false }] }))
     prompt(policy)
-    policy.fromClient(reply(10, { stopReason: 'refusal' }))
+    settleTurn(policy, 10, 'refusal')
     policy.assertSettled() // Protocol accounting is not successful Agent work.
   })
   for (const [suiteCaseIndex, suiteCaseValue] of [
-    { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true } } },
-    { protocolVersion: 1, clientCapabilities: { terminal: true } },
-    { protocolVersion: 1, clientCapabilities: { auth: { _meta: { gateway: true } } } },
-    { protocolVersion: 1, _meta: { arbitrary: true } },
-    { protocolVersion: 2 },
+    { protocolVersion: 1 },
+    {
+      protocolVersion: 2,
+      capabilities: { fs: { readTextFile: true } },
+      info: { name: 'f', version: '1' },
+    },
+    { protocolVersion: 2, capabilities: { terminal: true }, info: { name: 'f', version: '1' } },
+    {
+      protocolVersion: 2,
+      capabilities: { auth: { _meta: { gateway: true } } },
+      info: { name: 'f', version: '1' },
+    },
+    {
+      protocolVersion: 2,
+      _meta: { arbitrary: true },
+      capabilities: {},
+      info: { name: 'f', version: '1' },
+    },
+    { protocolVersion: 3, capabilities: {}, info: { name: 'f', version: '1' } },
   ].entries()) {
     test('rejects additional initialization authority: %j' + ` (case ${suiteCaseIndex + 1})`, () =>
       Reflect.apply(
@@ -577,13 +724,23 @@ describe('finite ACP authority policy', () => {
         request(3, 'session/set_mode', { sessionId: 'owned-session', modeId: 'unrestricted' }),
       ),
     )
+    const third = session({ modeId: 'read-only' })
+    deniesAndCloses(third, () =>
+      third.fromAdapter(
+        request(3, 'session/set_config_option', {
+          sessionId: 'owned-session',
+          configId: 'mode',
+          value: 'unrestricted',
+        }),
+      ),
+    )
   })
   for (const [suiteCaseIndex, suiteCaseValue] of [
-    { configOptions: [{ id: 'model', currentValue: 'different' }] },
+    { configOptions: [{ configId: 'model', currentValue: 'different' }] },
     {
       configOptions: [
-        { id: 'model', currentValue: 'reviewed' },
-        { id: 'model', currentValue: 'different' },
+        { configId: 'model', currentValue: 'reviewed' },
+        { configId: 'model', currentValue: 'different' },
       ],
     },
     { configOptions: [] },
@@ -599,6 +756,7 @@ describe('finite ACP authority policy', () => {
               request(3, 'session/set_config_option', {
                 sessionId: 'owned-session',
                 configId: 'model',
+                type: 'id',
                 value: 'reviewed',
               }),
             )
@@ -668,7 +826,7 @@ describe('finite ACP authority policy', () => {
     for (const method of ['session/prompt', 'session/new']) {
       const policy = session()
       prompt(policy)
-      policy.fromClient(reply(10, { stopReason: 'end_turn' }))
+      settleTurn(policy, 10, 'end_turn')
       deniesAndCloses(policy, () =>
         policy.fromAdapter(
           request(
@@ -695,12 +853,20 @@ describe('finite ACP authority policy', () => {
   })
   test('accepted adapter frames are deeply immutable and detached from input bytes', () => {
     const policy = new PrivateFiniteAcpPolicy()
-    const data = request(1, 'initialize', { protocolVersion: 1, clientCapabilities: {} })
+    const data = request(1, 'initialize', {
+      protocolVersion: 2,
+      capabilities: {},
+      info: { name: 'test', version: '1' },
+    })
     const frame = policy.fromAdapter(data)
     data.fill(0)
     expect(Object.isFrozen(frame)).toBe(true)
     expect(Object.isFrozen(frame.params)).toBe(true)
-    expect(frame.params).toEqual({ protocolVersion: 1, clientCapabilities: {} })
+    expect(frame.params).toEqual({
+      protocolVersion: 2,
+      capabilities: {},
+      info: { name: 'test', version: '1' },
+    })
   })
   for (const [suiteCaseIndex, suiteCaseValue] of [
     null,
@@ -714,7 +880,16 @@ describe('finite ACP authority policy', () => {
           const policy = new PrivateFiniteAcpPolicy()
           deniesAndCloses(policy, () =>
             policy.fromAdapter(
-              bytes({ jsonrpc: '2.0', id, method: 'initialize', params: { protocolVersion: 1 } }),
+              bytes({
+                jsonrpc: '2.0',
+                id,
+                method: 'initialize',
+                params: {
+                  protocolVersion: 2,
+                  capabilities: {},
+                  info: { name: 'test', version: '1' },
+                },
+              }),
             ),
           )
         },
@@ -758,7 +933,7 @@ describe('finite ACP authority policy', () => {
         (method) => {
           const policy = session()
           prompt(policy)
-          policy.fromClient(reply(10, { stopReason: 'end_turn' }))
+          settleTurn(policy, 10, 'end_turn')
           deniesAndCloses(policy, () =>
             policy.fromAdapter(
               method === 'session/cancel'
@@ -794,7 +969,7 @@ describe('finite ACP authority policy', () => {
       toClient: { jsonrpc: '2.0', id: 'permission', result: { outcome: { outcome: 'cancelled' } } },
     })
     expect(Object.isFrozen(denied.toClient?.result)).toBe(true)
-    policy.fromClient(reply(10, { stopReason: 'refusal' }))
+    settleTurn(policy, 10, 'refusal')
     policy.assertSettled()
   })
   test('the adapter cannot forge a peer permission response', () => {
@@ -824,7 +999,7 @@ describe('finite ACP authority policy', () => {
     expect(
       policy.fromAdapter(notification('session/cancel', { sessionId: 'owned-session' })).method,
     ).toBe('session/cancel')
-    policy.fromClient(reply(10, { stopReason: 'cancelled' }))
+    settleTurn(policy, 10, 'cancelled')
     policy.assertSettled()
     const second = session()
     prompt(second)
@@ -937,22 +1112,52 @@ describe('finite ACP authority policy', () => {
   test('unknown and duplicate native replies cannot change the pending request', () => {
     const policy = session()
     prompt(policy)
-    deniesAndCloses(policy, () => policy.fromClient(reply(999, { stopReason: 'end_turn' })))
+    deniesAndCloses(policy, () => policy.fromClient(reply(999, { messageId: 'turn-msg' })))
     const second = session()
     prompt(second)
-    second.fromClient(reply(10, { stopReason: 'end_turn' }))
-    deniesAndCloses(second, () => second.fromClient(reply(10, { stopReason: 'end_turn' })))
+    second.fromClient(
+      update({
+        sessionUpdate: 'user_message',
+        messageId: 'turn-msg',
+      }),
+    )
+    second.fromClient(
+      update({
+        sessionUpdate: 'state_update',
+        state: 'running',
+      }),
+    )
+    second.fromClient(
+      update({
+        sessionUpdate: 'state_update',
+        state: 'idle',
+        stopReason: 'end_turn',
+      }),
+    )
+    second.fromClient(reply(10, { messageId: 'turn-msg' }))
+    deniesAndCloses(second, () => second.fromClient(reply(10, { messageId: 'turn-msg' })))
   })
-  test('requires advertised close support and settles a pending close explicitly', () => {
-    const policy = session({}, false)
-    prompt(policy)
-    policy.fromClient(reply(10, { stopReason: 'end_turn' }))
+  test('requires advertised session support and settles a pending close explicitly', () => {
+    const policy = new PrivateFiniteAcpPolicy()
+    policy.fromAdapter(
+      request(1, 'initialize', {
+        protocolVersion: 2,
+        capabilities: {},
+        info: { name: 'ordinary-flow', version: '1' },
+      }),
+    )
     deniesAndCloses(policy, () =>
-      policy.fromAdapter(request(11, 'session/close', { sessionId: 'owned-session' })),
+      policy.fromClient(
+        reply(1, {
+          protocolVersion: 2,
+          capabilities: {},
+          info: { name: 'agent', version: '2' },
+        }),
+      ),
     )
     const second = session()
     prompt(second)
-    second.fromClient(reply(10, { stopReason: 'end_turn' }))
+    settleTurn(second, 10, 'end_turn')
     second.fromAdapter(request(11, 'session/close', { sessionId: 'owned-session' }))
     deniesAndCloses(second, () => second.assertSettled())
   })
@@ -963,7 +1168,7 @@ describe('finite ACP authority policy', () => {
   test('rejects duplicate JSON keys, malformed UTF-8, batches and unsafe values', () => {
     for (const packet of [
       encoder.encode(
-        '{"jsonrpc":"2.0","id":1,"id":2,"method":"initialize","params":{"protocolVersion":1}}',
+        '{"jsonrpc":"2.0","id":1,"id":2,"method":"initialize","params":{"protocolVersion":2,"capabilities":{},"info":{"name":"a","version":"1"}}}',
       ),
       new Uint8Array([0xff]),
       bytes([]),
@@ -990,7 +1195,7 @@ describe('finite ACP authority policy', () => {
   test('exact prompt-byte limit works and the following outcome stays separate', () => {
     const policy = session()
     prompt(policy, 'a'.repeat(LIMITS.promptBytes))
-    policy.fromClient(reply(10, { stopReason: 'max_tokens' }))
+    settleTurn(policy, 10, 'max_tokens')
     policy.assertSettled()
   })
   test('aggregate text and wire byte limits include all consumed records', () => {
@@ -999,6 +1204,7 @@ describe('finite ACP authority policy', () => {
     const text = 'x'.repeat(1024 * 1024)
     const textFrame = update({
       sessionUpdate: 'agent_message_chunk',
+      messageId: 'chunk-1',
       content: { type: 'text', text },
     })
     for (let index = 0; index < LIMITS.textBytes / text.length; index += 1)
@@ -1062,21 +1268,42 @@ describe('finite ACP authority policy', () => {
   })
   test('native initialization cannot substitute protocol versions or adopt new client powers', () => {
     const policy = new PrivateFiniteAcpPolicy()
-    policy.fromAdapter(request(1, 'initialize', { protocolVersion: 1 }))
-    deniesAndCloses(policy, () => policy.fromClient(reply(1, { protocolVersion: 2 })))
+    policy.fromAdapter(
+      request(1, 'initialize', {
+        protocolVersion: 2,
+        capabilities: {},
+        info: { name: 'flow', version: '2' },
+      }),
+    )
+    deniesAndCloses(policy, () => policy.fromClient(reply(1, { protocolVersion: 1 })))
     const second = new PrivateFiniteAcpPolicy()
-    second.fromAdapter(request(1, 'initialize', { protocolVersion: 1 }))
+    second.fromAdapter(
+      request(1, 'initialize', {
+        protocolVersion: 2,
+        capabilities: {},
+        info: { name: 'flow', version: '2' },
+      }),
+    )
     expect(
       second.fromClient(
         reply(1, {
-          protocolVersion: 1,
+          protocolVersion: 2,
           authMethods: [{ id: 'dangerous' }],
           _meta: { private: true },
-          agentCapabilities: { loadSession: true, mcpCapabilities: { http: true } },
+          capabilities: { session: {}, loadSession: true, mcpCapabilities: { http: true } },
+          info: { name: 'peer', version: '2' },
         }),
       ),
     ).toEqual({
-      toAdapter: { jsonrpc: '2.0', id: 1, result: { protocolVersion: 1, agentCapabilities: {} } },
+      toAdapter: {
+        jsonrpc: '2.0',
+        id: 1,
+        result: {
+          protocolVersion: 2,
+          capabilities: { session: {} },
+          info: { name: 'jig-selected-native-agent', version: '2' },
+        },
+      },
     })
   })
 })

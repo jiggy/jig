@@ -109,6 +109,7 @@ export interface AcpGrant {
   readonly kind: 'acp'
   readonly client: 'codex' | 'claude' | 'pi'
   readonly model?: string
+  readonly authProfile?: string
   readonly maxTurns?: number
   readonly retainSessions?: true
 }
@@ -130,23 +131,28 @@ export function normalizeGrant(value: unknown): GrantPolicy {
   if (kind === 'acp') {
     if (
       Object.keys(policy).some(
-        (key) => !['client', 'model', 'maxTurns', 'retainSessions'].includes(key),
+        (key) => !['client', 'model', 'authProfile', 'maxTurns', 'retainSessions'].includes(key),
       ) ||
       ('retainSessions' in policy &&
         (policy.retainSessions !== true || policy.client !== 'codex')) ||
       ('maxTurns' in policy && !isPrivateNativeTurnAllowance(policy.maxTurns)) ||
+      ('authProfile' in policy &&
+        (typeof policy.authProfile !== 'string' ||
+          policy.authProfile.length > 64 ||
+          !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(policy.authProfile))) ||
       !['codex', 'claude', 'pi'].includes(policy.client as string) ||
       ('model' in policy &&
         (typeof policy.model !== 'string' ||
           !/^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}(?![\s\S])/.test(policy.model)))
     )
       throw new TypeError(
-        `ACP grant requires a supported native client, optional model, maxTurns from ${PRIVATE_NATIVE_TURN_POLICY.minimum} to ${PRIVATE_NATIVE_TURN_POLICY.maximum}, and optional retainSessions: true for Codex`,
+        `ACP grant requires a supported native client, optional model and authProfile, maxTurns from ${PRIVATE_NATIVE_TURN_POLICY.minimum} to ${PRIVATE_NATIVE_TURN_POLICY.maximum}, and optional retainSessions: true for Codex`,
       )
     return Object.freeze({
       kind,
       client: policy.client as AcpGrant['client'],
       ...('model' in policy ? { model: policy.model as string } : {}),
+      ...('authProfile' in policy ? { authProfile: policy.authProfile as string } : {}),
       ...('maxTurns' in policy ? { maxTurns: policy.maxTurns as number } : {}),
       ...('retainSessions' in policy ? { retainSessions: true as const } : {}),
     })

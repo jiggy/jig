@@ -35,6 +35,8 @@ export interface PrivateAcpAgentProviderConfiguration {
   readonly client: string
   readonly model: string
   readonly credentialMode: string
+  /** Reviewed non-secret native account selector; never authentication material. */
+  readonly authProfile?: string
   readonly adapterPath: string
   readonly sandboxAdapterPath: string
   /** Whether the ACP adapter is also invoked directly by its native bridge. */
@@ -71,6 +73,7 @@ export interface PrivateAcpReadOnlyMount extends PrivateLinuxReadOnlyMount {
 
 export interface PrivateAcpAgentRuntime {
   readonly client: string
+  readonly protocolVersion: 2
   readonly adapterPath: string
   readonly sandboxAdapterPath: string
   readonly adapterExecutable: boolean
@@ -201,6 +204,8 @@ export async function createPrivateAcpAgentProvider(
     client: value.client,
     model: value.model,
     credentialMode: value.credentialMode,
+    protocolVersion: 2 as const,
+    ...(value.authProfile === undefined ? {} : { authProfile: value.authProfile }),
     adapterDigest,
     adapterExecutable,
     executableDigest,
@@ -238,6 +243,7 @@ export async function createPrivateAcpAgentProvider(
     provider,
     Object.freeze({
       client: value.client,
+      protocolVersion: 2 as const,
       adapterPath,
       sandboxAdapterPath: value.sandboxAdapterPath,
       adapterExecutable,
