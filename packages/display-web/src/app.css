@@ -2296,6 +2296,7 @@ footer {
 }
 .application-page {
   min-width: 0;
+  container-type: inline-size;
 }
 .application-heading {
   display: flex;
@@ -2350,6 +2351,19 @@ footer {
   padding: 0;
   border: 0;
   background: transparent;
+}
+@container (min-width: 860px) {
+  .application-sections {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .application-sections > * {
+    grid-column: 1 / -1;
+  }
+  .application-sections > .application-section-reading:has(+ .application-section-reading),
+  .application-sections > .application-section-reading + .application-section-reading {
+    grid-column: auto;
+  }
 }
 .application-section-context {
   border-top: 1px solid var(--line);
