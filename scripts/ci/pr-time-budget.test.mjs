@@ -458,6 +458,7 @@ async function matrixMetadataService(t, workMilliseconds = 5000) {
         await appendFile(requestsPath, 'run\n')
         response.end(await readFile(runPath))
       } else if (request.url === `${resource}/attempts/${expected.attempt}/jobs?per_page=100`) {
+        await appendFile(requestsPath, 'jobs\n')
         const contents = await readFile(jobsPath)
         const configuration = JSON.parse(contents)
         if (configuration.hold_body) response.write('{"total_count":')
@@ -469,7 +470,6 @@ async function matrixMetadataService(t, workMilliseconds = 5000) {
         else if (configuration.http_status)
           response.writeHead(configuration.http_status, configuration.http_headers ?? {}).end()
         else response.end(contents)
-        await appendFile(requestsPath, 'jobs\n')
       } else {
         response.writeHead(404).end()
       }
@@ -691,6 +691,9 @@ test('ordinary HTTP 403 remains terminal and is not mislabeled as an expired gua
   const f = await matrixMetadataService(t, 10_000)
   await replaceMatrixMetadata(f.jobsPath, { http_status: 403 })
   await assert.rejects(guardMacPrMatrix(f.budget, f.options), /request failed \(HTTP 403\)/)
+  const observationDeadline = Date.now() + 2000
+  while (!(await f.requests()).includes('jobs\n') && Date.now() < observationDeadline)
+    await new Promise((resolve) => setTimeout(resolve, 10))
   assert.equal((await f.requests()).split('jobs\n').length - 1, 1)
 })
 
@@ -731,6 +734,12 @@ test('oversized and malformed successful HTTP payloads remain terminal after one
     const previous = (await f.requests()).split('jobs\n').length - 1
     await replaceMatrixMetadata(f.jobsPath, configuration)
     await assert.rejects(fetchPrTimeBudget(monitorIdentity, f.options), expectedError)
+    const observationDeadline = Date.now() + 2000
+    while (
+      (await f.requests()).split('jobs\n').length - 1 === previous &&
+      Date.now() < observationDeadline
+    )
+      await new Promise((resolve) => setTimeout(resolve, 10))
     assert.equal((await f.requests()).split('jobs\n').length - 1, previous + 1)
   }
 })
