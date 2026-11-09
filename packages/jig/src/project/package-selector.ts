@@ -1,6 +1,6 @@
 import { normalizeProjectPath } from './paths.js'
 
-const NPM_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
+const NPM_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 /** A declared dependency name, not a version, registry URL or package subpath. */
 export function npmPackageName(selector: string): string {

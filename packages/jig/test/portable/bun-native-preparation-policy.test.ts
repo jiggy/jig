@@ -438,11 +438,19 @@ describe('private Bun preparation policy', () => {
         lockfileVersion: 1,
         workspaces: {
           '': {
-            dependencies: { value: '1.0.0', 'hyphen-range': '1.2.3 - 2.3.4' },
+            dependencies: { value: '1.0.0', 'hyphen-range': '1.2.3 - 2.3.4', JSONStream: '1.3.5' },
             devDependencies: { tagged: 'next', 'or-range': '1.2.3 || 2.x' },
           },
         },
         packages: {
+          JSONStream: [
+            'JSONStream@1.3.5',
+            '',
+            {
+              dependencies: { jsonparse: '^1.2.0' },
+            },
+            INTEGRITY,
+          ],
           value: [
             'value@1.0.0',
             '',

@@ -237,7 +237,7 @@ function isExactRegistryResolution(value: unknown): boolean {
 function isPackageName(value: string): boolean {
   const valid = value.startsWith('@')
     ? /^@[a-z0-9][a-z0-9._~-]*\/[a-z0-9][a-z0-9._~-]*$/.test(value)
-    : /^[a-z0-9][a-z0-9._~-]*$/.test(value)
+    : /^[A-Za-z0-9][A-Za-z0-9._~-]*$/.test(value)
   return valid && Buffer.byteLength(value) <= 214
 }
 
