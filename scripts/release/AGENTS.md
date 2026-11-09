@@ -15,6 +15,7 @@ Exercise the same publication path before merging release changes.
 - `publish.sh` owns group preflight, ordered npm publication, byte convergence and channel protection.
   `qualification.mjs` revalidates live GitHub evidence through `qualification-policy.mjs` before mutations.
 - `registry.mjs` owns a genuine disposable Verdaccio registry and transport fault proxy.
+  `registry-server/` owns its isolated Verdaccio dependency manifest and lockfile, keeping registry dependencies out of the repository workspace lock.
   `rehearse.mjs` generates versions, builds canonical archives, publishes, retries and installs outside the source checkout.
 - `npm-auth.mjs` checks package-specific OIDC exchange without retaining credentials or publishing versions.
 - `.changeset/` stores pending intent, consumed alpha notes, configuration, and generated release metadata.
