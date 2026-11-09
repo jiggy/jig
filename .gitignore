@@ -17,6 +17,8 @@ __pycache__/
 !/examples/**/bun.lock
 # The isolated CI artifact client retains its generated integrity lock.
 !/scripts/ci/mac-cohort-client/bun.lock
+# The isolated release registry server retains its generated integrity lock.
+!/scripts/release/registry-server/bun.lock
 .jig
 dist/
 

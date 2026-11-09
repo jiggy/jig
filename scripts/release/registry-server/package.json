@@ -1,0 +1,7 @@
+{
+  "name": "jig-release-registry-server",
+  "private": true,
+  "dependencies": {
+    "verdaccio": "6.2.4"
+  }
+}

@@ -1,12 +1,32 @@
 // A genuine disposable npm registry. The proxy changes transport outcomes only.
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { once } from 'node:events'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { createServer, request as httpRequest } from 'node:http'
 import { join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
+
+function resolveVerdaccioBinary() {
+  if (process.env.VERDACCIO_BIN && existsSync(process.env.VERDACCIO_BIN)) {
+    return process.env.VERDACCIO_BIN
+  }
+  const isolatedServer = resolve(import.meta.dirname, 'registry-server')
+  const isolatedBin = resolve(isolatedServer, 'node_modules/verdaccio/bin/verdaccio')
+  if (existsSync(isolatedBin)) return isolatedBin
+  const rootBin = resolve(import.meta.dirname, '../../node_modules/verdaccio/bin/verdaccio')
+  if (existsSync(rootBin)) return rootBin
+  if (existsSync(join(isolatedServer, 'package.json'))) {
+    execFileSync('bun', ['install', '--frozen-lockfile', '--ignore-scripts'], {
+      cwd: isolatedServer,
+      stdio: 'inherit',
+    })
+    if (existsSync(isolatedBin)) return isolatedBin
+  }
+  throw new Error('Verdaccio binary not found; run bun install --cwd scripts/release/registry-server')
+}
 
 export async function startRegistry(root, { externalDependencies = false } = {}) {
   await mkdir(root, { recursive: true })
@@ -52,7 +72,7 @@ export async function startRegistry(root, { externalDependencies = false } = {})
   const child = spawn(
     process.execPath,
     [
-      resolve(import.meta.dirname, '../../node_modules/verdaccio/bin/verdaccio'),
+      resolveVerdaccioBinary(),
       '--config',
       configuration,
       '--listen',
