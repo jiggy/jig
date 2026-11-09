@@ -890,6 +890,10 @@ for (const width of [320, 390, 800]) {
         if (width < 700) {
           assert(await page.getByRole('combobox', { name: 'Choose view' }).isVisible())
           assert.equal(await page.getByRole('tablist').count(), 0)
+          assert(
+            await page.locator('.workbench-breadcrumb > span:first-child').isVisible(),
+            'application context remains visible',
+          )
         }
         for (const theme of ['Light', 'Dark', 'Monochrome']) {
           const button = page.getByRole('button', { name: `${theme} appearance`, exact: true })
@@ -1143,6 +1147,29 @@ test('adjacent authored reading sections share wide space and retain their order
       await first.locator('.report').textContent(),
       material.value.sections[0].blocks[0].text,
     )
+    await noPageOverflow(page)
+  })
+})
+
+test('long explanations wrap while concise values retain their reading width', async () => {
+  const fixture = childFixture()
+  const collection = fixture.snapshot.views.find((item) => item.id === 'child-review').value
+    .sections[0].blocks[0]
+  const explanation =
+    'A complete explanation stays readable without scrolling away from its record.'
+  collection.columns = [
+    { key: 'name', label: 'ID', type: 'text' },
+    { key: 'extra', label: 'Explanation', type: 'text' },
+  ]
+  collection.rows.forEach((row, index) => {
+    row.cells = { name: String(index + 1), extra: explanation }
+  })
+  await withPage(fixture, { viewport: { width: 320, height: 900 } }, async (page) => {
+    await openTab(page, 'Specialist material')
+    const table = page.getByRole('region', { name: 'Candidates', exact: true })
+    assert(await table.evaluate((node) => node.scrollWidth <= node.clientWidth + 1))
+    assert.equal(await table.getByText(explanation, { exact: true }).count(), 2)
+    assert.equal(await page.getByRole('button', { name: 'Scroll Candidates right' }).count(), 0)
     await noPageOverflow(page)
   })
 })

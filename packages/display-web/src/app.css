@@ -2470,8 +2470,7 @@ footer {
   background: var(--pane);
 }
 .application-table table {
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
   border-collapse: collapse;
 }
 .application-table th,
@@ -2486,6 +2485,9 @@ footer {
 }
 .application-table .literal {
   overflow-wrap: break-word;
+}
+.application-table .concise-value {
+  white-space: pre;
 }
 .table-viewport {
   min-width: 0;
@@ -3184,11 +3186,19 @@ nav .nav-entry {
     max-width: 60vw;
   }
   .workbench-breadcrumb {
-    gap: 8px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
     flex: 1 1 0;
   }
   .workbench-breadcrumb > span:first-child {
-    display: none;
+    display: block;
+    min-width: 0;
+    font-size: 11px;
+    line-height: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .workbench-breadcrumb > span:nth-child(2) {
     display: none;
