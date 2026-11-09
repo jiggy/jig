@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 15
     env:
       REVIEW_PR_URL: ${{ github.event.pull_request.html_url }}
+      REVIEW_BASE_SHA: ${{ github.event.pull_request.base.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -56,11 +57,11 @@ jobs:
         run: |
           set -euo pipefail
           just display_web::review-browser "$REVIEW_PR_URL" "$RUNNER_TEMP/workbench-review/current" 2>&1 | tee "$RUNNER_TEMP/workbench-review/capture.txt"
-      - name: Build and compare the pre-97 renderer
+      - name: Build and compare the PR base renderer
         if: always() && !cancelled() && steps.build.outcome == 'success'
         run: |
           set -euo pipefail
-          git worktree add --detach "$RUNNER_TEMP/workbench-baseline" 7d1da7398a6e0f30e818e62a542a95a7c2d16f12
+          git worktree add --detach "$RUNNER_TEMP/workbench-baseline" "$REVIEW_BASE_SHA"
           (
             cd "$RUNNER_TEMP/workbench-baseline"
             bun install --ignore-scripts

@@ -172,6 +172,12 @@ async function completePatch(page, selector = '.captured-media') {
 }
 
 async function openTab(page, name) {
+  const chooser = page.getByRole('combobox', { name: 'Choose view', exact: true })
+  if (await chooser.isVisible()) {
+    const option = chooser.getByRole('option', { name: new RegExp(`^${name}(?:\\s|$)`) })
+    await chooser.selectOption(await option.getAttribute('value'))
+    return
+  }
   await page.getByRole('tab', { name: new RegExp(`^${name}(?:\\s|$)`) }).click()
 }
 
@@ -881,22 +887,21 @@ for (const width of [320, 390, 800]) {
         await back.click()
         assert.equal(await page.locator('.call-detail').count(), 0)
         await noPageOverflow(page)
-        if (width < 700)
-          assert.equal(
-            await page.getByRole('tablist').getAttribute('aria-orientation'),
-            'horizontal',
-          )
+        if (width < 700) {
+          assert(await page.getByRole('combobox', { name: 'Choose view' }).isVisible())
+          assert.equal(await page.getByRole('tablist').count(), 0)
+        }
         for (const theme of ['Light', 'Dark', 'Monochrome']) {
           const button = page.getByRole('button', { name: `${theme} appearance`, exact: true })
           assert(await button.isVisible())
           await button.click()
           assert.equal(await button.getAttribute('aria-pressed'), 'true')
           if (width < 700) {
-            const selected = page.getByRole('tab', { selected: true })
+            const selected = page.getByRole('combobox', { name: 'Choose view' })
             const bounds = await selected.boundingBox()
             assert(
               bounds.x >= 0 && bounds.x + bounds.width <= width,
-              'selected tab stays in the viewport after an appearance change',
+              'the complete view chooser stays in the viewport after an appearance change',
             )
             const heading = page.getByRole('heading', { name: 'Execution', exact: true })
             assert(
@@ -997,6 +1002,73 @@ test('narrow generic tables preserve readable identifiers and local scrolling', 
       1,
       'an ordinary opaque identifier fits one readable table cell line',
     )
+    await noPageOverflow(page)
+  })
+})
+
+test('short columns leave room for readable references without unnecessary narrow scrolling', async () => {
+  const fixture = childFixture()
+  const collection = fixture.snapshot.views.find((item) => item.id === 'child-review').value
+    .sections[0].blocks[0]
+  collection.columns = [
+    { key: 'name', label: 'ID', type: 'text' },
+    { key: 'extra', label: 'Reference', type: 'text' },
+  ]
+  collection.rows.forEach((row, index) => {
+    row.cells = { name: String(index + 1), extra: 'record_0000000000' }
+  })
+  await withPage(fixture, { viewport: { width: 320, height: 900 } }, async (page) => {
+    await openTab(page, 'Specialist material')
+    const table = page.getByRole('region', { name: 'Candidates', exact: true })
+    assert(
+      await table.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+      'two concise columns fit the narrow reading area',
+    )
+    assert.equal(await page.getByRole('button', { name: 'Scroll Candidates right' }).count(), 0)
+    await noPageOverflow(page)
+  })
+})
+
+test('wide collections expose their remaining columns through usable scroll controls', async () => {
+  const fixture = childFixture()
+  await withPage(
+    fixture,
+    { viewport: { width: 320, height: 900 }, hasTouch: true },
+    async (page) => {
+      await openTab(page, 'Specialist material')
+      const right = page.getByRole('button', { name: 'Scroll Candidates right', exact: true })
+      await right.waitFor()
+      assert(await right.isEnabled())
+      for (let step = 0; step < 12 && (await right.isEnabled()); step++) await right.click()
+      assert(!(await right.isEnabled()), 'all remaining columns can be reached')
+      const table = page.getByRole('region', { name: 'Candidates', exact: true })
+      assert(
+        await table.evaluate((node) => node.scrollLeft + node.clientWidth >= node.scrollWidth - 1),
+      )
+      const left = page.getByRole('button', { name: 'Scroll Candidates left', exact: true })
+      assert(await left.isEnabled())
+      assert((await left.boundingBox()).height >= 44)
+      await left.click()
+      assert(await right.isEnabled())
+      await page.getByRole('button', { name: 'Monochrome appearance' }).click()
+      await noPageOverflow(page)
+    },
+  )
+})
+
+test('narrow view chooser reaches the final child destination and preserves panel return', async () => {
+  await withPage(childFixture(), { viewport: { width: 320, height: 900 } }, async (page) => {
+    const chooser = page.getByRole('combobox', { name: 'Choose view', exact: true })
+    await openTab(page, 'Specialist material')
+    const selected = await chooser.inputValue()
+    assert.match(
+      await chooser.locator('option:checked').textContent(),
+      /Specialist material.*Repair specialist/,
+    )
+    await page.getByRole('button', { name: 'Help & shortcuts', exact: true }).click()
+    await page.keyboard.press('Escape')
+    assert.equal(await chooser.inputValue(), selected)
+    await page.getByRole('region', { name: 'Specialist material', exact: true }).waitFor()
     await noPageOverflow(page)
   })
 })

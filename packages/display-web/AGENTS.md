@@ -102,12 +102,13 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   Document content preserves image proportions. Content and covers retain accessible captured-source disclosures.
 - All authored publishers share material rendering, including attributed child views.
   Publisher placement never reduces reports or collections to inspection teasers.
-- Table columns retain reading room for ordinary identifiers and use local horizontal scrolling on narrow screens.
+- Table columns size to their content and preserve readable identifiers. Overflowing tables expose scroll controls beside the complete collection.
 - Small collections disclose search and sorting. Active filters remain visible.
   Complete counts stay compact. Retained and reported differences remain explicit.
 - Content and formatted reports share responsive comparison regions with their supplied context.
 - Host and authored details open on request and share narrow-screen return navigation.
   Technical instance identities belong inside About this view.
+  Narrow navigation uses a labeled native chooser with every exact destination and publisher context.
   Appearance remains available on narrow screens. Coarse-pointer targets retain their 44-pixel minimum.
 - Root application pages precede Inspector and child views by verified
   publisher identity. Compose authored sections in place. Details open on
@@ -134,7 +135,7 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
 - Exact public behavior remains in owning CLI/web/reporting specifications.
   Fixture rendering does not qualify a host transport or newcomer usability.
 
-The visual review matrix serves identical observations to current and pre-97 production assets.
+The visual review matrix serves identical observations to current and PR-base production assets.
 Its HTML pairs and manifests identify both revisions. They do not replace an original approved mockup.
 
 ## Verification

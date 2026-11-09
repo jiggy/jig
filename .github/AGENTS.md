@@ -560,7 +560,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   same-source native reruns and manual runs created before protected approval or
   acquisition.
 
-The workbench visual workflow builds the pinned pre-97 renderer in an isolated worktree and captures it with the same fixtures as the current renderer. The retained HTML pairs identify both source revisions.
+The workbench visual workflow builds the exact PR-base renderer in an isolated worktree and captures it with the same fixtures as the current renderer. The retained HTML pairs identify both source revisions.
 
 ## Verification
 

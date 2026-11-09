@@ -130,7 +130,9 @@ Check keyboard focus, coarse-pointer targets, text contrast and responsive detai
 - Activity prioritizes retained report text while keeping severity, source and history discoverable.
 - Diagnostics preserve complete retained causes, attribution, clipping and operation paths.
 - Every host detail pane closes with Escape and preserves a visible return path at narrow widths.
-- Appearance remains reachable on narrow screens. Tab orientation matches its rendered layout.
+- Narrow screens expose every destination through a labeled native view chooser. Desktop navigation retains vertical tabs.
+- Tables size short columns compactly and preserve readable identifiers. Overflow controls reveal the remaining columns.
+- Appearance remains reachable on narrow screens.
 
 `test/material.node.mjs` checks semantic rendering, captured content, large galleries and actual HTTP behavior.
 `test/explorer.node.mjs` checks configuration-only rendering.

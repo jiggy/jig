@@ -2349,6 +2349,8 @@ function Icon({
     | 'folder'
     | 'settings'
     | 'close'
+    | 'help'
+    | 'diagnostics'
 }): ComponentChildren {
   const paths = {
     image: 'M3 3h18v18H3z M3 16l5-5 4 4 3-3 6 6 M7 7h.01',
@@ -2361,6 +2363,8 @@ function Icon({
     folder: 'M3 6h7l2 3h9v12H3z',
     settings: 'M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6',
     close: 'M6 6l12 12 M18 6L6 18',
+    help: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18 M9 9a3 3 0 0 1 6 0c0 2-3 2-3 5 M12 17h.01',
+    diagnostics: 'M12 3L22 21H2Z M12 9v4 M12 17h.01',
   }
   return h(
     'svg',
@@ -2535,6 +2539,28 @@ function Tabs(): ComponentChildren {
     ),
     tabs.length
       ? h(
+          'label',
+          { class: 'mobile-view-picker' },
+          h('span', {}, 'View'),
+          h(
+            'select',
+            {
+              'aria-label': 'Choose view',
+              value: focusId,
+              onChange: (event: Event) => navigate((event.target as HTMLSelectElement).value),
+            },
+            tabs.map((tab) =>
+              h(
+                'option',
+                { key: tab.id, value: tab.id },
+                privateBrowserLiteral(`${tab.title}${tab.source ? ` · ${tab.source}` : ''}`),
+              ),
+            ),
+          ),
+        )
+      : null,
+    tabs.length
+      ? h(
           'nav',
           {
             role: 'tablist',
@@ -2639,10 +2665,30 @@ function Tabs(): ComponentChildren {
       client?.current?.mode === 'recorded-packet' &&
         client?.body?.views.some((view) => view.hostRole === 'recorded-diagnostics')
         ? null
-        : button('Diagnostics', () => openPanel('diagnostics'), {
-            'aria-pressed': panel === 'diagnostics',
-          }),
-      button('Help & shortcuts', () => openPanel('help'), { 'aria-pressed': panel === 'help' }),
+        : button(
+            [
+              h('span', { class: 'sidebar-tool-icon' }, h(Icon, { kind: 'diagnostics' })),
+              h('span', { class: 'sidebar-tool-label' }, 'Diagnostics'),
+            ],
+            () => openPanel('diagnostics'),
+            {
+              'aria-pressed': panel === 'diagnostics',
+              'aria-label': 'Diagnostics',
+              title: 'Diagnostics',
+            },
+          ),
+      button(
+        [
+          h('span', { class: 'sidebar-tool-icon' }, h(Icon, { kind: 'help' })),
+          h('span', { class: 'sidebar-tool-label' }, 'Help & shortcuts'),
+        ],
+        () => openPanel('help'),
+        {
+          'aria-pressed': panel === 'help',
+          'aria-label': 'Help & shortcuts',
+          title: 'Help & shortcuts',
+        },
+      ),
       h(
         'div',
         { class: 'appearance', role: 'group', 'aria-label': 'Appearance' },
@@ -2758,7 +2804,7 @@ function App(): ComponentChildren {
         h('span', { 'aria-hidden': true }, '›'),
         h(
           'h1',
-          {},
+          { id: 'current-view-title' },
           literal(
             panel === 'help'
               ? 'Help & shortcuts'
@@ -2924,9 +2970,18 @@ function App(): ComponentChildren {
           'main',
           {
             id: 'view-panel',
-            role: panel || !hasDestination ? undefined : 'tabpanel',
+            role:
+              panel || !hasDestination
+                ? undefined
+                : navigationMedia.matches
+                  ? 'region'
+                  : 'tabpanel',
             'aria-labelledby':
-              panel || !hasDestination ? undefined : `tab-${encodeURIComponent(destinationKey)}`,
+              panel || !hasDestination
+                ? undefined
+                : navigationMedia.matches
+                  ? 'current-view-title'
+                  : `tab-${encodeURIComponent(destinationKey)}`,
             'aria-label': panel
               ? 'Inspection panel'
               : !hasDestination
