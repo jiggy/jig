@@ -33,7 +33,7 @@ const hash = async (path: string) =>
 async function tree(directory: string, prefix = ''): Promise<Record<string, string>> {
   const result: Record<string, string> = {}
   for (const entry of await readdir(join(directory, prefix), { withFileTypes: true })) {
-    if (entry.name === 'node_modules') continue
+    if (entry.name === 'node_modules' || entry.name === '.bun-tag') continue
     const path = join(prefix, entry.name)
     if (entry.isDirectory()) Object.assign(result, await tree(directory, path))
     else {
