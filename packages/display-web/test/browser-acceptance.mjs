@@ -1039,9 +1039,21 @@ test('wide collections expose their remaining columns through usable scroll cont
       const right = page.getByRole('button', { name: 'Scroll Candidates right', exact: true })
       await right.waitFor()
       assert(await right.isEnabled())
-      for (let step = 0; step < 12 && (await right.isEnabled()); step++) await right.click()
-      assert(!(await right.isEnabled()), 'all remaining columns can be reached')
       const table = page.getByRole('region', { name: 'Candidates', exact: true })
+      const element = await table.elementHandle()
+      for (let step = 0; step < 12; step++) {
+        if (
+          await table.evaluate((node) => node.scrollLeft + node.clientWidth >= node.scrollWidth - 1)
+        )
+          break
+        const previous = await table.evaluate((node) => node.scrollLeft)
+        await right.click()
+        await page.waitForFunction(({ element, previous }) => element.scrollLeft > previous, {
+          element,
+          previous,
+        })
+      }
+      await page.waitForFunction((button) => button.disabled, await right.elementHandle())
       assert(
         await table.evaluate((node) => node.scrollLeft + node.clientWidth >= node.scrollWidth - 1),
       )
@@ -1049,6 +1061,7 @@ test('wide collections expose their remaining columns through usable scroll cont
       assert(await left.isEnabled())
       assert((await left.boundingBox()).height >= 44)
       await left.click()
+      await page.waitForFunction((button) => !button.disabled, await right.elementHandle())
       assert(await right.isEnabled())
       await page.getByRole('button', { name: 'Monochrome appearance' }).click()
       await noPageOverflow(page)
@@ -1070,5 +1083,22 @@ test('narrow view chooser reaches the final child destination and preserves pane
     assert.equal(await chooser.inputValue(), selected)
     await page.getByRole('region', { name: 'Specialist material', exact: true }).waitFor()
     await noPageOverflow(page)
+  })
+})
+
+test('changing navigation layout preserves keyboard focus and the chosen view', async () => {
+  await withPage(hostFixture(), { viewport: { width: 390, height: 900 } }, async (page) => {
+    await openTab(page, 'Execution')
+    const chooser = page.getByRole('combobox', { name: 'Choose view', exact: true })
+    await chooser.focus()
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    const tab = page.getByRole('tab', { name: 'Execution', exact: true })
+    await page.waitForFunction((node) => node === document.activeElement, await tab.elementHandle())
+    await page.setViewportSize({ width: 390, height: 900 })
+    await page.waitForFunction(
+      (node) => node === document.activeElement,
+      await chooser.elementHandle(),
+    )
+    await page.getByRole('region', { name: 'Execution', exact: true }).waitFor()
   })
 })

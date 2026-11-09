@@ -2346,6 +2346,11 @@ footer {
   font-size: 15px;
   line-height: 24px;
 }
+.application-section-reading .report-with-references {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
 .application-section-context {
   border-top: 1px solid var(--line);
   padding-top: 16px;
@@ -2450,7 +2455,8 @@ footer {
   background: var(--pane);
 }
 .application-table table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
 }
 .application-table th,
@@ -3232,6 +3238,10 @@ nav .nav-entry {
 .host-toolbar > details {
   color: var(--secondary);
   font-size: 12px;
+  margin: 0;
+}
+.host-toolbar > .call-summary {
+  margin: 0;
 }
 .host-toolbar summary {
   cursor: pointer;
