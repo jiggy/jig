@@ -79,40 +79,22 @@ try {
       const context = await browser.newContext({ viewport })
       const page = await context.newPage()
       page.setDefaultTimeout(10000)
-      const waitForCapture = async (predicate) => {
-        if (!assetCheckout) {
-          await page.waitForFunction(predicate)
-          return true
-        }
-        // Keep historical loading defects visible without weakening current acceptance.
-        return page
-          .waitForFunction(predicate, undefined, { timeout: 1500 })
-          .then(() => true)
-          .catch((error) => {
-            if (error.name !== 'TimeoutError') throw error
-            return false
-          })
-      }
       try {
         await page.goto(host.url)
         await page.getByText('Connected', { exact: true }).waitFor()
         if (tab === 'Diagnostics')
           await page.getByRole('button', { name: 'Diagnostics', exact: true }).click()
-        else if (tab) await page.getByRole('tab', { name: new RegExp(`^${tab}(?:\\s|$)`) }).click()
-        const focusSupported =
-          !focus || (await page.locator(`[data-request-focus="${focus}"]`).count()) > 0
-        if (focus && (focusSupported || !assetCheckout))
-          await page.locator(`[data-request-focus="${focus}"]`).click()
+        else if (tab) {
+          const chooser = page.getByRole('combobox', { name: 'Choose view', exact: true })
+          if (await chooser.isVisible()) {
+            const option = chooser.getByRole('option', { name: new RegExp(`^${tab}(?:\\s|$)`) })
+            await chooser.selectOption(await option.getAttribute('value'))
+          } else await page.getByRole('tab', { name: new RegExp(`^${tab}(?:\\s|$)`) }).click()
+        }
+        if (focus) await page.locator(`[data-request-focus="${focus}"]`).click()
         for (const theme of ['Light', 'Dark', 'Monochrome']) {
           const appearance = page.getByRole('button', { name: `${theme} appearance`, exact: true })
-          if (assetCheckout && !(await appearance.isVisible()))
-            await page.evaluate(
-              (value) => {
-                document.documentElement.dataset.theme = value
-              },
-              theme === 'Monochrome' ? 'color-free' : theme.toLowerCase(),
-            )
-          else await appearance.click()
+          await appearance.click()
           await page.evaluate(() => document.fonts.ready)
           // Only visible material belongs to this viewport. Below-fold previews remain lazy.
           const visiblePreviewsLoaded = () =>
@@ -126,10 +108,8 @@ try {
                 !node.textContent.includes('not loaded')
               )
             })
-          const previewsReady = await waitForCapture(visiblePreviewsLoaded)
-          const imagesReady = await waitForCapture(() =>
-            [...document.images].every((image) => image.complete),
-          )
+          await page.waitForFunction(visiblePreviewsLoaded)
+          await page.waitForFunction(() => [...document.images].every((image) => image.complete))
           const unresolved = await page.locator('.media-placeholder').evaluateAll((nodes) =>
             nodes
               .filter((node) => {
@@ -159,7 +139,7 @@ try {
                 .map((image) => `Image not loaded: ${image.alt || 'untitled image'}`),
             )),
           )
-          if (unresolved.length && !assetCheckout)
+          if (unresolved.length)
             throw new Error(`Visible captured material is unavailable: ${unresolved.join('; ')}`)
           const file = `${name}-${viewportName}-${theme.toLowerCase()}.png`
           await page.screenshot({
@@ -172,9 +152,6 @@ try {
             viewport,
             theme: theme.toLowerCase(),
             file,
-            unsupportedFocus: !focusSupported,
-            unavailableMedia: unresolved,
-            loadingIncomplete: !previewsReady || !imagesReady,
           })
           await writeManifest()
         }

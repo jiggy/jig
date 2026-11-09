@@ -13,6 +13,7 @@ import type {
   Value,
 } from '@jigging/reporting'
 import { type ComponentChildren, h } from 'preact'
+import { useLayoutEffect, useRef, useState } from 'preact/hooks'
 import {
   type PrivateBrowserLocal,
   type PrivateBrowserRecord,
@@ -64,6 +65,81 @@ function sectionPresentation(section: Section): string {
   if (section.blocks.some(isMaterial)) return 'application-section-material'
   if (section.blocks.every((block) => block.kind === 'report')) return 'application-section-reading'
   return 'application-section-context'
+}
+
+/** Keep wide collections readable and make offscreen columns discoverable. */
+function TableViewport({
+  label,
+  children,
+}: {
+  label: string
+  children?: ComponentChildren
+}): ComponentChildren {
+  const viewport = useRef<HTMLDivElement>(null)
+  const [edges, setEdges] = useState({ before: false, after: false })
+  const update = () => {
+    const node = viewport.current
+    if (!node) return
+    const before = node.scrollLeft > 1
+    const after = node.scrollLeft + node.clientWidth < node.scrollWidth - 1
+    setEdges((previous) =>
+      previous.before === before && previous.after === after ? previous : { before, after },
+    )
+  }
+  useLayoutEffect(() => {
+    const node = viewport.current
+    if (!node) return
+    const observer = new ResizeObserver(update)
+    observer.observe(node)
+    if (node.firstElementChild) observer.observe(node.firstElementChild)
+    update()
+    return () => observer.disconnect()
+  }, [])
+  const scroll = (direction: number) =>
+    viewport.current?.scrollBy({ left: direction * viewport.current.clientWidth * 0.75 })
+  return h(
+    'div',
+    { class: 'table-viewport' },
+    edges.before || edges.after
+      ? h(
+          'div',
+          { class: 'table-scroll-tools' },
+          h('span', {}, 'More columns'),
+          h(
+            'button',
+            {
+              type: 'button',
+              'aria-label': `Scroll ${label} left`,
+              disabled: !edges.before,
+              onClick: () => scroll(-1),
+            },
+            '←',
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              'aria-label': `Scroll ${label} right`,
+              disabled: !edges.after,
+              onClick: () => scroll(1),
+            },
+            '→',
+          ),
+        )
+      : null,
+    h(
+      'div',
+      {
+        class: 'application-table',
+        role: 'region',
+        'aria-label': label,
+        tabIndex: 0,
+        ref: viewport,
+        onScroll: update,
+      },
+      children,
+    ),
+  )
 }
 
 /** Plain supplied data forms the page. Only additional context needs inspection. */
@@ -237,13 +313,8 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
             }),
           )
         : h(
-            'div',
-            {
-              class: 'application-table',
-              role: 'region',
-              'aria-label': text(block.title),
-              tabIndex: 0,
-            },
+            TableViewport,
+            { label: text(block.title) },
             h(
               'table',
               {},

@@ -14,7 +14,7 @@
   --add: #1e6841;
   --remove: #a62b40;
   font:
-    13px / 1.5 system-ui,
+    14px / 1.5 system-ui,
     sans-serif;
   font-variant-numeric: tabular-nums;
 }
@@ -1231,7 +1231,7 @@ h2 {
   overflow-wrap: anywhere;
 }
 h3 {
-  font-size: 14px;
+  font-size: 16px;
   margin: 20px 0 7px;
 }
 p {
@@ -1449,7 +1449,7 @@ main {
   min-height: 0;
   flex: 1;
   overflow: auto;
-  padding: 20px;
+  padding: 24px;
 }
 .workspace {
   display: grid;
@@ -2306,8 +2306,8 @@ footer {
 }
 .application-summary {
   max-width: 78ch;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 15px;
+  line-height: 24px;
   margin: 0;
 }
 .application-about {
@@ -2343,8 +2343,8 @@ footer {
   background: var(--pane);
 }
 .application-section-reading .report {
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 15px;
+  line-height: 24px;
 }
 .application-section-context {
   border-top: 1px solid var(--line);
@@ -2404,7 +2404,7 @@ footer {
   border: 0;
 }
 .collection-heading h4 {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   margin: 0;
 }
@@ -2460,11 +2460,35 @@ footer {
   border-bottom: 1px solid var(--line);
   vertical-align: top;
   white-space: pre-wrap;
-  min-width: 160px;
+  min-width: 7ch;
+  max-width: 48ch;
+}
+.application-table .literal {
+  overflow-wrap: break-word;
+}
+.table-viewport {
+  min-width: 0;
+}
+.table-scroll-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: 0 0 8px;
+  color: var(--secondary);
+  font-size: 12px;
+}
+.table-scroll-tools > span {
+  margin-right: auto;
+}
+.table-scroll-tools button {
+  min-width: 36px;
+  min-height: 32px;
+  padding: 3px 8px;
 }
 .application-table th {
   color: var(--secondary);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   background: var(--page);
 }
@@ -2660,7 +2684,7 @@ footer {
 /* One application frame: navigation owns the full height; the topbar owns page scope. */
 .inspector {
   position: relative;
-  padding-left: 208px;
+  padding-left: 224px;
 }
 .inspector > .run-layout {
   display: flex;
@@ -2670,7 +2694,7 @@ footer {
 .navigation {
   position: absolute;
   inset: 0 auto 0 0;
-  width: 208px;
+  width: 224px;
   padding: 16px 10px;
   background: var(--page);
 }
@@ -2710,8 +2734,8 @@ footer {
   color: var(--secondary);
 }
 .shell {
-  min-height: 48px;
-  height: 48px;
+  min-height: 56px;
+  height: 56px;
   padding: 0 20px;
   gap: 12px;
   background: var(--page);
@@ -2727,7 +2751,7 @@ footer {
   font-size: 12px;
 }
 .workbench-breadcrumb h1 {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   line-height: 18px;
   margin: 0;
@@ -2737,6 +2761,12 @@ footer {
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
+}
+.mobile-view-picker {
+  display: none;
+}
+.sidebar-tool-icon {
+  display: none;
 }
 .workspace-observation {
   font-size: 12px;
@@ -3068,15 +3098,21 @@ nav .nav-entry {
     display: none;
   }
   .navigation nav {
-    flex-direction: row;
-    flex-shrink: 0;
-    overflow-x: auto;
+    display: none;
   }
-  .navigation nav > div {
-    flex-shrink: 0;
+  .mobile-view-picker {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--secondary);
+    font-size: 12px;
   }
-  .navigation nav button {
-    white-space: nowrap;
+  .mobile-view-picker select {
+    flex: 1;
+    min-width: 0;
+    color: var(--text);
+    font-size: 14px;
+    min-height: 40px;
   }
   .navigation .sidebar-tools {
     margin: 0;
@@ -3086,7 +3122,23 @@ nav .nav-entry {
     align-items: center;
   }
   .navigation .sidebar-tools > button {
-    white-space: nowrap;
+    display: grid;
+    place-items: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 6px;
+  }
+  .sidebar-tool-icon {
+    display: grid;
+    width: 20px;
+    height: 20px;
+  }
+  .sidebar-tool-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
   .navigation .appearance {
     display: flex;
@@ -3121,15 +3173,14 @@ nav .nav-entry {
     flex: 1 1 0;
   }
   .workbench-breadcrumb > span:first-child {
-    flex: 1 1 0;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: none;
+  }
+  .workbench-breadcrumb > span:nth-child(2) {
+    display: none;
   }
   .workbench-breadcrumb h1 {
     min-width: 0;
-    max-width: 45vw;
+    max-width: none;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
