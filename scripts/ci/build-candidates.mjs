@@ -20,13 +20,14 @@ import { pathToFileURL } from 'node:url'
 import { promoteDirectory } from '../promote-directory.mjs'
 import { releaseState } from '../release/state.mjs'
 import { PACKAGE_LAYOUT } from './candidate-provenance.mjs'
+import QUALIFIED_BUN_SPEC from './qualified-bun.json' with { type: 'json' }
 
 export const CANDIDATE_PACKAGES = PACKAGE_LAYOUT
 export const QUALIFIED_BUN = Object.freeze({
-  version: '1.4.4',
-  revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
-  platform: 'linux',
-  architecture: 'x64',
+  version: QUALIFIED_BUN_SPEC.version,
+  revision: QUALIFIED_BUN_SPEC.revision,
+  platform: QUALIFIED_BUN_SPEC.platform,
+  architecture: QUALIFIED_BUN_SPEC.architecture,
 })
 export const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
 
@@ -79,7 +80,7 @@ export async function candidateTools({ env = process.env, run = execute } = {}) 
   for (const [key, expected] of Object.entries(QUALIFIED_BUN)) {
     if (identity[key] !== expected)
       throw new Error(
-        'Candidates require native Linux x64 Bun 1.4.4 revision 38afee6c84fcf48c0edb2466aa4b27d287a59c30',
+        `Candidates require native Linux x64 Bun ${QUALIFIED_BUN.version} revision ${QUALIFIED_BUN.revision}`,
       )
   }
   const nodeVersion = run(node, [
@@ -94,7 +95,8 @@ export async function candidateTools({ env = process.env, run = execute } = {}) 
     !/^just \d+\.\d+\.\d+$/.test(justVersion)
   )
     throw new Error('Build tools returned invalid identities')
-  if (justVersion !== 'just 1.43.1') throw new Error('Candidates require exact Just 1.43.1')
+  if (justVersion !== QUALIFIED_BUN_SPEC.justVersion)
+    throw new Error(`Candidates require exact Just ${QUALIFIED_BUN_SPEC.justVersion.replace(/^just /, '')}`)
   return { bun, node, npm, just, identity, nodeVersion, npmVersion, justVersion }
 }
 

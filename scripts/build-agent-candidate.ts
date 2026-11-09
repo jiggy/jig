@@ -7,6 +7,7 @@ import { lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { promoteDirectory } from './promote-directory.mjs'
+import QUALIFIED_BUN from './ci/qualified-bun.json' with { type: 'json' }
 
 const [kind, destination, ...extra] = process.argv.slice(2)
 if (!['agent-method', 'agent-acp'].includes(kind ?? '') || !destination || extra.length)
@@ -31,9 +32,9 @@ for (const [label, executable] of [
 ] as const)
   if (!executable || !isAbsolute(executable))
     throw new Error(`set ${label} to its absolute executable`)
-if (Bun.version !== '1.4.4' || Bun.revision !== '38afee6c84fcf48c0edb2466aa4b27d287a59c30')
+if (Bun.version !== QUALIFIED_BUN.version || Bun.revision !== QUALIFIED_BUN.revision)
   throw new Error(
-    'Agent candidates require exact Bun 1.4.4 revision 38afee6c84fcf48c0edb2466aa4b27d287a59c30',
+    `Agent candidates require exact Bun ${QUALIFIED_BUN.version} revision ${QUALIFIED_BUN.revision}`,
   )
 command(node!, ['-e', 'if(process.release.name!=="node"||process.versions.bun)process.exit(70)'])
 if (command('git', ['status', '--porcelain', '--untracked-files=no']))

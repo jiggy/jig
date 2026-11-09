@@ -4,6 +4,7 @@ import { lstat, readdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { releaseClosure } from '../release/catalog.mjs'
+import QUALIFIED_BUN from './qualified-bun.json' with { type: 'json' }
 
 export const PACKAGE_LAYOUT = Object.freeze({
   'flow-sdk': '@jigging/flow',
@@ -194,11 +195,11 @@ export function validateProducer(producer) {
 
 export function validateBuildProfile(profile) {
   if (
-    profile?.platform !== 'linux' ||
-    profile.architecture !== 'x64' ||
-    profile.version !== '1.4.4' ||
-    profile.revision !== '38afee6c84fcf48c0edb2466aa4b27d287a59c30' ||
-    profile.justVersion !== 'just 1.43.1' ||
+    profile?.platform !== QUALIFIED_BUN.platform ||
+    profile.architecture !== QUALIFIED_BUN.architecture ||
+    profile.version !== QUALIFIED_BUN.version ||
+    profile.revision !== QUALIFIED_BUN.revision ||
+    profile.justVersion !== QUALIFIED_BUN.justVersion ||
     !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(profile.nodeVersion ?? '') ||
     !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(profile.npmVersion ?? '')
   )
