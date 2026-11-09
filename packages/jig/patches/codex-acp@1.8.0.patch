@@ -1,7 +1,27 @@
 diff --git a/dist/index.js b/dist/index.js
+index b8cc7b7a..12c34a5e 100755
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -22109,7 +22109,12 @@
+@@ -3741,7 +3741,7 @@ var CLIENT_METHODS = {
+ var PROTOCOL_METHODS = {
+   cancel_request: "$/cancel_request"
+ };
+-var PROTOCOL_VERSION = 1;
++var PROTOCOL_VERSION = 2;
+ 
+ // node_modules/zod/v4/classic/external.js
+ var external_exports = {};
+@@ -19486,7 +19486,9 @@ var zInitializeRequest = object({
+     terminal: false,
+     auth: { terminal: false }
+   })),
++  capabilities: defaultOnError(zClientCapabilities.nullish(), () => void 0),
+   clientInfo: defaultOnError(zImplementation.nullish(), () => void 0),
++  info: defaultOnError(zImplementation.nullish(), () => void 0),
+   _meta: defaultOnError(record(string2(), unknown()).nullish(), () => void 0)
+ });
+ var zAuthenticateRequest = object({
+@@ -22109,7 +22111,12 @@ function startCodexConnection(codexPath, env) {
    const writer = createJSONRPCWriter(codex.stdin);
    let connection = rpc.createMessageConnection(reader, writer);
    connection.listen();
@@ -15,7 +35,25 @@ diff --git a/dist/index.js b/dist/index.js
      connection.dispose();
    });
    return { connection, process: codex };
-@@ -24211,7 +24216,8 @@
+@@ -23597,16 +23604,9 @@ function createUserMessageChunk(content, messageId, meta3) {
+   };
+ }
+ function createAgentMessageChunk(content, messageId, meta3) {
+-  if (messageId) {
+-    return {
+-      sessionUpdate: "agent_message_chunk",
+-      messageId,
+-      content,
+-      ...meta3 ? { _meta: meta3 } : {}
+-    };
+-  }
+   return {
+     sessionUpdate: "agent_message_chunk",
++    messageId: messageId || crypto.randomUUID(),
+     content,
+     ...meta3 ? { _meta: meta3 } : {}
+   };
+@@ -24211,7 +24211,8 @@ var CodexEventHandler = class _CodexEventHandler {
        "error",
        notification.params.error.message,
        void 0,
@@ -25,7 +63,7 @@ diff --git a/dist/index.js b/dist/index.js
      );
      await this.session.update(this.createSessionFailureUpdate(failure));
    }
-@@ -24894,7 +24900,10 @@
+@@ -24894,7 +24895,10 @@ ${event.stdin}
            this.sessionFailureKind(params.error.codexErrorInfo),
            params.turnId,
            "error",
@@ -37,7 +75,7 @@ diff --git a/dist/index.js b/dist/index.js
          );
          return this.createSessionFailureUpdate(failure);
        }
-@@ -24931,9 +24940,9 @@
+@@ -24931,9 +24935,9 @@ ${event.stdin}
    }
    recordTypedSessionFailure(params) {
      const kind = this.sessionFailureKind(params.error.codexErrorInfo);
@@ -49,7 +87,7 @@ diff --git a/dist/index.js b/dist/index.js
      const policy = SESSION_FAILURE_POLICY[kind];
      const scope = turnId ?? this.sessionState.sessionId;
      const id = this.activeFailureIdByScope.get(scope) ?? this.allocateFailureId(scope, turnId);
-@@ -24944,7 +24953,8 @@
+@@ -24944,7 +24948,8 @@ ${event.stdin}
        category: policy.category,
        severity,
        title,
@@ -59,7 +97,7 @@ diff --git a/dist/index.js b/dist/index.js
      };
      this.failuresById.set(id, failure);
      this.failureTurnIdById.set(id, attributeToTurn ? turnId : void 0);
-@@ -27900,9 +27910,21 @@
+@@ -27900,9 +27905,21 @@ function isUnknownRecord(value) {
  var CUSTOM_GATEWAY_PROVIDER_ID = "custom-gateway";
  var OPENAI_PROVIDER_ID = "openai";
  var DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
@@ -81,7 +119,7 @@ diff --git a/dist/index.js b/dist/index.js
  var CodexAcpClient = class {
    codexClient;
    config;
-@@ -27941,6 +27963,16 @@
+@@ -27941,6 +27958,16 @@ var CodexAcpClient = class {
          title: request.clientInfo?.title ?? this.defaultClientInfo.title
        }
      });
@@ -98,7 +136,7 @@ diff --git a/dist/index.js b/dist/index.js
      this.configPath = response?.codexHome ?? null;
    }
    getHomePath() {
-@@ -29071,7 +29103,7 @@
+@@ -29071,7 +29098,7 @@ var CodexAppServerClient = class {
        if (this.handleStaleTurnNotification(serverNotification, routing)) {
          return;
        }
@@ -107,7 +145,7 @@ diff --git a/dist/index.js b/dist/index.js
        if (this.handleStaleTurnNotification(serverNotification, routing)) {
          return;
        }
-@@ -29150,19 +29182,33 @@
+@@ -29150,19 +29177,33 @@ var CodexAppServerClient = class {
    }
    async runTurn(params, onTurnStarted) {
      const capturedCompletions = [];
@@ -128,26 +166,26 @@ diff --git a/dist/index.js b/dist/index.js
        const turnStarted = await this.turnStart(params);
 -      onTurnStarted?.(turnStarted.turn.id);
 -      const earlyCompletion = capturedCompletions.find((event) => event.turn.id === turnStarted.turn.id);
+-      releaseCapture();
+-      if (earlyCompletion) {
+-        return earlyCompletion;
 +      expectedTurnId = turnStarted.turn.id;
 +      // A turn/start reply allocates an ID before the native turn is interruptible.
 +      if (!startedTurns.has(expectedTurnId) && !capturedCompletions.some((event) => event.turn.id === expectedTurnId)) {
 +        await ready;
-+      }
-+      const earlyCompletion = capturedCompletions.find((event) => event.turn.id === expectedTurnId);
-+      if (earlyCompletion) return earlyCompletion;
-+      onTurnStarted?.(expectedTurnId);
-       releaseCapture();
--      if (earlyCompletion) {
--        return earlyCompletion;
--      }
+       }
 -      return await this.awaitTurnCompleted(params.threadId, turnStarted.turn.id);
++      const earlyCompletion = capturedCompletions.find((event) => event.turn.id === expectedTurnId);
++      onTurnStarted?.(expectedTurnId);
++      releaseCapture();
++      if (earlyCompletion) return earlyCompletion;
 +      return await this.awaitTurnCompleted(params.threadId, expectedTurnId);
      } finally {
 +      releaseRouting();
        releaseCapture();
      }
    }
-@@ -29596,7 +29642,7 @@
+@@ -29596,7 +29637,7 @@ var CodexAppServerClient = class {
        capture();
      }
    }
@@ -156,7 +194,7 @@ diff --git a/dist/index.js b/dist/index.js
      if (routing.threadId === null || routing.turnId === null) {
        return;
      }
-@@ -29605,7 +29651,7 @@
+@@ -29605,7 +29646,7 @@ var CodexAppServerClient = class {
        return;
      }
      for (const capture of captures) {
@@ -165,7 +203,88 @@ diff --git a/dist/index.js b/dist/index.js
      }
    }
    handleStaleTurnNotification(notification, routing) {
-@@ -33448,6 +33494,7 @@
+@@ -31573,12 +31614,15 @@ var CodexAcpServer = class _CodexAcpServer {
+   }
+   async initialize(_params) {
+     logger.log("Initialize request received");
+-    this.clientInfo = _params.clientInfo ?? null;
+-    this.clientCapabilities = _params.clientCapabilities ?? null;
+-    this.initializeRequest = _params;
+-    this.terminalOutputMode = resolveTerminalOutputMode(_params.clientCapabilities);
+-    this.booleanConfigOptionsSupported = clientSupportsBooleanConfigOptions(_params.clientCapabilities);
+-    await this.runWithProcessCheck(() => this.codexAcpClient.initialize(_params));
++    const clientInfo = _params.info ?? _params.clientInfo ?? null;
++    const clientCapabilities = _params.capabilities ?? _params.clientCapabilities ?? null;
++    const normalizedParams = { ..._params, clientInfo, clientCapabilities };
++    this.clientInfo = clientInfo;
++    this.clientCapabilities = clientCapabilities;
++    this.initializeRequest = normalizedParams;
++    this.terminalOutputMode = resolveTerminalOutputMode(clientCapabilities);
++    this.booleanConfigOptionsSupported = clientSupportsBooleanConfigOptions(clientCapabilities);
++    await this.runWithProcessCheck(() => this.codexAcpClient.initialize(normalizedParams));
+     const sessionCapabilities = {
+       resume: {},
+       list: {},
+@@ -31589,7 +31633,29 @@ var CodexAcpServer = class _CodexAcpServer {
+       subagents: {}
+     };
+     return {
+-      protocolVersion: PROTOCOL_VERSION,
++      protocolVersion: 2,
++      info: {
++        name: package_default.name,
++        title: "Codex",
++        version: package_default.version
++      },
++      capabilities: {
++        session: sessionCapabilities,
++        auth: {
++          logout: {}
++        },
++        providers: {},
++        loadSession: true,
++        promptCapabilities: {
++          embeddedContext: true,
++          image: true
++        },
++        mcpCapabilities: {
++          acp: false,
++          http: true,
++          sse: false
++        }
++      },
+       agentInfo: {
+         name: package_default.name,
+         title: "Codex",
+@@ -31612,7 +31678,7 @@ var CodexAcpServer = class _CodexAcpServer {
+           sse: false
+         }
+       },
+-      authMethods: getCodexAuthMethods(_params.clientCapabilities),
++      authMethods: getCodexAuthMethods(clientCapabilities),
+       _meta: {
+         steering: {
+           supported: true
+@@ -32618,7 +32684,17 @@ Check ${configPath} and project .codex directories, especially their config.toml
+         this.booleanConfigOptionsSupported
+       ));
+     }
+-    return configOptions;
++    return configOptions.map((option) => {
++      const { id, ...rest } = option;
++      if (rest.type === "select" && Array.isArray(rest.options) && rest.options.some((entry) => "group" in entry)) {
++        return {
++          ...rest,
++          configId: id,
++          options: rest.options.map(({ group, ...selectGroup }) => ({ ...selectGroup, groupId: group }))
++        };
++      }
++      return { ...rest, configId: id };
++    });
+   }
+   createSessionConfigOptionsResponse(sessionState) {
+     if (!this.isSessionConfigEnabled()) {
+@@ -33448,9 +33524,25 @@ Check ${configPath} and project .codex directories, especially their config.toml
        }
        return pendingTurnStart;
      };
@@ -173,7 +292,149 @@ diff --git a/dist/index.js b/dist/index.js
      const disposePromptRequestCancellation = this.observePromptRequestCancellation(signal, sessionState, activePrompt);
      let eventHandler = null;
      let promptNotificationsActive = true;
-@@ -33773,10 +33820,6 @@
++    let pendingTurnStartUpdates = Promise.resolve();
++    let turnStartGateSettled = false;
++    let resolveTurnStartGate = () => {};
++    const turnStartGate = new Promise((resolve) => {
++      resolveTurnStartGate = () => {
++        if (!turnStartGateSettled) {
++          turnStartGateSettled = true;
++          resolve();
++        }
++      };
++    });
++    const settleTurnStart = async () => {
++      await turnStartGate;
++      await pendingTurnStartUpdates;
++    };
+     const clearRecoveredSessionFailure = async (handler) => {
+       await handler.completeSuccessfulTurn(sessionState.currentTurnId);
+       const current = sessionState.sessionFailure;
+@@ -33458,10 +33550,18 @@ Check ${configPath} and project .codex directories, especially their config.toml
+         await handler.clearSessionFailure();
+       }
+     };
+-    const cancelledPromptResponse = () => {
++    const cancelledPromptResponse = async () => {
+       promptWasCancelled = true;
+       agentFileChangeReportTurnId = null;
+       agentFileChangeReportUnavailableReason = "cancelled";
++      resolveTurnStartGate();
++      await pendingTurnStartUpdates;
++      const sessionConn = new ACPSessionConnection(this.connection, params.sessionId);
++      await sessionConn.update({
++        sessionUpdate: "state_update",
++        state: "idle",
++        stopReason: "cancelled"
++      });
+       return this.cancelledPromptResponse(sessionState);
+     };
+     try {
+@@ -33499,6 +33599,9 @@ Check ${configPath} and project .codex directories, especially their config.toml
+             await promptEventHandler.handleSessionScopedNotification(event);
+             return;
+           }
++          if (event.method !== "turn/started") {
++            await settleTurnStart();
++          }
+           const completesActiveTurn = event.method === "turn/completed" && event.params.threadId === sessionState.sessionId && event.params.turn.id === sessionState.currentTurnId;
+           await promptEventHandler.handleNotification(event);
+           if (completesActiveTurn) {
+@@ -33523,11 +33626,24 @@ Check ${configPath} and project .codex directories, especially their config.toml
+           activePrompt.currentTurn = turn;
+           if (this.promptShouldStop(params.sessionId, activePrompt)) {
+             this.interruptLateStartedTurn(turn);
++            resolveTurnStartGate();
+             return;
+           }
+           sessionState.currentTurnId = turnId;
+           pendingTurnStart?.resolve(turnId);
+-          onTurnStarted?.();
++          const sessionConn = new ACPSessionConnection(this.connection, params.sessionId);
++          pendingTurnStartUpdates = sessionConn.update({
++            sessionUpdate: "user_message",
++            messageId: turnId,
++            content: params.prompt
++          }).then(() => sessionConn.update({
++            sessionUpdate: "state_update",
++            state: "running"
++          })).catch((err) => {
++            logger.error("Failed to publish turn start updates", err);
++          });
++          resolveTurnStartGate();
++          onTurnStarted?.(turnId);
+         },
+         setConfigOption: async (configId, value) => {
+           await this.applySessionConfigOption(sessionState, {
+@@ -33571,11 +33687,11 @@ Check ${configPath} and project .codex directories, especially their config.toml
+         if (error52) {
+           throw error52;
+         }
+-        const terminalFailure2 = this.terminalFailurePromptResponse(
++        const terminalFailure2 = await (await settleTurnStart(), this.terminalFailurePromptResponse(
+           sessionState,
+           eventHandler,
+           commandResult.turnCompleted?.turn.id ?? sessionState.currentTurnId
+-        );
++        ));
+         if (terminalFailure2) {
+           return terminalFailure2;
+         }
+@@ -33585,6 +33701,7 @@ Check ${configPath} and project .codex directories, especially their config.toml
+           agentFileChangeReportUnavailableReason = "notReported";
+         }
+         await clearRecoveredSessionFailure(eventHandler);
++        await settleTurnStart();
+         return {
+           stopReason: "end_turn",
+           usage: this.buildPromptUsage(sessionState.lastTokenUsage),
+@@ -33627,11 +33744,24 @@ Check ${configPath} and project .codex directories, especially their config.toml
+             activePrompt.currentTurn = turn;
+             if (this.promptShouldStop(params.sessionId, activePrompt)) {
+               this.interruptLateStartedTurn(turn);
++              resolveTurnStartGate();
+               return;
+             }
+             sessionState.currentTurnId = turnId;
+             pendingTurnStart?.resolve(turnId);
+-            onTurnStarted?.();
++            const sessionConn = new ACPSessionConnection(this.connection, params.sessionId);
++            pendingTurnStartUpdates = sessionConn.update({
++              sessionUpdate: "user_message",
++              messageId: turnId,
++              content: params.prompt
++            }).then(() => sessionConn.update({
++              sessionUpdate: "state_update",
++              state: "running"
++            })).catch((err) => {
++              logger.error("Failed to publish turn start updates", err);
++            });
++            resolveTurnStartGate();
++            onTurnStarted?.(turnId);
+           },
+           () => this.promptShouldStop(params.sessionId, activePrompt)
+         )
+@@ -33670,7 +33800,8 @@ Check ${configPath} and project .codex directories, especially their config.toml
+       if (error51) {
+         throw error51;
+       }
+-      const terminalFailure = this.terminalFailurePromptResponse(
++      await settleTurnStart();
++      const terminalFailure = await this.terminalFailurePromptResponse(
+         sessionState,
+         eventHandler,
+         turnCompleted.turn.id
+@@ -33759,7 +33890,8 @@ Check ${configPath} and project .codex directories, especially their config.toml
+           if (implementationError) {
+             throw implementationError;
+           }
+-          const implementationFailure = this.terminalFailurePromptResponse(
++          await settleTurnStart();
++          const implementationFailure = await this.terminalFailurePromptResponse(
+             sessionState,
+             eventHandler,
+             turnCompleted.turn.id
+@@ -33773,14 +33905,17 @@ Check ${configPath} and project .codex directories, especially their config.toml
          agentFileChangeReportTurnId = turnCompleted.turn.id;
        }
        await clearRecoveredSessionFailure(eventHandler);
@@ -184,7 +445,70 @@ diff --git a/dist/index.js b/dist/index.js
        await this.publishFallbackSessionTitle(
          sessionState,
          this.createPromptFallbackTitle(params.prompt)
-@@ -34198,13 +34241,17 @@
+       );
++      await settleTurnStart();
++      const sessionConn = new ACPSessionConnection(this.connection, params.sessionId);
++      await sessionConn.update({
++        sessionUpdate: "state_update",
++        state: "idle",
++        stopReason: "end_turn"
++      });
+       return {
+         stopReason: "end_turn",
+         usage: this.buildPromptUsage(sessionState.lastTokenUsage),
+@@ -33788,8 +33923,10 @@ Check ${configPath} and project .codex directories, especially their config.toml
+       };
+     } catch (err) {
+       logger.error(`Prompt for session ${params.sessionId} failed`, err);
++      resolveTurnStartGate();
++      await pendingTurnStartUpdates;
+       if (activePrompt.signal.aborted || this.sessionIsClosing(params.sessionId)) {
+-        return cancelledPromptResponse();
++        return await cancelledPromptResponse();
+       }
+       agentFileChangeReportTurnId = null;
+       agentFileChangeReportUnavailableReason = "providerError";
+@@ -33800,7 +33937,7 @@ Check ${configPath} and project .codex directories, especially their config.toml
+           isProcessExit ? "transport_lost" : "internal_error",
+           sessionState.currentTurnId
+         );
+-        const failureResponse = this.terminalFailurePromptResponse(
++        const failureResponse = await this.terminalFailurePromptResponse(
+           sessionState,
+           eventHandler,
+           sessionState.currentTurnId,
+@@ -33812,6 +33949,7 @@ Check ${configPath} and project .codex directories, especially their config.toml
+       }
+       throw err;
+     } finally {
++      resolveTurnStartGate();
+       promptNotificationsActive = false;
+       try {
+         await this.codexAcpClient.waitForSessionNotifications(params.sessionId);
+@@ -33873,11 +34011,21 @@ Check ${configPath} and project .codex directories, especially their config.toml
+       _meta: this.buildQuotaMeta(sessionState)
+     };
+   }
+-  terminalFailurePromptResponse(sessionState, eventHandler, turnId, allowUnattributed = false) {
++  async terminalFailurePromptResponse(sessionState, eventHandler, turnId, allowUnattributed = false) {
+     const failureMeta = eventHandler.getTerminalSessionFailureMeta(turnId, allowUnattributed);
+     if (failureMeta === null) {
+       return null;
+     }
++    const sessionConn = new ACPSessionConnection(this.connection, sessionState.sessionId);
++    await sessionConn.update({
++      sessionUpdate: "session_info_update",
++      _meta: failureMeta
++    });
++    await sessionConn.update({
++      sessionUpdate: "state_update",
++      state: "idle",
++      stopReason: "error"
++    });
+     return {
+       stopReason: "end_turn",
+       usage: this.buildPromptUsage(sessionState.lastTokenUsage),
+@@ -34198,13 +34346,17 @@ function startAcpServer() {
      stderr: ""
    };
    process.stdin.on("close", () => {
@@ -206,3 +530,41 @@ diff --git a/dist/index.js b/dist/index.js
    });
    const acpJsonStream = createJsonStream(process.stdin, process.stdout);
    function createAgent(connection) {
+@@ -34234,5 +34386,36 @@ function startAcpServer() {
+         codexAcpServer = null;
+       }
+     });
+-  }).onRequest(methods.agent.initialize, (ctx) => getAgent().initialize(ctx.params)).onRequest(methods.agent.session.new, (ctx) => getAgent().newSession(ctx.params)).onRequest(methods.agent.session.load, (ctx) => getAgent().loadSession(ctx.params)).onRequest(methods.agent.session.fork, (ctx) => getAgent().forkSession(ctx.params)).onRequest(methods.agent.session.list, (ctx) => getAgent().listSessions(ctx.params)).onRequest(methods.agent.session.delete, (ctx) => getAgent().deleteSession(ctx.params)).onRequest(methods.agent.session.resume, (ctx) => getAgent().resumeSession(ctx.params)).onRequest(methods.agent.session.close, (ctx) => getAgent().closeSession(ctx.params)).onRequest(methods.agent.session.setMode, (ctx) => getAgent().setSessionMode(ctx.params)).onRequest(methods.agent.session.setConfigOption, (ctx) => getAgent().setSessionConfigOption(ctx.params)).onRequest(methods.agent.authenticate, (ctx) => getAgent().authenticate(ctx.params, ctx.requestId)).onRequest(methods.agent.logout, (ctx) => getAgent().logout(ctx.params)).onRequest(methods.agent.providers.list, (ctx) => getAgent().listProviders(ctx.params)).onRequest(methods.agent.providers.set, (ctx) => getAgent().setProvider(ctx.params)).onRequest(methods.agent.providers.disable, (ctx) => getAgent().disableProvider(ctx.params)).onRequest(methods.agent.session.prompt, (ctx) => getAgent().prompt(ctx.params, ctx.signal)).onNotification(methods.agent.session.cancel, (ctx) => getAgent().cancel(ctx.params)).onRequest("authentication/status", emptyExtensionParamsParser, (ctx) => getAgent().extMethod("authentication/status", ctx.params)).onRequest("authentication/logout", emptyExtensionParamsParser, (ctx) => getAgent().extMethod("authentication/logout", ctx.params)).onRequest(LEGACY_SET_SESSION_MODEL_METHOD, legacySetSessionModelParamsParser, (ctx) => getAgent().extMethod(LEGACY_SET_SESSION_MODEL_METHOD, ctx.params)).onRequest(SESSION_STEERING_METHOD, sessionSteerParamsParser, (ctx) => getAgent().extMethod(SESSION_STEERING_METHOD, ctx.params)).onRequest(GOAL_CONTROL_METHOD, goalControlParamsParser, (ctx) => getAgent().extMethod(GOAL_CONTROL_METHOD, ctx.params)).connect(acpJsonStream);
++  }).onRequest(methods.agent.initialize, (ctx) => getAgent().initialize(ctx.params)).onRequest(methods.agent.session.new, (ctx) => getAgent().newSession(ctx.params)).onRequest(methods.agent.session.load, (ctx) => getAgent().loadSession(ctx.params)).onRequest(methods.agent.session.fork, (ctx) => getAgent().forkSession(ctx.params)).onRequest(methods.agent.session.list, (ctx) => getAgent().listSessions(ctx.params)).onRequest(methods.agent.session.delete, (ctx) => getAgent().deleteSession(ctx.params)).onRequest(methods.agent.session.resume, (ctx) => getAgent().resumeSession(ctx.params)).onRequest(methods.agent.session.close, (ctx) => getAgent().closeSession(ctx.params)).onRequest(methods.agent.session.setMode, (ctx) => getAgent().setSessionMode(ctx.params)).onRequest(methods.agent.session.setConfigOption, (ctx) => getAgent().setSessionConfigOption(ctx.params)).onRequest(methods.agent.authenticate, (ctx) => getAgent().authenticate(ctx.params, ctx.requestId)).onRequest(methods.agent.logout, (ctx) => getAgent().logout(ctx.params)).onRequest(methods.agent.providers.list, (ctx) => getAgent().listProviders(ctx.params)).onRequest(methods.agent.providers.set, (ctx) => getAgent().setProvider(ctx.params)).onRequest(methods.agent.providers.disable, (ctx) => getAgent().disableProvider(ctx.params)).onRequest(methods.agent.session.prompt, (ctx) => {
++    return new Promise((resolve, reject) => {
++      let resolved = false;
++      const turn = getAgent().prompt(ctx.params, ctx.signal, (turnId) => {
++        if (!resolved) {
++          resolved = true;
++          resolve({ messageId: turnId });
++        }
++      });
++      turn.then(
++        (res) => {
++          if (!resolved) {
++            resolved = true;
++            resolve({ messageId: res?.messageId ?? (typeof crypto !== "undefined" ? crypto.randomUUID() : "msg-1") });
++          }
++        },
++        (err) => {
++          if (!resolved) {
++            resolved = true;
++            reject(err);
++          } else {
++            const sessionConn = new ACPSessionConnection(getAgent().connection, ctx.params.sessionId);
++            void sessionConn.update({
++              sessionUpdate: "state_update",
++              state: "idle",
++              stopReason: "error"
++            });
++          }
++        }
++      );
++    });
++  }).onRequest("auth/login", (params) => params, (ctx) => getAgent().authenticate(ctx.params, ctx.requestId)).onNotification(methods.agent.session.cancel, (ctx) => getAgent().cancel(ctx.params)).onRequest("authentication/status", emptyExtensionParamsParser, (ctx) => getAgent().extMethod("authentication/status", ctx.params)).onRequest("authentication/logout", emptyExtensionParamsParser, (ctx) => getAgent().extMethod("authentication/logout", ctx.params)).onRequest(LEGACY_SET_SESSION_MODEL_METHOD, legacySetSessionModelParamsParser, (ctx) => getAgent().extMethod(LEGACY_SET_SESSION_MODEL_METHOD, ctx.params)).onRequest(SESSION_STEERING_METHOD, sessionSteerParamsParser, (ctx) => getAgent().extMethod(SESSION_STEERING_METHOD, ctx.params)).onRequest(GOAL_CONTROL_METHOD, goalControlParamsParser, (ctx) => getAgent().extMethod(GOAL_CONTROL_METHOD, ctx.params)).connect(acpJsonStream);
+ }

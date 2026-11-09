@@ -1,0 +1,10 @@
+diff --git a/dist/session-titles.js b/dist/session-titles.js
+--- a/dist/session-titles.js
++++ b/dist/session-titles.js
+@@ -69,3 +69,5 @@
+ function supportsTitleGeneration(query) {
+-    return typeof query.generateSessionTitle === "function";
++    // An unattended Jig task must not cause independent, unreviewed
++    // title-generation inference, even if the Claude SDK supports it.
++    return process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC !== "1" && typeof query.generateSessionTitle === "function";
+ }

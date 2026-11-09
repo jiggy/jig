@@ -59,6 +59,14 @@ A retained status describes the native report. It does not establish the
 underlying provider cause or permit retry. Missing or malformed statuses leave
 the original native failure unchanged.
 
+The patch also aligns `codex-acp` with ACP v2 (`protocolVersion: 2`),
+normalizing `capabilities`, `info` from `initialize`, and outgoing `configOptions`
+(`id` -> `configId` and grouped `group` -> `groupId`), implementing
+`capabilities.session`, `session/set_config_option`, `user_message` and
+`state_update` foreground turns (firing `onTurnStarted` before returning early
+completions and serializing turn-start updates ahead of completion and idle
+events), and clean `session/close` handling.
+
 ## Verification
 
 `bun test packages/jig/test/portable/codex-acp-dispatch.test.ts` launches the actual

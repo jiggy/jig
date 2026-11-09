@@ -1,7 +1,14 @@
 import { describe, expect, test } from 'bun:test'
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
+import { createPrivateAcpAgentProvider } from '../../src/internal/acp-agent-provider.js'
 import type { PrivateActivationReviewPlan } from '../../src/internal/activation-admission-store.js'
-import { renderPrivateProjectPlanReview } from '../../src/internal/project-plan-review.js'
+import {
+  privateProjectReviewedAcpSelection,
+  renderPrivateProjectPlanReview,
+} from '../../src/internal/project-plan-review.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
@@ -761,5 +768,58 @@ describe('private project Plan review', () => {
         message: 'project plan review exceeds the supported display size',
       }),
     )
+  })
+  test('ACP slot selection display includes authProfile when configured and omits it otherwise', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-review-acp-selection-'))
+    try {
+      const adapterPath = join(root, 'adapter.js')
+      const executablePath = join(root, 'codex')
+      await writeFile(adapterPath, 'adapter\n')
+      await writeFile(executablePath, 'codex\n')
+      await chmod(executablePath, 0o700)
+      const withProfile = await createPrivateAcpAgentProvider({
+        client: 'openai-codex',
+        authProfile: 'work-codex',
+        model: 'gpt-5',
+        credentialMode: 'chatgpt',
+        adapterPath,
+        sandboxAdapterPath: '/agent/adapter.js',
+        executablePath,
+        sandboxExecutablePath: '/agent/client',
+        environment: {},
+        secrets: ['token-secret-work'],
+      })
+      const withoutProfile = await createPrivateAcpAgentProvider({
+        client: 'openai-codex',
+        model: 'o3-mini',
+        credentialMode: 'api',
+        adapterPath,
+        sandboxAdapterPath: '/agent/adapter.js',
+        executablePath,
+        sandboxExecutablePath: '/agent/client',
+        environment: {},
+        secrets: ['api-key-secret-value'],
+      })
+      expect(
+        privateProjectReviewedAcpSelection(
+          { client: 'codex', authProfile: 'work-codex' },
+          withProfile,
+        ),
+      ).toEqual({
+        client: 'codex',
+        authProfile: 'work-codex',
+        model: 'gpt-5',
+        authentication: 'chatgpt',
+        executable: executablePath,
+      })
+      expect(privateProjectReviewedAcpSelection({ client: 'codex' }, withoutProfile)).toEqual({
+        client: 'codex',
+        model: 'o3-mini',
+        authentication: 'api',
+        executable: executablePath,
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })

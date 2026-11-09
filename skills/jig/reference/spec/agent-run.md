@@ -219,8 +219,8 @@ are not independent proof of native causality. All turn text and frame limits
 remain cumulative across the invocation.
 
 The live conversation stays within one invocation. Cross-Run restoration uses
-the explicit session request below; neither path grants native workspace tools
-or performs automatic handoff.
+the explicit session request below. Candidate failover stays within reviewed
+slots and recovery policy and never grants native workspace tools.
 
 ## Retaining a native conversation
 
@@ -268,13 +268,20 @@ raw native error or information about another recipient's reference. Unexpected
 collection, storage and cleanup failures remain errors; the exact host behavior
 is defined in [Finite ACP](finite-acp.md#retained-native-state).
 
-Restoration requires the current grant and the same protected project,
-admitted recipient and ancestry, native slot, and exact provider/profile
-identity. Changing the accepted package or configuration can invalidate access
-to an earlier snapshot; a reference is identity, never permission. The host
-claims a reference once before native startup. A used, expired, foreign or
-unsupported reference fails visibly, with no fresh-conversation fallback or
-automatic retry. Failure after a claim does not make the old reference reusable.
+Restoration requires the current grant, protected project, admitted recipient and
+ancestry, and compatible native identity across client, adapter, and executable.
+Qualified Codex bindings share scope across compatible `authProfile` and
+`model` slots. Changing the accepted package, client, or executable invalidates
+access to an earlier snapshot. A reference is identity, never permission.
+
+The host claims a reference once before native startup. If native setup fails
+before `session/resume` is accepted, the host releases the claim so a compatible
+backup candidate can restore it. Once restoration is accepted, the old reference
+is spent. Failover under `sameClientSession: "fresh"` runs a backup without
+history and reports `unsupported-history`. Default
+`sameClientSession: "resume-if-qualified"` never drops `{ restore }` to a fresh
+conversation. A `{ retain: true }` failover to a slot without retention also
+reports `unsupported-history`.
 
 The initial host profile permits at most 16 available snapshots per project,
 each at most 8 MiB. References expire logically after 24 hours; expired state is

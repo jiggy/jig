@@ -77,7 +77,7 @@ describe('reviewed ready record', () => {
   test('snapshots configuration without allowing later model replacement', () => {
     const input = {
       kind: 'ready',
-      protocolVersion: 1,
+      protocolVersion: 2,
       cwd: '/work',
       maxTurns: 1,
       configuration: [{ configId: 'model', value: 'reviewed' }],
@@ -99,11 +99,28 @@ describe('reviewed ready record', () => {
     ).toEqual([{ configId: 'compaction', type: 'boolean', value: false }])
   })
 
+  test('accepts only an explicitly versioned v2 ready record with the same authority limits', () => {
+    const input = {
+      kind: 'ready',
+      protocolVersion: 2,
+      cwd: '/work',
+      maxTurns: 1,
+      configuration: [{ configId: 'model', value: 'approved-model' }],
+    }
+    const selected = readFiniteAcpReady(input)
+    expect(selected.protocolVersion).toBe(2)
+    expect(selected.configuration).toEqual([{ configId: 'model', value: 'approved-model' }])
+    input.configuration[0]!.value = 'unreviewed-model'
+    expect(selected.configuration[0]!.value).toBe('approved-model')
+  })
+
   test('rejects extra authority, malformed or duplicate configuration, and accessors', () => {
-    const base = { kind: 'ready', protocolVersion: 1, cwd: '/work', maxTurns: 1, configuration: [] }
+    const base = { kind: 'ready', protocolVersion: 2, cwd: '/work', maxTurns: 1, configuration: [] }
     for (const value of [
       { ...base, cwd: '/' },
-      { ...base, protocolVersion: 2 },
+      { ...base, protocolVersion: 0 },
+      { ...base, protocolVersion: 1 },
+      { ...base, protocolVersion: 3 },
       { ...base, token: 'secret' },
       { ...base, modeId: null },
       ...[null, '', 'x\0y', 'x'.repeat(1_025)].map((restoreSessionId) => ({

@@ -35,6 +35,34 @@ grant `model` overrides its model selection for this recipient. Review
 shows that selected runtime beside the exact recipient. The ordinary Agent
 package drives the dialogue and interprets the answer.
 
+A native ACP grant may also select `authProfile: 'personal-codex'`. This is a
+reviewed, non-secret LocalName, independent of the workload's optional `model`.
+The operator supplies a private, pre-project environment namespace:
+`JIG_ACP_PROFILE_<NAME>__<FIELD>`, where `<NAME>` uppercases the LocalName
+and replaces hyphens with underscores. For example,
+`JIG_ACP_PROFILE_PERSONAL_CODEX__CODEX_HOME=/operator/codex-personal`
+selects that existing subscription login. A second Codex profile can instead
+set `JIG_ACP_PROFILE_WORK_API__OPENAI_API_KEY` and use a model in its grant.
+
+Only supported client-specific authentication fields are accepted: Codex
+`CODEX_HOME`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API`.
+Claude `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`,
+`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`.
+Pi
+`PI_CODING_AGENT_DIR`, `PI_PROVIDER`, `PI_API_KEY`.
+
+The selected profile must define one unambiguous authentication mode. Mixed
+subscription/API sources, foreign fields and missing entries fail closed.
+Ambient credentials and other profiles' selectors are discarded for the
+selected client. A profile does not install, refresh, or import credentials,
+authorize provider changes without review, or provide automatic failover.
+
+A named profile may combine with `retainSessions: true` on Codex. Restoration
+remains bound to the same admitted caller ancestry, Codex client, executable,
+and adapter digests. A compatible Codex backup slot in the same Binding may
+continue that session across profiles. Different clients, executables,
+ancestries, or unreviewed recipients remain isolated.
+
 An optional `maxTurns` integer from 1 through 8 authorizes serial native prompts
 within that one invocation; omission permits one. Turns share the original
 deadline and aggregate resource bounds. Changing the allowance changes reviewed

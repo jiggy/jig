@@ -107,6 +107,8 @@ These links locate module rules. All selected domain requirements still apply.
   named single-form catalogs. Selected-graph qualification pins requirements in
   the lock and refuses incompatible targets before execution preparation,
   propagating only to their dependents. It never selects substitute providers.
+  Metadata entries marked `uses.<slot>.optional: true` may remain unbound during
+  project linking and runtime binding checks.
 
 - Explicit review `--generate-contracts` owns optional TypeSpec preparation and
   checked publication. Plain review checks local freshness. Run never compiles.

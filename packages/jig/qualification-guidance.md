@@ -80,8 +80,8 @@ These links locate module rules. All selected domain requirements still apply.
   Only its matching native `turn/started` event makes that turn interruptible.
   Preserve early completion and either event/reply ordering without retries or
   synthetic settlement. Pi ACP invokes Jig’s private launcher through the
-  verified Bun interpreter and preserves RPC rejection and authoritative
-  assistant stop reasons. Never infer success or failure from answer length.
+  verified Bun interpreter, preserves RPC rejection and authoritative assistant
+  stop reasons, and disposes sessions cleanly on `session/close`. Never infer success or failure from answer length.
   Update the notice and adapter regression when changing its patch. Each patch
   has a same-basename `.md` note explaining the defect, verification, concrete
   removal conditions, and known upstream issue or pull-request links.
@@ -368,3 +368,11 @@ These links locate module rules. All selected domain requirements still apply.
   fencing and shutdown-grace fencing through genuine native subprocesses. Its
   deliberate payload SIGSEGV probe retains bounded process-state and fencing
   evidence, not native-client qualification or trusted-launcher crash-origin proof.
+- Ordered `@jigging/agent-acp` failover behavior, host prompt-evidence tracking,
+  cross-profile Codex session scope calculation, and atomic pre-acceptance session
+  release are verified in `packages/agent-acp/test/flow.test.ts`,
+  `packages/jig/test/portable/finite-acp-prompt-evidence.test.ts`,
+  `packages/jig/test/portable/root-finite-acp-controller.test.ts`, and
+  `packages/jig/test/portable/activation-admission-store.test.ts`.
+  Contained cross-profile failover under delegated cgroup isolation remains to be
+  added in `linux-rootless-run.test.ts` once run on a qualified linux-host.

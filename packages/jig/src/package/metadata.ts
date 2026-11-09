@@ -21,6 +21,7 @@ const JSON_NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?(?![\s
 export interface InvocationUse {
   readonly contract?: string
   readonly requires?: readonly string[]
+  readonly optional?: boolean
 }
 
 export interface FlowMetadata {
@@ -321,19 +322,23 @@ function validateUses(value: JsonValue, path: string): Readonly<Record<string, I
     const item = requireObject(declaration, `uses.${slot}`, path)
     if (Object.keys(item).length === 0) result[slot] = {}
     else if (
-      Object.keys(item).every((key) => key === 'contract' || key === 'requires') &&
-      typeof item.contract === 'string'
+      Object.keys(item).every(
+        (key) => key === 'contract' || key === 'requires' || key === 'optional',
+      ) &&
+      typeof item.contract === 'string' &&
+      (item.optional === undefined || typeof item.optional === 'boolean')
     ) {
       result[slot] = {
         contract: requireAuthorReference(item.contract, `uses.${slot}.contract`, path),
         ...(item.requires === undefined
           ? {}
           : { requires: requireFeatureNames(item.requires, `uses.${slot}.requires`, path) }),
+        ...(item.optional === undefined ? {} : { optional: item.optional }),
       }
     } else
       invalid(
         'METADATA_USES',
-        `uses.${slot} must be {} or contain a contract reference and optional requires`,
+        `uses.${slot} must be {} or contain a contract reference and optional requires/optional flag`,
         path,
       )
   }
@@ -396,7 +401,10 @@ function deepFreezeJson(value: JsonValue): void {
 }
 
 function isCanonicalLogicalPath(path: string): boolean {
-  if (/[\\\u0000-\u001f\u007f]/.test(path)) return false
+  for (let index = 0; index < path.length; index += 1) {
+    const code = path.charCodeAt(index)
+    if (code === 0x5c || code <= 0x1f || code === 0x7f) return false
+  }
   if (!isNfc15_1(path)) return false
   const segments = path.split('/')
   if (segments.length === 0 || segments.length > 64) return false

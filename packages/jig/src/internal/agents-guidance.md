@@ -54,7 +54,7 @@ These links locate module rules. All selected domain requirements still apply.
   the closed location diagnostic.
 
   Share sealing's path predicate. Preflight neither mounts files nor replaces
-  launch-time validation. Cache selected configurations by client and granted
+  launch-time validation. Cache selected configurations by client, authProfile, and granted
   model together. A grant model does not change authentication mode or mutate
   the operator snapshot.
 

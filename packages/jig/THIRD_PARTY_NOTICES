@@ -152,7 +152,7 @@ Copyright 2025 JetBrains s.r.o.
 Licensed under the Apache License, Version 2.0. The complete adapter license is
 shipped as `libexec/agent/codex-acp.LICENSE`.
 
-@agentclientprotocol/claude-agent-acp 0.73.0
+@agentclientprotocol/claude-agent-acp 0.101.0
 -------------------------------------------------
 
 Jig bundles the official ACP adapter for native Claude Code as optional inert

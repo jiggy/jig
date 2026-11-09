@@ -23,6 +23,12 @@ cancellation and token exhaustion. An error becomes a generic JSON-RPC internal
 error without disclosing provider details. Empty successful output remains
 valid; an earlier recovered error does not invalidate a later successful answer.
 
+The patch also updates the adapter to ACP v2 (`protocolVersion: 2`) with
+`configId` configuration options, `user_message` insertion, `state_update`
+lifecycle events, assistant `messageId` correlation, suppression of
+unsolicited startup `agent_message_chunk` banners outside active turns, and
+`session/close` subprocess disposal.
+
 The original defect was reproduced with Pi 0.84.4 under Node 24.11.1 against
 a local HTTP 503 fixture: unpatched ACP returned `end_turn`; patched ACP
 returned error `-32603`. This is adapter evidence, not qualification of every
@@ -44,7 +50,7 @@ Pi installation or Jig containment profile.
 From the repository root after normal dependency installation:
 
 ```sh
-bun test packages/jig/test/pi-acp-failure.test.ts packages/jig/test/pi-agent-provider.test.ts
+bun test packages/jig/test/portable/pi-acp-failure.test.ts packages/jig/test/portable/pi-agent-provider.test.ts
 ```
 
 The first suite exercises the installed vendor adapter with a deterministic Pi

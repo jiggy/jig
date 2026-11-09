@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
@@ -16,6 +16,15 @@ import {
 import { rejectsCredentialOutput } from '../finite-acp-resource.fixture.js'
 import { nativeElf } from '.././fixtures/native-elf.js'
 import { nativeMachO } from '.././fixtures/native-macho.js'
+
+test('installed Claude adapter disables unreviewed SDK title inference when Jig blocks nonessential traffic', async () => {
+  const installed = new URL(
+    import.meta.resolve('@agentclientprotocol/claude-agent-acp/dist/session-titles.js'),
+  )
+  const source = await readFile(installed, 'utf8')
+  expect(source).toContain('process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC !== "1"')
+  expect(source).toContain('typeof query.generateSessionTitle === "function"')
+})
 
 const temporary = new Set<string>()
 function environment(
@@ -38,6 +47,7 @@ function environment(
     CLAUDE_CODE_DISABLE_TERMINAL_TITLE: '1',
     CLAUDE_CODE_DISABLE_THINKING: '1',
     CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: 'false',
+    CLAUDE_AGENT_ACP_PROTOCOL: 'v2',
     CLAUDE_CODE_EXECUTABLE: executablePath,
     CLAUDE_CODE_MAX_RETRIES: '0',
     CLAUDE_CODE_SUBAGENT_MODEL: model,
@@ -144,6 +154,7 @@ describe('private native Claude Code Agent provider', () => {
       credentialMode: 'claude-subscription',
       model: 'default',
     })
+    expect(privateAcpAgentRuntime(subscription).protocolVersion).toBe(2)
     expect(pinnedSubscription.model).toBe('subscription/model')
     const selectedSubscription = await openPrivateClaudeAgentProvider(
       fixture.releaseRoot,
@@ -323,6 +334,24 @@ describe('private native Claude Code Agent provider', () => {
     expect(new TextDecoder().decode(runtime.startupInput!().slice(4))).toBe('first-secret')
     expect(JSON.stringify(first)).not.toContain('first-secret')
     expect(JSON.stringify(runtime.environment)).not.toContain('first-secret')
+  })
+  test('separates reviewed account identity while permitting in-profile key rotation', async () => {
+    const support = await files()
+    const open = (authProfile: string, credential: string) =>
+      createPrivateClaudeAnthropicApiAgentProvider({
+        ...support,
+        authProfile,
+        authentication: 'api-key',
+        credential,
+        model: 'provider/test-model',
+      })
+    const personal = await open('personal', 'first-account-key')
+    const rotated = await open('personal', 'rotated-account-key')
+    const work = await open('work', 'first-account-key')
+    expect(personal.digest).toBe(rotated.digest)
+    expect(personal.digest).not.toBe(work.digest)
+    expect(JSON.stringify(personal)).not.toContain('first-account-key')
+    expect(JSON.stringify(work)).not.toContain('first-account-key')
   })
   test('makes bearer-token authentication exact without retaining its secret', async () => {
     const support = await files()

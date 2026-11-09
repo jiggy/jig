@@ -6,7 +6,10 @@ import {
   PrivateFiniteAcpPolicy,
   PrivateFiniteAcpPolicyError,
 } from '../../src/internal/finite-acp-policy.js'
-import { assertPrivateFiniteAcpPublicOutput } from '../../src/internal/finite-acp-resource.js'
+import {
+  assertPrivateFiniteAcpPublicOutput,
+  privateFiniteAcpMacosPreparedRequest,
+} from '../../src/internal/finite-acp-resource.js'
 import type { JsonObject } from '../../src/json.js'
 import { installedBunLocation } from '../fixtures/installed-bun-location.js'
 
@@ -61,10 +64,15 @@ function peer(mode = 'dialogue', client?: string, maxTurns = 1) {
     return delivery
   }
   async function initialize() {
-    await request(1, 'initialize', { protocolVersion: 1, clientCapabilities: {} })
+    await request(1, 'initialize', {
+      protocolVersion: 2,
+      capabilities: {},
+      info: { name: 'test-agent', version: '2' },
+    })
     expect((await next())?.toAdapter?.result).toEqual({
-      protocolVersion: 1,
-      agentCapabilities: {},
+      protocolVersion: 2,
+      capabilities: { session: {} },
+      info: { name: 'jig-selected-native-agent', version: '2' },
     })
     await request(2, 'session/new', { cwd: '/work', mcpServers: [] })
     expect((await next())?.toAdapter?.result).toEqual({ sessionId: 'owned' })
@@ -76,7 +84,10 @@ function peer(mode = 'dialogue', client?: string, maxTurns = 1) {
     })
     expect((await next())?.toClient?.result).toEqual({ outcome: { outcome: 'cancelled' } })
     expect((await next())?.toAdapter?.method).toBe('session/update')
-    expect((await next())?.toAdapter?.result).toEqual({ stopReason: 'end_turn' })
+    expect((await next())?.toAdapter?.method).toBe('session/update')
+    expect((await next())?.toAdapter?.method).toBe('session/update')
+    expect((await next())?.toAdapter?.method).toBe('session/update')
+    expect((await next())?.toAdapter?.result).toEqual({ messageId: 'user-turn' })
   }
   return {
     child,
@@ -127,8 +138,9 @@ describe('finite ACP resource dependencies with actual bounded wire peers', () =
       const p = peer('failed-new', client)
       try {
         await p.request(1, 'initialize', {
-          protocolVersion: 1,
-          clientInfo: { name: 'openai-codex' },
+          protocolVersion: 2,
+          capabilities: {},
+          info: { name: 'openai-codex', version: '2' },
         })
         await p.next()
         await p.request(2, 'session/new', { cwd: '/work', mcpServers: [] })
@@ -218,7 +230,11 @@ describe('finite ACP resource dependencies with actual bounded wire peers', () =
     test(`actual ${mode} output refuses policy advancement`, async () => {
       const p = peer(mode)
       try {
-        await p.request(1, 'initialize', { protocolVersion: 1 })
+        await p.request(1, 'initialize', {
+          protocolVersion: 2,
+          capabilities: {},
+          info: { name: 'test', version: '2' },
+        })
         await expect(p.next()).rejects.toThrow(
           mode === 'wrong-id' ? 'matching request' : 'Invalid ACP JSON frame',
         )
@@ -247,5 +263,50 @@ describe('finite ACP resource dependencies with actual bounded wire peers', () =
     const frames = new FiniteAcpFrames('requests')
     expect(frames.accept({ kind: 'data', text: '{', end: false })).toBeUndefined()
     expect(() => frames.finish()).toThrow()
+  })
+  test('macOS prepared owner rewrites cwd on session/new, session/load, and session/resume while preserving _meta', () => {
+    for (const method of ['session/new', 'session/load', 'session/resume']) {
+      const request = {
+        jsonrpc: '2.0',
+        id: 2,
+        method,
+        params: { sessionId: 's-1', cwd: '/work', _meta: { source: 'test' } },
+      }
+      expect(
+        privateFiniteAcpMacosPreparedRequest(
+          'private-macos-prepared-owner/1',
+          '/tmp/prepared-owner',
+          request,
+        ),
+      ).toEqual({
+        ...request,
+        params: {
+          sessionId: 's-1',
+          cwd: '/tmp/prepared-owner/data/work',
+          _meta: { source: 'test' },
+        },
+      })
+    }
+    const promptRequest = {
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'session/prompt',
+      params: { sessionId: 's-1', cwd: '/work' },
+    }
+    expect(
+      privateFiniteAcpMacosPreparedRequest(
+        'private-macos-prepared-owner/1',
+        '/tmp/prepared-owner',
+        promptRequest,
+      ),
+    ).toBe(promptRequest)
+    expect(
+      privateFiniteAcpMacosPreparedRequest('private-linux-cgroup-owner/1', '/tmp/other', {
+        jsonrpc: '2.0',
+        id: 4,
+        method: 'session/resume',
+        params: { sessionId: 's-1', cwd: '/work' },
+      }).params,
+    ).toEqual({ sessionId: 's-1', cwd: '/work' })
   })
 })

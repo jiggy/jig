@@ -39,6 +39,7 @@ export type PrivateAcpClientOpener = (
   environment: Readonly<Record<string, string | undefined>>,
   projectDirectory: string,
   model?: string,
+  authProfile?: string,
 ) => Promise<PrivateAcpAgentProvider>
 
 export class PrivateAcpResourceUnavailableError extends Error {
@@ -84,6 +85,74 @@ interface ResourceOwner {
   readonly openClient: PrivateAcpClientOpener
 }
 const owners = new WeakMap<PrivateAcpResources, ResourceOwner>()
+/** Select a single operator-owned native authentication source; no credential bytes enter a grant. */
+export function privateAcpProfileEnvironment(
+  environment: Readonly<Record<string, string | undefined>>,
+  client: 'codex' | 'claude' | 'pi',
+  profile: string,
+): Readonly<Record<string, string | undefined>> {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(profile) || profile.length > 64)
+    throw new PrivateAcpSetupError('login')
+  const prefix = `JIG_ACP_PROFILE_${profile.toUpperCase().replaceAll('-', '_')}__`
+  const shared = [
+    'CODEX_HOME',
+    'OPENAI_API_KEY',
+    'OPENAI_MODEL',
+    'OPENAI_BASE_URL',
+    'OPENAI_API',
+    'CODEX_MODEL',
+    'CLAUDE_CODE_OAUTH_TOKEN',
+    'CLAUDE_MODEL',
+    'ANTHROPIC_API_KEY',
+    'ANTHROPIC_AUTH_TOKEN',
+    'ANTHROPIC_MODEL',
+    'ANTHROPIC_BASE_URL',
+    'PI_CODING_AGENT_DIR',
+    'PI_PROVIDER',
+    'PI_MODEL',
+    'PI_API_KEY',
+  ] as const
+  const permitted: Readonly<Record<typeof client, readonly string[]>> = {
+    codex: ['CODEX_HOME', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_API'],
+    claude: [
+      'CLAUDE_CODE_OAUTH_TOKEN',
+      'ANTHROPIC_API_KEY',
+      'ANTHROPIC_AUTH_TOKEN',
+      'ANTHROPIC_BASE_URL',
+    ],
+    pi: ['PI_CODING_AGENT_DIR', 'PI_PROVIDER', 'PI_API_KEY'],
+  }
+  const selected: Record<string, string> = Object.create(null)
+  for (const [key, value] of Object.entries(environment)) {
+    if (!key.startsWith(prefix)) continue
+    const field = key.slice(prefix.length)
+    if (!permitted[client].includes(field) || typeof value !== 'string' || value.length === 0)
+      throw new PrivateAcpSetupError('login')
+    selected[field] = value
+  }
+  const valid =
+    client === 'codex'
+      ? (selected.CODEX_HOME !== undefined) !== (selected.OPENAI_API_KEY !== undefined) &&
+        (selected.OPENAI_API_KEY !== undefined ||
+          (selected.OPENAI_BASE_URL === undefined && selected.OPENAI_API === undefined))
+      : client === 'claude'
+        ? Number(selected.CLAUDE_CODE_OAUTH_TOKEN !== undefined) +
+            Number(selected.ANTHROPIC_API_KEY !== undefined) +
+            Number(selected.ANTHROPIC_AUTH_TOKEN !== undefined) ===
+            1 &&
+          (selected.CLAUDE_CODE_OAUTH_TOKEN === undefined ||
+            selected.ANTHROPIC_BASE_URL === undefined)
+        : selected.PI_PROVIDER !== undefined &&
+          (selected.PI_CODING_AGENT_DIR !== undefined) !== (selected.PI_API_KEY !== undefined)
+  if (!valid) throw new PrivateAcpSetupError('login')
+  const isolated: Record<string, string | undefined> = { ...environment }
+  for (const key of shared) delete isolated[key]
+  // No profile selectors are passed through to a native client's launch recipe.
+  for (const key of Object.keys(isolated))
+    if (key.startsWith('JIG_ACP_PROFILE_')) delete isolated[key]
+  return Object.freeze({ ...isolated, ...selected })
+}
+
 const CLIENT_IDENTITIES = {
   codex: 'openai-codex',
   claude: 'anthropic-claude-code',
@@ -131,7 +200,7 @@ export async function selectPrivateAcpResources(
     )
       throw new TypeError('the selected ACP resource has no matching private operator owner')
     const client = route.grant.client
-    const key = JSON.stringify([client, route.grant.model ?? null])
+    const key = JSON.stringify([client, route.grant.model ?? null, route.grant.authProfile ?? null])
     let provider: PrivateAcpAgentProvider
     try {
       let pending = state.clients.get(key)
@@ -139,9 +208,12 @@ export async function selectPrivateAcpResources(
         pending = state.openClient(
           client,
           state.support,
-          state.environment,
+          route.grant.authProfile === undefined
+            ? state.environment
+            : privateAcpProfileEnvironment(state.environment, client, route.grant.authProfile),
           state.projectDirectory,
           route.grant.model,
+          route.grant.authProfile,
         )
         state.clients.set(key, pending)
       }
@@ -172,6 +244,7 @@ async function openQualifiedClient(
   environment: Readonly<Record<string, string | undefined>>,
   projectDirectory: string,
   model?: string,
+  authProfile?: string,
 ): Promise<PrivateAcpAgentProvider> {
   const open =
     client === 'codex'
@@ -179,5 +252,5 @@ async function openQualifiedClient(
       : client === 'claude'
         ? openPrivateClaudeAgentProvider
         : openPrivatePiAgentProvider
-  return await open(support.releaseRoot, environment, projectDirectory, model)
+  return await open(support.releaseRoot, environment, projectDirectory, model, authProfile)
 }

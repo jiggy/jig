@@ -12,6 +12,7 @@ import { privateLinuxProtectedDestination } from '../../src/internal/linux-rootl
 import {
   openPrivateAcpResources,
   PrivateAcpResourceUnavailableError,
+  privateAcpProfileEnvironment,
   selectPrivateAcpResources,
 } from '../../src/internal/private-acp-resources.js'
 import {
@@ -37,6 +38,56 @@ function slots(client: AcpGrant['client']): InvocationSlots {
     },
   }
 }
+describe('isolated operator-selected ACP authentication profiles', () => {
+  const sources = {
+    PATH: '/usr/bin',
+    OPENAI_API_KEY: 'unselected-ambient-key',
+    CLAUDE_CODE_OAUTH_TOKEN: 'unselected-ambient-token',
+    PI_PROVIDER: 'unselected-provider',
+    JIG_ACP_PROFILE_PERSONAL_CODEX__CODEX_HOME: '/operator/codex-personal',
+    JIG_ACP_PROFILE_WORK_API__OPENAI_API_KEY: 'selected-api-key',
+    JIG_ACP_PROFILE_CLAUDE_WORK__ANTHROPIC_AUTH_TOKEN: 'selected-claude-token',
+    JIG_ACP_PROFILE_PI_HOME__PI_PROVIDER: 'openai-codex',
+    JIG_ACP_PROFILE_PI_HOME__PI_CODING_AGENT_DIR: '/operator/pi-personal',
+  }
+  test('never forwards ambient credentials or credentials from a sibling profile', () => {
+    const personal = privateAcpProfileEnvironment(sources, 'codex', 'personal-codex')
+    expect(personal.CODEX_HOME).toBe('/operator/codex-personal')
+    expect(personal.OPENAI_API_KEY).toBeUndefined()
+    expect(personal.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
+    expect(personal.PI_PROVIDER).toBeUndefined()
+    expect(Object.keys(personal).some((key) => key.startsWith('JIG_ACP_PROFILE_'))).toBeFalse()
+    const api = privateAcpProfileEnvironment(sources, 'codex', 'work-api')
+    expect(api.OPENAI_API_KEY).toBe('selected-api-key')
+    expect(api.CODEX_HOME).toBeUndefined()
+    expect(api.PATH).toBe('/usr/bin')
+    const claude = privateAcpProfileEnvironment(sources, 'claude', 'claude-work')
+    expect(claude.ANTHROPIC_AUTH_TOKEN).toBe('selected-claude-token')
+    expect(claude.OPENAI_API_KEY).toBeUndefined()
+    const pi = privateAcpProfileEnvironment(sources, 'pi', 'pi-home')
+    expect(pi.PI_CODING_AGENT_DIR).toBe('/operator/pi-personal')
+    expect(pi.PI_PROVIDER).toBe('openai-codex')
+    expect(pi.OPENAI_API_KEY).toBeUndefined()
+  })
+  test('rejects missing, ambiguous and cross-client profile data without fallback', () => {
+    for (const [client, profile, value] of [
+      ['codex', 'missing', {}],
+      ['codex', 'personal-codex', { JIG_ACP_PROFILE_PERSONAL_CODEX__OPENAI_API_KEY: 'ambiguous' }],
+      ['codex', 'personal-codex', { JIG_ACP_PROFILE_PERSONAL_CODEX__UNREVIEWED: 'secret' }],
+      ['codex', 'personal-codex', { JIG_ACP_PROFILE_PERSONAL_CODEX__OPENAI_MODEL: 'model' }],
+      [
+        'claude',
+        'claude-work',
+        { JIG_ACP_PROFILE_CLAUDE_WORK__CLAUDE_CODE_OAUTH_TOKEN: 'conflict' },
+      ],
+      ['pi', 'pi-home', { JIG_ACP_PROFILE_PI_HOME__PI_API_KEY: 'conflict' }],
+    ] as const) {
+      expect(() =>
+        privateAcpProfileEnvironment({ ...sources, ...value }, client, profile),
+      ).toThrow()
+    }
+  })
+})
 describe('target-selected private ACP resources', () => {
   test('keeps native destinations outside reserved sandbox paths', () => {
     for (const destination of [

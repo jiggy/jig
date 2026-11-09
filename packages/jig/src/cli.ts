@@ -27,9 +27,9 @@ import {
 import { preparePrivateCliRun, privateAttemptFailureMessage } from './cli-attempt-execution.js'
 import { PrivateAttemptInput } from './cli-attempt-io.js'
 import { approvedTargets, completionScript, invocationGuide } from './cli-discovery.js'
+import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-archive.js'
 import { parsePrivateExploreArguments, privateExecuteExplore } from './cli-explore.js'
 import type { PrivateExploreLaunch } from './cli-explore-launch.js'
-import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-archive.js'
 import {
   privateCliHumanText,
   privateCliStyleEnabled,
@@ -2703,6 +2703,8 @@ export function renderFailure(error: unknown, runtime: Pick<CliRuntime, 'writeEr
       PROJECT_JIG_VERSION_MISMATCH: error.message,
       PROJECT_JIG_REQUIREMENT_INVALID: error.message,
       ...ACP_SETUP_HINTS,
+      PROJECT_AGENT_OVERRIDE_PROFILE:
+        'this ACP policy names an authentication profile for a specific native client. Edit and review that Binding slot and its operator-selected profile before switching clients; --agent does not translate authentication profiles',
       PROJECT_AGENT_OVERRIDE_MODEL:
         'this ACP policy pins a model. Review its model and client together at the indicated Binding slot, following any grant:name selector to its JSON policy; --agent never translates or drops a model pin',
       PROJECT_AGENT_OVERRIDE_RETENTION:

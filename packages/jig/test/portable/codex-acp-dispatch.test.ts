@@ -5,6 +5,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  PrivateFiniteAcpPolicy,
+  PrivateFiniteAcpPolicyError,
+} from '../../src/internal/finite-acp-policy.js'
 
 for (const scenario of [
   'completed',
@@ -69,6 +73,23 @@ for (const scenario of [
     let buffer = ''
     let bytes = 0
     const decoder = new TextDecoder()
+    const notifications: any[] = []
+    const readFrame = async () => {
+      for (;;) {
+        const split = buffer.indexOf('\n')
+        if (split >= 0) {
+          const frame = JSON.parse(buffer.slice(0, split))
+          buffer = buffer.slice(split + 1)
+          return frame
+        } else {
+          const part = await lines.read()
+          if (part.done) throw new Error(`ACP ended: ${await diagnostics}`)
+          bytes += part.value.byteLength
+          if (bytes > 256 * 1024) throw new Error('ACP fixture output overflow')
+          buffer += decoder.decode(part.value, { stream: true })
+        }
+      }
+    }
     const request = async (id: number, method: string, params: unknown, interrupt?: string) => {
       child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
       if (interrupt !== undefined)
@@ -81,25 +102,38 @@ for (const scenario of [
         )
       await child.stdin.flush()
       for (;;) {
-        const split = buffer.indexOf('\n')
-        if (split >= 0) {
-          const frame = JSON.parse(buffer.slice(0, split))
-          buffer = buffer.slice(split + 1)
-          if (frame.id === id) return frame
-        } else {
-          const part = await lines.read()
-          if (part.done) throw new Error(`ACP ended: ${await diagnostics}`)
-          bytes += part.value.byteLength
-          if (bytes > 256 * 1024) throw new Error('ACP fixture output overflow')
-          buffer += decoder.decode(part.value, { stream: true })
-        }
+        const frame = await readFrame()
+        if (frame.id === id) return frame
+        if (frame.method) notifications.push(frame)
       }
+    }
+    const drainUntilIdle = async (startIdx: number = 0) => {
+      while (
+        !notifications
+          .slice(startIdx)
+          .some(
+            (n) =>
+              n.params?.update?.sessionUpdate === 'state_update' &&
+              n.params?.update?.state === 'idle',
+          )
+      ) {
+        const frame = await readFrame()
+        if (frame.method) notifications.push(frame)
+      }
+      const idle = [...notifications.slice(startIdx)]
+        .reverse()
+        .find(
+          (n) =>
+            n.params?.update?.sessionUpdate === 'state_update' &&
+            n.params?.update?.state === 'idle',
+        )
+      return idle?.params?.update?.stopReason
     }
     try {
       if (scenario === 'missing-executable') {
         const initialized = await request(1, 'initialize', {
-          protocolVersion: 1,
-          clientCapabilities: {},
+          protocolVersion: 2,
+          capabilities: {},
         })
         expect(initialized.error).toBeDefined()
         await child.stdin.end()
@@ -109,8 +143,8 @@ for (const scenario of [
       expect(
         (
           await request(1, 'initialize', {
-            protocolVersion: 1,
-            clientCapabilities: scenario.startsWith('http-status-')
+            protocolVersion: 2,
+            capabilities: scenario.startsWith('http-status-')
               ? { _meta: { jetbrains: { air: { version: 1, capabilities: ['sessionFailure'] } } } }
               : {},
           })
@@ -120,24 +154,43 @@ for (const scenario of [
       expect(opened.error).toBeUndefined()
       const sessionId = opened.result.sessionId
       expect(
-        (await request(3, 'session/set_mode', { sessionId, modeId: 'read-only' })).error,
+        (
+          await request(3, 'session/set_config_option', {
+            sessionId,
+            configId: 'mode',
+            type: 'id',
+            value: 'read-only',
+          })
+        ).error,
       ).toBeUndefined()
+      const prompt1StartIdx = notifications.length
       const answer = await request(4, 'session/prompt', {
         sessionId,
         prompt: [{ type: 'text', text: 'Only this requested work' }],
       })
-      if (scenario === 'rejected') expect(answer.error).toBeDefined()
-      else expect(answer.result?.stopReason).toBe('end_turn')
-      if (scenario.startsWith('http-status-')) {
-        const failure = answer.result?._meta?.jetbrains?.air?.sessionFailure
-        expect(failure?.severity).toBe('error')
-        expect(failure?.httpStatusCode).toBe(
-          ['http-status-503', 'http-status-429'].includes(scenario)
-            ? Number(scenario.slice('http-status-'.length))
-            : undefined,
-        )
+      if (scenario === 'rejected') {
+        expect(answer.error).toBeDefined()
+      } else {
+        expect(typeof answer.result?.messageId).toBe('string')
+        const stopReason = await drainUntilIdle(prompt1StartIdx)
+        if (scenario.startsWith('http-status-')) {
+          expect(stopReason).toBe('error')
+          const failureUpdate = notifications.find(
+            (n) => n.params?.update?._meta?.jetbrains?.air?.sessionFailure,
+          )
+          const failure = failureUpdate?.params?.update?._meta?.jetbrains?.air?.sessionFailure
+          expect(failure?.severity).toBe('error')
+          expect(failure?.httpStatusCode).toBe(
+            ['http-status-503', 'http-status-429'].includes(scenario)
+              ? Number(scenario.slice('http-status-'.length))
+              : undefined,
+          )
+        } else {
+          expect(stopReason).toBe('end_turn')
+        }
       }
       if (scenario.startsWith('immediate-follow-up')) {
+        const prompt2StartIdx = notifications.length
         const followup = await request(
           5,
           'session/prompt',
@@ -147,7 +200,9 @@ for (const scenario of [
           },
           sessionId,
         )
-        expect(followup.result?.stopReason).toBe('cancelled')
+        expect(typeof followup.result?.messageId).toBe('string')
+        const followupStopReason = await drainUntilIdle(prompt2StartIdx)
+        expect(followupStopReason).toBe('cancelled')
       }
       expect((await request(6, 'session/close', { sessionId })).error).toBeUndefined()
       await child.stdin.end()
@@ -290,7 +345,7 @@ test(
     }
     try {
       expect(
-        (await request(1, 'initialize', { protocolVersion: 1, clientCapabilities: {} })).error,
+        (await request(1, 'initialize', { protocolVersion: 2, capabilities: {} })).error,
       ).toBeUndefined()
       await child.stdin.end()
       expect(await child.exited, await diagnostics).toBe(0)
@@ -324,3 +379,196 @@ test(
   },
   process.platform === 'darwin' ? 25_000 : 12_000,
 )
+
+for (const scenario of [
+  'completed',
+  'completion-before-reply',
+  'http-status-503',
+  'rejected',
+] as const) {
+  test(`Codex ACP configuration and fast-turn frames satisfy PrivateFiniteAcpPolicy: ${scenario}`, async () => {
+    const encoder = new TextEncoder()
+    const policy = new PrivateFiniteAcpPolicy(
+      { configuration: [], modeId: 'read-only' },
+      'openai-codex',
+    )
+    const root = await mkdtemp(join(tmpdir(), 'jig-codex-acp-policy-'))
+    const fixture = join(root, 'codex')
+    const recording = join(root, 'requests.ndjson')
+    await writeFile(
+      fixture,
+      `#!${process.execPath}\n${await readFile(new URL('./fixtures/codex-app-server-recording.ts', suiteTestUrl), 'utf8')}`,
+      { mode: 0o700 },
+    )
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        '--no-env-file',
+        '--no-install',
+        '--config=/dev/null',
+        fileURLToPath(import.meta.resolve('@agentclientprotocol/codex-acp')),
+      ],
+      {
+        cwd: root,
+        env: {
+          HOME: root,
+          PATH: root,
+          CODEX_PATH: fixture,
+          RECORD_PATH: recording,
+          RECORD_SCENARIO: scenario,
+        },
+        stdin: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const deadline = setTimeout(() => child.kill(), 8_000)
+    const lines = child.stdout.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let policyError: unknown
+    const readRawFrame = async (): Promise<{ raw: string; parsed: any }> => {
+      for (;;) {
+        const split = buffer.indexOf('\n')
+        if (split >= 0) {
+          const raw = buffer.slice(0, split)
+          buffer = buffer.slice(split + 1)
+          return { raw, parsed: JSON.parse(raw) }
+        }
+        const part = await lines.read()
+        if (part.done) throw new Error('Codex ACP exited unexpectedly')
+        buffer += decoder.decode(part.value, { stream: true })
+      }
+    }
+    const callThroughPolicy = async (
+      frame: unknown,
+      wireOverride?: (accepted: any) => unknown,
+    ): Promise<any> => {
+      const accepted = policy.fromAdapter(encoder.encode(JSON.stringify(frame)))
+      const wire = wireOverride ? wireOverride(accepted) : accepted
+      child.stdin.write(`${JSON.stringify(wire)}\n`)
+      await child.stdin.flush()
+      for (;;) {
+        const { raw, parsed } = await readRawFrame()
+        const delivery = policy.fromClient(encoder.encode(raw))
+        if (parsed.id === (frame as { id: number }).id) return delivery.toAdapter
+      }
+    }
+    try {
+      const initReply = await callThroughPolicy(
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: 2,
+            capabilities: {},
+            info: { name: 'jig-v2-client', version: '2' },
+          },
+        },
+        (accepted) =>
+          scenario === 'http-status-503'
+            ? {
+                ...accepted,
+                params: {
+                  ...accepted.params,
+                  capabilities: {
+                    _meta: { jetbrains: { air: { version: 1, capabilities: ['sessionFailure'] } } },
+                  },
+                },
+              }
+            : accepted,
+      )
+      expect(initReply.result.protocolVersion).toBe(2)
+
+      const newReply = await callThroughPolicy(
+        {
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'session/new',
+          params: { cwd: '/work', mcpServers: [] },
+        },
+        (accepted) => ({ ...accepted, params: { ...accepted.params, cwd: root } }),
+      )
+      const sessionId = newReply.result.sessionId as string
+      expect(typeof sessionId).toBe('string')
+
+      const configReply = await callThroughPolicy({
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'session/set_config_option',
+        params: { sessionId, configId: 'mode', type: 'id', value: 'read-only' },
+      })
+      expect(configReply.result).toEqual({
+        configOptions: [
+          {
+            configId: 'mode',
+            name: 'mode',
+            type: 'select',
+            currentValue: 'read-only',
+            options: [{ value: 'read-only', name: 'read-only' }],
+          },
+        ],
+      })
+
+      const acceptedPrompt = policy.fromAdapter(
+        encoder.encode(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 4,
+            method: 'session/prompt',
+            params: { sessionId, prompt: [{ type: 'text', text: 'Answer through policy.' }] },
+          }),
+        ),
+      )
+      child.stdin.write(`${JSON.stringify(acceptedPrompt)}\n`)
+      await child.stdin.flush()
+
+      if (scenario === 'rejected') {
+        for (;;) {
+          const { raw, parsed } = await readRawFrame()
+          policy.fromClient(encoder.encode(raw))
+          if (parsed.id === 4) break
+        }
+        expect(policy.hasExplicitPromptRejection).toBeTrue()
+        expect(policy.hasAcceptedOrInsertedPrompt).toBeFalse()
+      } else {
+        while (policy.turnActive) {
+          const { raw } = await readRawFrame()
+          try {
+            policy.fromClient(encoder.encode(raw))
+          } catch (error) {
+            policyError = error
+            break
+          }
+        }
+        if (scenario === 'http-status-503') {
+          expect(policyError).toBeInstanceOf(PrivateFiniteAcpPolicyError)
+          expect((policyError as PrivateFiniteAcpPolicyError).nativeHttpStatusCode).toBe(503)
+          expect(policy.hasAcceptedOrInsertedPrompt).toBeTrue()
+          expect(policy.hasExplicitPromptRejection).toBeFalse()
+          return
+        }
+        expect(policyError).toBeUndefined()
+      }
+      const closeReply = await callThroughPolicy({
+        jsonrpc: '2.0',
+        id: 5,
+        method: 'session/close',
+        params: { sessionId },
+      })
+      expect(closeReply.result).toEqual({})
+      if (scenario !== 'rejected') expect(policy.settledSessionId).toBe(sessionId)
+    } finally {
+      try {
+        await child.stdin.end()
+      } catch {
+        /* already exited */
+      }
+      await child.exited
+      clearTimeout(deadline)
+      await lines.cancel()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+}

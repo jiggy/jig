@@ -1357,6 +1357,7 @@ function isCandidateDiagnosticCode(code: string): boolean {
       'PROJECT_FLOW_COLLISION',
       'PROJECT_FLOW_MODE_UNSUPPORTED',
       'PROJECT_AGENT_OVERRIDE_MODEL',
+      'PROJECT_AGENT_OVERRIDE_PROFILE',
       'PROJECT_AGENT_OVERRIDE_RETENTION',
       'PROJECT_AGENT_OVERRIDE_UNUSED',
     ].includes(code)

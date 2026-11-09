@@ -1,0 +1,25 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-0.json",
+  "type": "object",
+  "properties": {
+    "recovery": {
+      "type": "object",
+      "properties": {
+        "beforePrompt": {
+          "type": "string",
+          "enum": ["next", "stop"]
+        },
+        "afterRejectedPrompt": {
+          "type": "string",
+          "enum": ["stop", "next-on-limit-or-service", "next-on-auth-limit-or-service"]
+        },
+        "sameClientSession": {
+          "type": "string",
+          "enum": ["resume-if-qualified", "fresh"]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,9 +1,9 @@
-import { AgentMethodError, prepareAgent, type AgentInput } from '@jigging/agent-method'
+import { type AgentInput, AgentMethodError, prepareAgent } from '@jigging/agent-method'
 import {
-  OperationError,
   type ChannelReceiver,
   type ChannelSender,
   type JsonObject,
+  OperationError,
   type RunResult,
 } from '@jigging/flow'
 

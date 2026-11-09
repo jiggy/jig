@@ -241,12 +241,41 @@ export function renderPrivateProjectPlanReview(
 
 type ReviewedTarget = PrivateActivationReviewPlan['candidate']['candidate']['targets'][number]
 
+export function privateProjectReviewedAcpSelection(
+  grant: { readonly client: string; readonly authProfile?: string | undefined },
+  providerValue: unknown,
+): {
+  client: string
+  authProfile?: string
+  model: string
+  authentication: string
+  executable: string
+} {
+  const provider = requirePrivateAcpAgentProvider(providerValue)
+  return {
+    client: grant.client,
+    ...(grant.authProfile === undefined ? {} : { authProfile: grant.authProfile }),
+    model: provider.model,
+    authentication: provider.credentialMode,
+    executable: privateAcpAgentRuntime(provider).executablePath,
+  }
+}
+
 function projectAcpSelections(
   targets: readonly ReviewedTarget[],
   recipes: readonly PrivateDirectRunRecipe[],
 ): Record<
   string,
-  Record<string, { client: string; model: string; authentication: string; executable: string }>
+  Record<
+    string,
+    {
+      client: string
+      authProfile?: string
+      model: string
+      authentication: string
+      executable: string
+    }
+  >
 > {
   const byTarget = new Map<string, PrivateDirectRunRecipe>()
   for (const value of recipes) {
@@ -270,13 +299,7 @@ function projectAcpSelections(
         route.grant?.kind !== 'acp'
       )
         throw new TypeError('ACP review selection does not match the exact proposed recipe')
-      const provider = requirePrivateAcpAgentProvider(recipe.acp[slot])
-      selected[slot] = {
-        client: route.grant.client,
-        model: provider.model,
-        authentication: provider.credentialMode,
-        executable: privateAcpAgentRuntime(provider).executablePath,
-      }
+      selected[slot] = privateProjectReviewedAcpSelection(route.grant, recipe.acp[slot])
     }
     if (Object.keys(selected).length !== 0) result[targetKey(target.request.target)] = selected
   }

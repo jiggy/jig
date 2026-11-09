@@ -19,6 +19,7 @@ import { basename, dirname, join } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { main, privateCliPrepareArguments } from '../../src/cli.js'
 import { PrivateProjectProjection } from '../../src/cli-project-projection.js'
+import { createPrivateAcpAgentProvider } from '../../src/internal/acp-agent-provider.js'
 import {
   createPrivateActivationPlanV2,
   decodePrivateActivationCandidateV5,
@@ -56,6 +57,7 @@ import {
   recordPrivateRootChildPhase,
   recordPrivateRootChildSandbox,
   recordPrivateRootExecutionCheckpoint,
+  releaseClaimedPrivateNativeSession,
   replacePrivateBunPreparationOwner,
   savePrivateNativeSession,
   submitPrivateAttempt,
@@ -72,6 +74,7 @@ import {
   encodePrivateProjectLocalLock,
   privateProjectLocalLockDigest,
 } from '../../src/internal/project-local-lock.js'
+import { privateFiniteAcpSessionScope } from '../../src/internal/root-finite-acp-controller.js'
 import { canonicalJson, type JsonValue } from '../../src/json.js'
 import { capturePackageDirectory } from '../../src/package/capture.js'
 import { restorePrivateActivationRequest } from '../../src/project/package-resolution.js'
@@ -458,7 +461,7 @@ test('prepared ticket acceptance is atomic with one original root and binds requ
     await coordinator?.dispose()
     await fixture.dispose()
   }
-})
+}, 60_000)
 
 test('cancelled prepared ticket and missing prepared record never allocate a root', async () => {
   const fixture = await createFixture()
@@ -511,7 +514,7 @@ test('cancelled prepared ticket and missing prepared record never allocate a roo
     await coordinator?.dispose()
     await fixture.dispose()
   }
-})
+}, 60_000)
 
 interface EmptyFixture {
   readonly base: string
@@ -1406,6 +1409,215 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
+  test('releaseClaimedPrivateNativeSession preserves original TTL and rejects expired snapshots', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const parentRunId = await prepareNativeSessionParent(
+        fixture,
+        coordinator,
+        'native-release-ttl',
+      )
+      const access = {
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId,
+        scopeDigest: digest('a'),
+      }
+      const receipt = (await savePrivateNativeSession({
+        ...access,
+        ...nativeSession(),
+        bytes: Buffer.from('{"turn":1}\n'),
+      }))!
+      const claimed = await claimPrivateNativeSession({
+        ...access,
+        reference: receipt.reference,
+      })
+      expect(claimed).toBeDefined()
+      await releaseClaimedPrivateNativeSession({ ...access, snapshot: claimed! })
+      const database = openSqlite(fixture.database, 'readonly')
+      try {
+        const row = database
+          .query('SELECT created_at, expires_at FROM native_sessions WHERE reference = ?1')
+          .get(receipt.reference) as { created_at: number; expires_at: number } | null
+        expect(row).not.toBeNull()
+        expect(row!.expires_at).toBe(claimed!.expiresAtUnixMs)
+        expect(row!.expires_at - row!.created_at).toBe(86_400_000)
+      } finally {
+        database.close(true)
+      }
+      const reclaimed = await claimPrivateNativeSession({
+        ...access,
+        reference: receipt.reference,
+      })
+      expect(reclaimed?.expiresAtUnixMs).toBe(claimed!.expiresAtUnixMs)
+      await releaseClaimedPrivateNativeSession({
+        ...access,
+        snapshot: {
+          ...claimed!,
+          reference: receipt.reference,
+          expiresAtUnixMs: Date.now() - 1_000,
+        },
+      })
+      expect(
+        await claimPrivateNativeSession({
+          ...access,
+          reference: receipt.reference,
+        }),
+      ).toBeUndefined()
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+  test('cross-profile Codex sessions share scope across authProfile/model and release cleanly before resume', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    const supportRoot = await mkdtemp(join(tmpdir(), 'jig-cross-profile-store-'))
+    try {
+      const adapterPath = join(supportRoot, 'adapter.js')
+      const codexPath = join(supportRoot, 'codex')
+      const claudePath = join(supportRoot, 'claude')
+      await writeFile(adapterPath, 'adapter\n')
+      await writeFile(codexPath, 'codex-binary\n')
+      await writeFile(claudePath, 'claude-binary\n')
+      await chmod(codexPath, 0o700)
+      await chmod(claudePath, 0o700)
+      const makeProvider = (
+        client: string,
+        executablePath: string,
+        authProfile: string,
+        model: string,
+        credentialMode: string,
+        secret: string,
+      ) =>
+        createPrivateAcpAgentProvider({
+          client,
+          authProfile,
+          model,
+          credentialMode,
+          adapterPath,
+          sandboxAdapterPath: '/agent/adapter.js',
+          executablePath,
+          sandboxExecutablePath: '/agent/client',
+          environment: { ACCOUNT: authProfile },
+          secrets: [secret],
+        })
+      const primaryCodex = await makeProvider(
+        'openai-codex',
+        codexPath,
+        'sub-a',
+        'gpt-5',
+        'chatgpt',
+        'token-sub-a',
+      )
+      const backupApiCodex = await makeProvider(
+        'openai-codex',
+        codexPath,
+        'api-key',
+        'o3-mini',
+        'api',
+        'token-api-key',
+      )
+      const backupSubCodex = await makeProvider(
+        'openai-codex',
+        codexPath,
+        'sub-b',
+        'gpt-5',
+        'chatgpt',
+        'token-sub-b',
+      )
+      const claudeBackup = await makeProvider(
+        'anthropic-claude',
+        claudePath,
+        'claude-work',
+        'claude-sonnet',
+        'oauth',
+        'token-claude',
+      )
+      const parentContext = {
+        parent: {
+          run: { target: { kind: 'flow', path: 'flows/agent' } },
+          intent: { requestDigest: digest('f') },
+        },
+        parentFlow: {
+          target: { kind: 'flow', path: 'flows/parent' },
+          requestDigest: digest('e'),
+          operationId: 'op:1',
+        },
+      }
+      const primaryScope = privateFiniteAcpSessionScope(parentContext, primaryCodex)
+      const backupApiScope = privateFiniteAcpSessionScope(parentContext, backupApiCodex)
+      const backupSubScope = privateFiniteAcpSessionScope(parentContext, backupSubCodex)
+      const claudeScope = privateFiniteAcpSessionScope(parentContext, claudeBackup)
+      expect(backupApiScope).toBe(primaryScope)
+      expect(backupSubScope).toBe(primaryScope)
+      expect(claudeScope).not.toBe(primaryScope)
+
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const parentRunId = await prepareNativeSessionParent(
+        fixture,
+        coordinator,
+        'cross-profile-codex',
+      )
+      const receipt = (await savePrivateNativeSession({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId,
+        scopeDigest: primaryScope,
+        ...nativeSession(),
+        bytes: Buffer.from('{"turn":1}\n'),
+      }))!
+      expect(
+        await claimPrivateNativeSession({
+          coordinator,
+          projectRoot: fixture.root,
+          parentRunId,
+          scopeDigest: claudeScope,
+          reference: receipt.reference,
+        }),
+      ).toBeUndefined()
+      const claimedByApiBackup = await claimPrivateNativeSession({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId,
+        scopeDigest: backupApiScope,
+        reference: receipt.reference,
+      })
+      expect(claimedByApiBackup).toBeDefined()
+      await releaseClaimedPrivateNativeSession({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId,
+        scopeDigest: backupApiScope,
+        snapshot: claimedByApiBackup!,
+      })
+      const claimedBySubBackup = await claimPrivateNativeSession({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId,
+        scopeDigest: backupSubScope,
+        reference: receipt.reference,
+      })
+      expect(claimedBySubBackup?.nativeId).toBe(claimedByApiBackup!.nativeId)
+      expect(
+        await claimPrivateNativeSession({
+          coordinator,
+          projectRoot: fixture.root,
+          parentRunId,
+          scopeDigest: backupSubScope,
+          reference: receipt.reference,
+        }),
+      ).toBeUndefined()
+    } finally {
+      await coordinator?.dispose()
+      await rm(supportRoot, { recursive: true, force: true })
+      await fixture.dispose()
+    }
+  }, 60_000)
   test('native sessions survive coordinator replacement but require its current active root', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined

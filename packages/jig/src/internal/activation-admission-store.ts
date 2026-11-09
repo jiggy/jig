@@ -55,9 +55,9 @@ import {
 } from './activation-admission.js'
 import { privateActivationTargetKey } from './activation-planning.js'
 import {
-  readPrivateAttemptCheckpointInventory,
   readPrivateAttemptCheckpoint,
   readPrivateAttemptCheckpointFiles,
+  readPrivateAttemptCheckpointInventory,
   retainPrivateAttemptCheckpoint,
 } from './attempt-checkpoint-store.js'
 import { type PrivateAttemptClock, readPrivateAttemptClock } from './attempt-clock.js'
@@ -114,6 +114,7 @@ import {
   deletePrivateRetiredAttempts,
   PRIVATE_ATTEMPT_SCHEMA,
   PrivateAttemptError,
+  type PrivateAttemptRow,
   type PrivateAuthenticatedAttempt,
   persistPrivatePreparedAttempt,
   privateAttemptBaseObservation,
@@ -122,7 +123,6 @@ import {
   privateAttemptRequest,
   privateAttemptResultDigest,
   privateAttemptRetentionState,
-  type PrivateAttemptRow,
   readPrivateAttemptInputs,
   reconcilePrivateAttemptExportOwners,
   requirePrivateAttemptAcceptable,
@@ -2163,6 +2163,32 @@ export async function claimPrivateNativeSession(
   })
 }
 
+/** Restore a previously claimed session snapshot when native setup failed non-destructively. */
+export async function releaseClaimedPrivateNativeSession(
+  input: NativeSessionAccess & { readonly snapshot: PrivateNativeSessionSnapshot },
+): Promise<void> {
+  const { snapshot, scopeDigest } = input
+  return await accessNativeSessions(input, (database, now) => {
+    if (snapshot.expiresAtUnixMs <= now || snapshot.expiresAtUnixMs < NATIVE_SESSION_RETENTION_MS)
+      return
+    runFinalized(
+      database,
+      'INSERT OR IGNORE INTO native_sessions(reference, scope_digest, native_id, rollout_path, content_digest, content_bytes, created_at, expires_at, root_run_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)',
+      [
+        snapshot.reference,
+        scopeDigest,
+        snapshot.nativeId,
+        snapshot.rolloutPath,
+        snapshot.digest,
+        snapshot.bytes,
+        snapshot.expiresAtUnixMs - NATIVE_SESSION_RETENTION_MS,
+        snapshot.expiresAtUnixMs,
+        snapshot.lifetime === 'run' ? input.parentRunId : null,
+      ],
+    )
+  })
+}
+
 async function accessNativeSessions<T>(
   input: NativeSessionAccess,
   operation: (database: SqliteDatabase, now: number) => T,
@@ -2679,12 +2705,10 @@ export async function readPrivateSettledChildCheckpoint(input: {
     failure = error
     throw error
   } finally {
-    try {
-      await disposeOperation(owner, undefined, failure)
-    } catch (error) {
+    await disposeOperation(owner, undefined, failure).catch((error) => {
       for (const file of checkpoint?.files ?? []) file.bytes.fill(0)
       throw error
-    }
+    })
   }
 }
 

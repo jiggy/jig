@@ -95,6 +95,21 @@ describe('private ACP Agent provider', () => {
       'support changed after selection',
     )
   })
+  test('binds protocol v2 unconditionally in native provider identity', async () => {
+    const support = await files()
+    const current = await createPrivateAcpAgentProvider({
+      client: 'test-client',
+      model: 'provider/model',
+      credentialMode: 'subscription',
+      adapterPath: support.adapter,
+      sandboxAdapterPath: '/agent/adapter.js',
+      executablePath: support.executable,
+      sandboxExecutablePath: '/agent/client',
+      environment: { CLIENT_PATH: '/agent/client' },
+    })
+    expect(privateAcpAgentRuntime(current).protocolVersion).toBe(2)
+  })
+
   test('rejects credential-bearing process environments', async () => {
     const support = await files()
     await expect(

@@ -48,7 +48,10 @@ export interface InvocationIdentity {
 }
 
 export type InvocationRequirement =
-  | (InvocationIdentity & { readonly requires?: readonly string[] })
+  | (InvocationIdentity & {
+      readonly requires?: readonly string[]
+      readonly optional?: boolean
+    })
   | Readonly<Record<string, never>>
 export type NativeInvocation =
   | 'http-request'
@@ -205,6 +208,7 @@ export function resolveInvocationSlots(
   }
   for (const [name, contract] of Object.entries(uses)) {
     if (Object.hasOwn(slots, name)) continue
+    if ('optional' in contract && contract.optional === true) continue
     const native = nativeInvocationKind(contract)
     if (native === undefined || isGrantedInvocation(native))
       throw new TypeError(`slot ${name} requires an explicit matching Flow, Binding, or grant`)
@@ -252,18 +256,27 @@ export function normalizeInvocationIdentity(value: unknown): InvocationIdentity 
 export function normalizeInvocationRequirement(value: unknown): InvocationRequirement {
   const item = object(value)
   if (Object.keys(item).length === 0) return Object.freeze({})
-  exact(item, ['id', 'version', 'digest', ...(Object.hasOwn(item, 'requires') ? ['requires'] : [])])
+  exact(item, [
+    'id',
+    'version',
+    'digest',
+    ...(Object.hasOwn(item, 'requires') ? ['requires'] : []),
+    ...(Object.hasOwn(item, 'optional') ? ['optional'] : []),
+  ])
   const identity = normalizeInvocationIdentity({
     id: item.id,
     version: item.version,
     digest: item.digest,
   })
-  if (!Object.hasOwn(item, 'requires')) return identity
+  if (Object.hasOwn(item, 'optional') && typeof item.optional !== 'boolean')
+    throw new TypeError('optional must be a boolean')
+  const optional = Object.hasOwn(item, 'optional') ? { optional: item.optional as boolean } : {}
+  if (!Object.hasOwn(item, 'requires')) return Object.freeze({ ...identity, ...optional })
   if (!Array.isArray(item.requires) || item.requires.length > 256)
     throw new TypeError('required features must be a bounded LocalName list')
   const requires = item.requires.map(localName)
   if (new Set(requires).size !== requires.length) throw new TypeError('duplicate required feature')
-  return Object.freeze({ ...identity, requires: Object.freeze(requires) })
+  return Object.freeze({ ...identity, requires: Object.freeze(requires), ...optional })
 }
 
 /** Decode the one persisted route map; no digest alone selects native authority. */

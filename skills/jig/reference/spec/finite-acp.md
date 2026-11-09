@@ -75,7 +75,7 @@ The first response is exactly one non-secret ready record:
 
 ```json
 {
-  "kind": "ready", "protocolVersion": 1, "cwd": "/work",
+  "kind": "ready", "protocolVersion": 2, "cwd": "/work",
   "maxTurns": 1,
   "configuration": [{ "configId": "model", "value": "reviewed-model" }],
   "modeId": "read-only"
@@ -140,14 +140,14 @@ bounded native text response when its necessary framing crosses a Flow boundary.
 
 The host accepts one serial sequence, with unique bounded request IDs:
 
-1. ACP `initialize` at version 1, without client tool or authentication powers.
+1. ACP `initialize` at version 2, without client tool or authentication powers.
 2. One `session/new` at `/work`, with an empty `mcpServers` array and no `_meta`,
    or, when ready contains `restoreSessionId`, exactly one `session/resume` with
    `{sessionId:restoreSessionId,cwd:"/work",mcpServers:[]}`. Restoration requires
-   initialization to advertise `agentCapabilities.sessionCapabilities.resume`;
-   no `session/new` fallback is permitted.
+   initialization to advertise baseline session capabilities.
+   No `session/new` fallback is permitted.
 3. Each exact ready configuration transition, in order, with confirmation of
-   its reviewed value; then the exact mode transition if present.
+   its reviewed value. The exact mode transition as a configuration option (`configId: "mode"`) follows if present.
 4. Up to the grant's `maxTurns` serial `session/prompt` requests on the owned
    session, each containing one text block, at most 1 MiB. The preceding prompt
    must settle before another dispatch. NUL and leading slash commands are excluded.
@@ -158,15 +158,14 @@ record above requires these requests in order, each with a fresh request ID and
 each awaiting its correlated result:
 
 ```json
-{"jsonrpc":"2.0","id":3,"method":"session/set_config_option","params":{"sessionId":"owned-session","configId":"model","value":"reviewed-model"}}
-{"jsonrpc":"2.0","id":4,"method":"session/set_mode","params":{"sessionId":"owned-session","modeId":"read-only"}}
+{"jsonrpc":"2.0","id":3,"method":"session/set_config_option","params":{"sessionId":"owned-session","configId":"model","type":"id","value":"reviewed-model"}}
+{"jsonrpc":"2.0","id":4,"method":"session/set_config_option","params":{"sessionId":"owned-session","configId":"mode","type":"id","value":"read-only"}}
 ```
 
 These are separate JSON/0 frames, each sent through the bounded fragments above.
 Use the actual owned session ID and ready values. A Boolean configuration entry
 also requires `type:"boolean"` in its request parameters. The configuration
-result must confirm the selected value in `configOptions`; the mode result is
-`{}`. Neither step is optional merely because the native client already reports
+result must confirm the selected value in `configOptions`. Neither step is optional merely because the native client already reports
 the same setting. Only then may a prompt be sent.
 
 After each prompt is dispatched, at most one `session/cancel` notification may
@@ -267,12 +266,28 @@ Root cancellation, deadline, uncertain ownership, failed cleanup, unauthorized
 dispatch and broken essential transport remain invocation errors; they cannot
 be relabelled `closed`.
 
-After possible dispatch, a recognized native session failure or finite-protocol
-rejection retains a closed explanation alongside `UNCERTAIN`. The host never
+After a task-prompt write may have begun, a recognized native session failure
+or finite-protocol rejection retains a closed explanation alongside `UNCERTAIN`. The host never
 copies an exception message or arbitrary native diagnostic into that explanation.
 Unclassified failures remain unspecified. A warning alone establishes no cause.
 Cancellation, deadline and cleanup failure keep their existing precedence.
 An explanation neither proves whether remote work occurred nor permits retry.
+
+A distinct terminal is possible when the trusted writer never attempted a
+task-prompt write. It requires confirmed native process fencing and release.
+It has code `EXECUTION_FAILED` and details
+`{nativePrompt:{forwarding:"not-forwarded",cleanup:"confirmed",turnsSettled}}`.
+When an active turn prompt is rejected before producing output, confirmed cleanup
+instead yields `UNCERTAIN` with `forwarding:"rejected-without-output"` and
+`turnsSettled:0`.
+This is host-owned evidence. It cannot be inferred from the client's error
+message, reported HTTP status, or a partially failed native write.
+
+This evidence does not assert that initializing a native client caused no
+remote activity. It does not authorize replaying an unfinished turn or
+crossing a session identity, and it is unavailable after cancellation, deadline,
+or uncertain cleanup. Application failover additionally requires reviewed
+successor authority and an explicit bounded recovery policy.
 
 For a reported native session failure, error `details` may contain exactly
 `{nativeSession:{category,httpStatusCode?,reportedReason?}}`. The host accepts only `connection`,
@@ -330,20 +345,24 @@ may still produce the ordinary successful resource result with
 separately valid Agent answer, but it never hides a resource execution or cleanup
 failure that already requires an invocation error.
 
-Before consuming a reference, the host checks current authorization against
-the protected project identity, root target and request digest, ordered
-target/request-digest ancestry, immediate native slot and exact provider/profile
-digest. Operation identifiers and ordinary prompt input do not bind restoration.
-Run-scoped state additionally requires the original root Run identity and its
-active authority; ordinary retained state may cross Runs. Aliases selecting
-the same admitted target are equivalent; this
-profile does not promise isolation by incoming slot alias. Accepted code or
-configuration changes that alter these identities require a new conversation.
+Before consuming a reference, the host checks current authorization. The host
+validates the protected project identity, root target and request digest,
+ordered ancestry, client, executable digest, and adapter digest.
+This scope excludes the slot name, model, and authentication profile. Another
+qualifying Codex candidate in the same admitted Binding can continue restoration
+with the same client binaries.
 
-A reference is claimed atomically once before native startup, with restored
-bytes placed in a fresh private scope. Concurrent claims cannot create two
-owners. A claim is consumed even if subsequent startup, resume or execution
-fails. Unsupported, expired, foreign and reused references fail visibly. The
+Operation identifiers and ordinary prompt input do not bind restoration. Accepted code or executable changes require a new
+conversation. Run-scoped state additionally requires the original root Run
+identity and active authority.
+
+A reference is claimed atomically before native startup, with restored bytes
+placed in a fresh private scope. Concurrent claims cannot create two owners.
+If startup or `session/resume` fails before acceptance, the host restores the
+unexpired snapshot with its original expiration.
+
+Once `session/resume` succeeds, the claim is consumed even if execution later
+fails. Unsupported, expired, foreign, and reused references fail visibly. The
 host does not silently create a session, replay a transcript, retry uncertain
 work or restore authentication. Current grants and current credentials are
 revalidated independently of retained content.

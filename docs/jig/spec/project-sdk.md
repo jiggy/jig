@@ -386,8 +386,11 @@ Each branch must fit the fixed root resource budget: at most five child levels w
 Concurrent branches share that budget. There is no hidden generated Binding.
 
 A required named invocation is declared by `uses.<slot>.contract` in package
-metadata. The selected Flow must offer exactly that ID, version and digest
-through its root `FLOW.contract.json`; anonymous ordinary calls need no contract.
+metadata. The selected Flow must offer that exact ID, version and digest
+through its root `FLOW.contract.json`. Anonymous ordinary calls need no contract.
+Optional slot declarations set `uses.<slot>.optional: true` and may remain
+unbound in a Binding or project default.
+
 Only qualified [Run Checkpoint](run-checkpoint.md) slots resolve implicitly to
 host support. HTTP Request, Finite ACP and Project Command require explicit
 slot grants. Those three contracts and Run Checkpoint cannot be

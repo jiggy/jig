@@ -1,4 +1,5 @@
 import { decodeJson1, JSON_1_LIMITS, type JsonObject, type JsonValue } from '../json.js'
+import { PrivateAcpV2Foreground, PrivateAcpV2ForegroundError } from './finite-acp-v2-foreground.js'
 import {
   isPrivateNativeTurnAllowance,
   PRIVATE_NATIVE_TURN_POLICY,
@@ -74,6 +75,7 @@ const PERMISSION = 'session/request_permission'
  */
 export class PrivateFiniteAcpPolicy {
   private readonly maxTurns: number
+  private readonly v2 = new PrivateAcpV2Foreground()
   private turns = 0
   private readonly configuration: readonly Configuration[]
   private readonly modeId?: string
@@ -85,12 +87,14 @@ export class PrivateFiniteAcpPolicy {
   private configured = 0
   private modeSet = false
   private promptSent = false
+  private promptRpcResultReceived = false
   private promptSettled = false
   private peerFailed = false
   private pendingNotice = false
   private cancelSent = false
   private closeSent = false
   private canClose = false
+  private resumeAccepted = false
   private pending: { readonly id: Id; readonly method: string } | undefined
   private readonly adapterIds = new Set<Id>()
   private readonly clientIds = new Set<Id>()
@@ -133,6 +137,8 @@ export class PrivateFiniteAcpPolicy {
     }
     this.configuration = options as unknown as readonly Configuration[]
     if (Object.hasOwn(policy, 'modeId')) this.modeId = identifier(policy.modeId)
+    if (this.modeId !== undefined && ids.has('mode'))
+      fail('ACP v2 mode configuration is duplicated')
   }
 
   fromAdapter(bytes: Uint8Array): JsonObject {
@@ -158,14 +164,12 @@ export class PrivateFiniteAcpPolicy {
         case INITIALIZE: {
           if (this.initialized || this.adapterIds.size > 0)
             fail('ACP initialization is not available')
-          keys(params, ['protocolVersion'], ['clientCapabilities', 'clientInfo'])
-          if (params.protocolVersion !== 1) fail('Unsupported ACP version')
-          if (params.clientCapabilities !== undefined) keys(object(params.clientCapabilities), [])
-          if (params.clientInfo !== undefined) {
-            const info = object(params.clientInfo)
-            keys(info, ['name'], ['version', 'title'])
-            for (const value of Object.values(info)) identifier(value)
-          }
+          keys(params, ['protocolVersion', 'capabilities', 'info'])
+          if (params.protocolVersion !== 2) fail('Unsupported ACP version')
+          keys(object(params.capabilities), [])
+          const info = object(params.info)
+          keys(info, ['name', 'version'], ['title'])
+          for (const value of Object.values(info)) identifier(value)
           break
         }
         case NEW:
@@ -175,11 +179,11 @@ export class PrivateFiniteAcpPolicy {
             this.restoreSessionId !== undefined
           )
             fail('ACP session creation is not available')
-          keys(params, ['cwd', 'mcpServers'])
+          keys(params, ['cwd'], ['mcpServers'])
           if (
             params.cwd !== '/work' ||
-            !Array.isArray(params.mcpServers) ||
-            params.mcpServers.length !== 0
+            (params.mcpServers !== undefined &&
+              (!Array.isArray(params.mcpServers) || params.mcpServers.length !== 0))
           )
             fail('ACP session authority differs from its policy')
           break
@@ -191,38 +195,34 @@ export class PrivateFiniteAcpPolicy {
             this.restoreSessionId === undefined
           )
             fail('ACP session restoration is not available')
-          keys(params, ['sessionId', 'cwd', 'mcpServers'])
+          keys(params, ['sessionId', 'cwd'], ['mcpServers'])
           if (
             params.sessionId !== this.restoreSessionId ||
             params.cwd !== '/work' ||
-            !Array.isArray(params.mcpServers) ||
-            params.mcpServers.length !== 0
+            (params.mcpServers !== undefined &&
+              (!Array.isArray(params.mcpServers) || params.mcpServers.length !== 0))
           )
             fail('ACP restoration authority differs from its policy')
           break
         case CONFIGURE: {
           this.ownedSession(params, ['configId', 'value'], ['type'])
-          const required = this.configuration[this.configured]
+          const required =
+            this.configuration[this.configured] ??
+            (this.modeId !== undefined && !this.modeSet
+              ? { configId: 'mode', value: this.modeId }
+              : undefined)
           if (this.promptSent || required === undefined || this.modeSet)
             fail('ACP configuration is not available')
           if (
             params.configId !== required.configId ||
             params.value !== required.value ||
-            params.type !== ('type' in required ? required.type : undefined)
+            params.type !== ('type' in required ? required.type : 'id')
           )
             fail('ACP configuration differs from its policy')
           break
         }
         case MODE:
-          this.ownedSession(params, ['modeId'])
-          if (
-            this.promptSent ||
-            this.configured !== this.configuration.length ||
-            this.modeSet ||
-            this.modeId === undefined ||
-            params.modeId !== this.modeId
-          )
-            fail('ACP mode differs from its policy')
+          fail('ACP v2 modes are configuration options')
           break
         case PROMPT: {
           this.ownedSession(params, ['prompt'])
@@ -245,7 +245,9 @@ export class PrivateFiniteAcpPolicy {
             encoder.encode(content.text).byteLength > PRIVATE_FINITE_ACP_LIMITS.promptBytes
           )
             fail('ACP prompt exceeds its authority or bounds')
+          this.v2?.begin()
           this.promptSent = true
+          this.promptRpcResultReceived = false
           this.promptSettled = false
           this.cancelSent = false
           this.turns += 1
@@ -294,6 +296,7 @@ export class PrivateFiniteAcpPolicy {
           error.data.startsWith(
             'failed to load configuration: Failed to synchronize managed preferences\n\nCheck ',
           )
+        if (pending.method === PROMPT) this.v2.reject(error)
         this.pending = undefined
         this.peerFailed = true
         return freeze({
@@ -311,31 +314,22 @@ export class PrivateFiniteAcpPolicy {
         })
       }
       const result = object(frame.result)
+      if (pending.method === PROMPT) this.promptRpcResultReceived = true
       if (this.notice(result._meta)) this.pendingNotice = true
       let projected: JsonObject
       switch (pending.method) {
         case INITIALIZE: {
-          if (result.protocolVersion !== 1) fail('Unsupported ACP version')
-          const capabilities = optionalObject(result.agentCapabilities)
-          const sessions = optionalObject(capabilities.sessionCapabilities)
-          this.canClose = sessions.close !== undefined && sessions.close !== null
-          if (this.canClose) object(sessions.close)
-          this.canResume = sessions.resume !== undefined && sessions.resume !== null
-          if (this.canResume) object(sessions.resume)
-          if (this.restoreSessionId !== undefined && !this.canResume)
-            fail('ACP client does not support restoration')
+          if (result.protocolVersion !== 2) fail('Unsupported ACP version')
+          const capabilities = optionalObject(result.capabilities)
+          if (capabilities.session === undefined || capabilities.session === null)
+            fail('ACP v2 client does not advertise baseline sessions')
+          this.canClose = true
+          this.canResume = true
           this.initialized = true
           projected = {
-            protocolVersion: 1,
-            agentCapabilities:
-              this.canClose || this.canResume
-                ? {
-                    sessionCapabilities: {
-                      ...(this.canClose ? { close: {} } : {}),
-                      ...(this.canResume ? { resume: {} } : {}),
-                    },
-                  }
-                : {},
+            protocolVersion: 2,
+            capabilities: { session: {} },
+            info: { name: 'jig-selected-native-agent', version: '2' },
           }
           break
         }
@@ -345,48 +339,50 @@ export class PrivateFiniteAcpPolicy {
           break
         case RESUME:
           this.sessionId = this.restoreSessionId!
+          this.resumeAccepted = true
           projected = {}
           break
         case CONFIGURE: {
-          const required = this.configuration[this.configured]!
+          const required =
+            this.configuration[this.configured] ??
+            (this.modeId !== undefined && !this.modeSet
+              ? { configId: 'mode', value: this.modeId }
+              : undefined)
+          if (required === undefined) fail('ACP configuration is not available')
           if (!Array.isArray(result.configOptions)) fail('ACP configuration was not confirmed')
           const matches = result.configOptions.filter(
-            (option) => object(option).id === required.configId,
+            (option) => object(option).configId === required.configId,
           )
           if (matches.length !== 1 || object(matches[0]).currentValue !== required.value)
             fail('ACP configuration was not confirmed')
           const option =
             typeof required.value === 'boolean'
               ? {
-                  id: required.configId,
+                  configId: required.configId,
                   name: required.configId,
                   type: 'boolean',
                   currentValue: required.value,
                 }
               : {
-                  id: required.configId,
+                  configId: required.configId,
                   name: required.configId,
                   type: 'select',
                   currentValue: required.value,
                   options: [{ value: required.value, name: required.value }],
                 }
           projected = { configOptions: [option] }
-          this.configured += 1
+          if (required.configId === 'mode' && this.configured === this.configuration.length)
+            this.modeSet = true
+          else this.configured += 1
           break
         }
         case MODE:
-          this.modeSet = true
-          projected = {}
+          fail('ACP v2 modes are configuration options')
           break
         case PROMPT:
-          if (
-            !['end_turn', 'max_tokens', 'max_turn_requests', 'refusal', 'cancelled'].includes(
-              result.stopReason as string,
-            )
-          )
-            fail('Invalid ACP terminal response')
-          this.promptSettled = true
-          projected = { stopReason: result.stopReason! }
+          this.v2.accept(result)
+          this.settleV2IfReady()
+          projected = { messageId: this.v2.acceptedMessageId! }
           break
         case CLOSE:
           projected = {}
@@ -405,9 +401,33 @@ export class PrivateFiniteAcpPolicy {
     })
   }
 
+  /** Protocol accounting only: whether `session/resume` returned success on the wire. */
+  get hasAcceptedResume(): boolean {
+    return this.resumeAccepted
+  }
+
+  /** Protocol accounting only: whether the peer failed the protocol policy. */
+  get hasPeerFailed(): boolean {
+    return this.peerFailed
+  }
+
   /** Protocol accounting only: this does not establish process or Agent success. */
   get turnActive(): boolean {
-    return this.pending?.method === PROMPT
+    return this.pending?.method === PROMPT || this.v2?.waitingForCompletion === true
+  }
+
+  get hasProducedTurnOutput(): boolean {
+    return this.textBytes > 0 || this.v2?.hasOutput === true
+  }
+
+  /** Protocol accounting only: whether the pending prompt was explicitly rejected before insertion. */
+  get hasExplicitPromptRejection(): boolean {
+    return this.v2.hasRejected
+  }
+
+  /** Protocol accounting only: whether the pending prompt has been accepted, inserted, or started. */
+  get hasAcceptedOrInsertedPrompt(): boolean {
+    return this.promptRpcResultReceived || this.v2.hasAcceptedOrInserted
   }
 
   /** An owned, finally settled conversation, not a persistence receipt. */
@@ -453,6 +473,79 @@ export class PrivateFiniteAcpPolicy {
     }
     this.ownedSession(params, ['update'], ['_meta'])
     if (typeof update.sessionUpdate !== 'string') fail('Invalid ACP update')
+    if (
+      [
+        'user_message',
+        'user_message_chunk',
+        'state_update',
+        'agent_message',
+        'agent_message_chunk',
+      ].includes(update.sessionUpdate)
+    ) {
+      try {
+        if (
+          this.promptSettled &&
+          (update.sessionUpdate !== 'state_update' || update.state !== 'idle')
+        )
+          fail('ACP v2 update attempted to reopen a settled turn')
+        this.v2.update(update)
+        this.settleV2IfReady()
+      } catch (error) {
+        if (error instanceof PrivateAcpV2ForegroundError)
+          fail('ACP v2 foreground protocol or work failed')
+        throw error
+      }
+      if (
+        update.sessionUpdate === 'user_message' ||
+        update.sessionUpdate === 'user_message_chunk'
+      ) {
+        // Only the Agent-owned ID crosses. The native echoed user prompt
+        // remains private to the invoked Flow and need not be replayed.
+        return freeze({
+          toAdapter: {
+            jsonrpc: '2.0',
+            method: UPDATE,
+            params: {
+              sessionId: this.sessionId!,
+              update: {
+                sessionUpdate: update.sessionUpdate,
+                messageId: identifier(update.messageId),
+              },
+            },
+          },
+        })
+      }
+      if (update.sessionUpdate === 'state_update') {
+        const reason = update.stopReason
+        const projected: JsonObject = {
+          sessionUpdate: 'state_update',
+          state: update.state!,
+          ...(typeof reason === 'string' ? { stopReason: reason } : {}),
+        }
+        return freeze({
+          toAdapter: {
+            jsonrpc: '2.0',
+            method: UPDATE,
+            params: { sessionId: this.sessionId!, update: projected },
+          },
+        })
+      }
+      if (update.sessionUpdate === 'agent_message') {
+        const content = update.content
+        const projected: JsonObject = {
+          sessionUpdate: 'agent_message',
+          messageId: identifier(update.messageId),
+          ...(content === undefined ? {} : { content: content as JsonValue }),
+        }
+        return freeze({
+          toAdapter: {
+            jsonrpc: '2.0',
+            method: UPDATE,
+            params: { sessionId: this.sessionId!, update: projected },
+          },
+        })
+      }
+    }
     let projected: JsonObject
     if (notice) {
       projected = {
@@ -460,7 +553,8 @@ export class PrivateFiniteAcpPolicy {
         _meta: { notice: { code: 'NATIVE_WARNING' } },
       }
     } else if (update.sessionUpdate === 'agent_message_chunk') {
-      if (this.pending?.method !== PROMPT) fail('ACP text arrived outside an active turn')
+      if (this.pending?.method !== PROMPT && this.v2.waitingForCompletion !== true)
+        fail('ACP text arrived outside an active turn')
       const content = object(update.content)
       if (content.type !== 'text') return Object.freeze({})
       if (typeof content.text !== 'string') fail('Invalid ACP text update')
@@ -474,7 +568,8 @@ export class PrivateFiniteAcpPolicy {
           : { messageId: identifier(update.messageId) }),
       }
     } else if (update.sessionUpdate === 'plan') {
-      if (this.pending?.method !== PROMPT) fail('ACP plan arrived outside an active turn')
+      if (this.pending?.method !== PROMPT && this.v2.waitingForCompletion !== true)
+        fail('ACP plan arrived outside an active turn')
       if (!Array.isArray(update.entries)) fail('Invalid ACP plan update')
       const entries = update.entries.map((value) => {
         const entry = object(value)
@@ -498,6 +593,23 @@ export class PrivateFiniteAcpPolicy {
         params: { sessionId: this.sessionId!, update: projected },
       },
     })
+  }
+
+  private settleV2IfReady(): void {
+    if (!this.v2?.waitingForCompletion || this.promptSettled) return
+    try {
+      this.v2.settle()
+      this.promptSettled = true
+    } catch (error) {
+      if (error instanceof PrivateAcpV2ForegroundError) {
+        if (error.kind === 'unsettled') return
+        if (error.kind === 'stopped' && this.cancelSent && error.message.includes('cancelled')) {
+          this.promptSettled = true
+          return
+        }
+      }
+      fail('Native ACP v2 work was not successfully settled')
+    }
   }
 
   private noticeFrame(): JsonObject {

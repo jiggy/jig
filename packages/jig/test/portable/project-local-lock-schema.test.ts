@@ -60,11 +60,31 @@ describe('Jig lock/1 shape schema', () => {
       }
     })
     expect(() => schema.validate(value, 'INVALID_JIG_LOCK')).not.toThrow()
+    const withProfile = changed(lock, (item) => {
+      item.bindings.configured.slots.native = {
+        kind: 'grant',
+        policy: { kind: 'acp', client: 'codex', authProfile: 'work-account', retainSessions: true },
+      }
+    })
+    expect(() => schema.validate(withProfile, 'INVALID_JIG_LOCK')).not.toThrow()
     for (const patch of [{ client: 'pi' }, { client: 'claude' }, { retainSessions: false }]) {
       const invalid = changed(value, (item) =>
         Object.assign(item.bindings.configured.slots.native.policy, patch),
       )
       expect(() => schema.validate(invalid, 'INVALID_JIG_LOCK')).toThrow(SchemaDiagnostic)
+    }
+  })
+  test('accepts optional uses slots in package declarations', () => {
+    for (const optional of [true, false]) {
+      const value = changed(lock, (item) => {
+        item.packages['flows/direct'].uses.backup = {
+          id: 'https://jig.md/contracts/agent-run',
+          version: '1.0.0',
+          digest: AGENT_RUN_CONTRACT_DIGEST,
+          optional,
+        }
+      })
+      expect(() => schema.validate(value, 'INVALID_JIG_LOCK')).not.toThrow()
     }
   })
   test('accepts the complete current lock shape', () => {
