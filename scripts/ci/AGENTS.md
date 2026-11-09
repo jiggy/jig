@@ -160,9 +160,9 @@ preparation never becomes a consumer requirement.
   It checks the window's minimum request cost
   before collecting individual run histories. Insufficient budget refuses the
   complete report without sampling. Use a narrower manual window after refusal.
-- `qualified-bun.json` owns the single source of truth for the qualified Bun
-  runtime version, revision, platform, architecture, and exact Just version used
-  across candidate builds, profiles, provenance checks, and preflight tests.
+- `qualified-bun.json` owns qualified Bun metadata. It defines the runtime
+  version, revision, platform, architecture, and exact Just version for builds
+  and checks.
 - `bump-qualified-bun.ts` automates workspace-wide qualified Bun upgrades,
   reconciling metadata, package dependencies, workflows, documentation,
   fixtures, and changesets from an exact version and tag revision.

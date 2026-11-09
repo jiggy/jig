@@ -69,9 +69,11 @@ operational baselines, and public-site assembly.
   applicable `test/macos/` and exact observer suite sequentially. It uses the
   hosted prerequisite order, excludes ambient credentials and live-client
   opt-ins, checks ownership residue, and stops at the first failure. Other hosts
-  report portable-only coverage. `just qualify-check` provides a fast (~20s)
-  preflight verifying candidate generation, npm preflight assertions, and
-  installed launcher contracts without executing the full host suite.
+  report portable-only coverage.
+
+  `just qualify-check` verifies candidate generation, npm preflight assertions,
+  and installed launcher contracts in roughly twenty seconds without running
+  the complete host suite.
 
   Unsupported Macs refuse before building. Its ownership snapshot includes both
   explicit lowercase `jig-` paths and automatic `/Volumes/Jig-` mounts. These
