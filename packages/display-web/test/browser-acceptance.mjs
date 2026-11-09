@@ -1102,3 +1102,46 @@ test('changing navigation layout preserves keyboard focus and the chosen view', 
     await page.getByRole('region', { name: 'Execution', exact: true }).waitFor()
   })
 })
+
+test('adjacent authored reading sections share wide space and retain their order when narrow', async () => {
+  const fixture = childFixture()
+  const material = fixture.snapshot.views.find((item) => item.id === 'child-review')
+  material.value.sections = [
+    {
+      title: 'First account',
+      blocks: [{ kind: 'report', text: 'A complete first account. '.repeat(30) }],
+    },
+    { title: 'Second account', blocks: [{ kind: 'report', text: 'A complete second account.' }] },
+    {
+      title: 'Retained context',
+      blocks: [{ kind: 'facts', items: [{ label: 'Source', value: 'Supplied' }] }],
+    },
+  ]
+  await withPage(fixture, {}, async (page) => {
+    await openTab(page, 'Specialist material')
+    const first = page.getByRole('heading', { name: 'First account', exact: true }).locator('..')
+    const second = page.getByRole('heading', { name: 'Second account', exact: true }).locator('..')
+    const context = page
+      .getByRole('heading', { name: 'Retained context', exact: true })
+      .locator('..')
+    const wide = await Promise.all([
+      first.boundingBox(),
+      second.boundingBox(),
+      context.boundingBox(),
+    ])
+    assert(Math.abs(wide[0].y - wide[1].y) < 2, 'both accounts begin together')
+    assert(wide[1].x >= wide[0].x + wide[0].width, 'reading surfaces do not overlap')
+    assert(wide[2].y >= wide[0].y + wide[0].height, 'context follows the complete reading pair')
+    await page.setViewportSize({ width: 390, height: 900 })
+    const narrow = await Promise.all([first.boundingBox(), second.boundingBox()])
+    assert(
+      narrow[1].y >= narrow[0].y + narrow[0].height,
+      'the authored sequence stacks on narrow screens',
+    )
+    assert.equal(
+      await first.locator('.report').textContent(),
+      material.value.sections[0].blocks[0].text,
+    )
+    await noPageOverflow(page)
+  })
+})

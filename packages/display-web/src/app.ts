@@ -2563,7 +2563,9 @@ function Tabs(): ComponentChildren {
               h(
                 'option',
                 { key: tab.id, value: tab.id },
-                privateBrowserLiteral(`${tab.title}${tab.source ? ` · ${tab.source}` : ''}`),
+                privateBrowserLiteral(
+                  `${tab.title}${!tab.application && tab.source ? ` · ${tab.source}` : ''}`,
+                ),
               ),
             ),
           ),
