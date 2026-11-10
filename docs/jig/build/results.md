@@ -166,8 +166,11 @@ Give the current input a name and select **Download scenario file**.
 The resulting `.jig-scenario.json` file contains the exact JSON text and an informational workflow name and kind.
 Keep it with your project's examples if appropriate.
 
-To use a saved scenario, first choose the workflow you intend to run, select the scenario file, read its original workflow name, and choose **Use input in selected workflow**.
-Importing the file does not change the draft or start a Run. Using its input does not start a Run either; **Run workflow** remains a separate action with the usual approval and input checks.
+To use a saved scenario, choose its target workflow and select the file.
+Read the recorded workflow name, then choose **Use input in selected workflow**.
+Importing does not change the draft or start a Run.
+Applying changes only the input.
+**Run workflow** remains a separate action with ordinary approval and input checks.
 If the workflow name differs, the explorer explicitly warns you to review the target.
 
 Scenario files may contain private inputs, credentials or customer data. Review them before downloading, sharing or committing.
