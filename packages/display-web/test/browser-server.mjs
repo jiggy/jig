@@ -38,8 +38,24 @@ export async function startBrowserFixture(fixture, assets = webAssets) {
       return
     }
     if (fixture.project && request.url?.startsWith('/api/project') && request.method === 'GET') {
+      const selectedId = new URL(request.url, 'http://127.0.0.1').searchParams.get('target')
+      const project = structuredClone(fixture.project)
+      if (selectedId && !project.targets.some((target) => target.id === selectedId)) {
+        response.writeHead(404).end()
+        return
+      }
+      if (selectedId) {
+        const target = project.targets.find((item) => item.id === selectedId)
+        project.selected.targetId = selectedId
+        project.selected.composition.rootId = selectedId
+        project.selected.composition.nodes = [{
+          id: selectedId,
+          kind: target.kind,
+          label: target.label,
+        }]
+      }
       response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
-        .end(JSON.stringify(fixture.project))
+        .end(JSON.stringify(project))
       return
     }
     if (fixture.project && request.url === '/api/run' && request.method === 'GET') {
