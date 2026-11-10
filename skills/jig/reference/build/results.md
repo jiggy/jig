@@ -176,6 +176,7 @@ If the workflow name differs, the explorer explicitly warns you to review the ta
 Scenario files may contain private inputs, credentials or customer data. Review them before downloading, sharing or committing.
 Jig does not save scenarios to project files, browser storage or a server automatically.
 The single loaded scenario remains in the current explorer tab until replaced or the tab closes.
+
 If input is invalid, correct the displayed problem and submit again.
 If approval changes, refresh the explorer before choosing the workflow again.
 The explorer never repeats a submission automatically after a lost connection.
