@@ -60,6 +60,7 @@ Returned requests do not establish application success.
 
 All requests, Active and Needs attention change emphasis without hiding the configured map.
 Active follows active requests. Needs attention follows failed or uncertain requests.
+When Needs attention is selected, show a compact index of exact failed and uncertain requests, including those not placed on the map. It is retained evidence, not complete execution history, and links are unavailable while stale.
 Requested cancellation retains its own wording without becoming an inferred failure.
 Summary space stays stable as observations change, preserving route geometry and the viewer's position.
 
