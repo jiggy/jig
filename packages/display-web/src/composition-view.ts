@@ -29,6 +29,7 @@ type Props = (
   onSelect: (id: string) => void
   onClose: () => void
   onCall?: (id: string) => void
+  onAttentionCall?: (id: string) => void
   onObservedCalls?: () => void
   requestFocus?: PrivateCompositionRequestFocus
   onRequestFocus?: (focus: PrivateCompositionRequestFocus) => void
@@ -174,6 +175,14 @@ export function CompositionPage(props: Props): ComponentChildren {
   )
   const allRequests = privateCompositionRequestSummary([...requests.values()].flat())
   const requestFocus = snapshot ? (props.requestFocus ?? 'all') : 'all'
+  // Includes unplaced requests; missing observations never establish that a call was skipped.
+  const attentionRequests = snapshot?.calls.filter(
+    (call) => call.state === 'failed' || call.state === 'uncertain',
+  ) ?? []
+  const attentionMatches = new Map(attribution?.matches.map((match) => [match.callId, match]) ?? [])
+  const attentionUnmatched = new Map(
+    attribution?.unmatched.map((item) => [item.callId, item.reason]) ?? [],
+  )
   const edgeCountLabel = (edgeId: string): string => {
     const count = edgeRequests.get(edgeId)?.length ?? 0
     return count
@@ -582,6 +591,79 @@ export function CompositionPage(props: Props): ComponentChildren {
               { class: 'composition-focus-note' },
               'All configured connections stay visible.',
             ),
+          )
+        : null,
+      snapshot && requestFocus === 'attention'
+        ? h(
+            'section',
+            { class: 'composition-attention-index', 'aria-label': 'Retained requests needing attention' },
+            h(
+              'header',
+              {},
+              h('strong', {}, 'Requests needing attention · ' + attentionRequests.length),
+              h('small', { class: 'secondary' }, 'Failed or uncertain retained requests'),
+            ),
+            attentionRequests.length
+              ? h(
+                  'ol',
+                  { class: 'composition-attention-requests' },
+                  attentionRequests.map((call) => {
+                    const match = attentionMatches.get(call.id)
+                    const target = match ? nodes.get(match.targetNodeId) : undefined
+                    const route = match
+                      ? composition.edges.find((edge) => edge.id === match.edgeId)
+                      : undefined
+                    const location = target
+                      ? target.label + ' · ' + (route?.slot ?? call.slot)
+                      : 'Not placed on map · ' +
+                        unmatchedReason(attentionUnmatched.get(call.id) ?? 'composition-unavailable')
+                    return h(
+                      'li',
+                      { key: call.id },
+                      button(
+                        h(
+                          'span',
+                          { class: 'composition-attention-request' },
+                          h('strong', {}, literal(call.intent ?? call.slot)),
+                          h('small', {}, literal(location)),
+                          h(
+                            'span',
+                            { class: 'composition-request-state call-' + call.state },
+                            'Observed state: ' + call.state,
+                          ),
+                        ),
+                        () => props.onAttentionCall?.(call.id),
+                        {
+                          'data-attention-call': call.id,
+                          disabled: !props.referencesEnabled,
+                          'aria-label':
+                            'Inspect ' + call.state + ' invocation ' +
+                            privateBrowserLiteral(call.operationId) + ': ' +
+                            privateBrowserLiteral(call.intent ?? call.slot) + '. ' + location,
+                        },
+                      ),
+                    )
+                  }),
+                )
+              : h(
+                  'p',
+                  { class: 'secondary' },
+                  'No failed or uncertain retained requests are visible. This does not establish success.',
+                ),
+            snapshot.omissions.calls
+              ? h(
+                  'p',
+                  { class: 'unavailable-note' },
+                  snapshot.omissions.calls + ' call observations are omitted; this index is incomplete.',
+                )
+              : null,
+            attentionRequests.length && !props.referencesEnabled
+              ? h(
+                  'p',
+                  { class: 'unavailable-note' },
+                  'Invocation links are unavailable while observations are stale or incomplete.',
+                )
+              : null,
           )
         : null,
       h(
