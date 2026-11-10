@@ -1214,11 +1214,14 @@ test('publication summary distinguishes verified archives from superseded versio
     AGENT_STATE: 'verified',
     ACP_VERSION: '0.1.0-alpha.2',
     ACP_STATE: 'superseded',
+    ROUTER_VERSION: '0.1.0-alpha.1',
+    ROUTER_STATE: 'verified',
     JIG_VERSION: '0.1.0-alpha.3',
     JIG_STATE: 'published',
   })
   assert.equal(result.status, 0)
   assert.ok(result.summary.includes('@jigging/agent-acp | 0.1.0-alpha.2 | superseded'))
+  assert.ok(result.summary.includes('@jigging/semantic-router | 0.1.0-alpha.1 | verified'))
   assert.ok(result.summary.includes('@jigging/jig | 0.1.0-alpha.3 | published'))
 })
 

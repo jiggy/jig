@@ -94,7 +94,7 @@ async function fixture() {
         const stage = join(destination, '.packed')
         mkdirSync(join(stage, 'package'), { recursive: true })
         writeFileSync(join(stage, 'package/package.json'), JSON.stringify(manifest))
-        for (const path of ['FLOW.ts', 'FLOW.contract.json', 'src/flow.ts', 'dist/flow.js']) {
+        for (const path of ['FLOW.ts', 'FLOW.meta.json', 'FLOW.contract.json', 'src/flow.ts', 'dist/flow.js', 'dist/index.js', 'dist/index.d.ts', 'contracts/agent-run/contract.json', 'contracts/agent-run/contracts/acp-public-updates.json', 'contracts/agent-run/contracts/agent-commands.json', 'contracts/agent-run/contracts/agent-replies.json', 'contracts/reporting/reporting.json']) {
           mkdirSync(join(stage, 'package', path, '..'), { recursive: true })
           writeFileSync(join(stage, 'package', path), 'fixture')
         }
@@ -142,7 +142,7 @@ async function fixture() {
   }
 }
 
-test('build-only producer freezes one workspace build, eight archives and actual resolution without qualification', async () => {
+test('build-only producer freezes package builds, nine archives and actual resolution without qualification', async () => {
   const f = await fixture()
   try {
     const output = join(f.root, 'candidate')
@@ -153,7 +153,7 @@ test('build-only producer freezes one workspace build, eight archives and actual
     assert.equal(receipt.release.reason, 'feature-source')
     assert.deepEqual(receipt.release.pendingPackages, [])
     assert.equal(receipt.release.sourceRevision, receipt.sourceRevision)
-    assert.equal(receipt.packages.length, 8)
+    assert.equal(receipt.packages.length, 9)
     assert.deepEqual(
       receipt.packages.map(({ kind }) => kind),
       [
@@ -161,6 +161,7 @@ test('build-only producer freezes one workspace build, eight archives and actual
         'reporting',
         'agent-method',
         'agent-acp',
+        'semantic-router',
         'display-model',
         'display-web',
         'display-tui',
@@ -175,9 +176,9 @@ test('build-only producer freezes one workspace build, eight archives and actual
     assert.equal(
       f.calls.filter((call) => basename(call.command) === 'just' && call.args.includes('build'))
         .length,
-      1,
+      2,
     )
-    assert.equal(f.calls.filter((call) => call.args.includes('--destination')).length, 8)
+    assert.equal(f.calls.filter((call) => call.args.includes('--destination')).length, 9)
     const install = f.calls.find((call) => call.args[0] === 'install')
     for (const [kind, name] of Object.entries(CANDIDATE_PACKAGES))
       assert.equal(install.args.includes(name), kind !== 'flow-sdk')
@@ -193,7 +194,7 @@ test('build-only producer freezes one workspace build, eight archives and actual
       assert.equal(record.sha256, entry.sha256)
     }
     assert.equal(execute('git', ['status', '--porcelain'], { cwd: f.repository }), '')
-    assert.equal((await readFile(join(output, 'SHA256SUMS'), 'utf8')).trim().split('\n').length, 8)
+    assert.equal((await readFile(join(output, 'SHA256SUMS'), 'utf8')).trim().split('\n').length, 9)
   } finally {
     await f.cleanup()
   }
@@ -246,6 +247,7 @@ test('source-pinned pending changesets bind their complete bundled release closu
       '@jigging/agent-acp',
       '@jigging/agent-method',
       '@jigging/jig',
+      '@jigging/semantic-router',
     ])
     assert.ok(receipt.packages.every((entry) => entry.version === '0.1.0-alpha.1'))
     assert.equal(execute('git', ['status', '--porcelain'], { cwd: f.repository }), '')
@@ -534,6 +536,6 @@ test('unqualified Just version refuses before candidate creation', async () => {
 
 test('malformed qualification requests fail before running source or package commands', async () => {
   for (const kind of ['unknown', 'display-model', 'display-web', 'display-tui'])
-    await assert.rejects(qualifyCandidate(kind, '/unused'), /flow\|agent\|acp\|jig/)
+    await assert.rejects(qualifyCandidate(kind, '/unused'), /flow\|agent\|acp\|router\|jig/)
   await assert.rejects(candidateTools({ env: { JIG_CI_BUN: 'relative' } }), /absolute executable/)
 })

@@ -1,0 +1,7 @@
+{
+  "name": "recover-draft-outer",
+  "description": "Recover two interrupted drafts through a composable child Flow.",
+  "uses": {
+    "recovery": {}
+  }
+}

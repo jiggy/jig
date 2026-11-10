@@ -109,7 +109,7 @@ async function bundleFixture(action) {
   }
 }
 
-test('candidate receipt verifies all eight archives, actual inventories and resolution without changing frozen files', async () => {
+test('candidate receipt verifies all nine archives, actual inventories and resolution without changing frozen files', async () => {
   await bundleFixture(async ({ root, receipt }) => {
     const before = await readFile(join(root, 'CANDIDATE.json'))
     const verified = await verifyCandidateBundle(root, {
@@ -118,7 +118,7 @@ test('candidate receipt verifies all eight archives, actual inventories and reso
       producerRunAttempt: 1,
       producerRepository: repository,
     })
-    assert.equal(verified.packages.length, 8)
+    assert.equal(verified.packages.length, 9)
     assert.equal(verified.receiptSha256, receipt.receiptSha256)
     assert.deepEqual(await readFile(join(root, 'CANDIDATE.json')), before)
     for (const expected of [
@@ -257,7 +257,7 @@ test('pending source receipts qualify exact archives without granting release el
     const { releasePlanSha256: _plan, ...release } = receipt.release
     release.eligible = false
     release.reason = 'pending-changesets'
-    release.pendingPackages = ['@jigging/agent-method', '@jigging/agent-acp', '@jigging/jig']
+    release.pendingPackages = ['@jigging/agent-method', '@jigging/agent-acp', '@jigging/jig', '@jigging/semantic-router']
     await writeFile(path, JSON.stringify({ ...receipt, release }))
     assert.equal((await verifyCandidateBundle(root)).release.eligible, false)
     for (const pendingPackages of [
@@ -792,7 +792,7 @@ test('complete qualification cannot publish feature, pending or stale versioned 
       ...release,
       eligible: false,
       reason,
-      pendingPackages: reason === 'pending-changesets' ? ['@jigging/jig'] : [],
+      pendingPackages: reason === 'pending-changesets' ? ['@jigging/jig', '@jigging/semantic-router'] : [],
     }
     const result = await fixture.check()
     assert.equal(result.readyFlow, false)

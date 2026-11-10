@@ -151,6 +151,12 @@ all accepted worker/router identities, binary and empty-file bytes, and shared
 export identity. Read-only protected counts and native residue establish no replay
 and complete cleanup independently of the application result.
 
+`host/installed-semantic-recovery.test.ts` installs the semantic selector archive and consumes its packaged draft recovery example.
+It executes failed and unacceptable workers, absent saves, rejected context and replacements, selection abstention and refusal, attempt limits, and empty candidate sets.
+Independent invocation scopes, immutable file handoff, accepted bytes, and native cleanup remain real host obligations.
+Its ordinary Agent peer is deterministic protocol evidence, not live semantic quality.
+Run its ten cases in five two-case attempts, preserving each attempt's 16-artifact retention bound and independent nested scopes.
+
 `host/installed-child-checkpoint-cancellation.test.ts` owns a separate installed consumer.
 Its selected-channel barrier proves an acknowledged child save while that child remains active.
 Retrieval must refuse that active child. Abort the child call through the public SDK.

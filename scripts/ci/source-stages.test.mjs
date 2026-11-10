@@ -128,7 +128,7 @@ test('source stages run serially after one shared build on both supported shells
     const events = f.events()
     assert.deepEqual(
       events.filter((event) => event.startsWith('build:')),
-      ['build:jig::build'],
+      ['build:jig::build', 'build:router::build'],
     )
     assert.ok(events.indexOf('build:jig::build') < events.indexOf('portable-start'))
     assert.ok(events.indexOf('portable-done') < events.indexOf('portable-node-start'))
@@ -155,6 +155,7 @@ test('canonical CI inputs preserve source stages and delegate installed consumer
     'reporting',
     'agent-method',
     'agent-acp',
+    'semantic-router',
     'display-model',
     'display-web',
     'display-tui',
@@ -192,7 +193,7 @@ test('protocol-only execution builds Jig methods and consumes the external SDK w
   const events = f.events()
   assert.deepEqual(
     events.filter((event) => event.startsWith('build:')),
-    ['build:reporting::build', 'build:agent::build', 'build:acp::build'],
+    ['build:reporting::build', 'build:agent::build', 'build:acp::build', 'build:router::build'],
   )
   assert.ok(
     !events.some((event) => event.includes('authoring::build') || event.includes('flow::build')),

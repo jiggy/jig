@@ -14,6 +14,7 @@ const packageNames = new Set([
   '@jigging/flow',
   '@jigging/agent-method',
   '@jigging/agent-acp',
+  '@jigging/semantic-router',
   '@jigging/jig',
 ])
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex')

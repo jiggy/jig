@@ -341,7 +341,7 @@ test('push acquisition selects main-push bytes despite newer same-source schedul
         producerRepository: repository,
       })
       assert.equal(verified.producer.event, 'push')
-      assert.equal(verified.packages.length, 8)
+      assert.equal(verified.packages.length, 9)
     },
   )
 })
@@ -530,7 +530,7 @@ for (const initial of ['queued', 'missing']) {
         producerRunAttempt: 1,
         producerRepository: repository,
       })
-      assert.equal(verified.packages.length, 8)
+      assert.equal(verified.packages.length, 9)
       assert.deepEqual(
         JSON.parse(await readFile(join(destination, 'ARTIFACT.json'), 'utf8')),
         acquired,

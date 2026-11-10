@@ -220,6 +220,7 @@ jobs:
             printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/flow-sdk")"
             printf 'AGENT_METHOD_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-method")"
             printf 'AGENT_ACP_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-acp")"
+            printf 'SEMANTIC_ROUTER_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/semantic-router")"
             printf 'DISPLAY_MODEL_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/display-model")"
             printf 'DISPLAY_WEB_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/display-web")"
             printf 'DISPLAY_TUI_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/display-tui")"
@@ -271,7 +272,7 @@ jobs:
               "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" \
               "REPORTING_PACKAGE_ARCHIVE=$REPORTING_PACKAGE_ARCHIVE" \
               "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" \
-              "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" \
+              "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" "SEMANTIC_ROUTER_PACKAGE_ARCHIVE=$SEMANTIC_ROUTER_PACKAGE_ARCHIVE" \
               "FLOW_NODE=$FLOW_NODE" "JIG_AUTHORING_NODE_PATH=$FLOW_NODE" \
               "JIG_NPM=$(command -v npm)" JIG_LINUX_ROOTLESS_HOSTILE=1 \
               "${runner[@]}" \
@@ -290,7 +291,7 @@ jobs:
         run: |
           set -euo pipefail
           diagnostic_directory=$(readlink -f "$RUNNER_TEMP/linux-command-evidence")
-          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env "JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY=$diagnostic_directory" "DISPLAY_MODEL_PACKAGE_ARCHIVE=$DISPLAY_MODEL_PACKAGE_ARCHIVE" "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "JIG_AUTHORING_NODE_PATH=$(command -v node)" "JIG_NPM=$(command -v npm)" "REPORTING_PACKAGE_ARCHIVE=$REPORTING_PACKAGE_ARCHIVE" "$JIG_CI_BUN" packages/jig/test/package-smoke.ts 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-12.txt"
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env "JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY=$diagnostic_directory" "DISPLAY_MODEL_PACKAGE_ARCHIVE=$DISPLAY_MODEL_PACKAGE_ARCHIVE" "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" "SEMANTIC_ROUTER_PACKAGE_ARCHIVE=$SEMANTIC_ROUTER_PACKAGE_ARCHIVE" JIG_LINUX_ROOTLESS_HOSTILE=1 "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "JIG_AUTHORING_NODE_PATH=$(command -v node)" "JIG_NPM=$(command -v npm)" "REPORTING_PACKAGE_ARCHIVE=$REPORTING_PACKAGE_ARCHIVE" "$JIG_CI_BUN" packages/jig/test/package-smoke.ts 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-12.txt"
 
           printf 'CI installed script complete: %s\n' 'packages/jig/test/package-smoke.ts' >> "$RUNNER_TEMP/linux-command-evidence/command-12.txt"
           node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
@@ -303,7 +304,7 @@ jobs:
         if: "matrix.suite == 'installed-evidence'"
         run: |
           set -euo pipefail
-          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env "DISPLAY_MODEL_PACKAGE_ARCHIVE=$DISPLAY_MODEL_PACKAGE_ARCHIVE" "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "REPORTING_PACKAGE_ARCHIVE=$REPORTING_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" TMPDIR=/tmp "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "$JIG_CI_BUN" scripts/test-operational-baseline.ts 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-13.txt"
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env "DISPLAY_MODEL_PACKAGE_ARCHIVE=$DISPLAY_MODEL_PACKAGE_ARCHIVE" "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "REPORTING_PACKAGE_ARCHIVE=$REPORTING_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" "SEMANTIC_ROUTER_PACKAGE_ARCHIVE=$SEMANTIC_ROUTER_PACKAGE_ARCHIVE" TMPDIR=/tmp "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "$JIG_CI_BUN" scripts/test-operational-baseline.ts 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-13.txt"
 
           printf 'CI installed script complete: %s\n' 'scripts/test-operational-baseline.ts' >> "$RUNNER_TEMP/linux-command-evidence/command-13.txt"
           node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
@@ -315,7 +316,7 @@ jobs:
         if: "matrix.suite == 'installed-evidence'"
         run: |
           set -euo pipefail
-          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env "JIG_CI_LINUX_EVIDENCE_DIRECTORY=$JIG_CI_LINUX_EVIDENCE_DIRECTORY" "DISPLAY_MODEL_PACKAGE_ARCHIVE=$DISPLAY_MODEL_PACKAGE_ARCHIVE" "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "REPORTING_PACKAGE_ARCHIVE=$REPORTING_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "$JIG_CI_BUN" scripts/test-installed-hostile-baseline.ts 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-14.txt"
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env "JIG_CI_LINUX_EVIDENCE_DIRECTORY=$JIG_CI_LINUX_EVIDENCE_DIRECTORY" "DISPLAY_MODEL_PACKAGE_ARCHIVE=$DISPLAY_MODEL_PACKAGE_ARCHIVE" "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "REPORTING_PACKAGE_ARCHIVE=$REPORTING_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" "SEMANTIC_ROUTER_PACKAGE_ARCHIVE=$SEMANTIC_ROUTER_PACKAGE_ARCHIVE" "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "$JIG_CI_BUN" scripts/test-installed-hostile-baseline.ts 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-14.txt"
 
           printf 'CI installed script complete: %s\n' 'scripts/test-installed-hostile-baseline.ts' >> "$RUNNER_TEMP/linux-command-evidence/command-14.txt"
           node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"

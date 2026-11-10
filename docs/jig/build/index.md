@@ -16,6 +16,7 @@ These tutorials establish the review-and-run loop used throughout this section.
 | Task | Guide |
 | --- | --- |
 | Choose an API or native client and write a support-reply method | [Add an Agent](./agents.md) |
+| Choose among eligible methods and recover partial work | [Select and recover methods](./semantic-routing.md) |
 | Call another Flow and handle its complete result | [Compose methods](./compose.md) |
 | Write instructions or adapt a Skill | [Markdown methods](./markdown.md) |
 | Customize Agent instructions, Skills, or reply shapes | [Reuse the Agent method](./agent-method.md) |

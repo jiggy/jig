@@ -1,0 +1,10 @@
+{
+  "name": "recover-draft-draft",
+  "description": "Retain a partial draft before a deliberately unsuccessful finish.",
+  "uses": {
+    "material": {},
+    "checkpoint": {
+      "contract": "./contracts/run-checkpoint/contract.json"
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
+  "artifactResults": [
+    "first",
+    "second"
+  ],
+  "input": {
+    "type": "object",
+    "properties": {
+      "cases": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 10,
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "enum": [
+                "first",
+                "second",
+                "other"
+              ]
+            },
+            "mode": {
+              "enum": [
+                "throw",
+                "reject",
+                "no-save",
+                "bad-context",
+                "bad-fallback",
+                "abstain",
+                "blocked",
+                "limit"
+              ]
+            },
+            "attemptLimit": {
+              "type": "integer",
+              "enum": [
+                1,
+                2
+              ]
+            },
+            "candidates": {
+              "enum": [
+                "none"
+              ]
+            }
+          },
+          "required": [
+            "label",
+            "mode"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "cases"
+    ],
+    "additionalProperties": false
+  }
+}

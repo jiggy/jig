@@ -1,8 +1,8 @@
-export interface Candidate {
+export type Candidate = {
   id: string
   description: string
 }
-export interface RoutingInput {
+export type RoutingInput = {
   task: string
   candidates: Candidate[]
 }

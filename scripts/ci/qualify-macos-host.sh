@@ -108,7 +108,7 @@ trap finish EXIT
 # Hosted qualification receives the canonical publication bytes. The standalone
 # full-host entrypoint still freezes its own selected source once.
 if [[ -n "$candidate_receipt" ]]; then
-  for package in flow-sdk reporting agent-method agent-acp display-model display-web display-tui jig; do
+  for package in flow-sdk reporting agent-method agent-acp semantic-router display-model display-web display-tui jig; do
     archives=("$JIG_CI_CANDIDATE_DIRECTORY/$package/"*.tgz)
     if [[ ${#archives[@]} -ne 1 || ! -f "${archives[0]}" || -L "${archives[0]}" ]]; then
       echo "Expected one canonical $package archive" >&2
@@ -118,7 +118,8 @@ if [[ -n "$candidate_receipt" ]]; then
     cp "${archives[0]}" "$scratch/$package/"
   done
 else
-  for package in flow-sdk reporting agent-method agent-acp display-model display-web display-tui; do
+  just --justfile packages/semantic-router/justfile build
+  for package in flow-sdk reporting agent-method agent-acp semantic-router display-model display-web display-tui; do
     mkdir "$scratch/$package"
     if [[ "$package" == flow-sdk ]]; then
       sdk_version=$(node -p 'require("./packages/jig/package.json").devDependencies["@jigging/flow"]')
@@ -130,7 +131,7 @@ else
   mkdir "$scratch/jig"
   (cd packages/jig && bun scripts/pack.ts --destination "$scratch/jig")
 fi
-for package in flow-sdk reporting agent-method agent-acp display-model display-web display-tui jig; do
+for package in flow-sdk reporting agent-method agent-acp semantic-router display-model display-web display-tui jig; do
   archives=("$scratch/$package/"*.tgz)
   if [[ ${#archives[@]} -ne 1 || ! -f "${archives[0]}" ]]; then
     echo "Expected one frozen $package archive" >&2
@@ -141,6 +142,7 @@ for package in flow-sdk reporting agent-method agent-acp display-model display-w
     reporting) export REPORTING_PACKAGE_ARCHIVE="${archives[0]}" ;;
     agent-method) export AGENT_METHOD_PACKAGE_ARCHIVE="${archives[0]}" ;;
     agent-acp) export AGENT_ACP_PACKAGE_ARCHIVE="${archives[0]}" ;;
+    semantic-router) export SEMANTIC_ROUTER_PACKAGE_ARCHIVE="${archives[0]}" ;;
     display-model) export DISPLAY_MODEL_PACKAGE_ARCHIVE="${archives[0]}" ;;
     display-web) export DISPLAY_WEB_PACKAGE_ARCHIVE="${archives[0]}" ;;
     display-tui) export DISPLAY_TUI_PACKAGE_ARCHIVE="${archives[0]}" ;;

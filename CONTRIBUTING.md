@@ -52,10 +52,8 @@ cd /path/to/your/project
 jig --help
 ```
 
-Run installation and build commands from the repository root. Bun 1.1.6 cannot discover the
-nested Flow workspace pattern and reports `semantic-router-flow` as missing,
-even though it exists in `examples/software-factory/flows/router`. Upgrade
-Bun; do not remove that workspace or install it from the registry.
+Run installation and build commands from the repository root.
+Use the supported Bun version for nested Flow workspaces.
 
 ### Linux with Nix
 

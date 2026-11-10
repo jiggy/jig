@@ -11,7 +11,7 @@ Changesets then generate package versions and maintain one release PR.
    Under **Workflow permissions**, enable **Allow GitHub Actions to create and approve pull requests**.
    If organization policy disables this setting, ask an organization administrator to enable it.
 2. Keep `test`, `affected-linux`, and `affected-macos` required in the merge policy.
-3. Configure npm trusted publishing for `@jigging/agent-method`, `@jigging/agent-acp`, and `@jigging/jig`.
+3. Configure npm trusted publishing for `@jigging/agent-method`, `@jigging/agent-acp`, `@jigging/semantic-router`, and `@jigging/jig`.
    Use repository `jiggy/jig`, workflow `npm-publish.yml`, and protected environment `npm`.
    No npm token is required.
 4. Keep `OPENROUTER_API_KEY` in the protected `native-agent-api` environment for native Agent qualification.
@@ -101,7 +101,7 @@ These diagnostics create no release qualification receipts.
 
 To check production npm authentication independently, dispatch **Publish npm prereleases** with mode `authentication`.
 Leave `source_revision` empty in this mode.
-The existing npm workflow and environment perform package-specific OIDC exchange for all three production packages.
+The existing npm workflow and environment perform package-specific OIDC exchange for all four production packages.
 Results contain only acceptance and HTTP status. Returned tokens are never written or displayed.
 This check publishes nothing and does not establish provenance or release readiness.
 

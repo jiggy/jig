@@ -1,0 +1,51 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
+  "artifactResults": [
+    "report"
+  ],
+  "outcomes": {
+    "blocked": "Recovery could not produce accepted work.",
+    "limit": "The attempt or selector limit stopped recovery."
+  },
+  "input": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "enum": [
+          "first",
+          "second",
+          "other"
+        ]
+      },
+      "mode": {
+        "enum": [
+          "throw",
+          "reject",
+          "no-save",
+          "bad-context",
+          "bad-fallback",
+          "abstain",
+          "blocked",
+          "limit"
+        ]
+      },
+      "attemptLimit": {
+        "type": "integer",
+        "enum": [
+          1,
+          2
+        ]
+      },
+      "candidates": {
+        "enum": [
+          "none"
+        ]
+      }
+    },
+    "required": [
+      "label",
+      "mode"
+    ],
+    "additionalProperties": false
+  }
+}

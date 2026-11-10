@@ -1,11 +1,16 @@
 import { checkAgentResult } from '@jigging/agent-method'
 import { OperationError, type RunContext, type RunResult } from '@jigging/flow'
-import { checkRoutingResult, routingInput } from './decision.ts'
+import { checkRoutingResult, routingInput } from './decision.js'
 
 export async function route(
   run: Pick<RunContext, 'input' | 'call' | 'signal'>,
 ): Promise<RunResult> {
-  const input = routingInput(run.input)
+  let input
+  try {
+    input = routingInput(run.input)
+  } catch (error) {
+    throw new OperationError('INVALID_INPUT', (error as Error).message)
+  }
   run.signal.throwIfAborted()
   if (input.candidates.length === 0)
     return {

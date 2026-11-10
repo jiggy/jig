@@ -94,7 +94,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   bounded mode-0600 profile artifacts for seven days. It performs no model calls
   and does not establish a performance claim. Its 60-minute shard allows the
   30-minute profile command budget to finish before mandatory cleanup.
-- CI freezes one canonical eight-package npm bundle and checked Python
+- CI freezes one canonical nine-package npm bundle and checked Python
   distributions before installed qualification. Source, Linux, hosted Mac and
   native Agent consumers use the same npm bytes. Jobs executing source tests
   build their platform's source workspace separately. Protected publishers
@@ -135,7 +135,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Retain required job results before rejecting failures or cancellations, even
   after evidence download fails. Optional current-attempt runner observations
   explain allocation failures without granting execution or cleanup evidence.
-- npm publication covers HTTP Agent, ACP Agent and Jig, in that dependency
+- npm publication covers HTTP Agent, ACP Agent, semantic router and Jig, in that dependency
   order, after same-revision CI, host and native gates. FLOW releases from its
   own repository. First publication requires each package's npm setup.
 
@@ -361,10 +361,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Install the declared public FLOW SDK before host fixtures that exercise
   SDK-authored Flows. Source tests resolve its public distribution.
 - Host conformance includes Agent method and contract-authoring source changes.
-  Consume the built SDK, HTTP Agent, ACP Agent, reporting, display model/web/TUI
+  Consume the built SDK, HTTP Agent, ACP Agent, semantic router, reporting, display model/web/TUI
   and Jig archives from the canonical producer. Pass
   `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` to lifecycle
-  tests and the Jig/SDK archives to installed Markdown tests across the
+  tests, `SEMANTIC_ROUTER_PACKAGE_ARCHIVE` to selector consumers, and the Jig/SDK archives to installed Markdown tests across the
   provisioned host boundary. Verify the same archive hashes afterward. Jig's
   packer supplies the complete private authoring closure. Agent source rebuilds
   use ordinary declared dependencies.

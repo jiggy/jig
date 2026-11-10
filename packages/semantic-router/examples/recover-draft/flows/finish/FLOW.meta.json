@@ -1,0 +1,5 @@
+{
+  "name": "recover-draft-finish",
+  "description": "Complete a draft while preserving its retained binary material.",
+  "uses": {}
+}

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { RunResult } from '@jigging/flow'
 import { previewCollection, type ViewOptions, type ViewSnapshot } from '@jigging/reporting'
-import type { RoutingInput } from './decision.ts'
+import type { RoutingInput } from './decision.js'
 
 export function selectionViewOptions(input: RoutingInput): ViewOptions {
   const instanceKey = createHash('sha256').update(JSON.stringify(input)).digest('hex')

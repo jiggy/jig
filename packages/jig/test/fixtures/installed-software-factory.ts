@@ -113,6 +113,7 @@ export async function qualifyInstalledSoftwareFactory(
       ['reporting', 'REPORTING_PACKAGE_ARCHIVE'],
       ['agent-method', 'AGENT_METHOD_PACKAGE_ARCHIVE'],
       ['agent-acp', 'AGENT_ACP_PACKAGE_ARCHIVE'],
+      ['semantic-router', 'SEMANTIC_ROUTER_PACKAGE_ARCHIVE'],
     ] as const) {
       const library = join(project, 'libs', name)
       await mkdir(library, { recursive: true })

@@ -103,6 +103,11 @@
       "profiles": ["portable", "portable-linux"]
     },
     {
+      "id": "semantic-router",
+      "roots": ["packages/semantic-router/"],
+      "profiles": ["portable", "portable-linux"]
+    },
+    {
       "id": "applications",
       "roots": ["examples/", "packages/jig/test/fixtures/incident-brief/"],
       "profiles": ["portable", "portable-linux"]
@@ -165,7 +170,7 @@
       "scope": "ci",
       "kind": "source-and-consumer",
       "profiles": ["ubuntu-24.04/bun-1.4.4/node-24/python-3.13"],
-      "suiteIds": ["agent", "acp", "reporting"],
+      "suiteIds": ["agent", "acp", "reporting", "semantic-router"],
       "inventoryProfile": "portable-linux",
       "requiresArtifacts": false,
       "requiresResidue": false
@@ -219,7 +224,7 @@
       "id": "npm-candidate",
       "scope": "ci",
       "kind": "candidate-and-consumer",
-      "profiles": ["flow", "agent", "acp", "jig"],
+      "profiles": ["flow", "agent", "acp", "router", "jig"],
       "suiteIds": [],
       "requiresArtifacts": true,
       "requiresResidue": false

@@ -1,0 +1,5 @@
+{
+  "name": "recover-draft-repair",
+  "description": "Validate and adapt retained draft data.",
+  "uses": {}
+}

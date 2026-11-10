@@ -1,0 +1,9 @@
+{
+  "name": "recover-draft-recovery",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@jigging/flow": "0.1.0-alpha.15",
+    "@jigging/semantic-router": "0.1.0-alpha.0"
+  }
+}
