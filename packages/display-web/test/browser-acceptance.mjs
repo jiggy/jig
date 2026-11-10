@@ -437,6 +437,49 @@ test('Run map focus preserves geometry and keyboard reachability through observa
   })
 })
 
+test('Run attention index opens exact matched and unplaced invocations without rearranging the map', async () => {
+  const fixture = compositionFixture()
+  await withPage(fixture, { viewport: { width: 390, height: 900 } }, async (page, host) => {
+    await openTab(page, 'Application map')
+    const original = await mapGeometry(page)
+    await page.locator('[data-request-focus="attention"]').click()
+    const index = page.getByRole('region', { name: 'Retained requests needing attention' })
+    await index.waitFor()
+    assert.equal(await index.locator('[data-attention-call]').count(), 4)
+    assert(await index.getByText(/Not placed on map/).count() > 0)
+    assert.deepEqual(await mapGeometry(page), original)
+    await index.locator('[data-attention-call="prepare-three"]').click()
+    await page.getByRole('heading', { name: 'Check a rejected candidate', exact: true }).waitFor()
+    await openTab(page, 'Application map')
+    assert.equal(
+      await page.locator('[data-request-focus="attention"]').getAttribute('aria-pressed'),
+      'true',
+    )
+    await page.locator('[data-attention-call="unplaced-caller"]').click()
+    await page.getByRole('heading', { name: 'Inspect an unobserved caller', exact: true }).waitFor()
+    await openTab(page, 'Application map')
+    const originalSnapshot = structuredClone(fixture.snapshot)
+    host.update({
+      kind: 'incomplete',
+      revision: 2,
+      lastCompleteRevision: 1,
+      mode: originalSnapshot.mode,
+      rootSourceId: originalSnapshot.rootSourceId,
+      reason: 'The latest observation is incomplete.',
+      workspace: originalSnapshot.workspace,
+      context: '',
+      omissions: originalSnapshot.omissions,
+      attention: [],
+      diagnostics: [],
+    })
+    await page.getByText('Incomplete observation', { exact: true }).waitFor()
+    assert.equal(await index.locator('[data-attention-call]').count(), 4)
+    for (const item of await index.locator('[data-attention-call]').all())
+      assert(!(await item.isEnabled()))
+    assert(await index.getByText(/4 call observations are omitted/).count() > 0)
+  })
+})
+
 test('an incomplete observation retains the readable map and fences exact request navigation', async () => {
   const fixture = compositionFixture()
   const original = structuredClone(fixture.snapshot)
