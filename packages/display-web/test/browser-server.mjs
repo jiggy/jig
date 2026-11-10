@@ -8,9 +8,10 @@ export async function startBrowserFixture(fixture, assets = webAssets) {
   const capability = 'browser-acceptance-fixture-capability-token-00'.slice(0, 43)
   const streams = new Set()
   const requests = []
+  const submissions = []
   let closed = false
   const server = createServer((request, response) => {
-    const asset = assets[request.url]
+    const asset = assets[request.url === '/explore' && fixture.project ? '/' : request.url]
     if (request.method === 'GET' && asset) {
       response
         .writeHead(200, {
@@ -34,6 +35,27 @@ export async function startBrowserFixture(fixture, assets = webAssets) {
     }
     if (closed) {
       response.writeHead(410).end()
+      return
+    }
+    if (fixture.project && request.url?.startsWith('/api/project') && request.method === 'GET') {
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+        .end(JSON.stringify(fixture.project))
+      return
+    }
+    if (fixture.project && request.url === '/api/run' && request.method === 'GET') {
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+        .end(JSON.stringify({ state: 'idle' }))
+      return
+    }
+    if (fixture.project && request.url === '/api/run' && request.method === 'POST') {
+      // Browser acceptance must never execute work. Record explicit submission instead.
+      let body = ''
+      request.on('data', (chunk) => { body += chunk.toString() })
+      request.on('end', () => {
+        submissions.push(body)
+        response.writeHead(400, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ reason: 'Fixture does not execute workflows.' }))
+      })
       return
     }
     if (request.url === '/api/snapshot' && request.method === 'GET') {
@@ -96,9 +118,10 @@ export async function startBrowserFixture(fixture, assets = webAssets) {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const origin = `http://127.0.0.1:${server.address().port}`
   return {
-    url: `${origin}/#cap=${capability}`,
+    url: `${origin}${fixture.project ? '/explore' : '/'}#cap=${capability}`,
     origin,
     requests,
+    submissions,
     update(next) {
       assert(next.revision > fixture.snapshot.revision)
       validateDisplaySnapshot(next)
