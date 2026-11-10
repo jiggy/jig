@@ -920,6 +920,29 @@ function Composition(): ComponentChildren {
       navigate('overview')
       selectCall(id, { rootSourceId: sourceId, rootId, nodeId })
     },
+    onAttentionCall: (id: string) => {
+      const body = client?.body
+      if (!client?.referencesEnabled || !body || !rootId || !compositionMatches(sourceId, rootId)) {
+        feedback = 'The selected invocation is unavailable in the current observation.'
+        redraw()
+        return
+      }
+      const call = body.calls.find(
+        (item) => item.id === id && (item.state === 'failed' || item.state === 'uncertain'),
+      )
+      if (!call) {
+        feedback = 'The selected invocation is no longer retained as failed or uncertain.'
+        redraw()
+        return
+      }
+      const match = compositionObservations(body).matches.find((item) => item.callId === id)
+      callFilter = ''
+      navigate('overview')
+      selectCall(
+        id,
+        match ? { rootSourceId: sourceId, rootId, nodeId: match.targetNodeId } : undefined,
+      )
+    },
     onObservedCalls: () => {
       compositionOrigin = undefined
       navigate('overview')
