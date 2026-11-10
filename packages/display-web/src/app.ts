@@ -89,7 +89,7 @@ let callFilter = ''
 let panel: 'attention' | 'diagnostics' | 'help' | undefined
 let panelOrigin: HTMLElement | undefined
 // A block reference is not a collection record; preserve its actual focus owner.
-let detailOrigin: { destination: string; key: string; element: HTMLElement } | undefined
+let detailOrigin: { destination: string; key: string; element: HTMLElement; referenceKey: string } | undefined
 let announcement = ''
 let feedback = ''
 let closing = false
@@ -173,6 +173,18 @@ const provenance = (value: DisplayAttribution): string =>
 
 function redraw(): void {
   const focused = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+  let missingFileDetail = false
+  // A publisher update can replace the search field when a section becomes a comparison.
+  const focusedCollection = focused instanceof HTMLInputElement && focused.dataset.collection !== undefined
+    ? {
+        destination: destinationKey,
+        viewId: view()?.id,
+        id: focused.dataset.collection,
+        start: focused.selectionStart,
+        end: focused.selectionEnd,
+        direction: focused.selectionDirection,
+      }
+    : undefined
   // Native scrolling can precede its queued scroll event.
   if (
     compositionViewportVisible &&
@@ -283,8 +295,14 @@ function redraw(): void {
       destinationKey === 'files' &&
       currentLocal().selected &&
       !snapshot.artifacts.files.some((file) => file.id === currentLocal().selected)
-    )
-      currentLocal().selected = snapshot.artifacts.files[0]?.id
+    ) {
+      // Do not make a different file look like the user's original selection.
+      if (currentLocal().detailOpen) {
+        feedback = 'The previously selected file is no longer in the retained inventory.'
+        missingFileDetail = true
+      }
+      currentLocal().detailOpen = false
+    }
     lastBodyRevision = snapshot.revision
   }
   if (client?.current)
@@ -342,8 +360,31 @@ function redraw(): void {
   client?.setPreview(intent)
   render(h(App, {}), root)
   restoreCompositionViewport()
-  if (focused && !focused.isConnected) {
-    if (focused.dataset.record !== undefined)
+  if (missingFileDetail && focused && !focused.isConnected) {
+    const selector = navigationMedia.matches
+      ? '.mobile-view-picker select'
+      : '[role=tab][tabindex="0"]'
+    document.querySelector<HTMLElement>(selector)?.focus({ preventScroll: true })
+  } else if (focused && !focused.isConnected) {
+    if (
+      focusedCollection &&
+      focusedCollection.destination === destinationKey &&
+      focusedCollection.viewId === view()?.id
+    ) {
+      const replacements = [...document.querySelectorAll<HTMLInputElement>('input[data-collection]')]
+        .filter((input) =>
+          input.dataset.collection === focusedCollection.id && input.getClientRects().length > 0)
+      if (replacements.length === 1) {
+        const replacement = replacements[0]!
+        replacement.focus({ preventScroll: true })
+        if (focusedCollection.start !== null && focusedCollection.end !== null)
+          replacement.setSelectionRange(
+            focusedCollection.start,
+            focusedCollection.end,
+            focusedCollection.direction ?? undefined,
+          )
+      }
+    } else if (focused.dataset.record !== undefined)
       document.querySelector<HTMLButtonElement>('[data-record][aria-pressed=true]')?.focus()
     else if (focused.dataset.call !== undefined)
       document.querySelector<HTMLButtonElement>('[data-call][aria-pressed=true]')?.focus()
@@ -380,15 +421,33 @@ function focusSelectedEntry(): void {
       ?.focus({ preventScroll: true })
     return
   }
-  if (
-    detailOrigin?.destination === destinationKey &&
-    detailOrigin.key === currentLocal().selected &&
-    detailOrigin.element.isConnected &&
-    detailOrigin.element.getClientRects().length > 0
-  ) {
-    detailOrigin.element.focus({ preventScroll: true })
-    detailOrigin = undefined
-    return
+  if (detailOrigin?.destination === destinationKey && detailOrigin.key === currentLocal().selected) {
+    let owner: HTMLElement | undefined
+    if (
+      detailOrigin.element.isConnected &&
+      detailOrigin.element.getClientRects().length > 0 &&
+      detailOrigin.element.dataset.referenceRecord === detailOrigin.key &&
+      detailOrigin.element.dataset.referenceKey === detailOrigin.referenceKey
+    )
+      owner = detailOrigin.element
+    else {
+      // Recover only the same exact reference after an application section was replaced.
+      const matches = [...document.querySelectorAll<HTMLButtonElement>('button.reference[data-reference-key]')]
+        .filter((element) =>
+          element.dataset.referenceRecord === detailOrigin!.key &&
+          element.dataset.referenceKey === detailOrigin!.referenceKey)
+      if (matches.length === 1) {
+        const candidate = matches[0]!
+        const disclosure = candidate.closest('details')
+        if (disclosure && !disclosure.open) disclosure.open = true
+        if (candidate.getClientRects().length > 0) owner = candidate
+      }
+    }
+    if (owner) {
+      owner.focus({ preventScroll: true })
+      detailOrigin = undefined
+      return
+    }
   }
   detailOrigin = undefined
   const selector = destinationKey === 'overview' ? '[data-call]' : '[data-record]'
@@ -401,7 +460,11 @@ function focusSelectedEntry(): void {
   if (owner) owner.focus()
   else if (destinationKey === 'overview')
     document.querySelector<HTMLInputElement>('[aria-label="Find observed calls"]')?.focus()
-  else document.querySelector<HTMLButtonElement>('.selection-notice button')?.focus()
+  else {
+    const clear = document.querySelector<HTMLButtonElement>('.selection-notice button')
+    if (clear) clear.focus({ preventScroll: true })
+    else focusNavigation()
+  }
 }
 function focusDetailReturn(): void {
   const breakpoint =
@@ -925,7 +988,7 @@ function activate(reference: Reference, record: PrivateBrowserRecord): void {
     const origin = document.activeElement
     detailOrigin =
       origin instanceof HTMLElement
-        ? { destination: destinationKey, key: record.key, element: origin }
+        ? { destination: destinationKey, key: record.key, element: origin, referenceKey: JSON.stringify(reference) }
         : undefined
     currentLocal().selected = record.key
     currentLocal().detailOpen = true
@@ -992,6 +1055,8 @@ function ReferenceButton({
     () => activate(value, record),
     {
       class: 'reference',
+      'data-reference-record': record.key,
+      'data-reference-key': JSON.stringify(value),
       disabled: !client?.referencesEnabled || resolved?.kind === 'unavailable',
       title: !client?.referencesEnabled
         ? 'References are disabled while observation is stale.'
@@ -1588,7 +1653,7 @@ function Files(): ComponentChildren {
   return h(
     'div',
     {
-      class: `workspace host-page ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
+      class: `workspace host-page ${state.detailOpen && file ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
     },
     h(
       'section',
