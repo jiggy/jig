@@ -227,6 +227,13 @@ test('required Mac checks select a PR ARM cohort or one complete host and retain
   const manual = parse(await readFile(new URL('macos-host-conformance.yml', workflows), 'utf8'))
   assert.deepEqual(Object.keys(manual.on), ['workflow_dispatch'])
   assert.equal(manual.jobs.qualify.environment, 'macos-host-conformance')
+  const standaloneSteps = manual.jobs.qualify.steps
+  const installation = standaloneSteps.find(
+    (step) => step.name === 'Install build dependencies without lifecycle scripts',
+  )
+  const build = standaloneSteps.find((step) => step.name === 'Build candidate')
+  assert.ok(installation.run.includes('--filter @jigging/semantic-router'))
+  assert.ok(standaloneSteps.indexOf(installation) < standaloneSteps.indexOf(build))
 })
 
 test('release readiness requires every canonical Linux shard including example e2e', async () => {
