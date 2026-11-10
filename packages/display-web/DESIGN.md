@@ -89,6 +89,11 @@ Run with input opens a focused panel beside the map.
 Component details and Run input take turns using the available inspection space.
 Narrow layouts give the requested panel the full workspace and preserve a clear return.
 The input begins blank. Show the declared schema and file or channel requirements without inventing example data.
+A collapsed Reusable input scenarios disclosure can download a named, versioned JSON input file or read one the user explicitly chooses.
+Names and workflow kind/labels are for human review; scenario files never carry authority, automatically select targets, rewrite drafts on import, or start Runs.
+Using the loaded input is a separate user action, as is Run. Report workflow-name mismatches without guessing a replacement target.
+Do not persist scenario input to browser storage or project files; warn about sensitive input before export.
+Bound the file envelope, preserve the exact input JSON text, and keep the ordinary host validation and admission path.
 
 Explicit Run submits the exact input and selected approval once.
 Lost acknowledgment triggers status reads, never resubmission.
