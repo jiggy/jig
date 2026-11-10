@@ -576,6 +576,65 @@
   color: var(--secondary);
   font-size: 11px;
 }
+.composition-attention-index {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--pane);
+}
+.composition-attention-index header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+}
+.composition-attention-requests {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 0;
+  margin: 10px 0 0;
+  list-style: none;
+}
+.composition-attention-requests button {
+  width: 100%;
+  height: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--page);
+}
+.composition-attention-request {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  font-size: 12px;
+}
+.composition-attention-request strong,
+.composition-attention-request small {
+  overflow-wrap: anywhere;
+}
+.composition-attention-request small {
+  color: var(--secondary);
+}
+.composition-attention-request .composition-request-state {
+  width: fit-content;
+}
+.composition-attention-index > p {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+@media (pointer: coarse) {
+  .composition-attention-requests button {
+    min-height: 44px;
+  }
+}
 .composition-map-shell {
   position: relative;
   display: flex;
