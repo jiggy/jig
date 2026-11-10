@@ -728,6 +728,112 @@ for (const width of [390, 1440]) {
   })
 }
 
+test('a removed selected file neither hides the inventory nor selects another file', async () => {
+  const fixture = patchFixture()
+  await withPage(fixture, { viewport: { width: 390, height: 900 } }, async (page, host) => {
+    await openTab(page, 'Delivered files')
+    const original = page.locator('.file-record').first()
+    const selectedId = await original.getAttribute('data-record')
+    await original.click()
+    await page.locator('.detail').waitFor()
+    const next = structuredClone(fixture.snapshot)
+    next.revision += 1
+    next.artifacts.files = next.artifacts.files.filter((file) => file.id !== selectedId)
+    assert(next.artifacts.files.length > 0, 'a different retained file remains available')
+    host.update(next)
+    await page.getByText('The previously selected file is no longer in the retained inventory.', {
+      exact: true,
+    }).waitFor()
+    assert.equal(await page.locator('.workspace.host-page.show-detail').count(), 0)
+    assert.equal(await page.locator('.detail').count(), 0)
+    assert.equal(await page.locator('.file-record[aria-pressed="true"]').count(), 0)
+    assert(await page.locator('.workspace.host-page .records').isVisible())
+    const picker = page.locator('.mobile-view-picker select')
+    assert(await picker.evaluate((node) => node === document.activeElement),
+      'focus returns to the mobile view picker instead of the removed file detail')
+
+    await page.locator('.file-record').first().click()
+    await page.locator('.detail').waitFor()
+    const empty = structuredClone(next)
+    empty.revision += 1
+    empty.artifacts.files = []
+    host.update(empty)
+    await page.getByText('The verified inventory is empty.', { exact: true }).waitFor()
+    assert.equal(await page.locator('.workspace.host-page.show-detail').count(), 0)
+    assert(await page.locator('.workspace.host-page .records').isVisible())
+  })
+})
+
+test('collection search keeps focus and caret when an update changes the section layout', async () => {
+  const fixture = childFixture()
+  await withPage(fixture, {}, async (page, host) => {
+    await openTab(page, 'Specialist material')
+    const search = page.getByRole('textbox', { name: /Search Candidates/ })
+    if (!(await search.isVisible()))
+      await page.locator('.collection-tools summary').first().click()
+    await search.fill('Alpha')
+    await search.evaluate((input) => input.setSelectionRange(2, 2))
+    assert(await search.evaluate((input) => input === document.activeElement))
+
+    const next = structuredClone(fixture.snapshot)
+    next.revision += 1
+    const published = next.views.find((item) => item.id === 'child-review')
+    assert(published)
+    published.value.sections[0].blocks.push({
+      kind: 'report',
+      format: 'diff',
+      text: '+Additional comparison context',
+    })
+    host.update(next)
+    await page.locator('.application-section-comparison .collection-search input').waitFor()
+    const replacement = page.getByRole('textbox', { name: /Search Candidates/ })
+    assert(await replacement.evaluate((input) => input === document.activeElement),
+      'typing should continue in the same collection after the update')
+    assert.equal(await replacement.inputValue(), 'Alpha')
+    assert.deepEqual(
+      await replacement.evaluate((input) => [input.selectionStart, input.selectionEnd]),
+      [2, 2],
+    )
+  })
+})
+
+for (const width of [390, 1440]) {
+  test(`captured evidence returns to its exact origin after a layout update at ${width}px`, async () => {
+    const fixture = hostFixture()
+    fixture.snapshot.views[0].value.sections = [{
+      title: 'Captured patch',
+      blocks: [{
+        kind: 'content',
+        title: 'Proposed change',
+        reference: { kind: 'artifact', attachment: 'deliverables', path: 'review.patch' },
+      }],
+    }]
+    await withPage(fixture, { viewport: { width, height: 900 } }, async (page, host) => {
+      await page.locator('.captured-block summary').first().click()
+      const reference = page.locator('.captured-block button.reference').first()
+      await reference.click()
+      const original = await reference.elementHandle()
+      await page.locator('.detail').waitFor()
+      const next = structuredClone(fixture.snapshot)
+      next.revision += 1
+      next.views[0].value.sections[0].blocks.push({
+        kind: 'report',
+        text: 'Additional review context',
+      })
+      host.update(next)
+      await page.locator('.application-section-comparison').waitFor({ state: 'attached' })
+      assert.equal(await original.evaluate((node) => node.isConnected), false,
+        'the publisher update must replace the original evidence control')
+      await page.keyboard.press('Escape')
+      assert.equal(await page.locator('.detail').count(), 0)
+      const restored = page.locator('.captured-block button.reference').first()
+      assert(await restored.isVisible(), 'the correct source disclosure is reopened')
+      assert(await restored.evaluate((node) => node === document.activeElement),
+        'focus returns to the exact retained reference rather than the page body')
+    })
+  })
+}
+
 test('child material stays complete and filtering preserves visible detail ownership and focus', async () => {
   await withPage(childFixture(), {}, async (page) => {
     await openTab(page, 'Specialist material')

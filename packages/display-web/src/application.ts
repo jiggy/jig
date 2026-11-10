@@ -227,6 +227,7 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
                   { class: 'collection-search' },
                   h('span', { class: 'visually-hidden' }, `Search ${text(block.title)}`),
                   h('input', {
+                    'data-collection': block.id,
                     value: local.filters.get(block.id) ?? '',
                     placeholder: `Search ${text(block.title)}…`,
                     onInput: (event: Event) => {

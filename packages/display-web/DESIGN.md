@@ -29,7 +29,10 @@ Applications choose content and priorities. Jig owns layout, navigation and evid
 - Render captured text and patches inline. Complete rectangular CSV excerpts can use a table with raw text available.
 - Preserve authentication, exact capture identity, preview bounds and cleanup. No authored URL or path grants file access.
 - Keep the selected record when filters hide it. Explain that scope and provide Clear filters without changing selection.
+- Preserve collection-search focus and caret when updates move a collection into a comparison layout.
 - Open an inspector only when requested. Highlight its owning record and preserve the return path.
+- Return from captured evidence to its exact reference after a publisher update replaces a section. Never focus a different reference merely because its button occupies the old position.
+- If the selected delivered file disappears, show the remaining inventory and explain the lost selection without opening another file.
 - Keep incomplete results, stopped publishers, clipped content and stale observations explicit.
 
 ## Application map
