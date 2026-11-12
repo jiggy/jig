@@ -14,6 +14,7 @@ import {
   hostFixture,
   kitchenFixture,
   patchFixture,
+  readingFixture,
   supportFixture,
 } from './browser-fixtures.mjs'
 import { startBrowserFixture } from './browser-server.mjs'
@@ -84,6 +85,17 @@ try {
     ['activity', hostFixture, 'Activity'],
     ['diagnostics', hostFixture, 'Diagnostics'],
     ['contacts', contactFixture],
+    [
+      'contacts-context',
+      contactFixture,
+      undefined,
+      undefined,
+      async (page) => {
+        await page
+          .getByRole('heading', { name: 'Source → contact fields', exact: true })
+          .scrollIntoViewIfNeeded()
+      },
+    ],
     ['support', supportFixture],
     ['kitchen', kitchenFixture],
     ['patch', patchFixture],
@@ -100,6 +112,27 @@ try {
       },
     ],
     ['document', documentFixture],
+    ['reading', readingFixture, 'Reading review'],
+    [
+      'long-detail',
+      () => {
+        const fixture = childFixture()
+        fixture.snapshot.views.find(
+          (item) => item.id === 'child-review',
+        ).value.sections[0].blocks[0].rows[0].details = [
+          {
+            kind: 'report',
+            text: 'Retained detail remains complete and independently scrollable.\n\n'.repeat(100),
+          },
+        ]
+        return fixture
+      },
+      'Specialist material',
+      undefined,
+      async (page) => {
+        await page.getByRole('button', { name: 'Alpha', exact: true }).click()
+      },
+    ],
   ])
     for (const [viewportName, viewport] of [
       ['desktop', { width: 1440, height: 1000 }],

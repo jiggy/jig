@@ -171,6 +171,16 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
       },
       text(label),
     )
+  const readingPairs = new Set<number>()
+  for (let index = 0; index < view.value.sections.length - 1; index++) {
+    if (
+      sectionPresentation(view.value.sections[index]!) === 'application-section-reading' &&
+      sectionPresentation(view.value.sections[index + 1]!) === 'application-section-reading'
+    ) {
+      readingPairs.add(index)
+      readingPairs.add(++index)
+    }
+  }
   const rowRecord = (block: Collection, row: Collection['rows'][number]) =>
     recordByKey.get(privateBrowserRowKey(block.id, row.id))!
   const hasDetail = (record: PrivateBrowserRecord) =>
@@ -460,7 +470,7 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
               'section',
               {
                 key: sectionIndex,
-                class: `application-section ${sectionPresentation(section)}`,
+                class: `application-section ${sectionPresentation(section)}${readingPairs.has(sectionIndex) ? ' reading-pair' : ''}`,
                 'aria-label': section.title ? text(section.title) : `Section ${sectionIndex + 1}`,
               },
               section.title &&

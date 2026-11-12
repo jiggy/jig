@@ -106,15 +106,18 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   Repeated collection titles use section context and stable IDs to distinguish their scroll controls.
   Preserve natural line lengths for ordinary values. Keep prose bounded and avoid redundant cards around reading content.
 - Adjacent reading sections share wide content space and stack when the available reading area narrows.
+  Pair consecutive reading sections. An unpaired section retains the full bounded reading width.
 - Small collections disclose search and sorting. Active filters remain visible.
   Complete counts stay compact. Retained and reported differences remain explicit.
 - Content and formatted reports share responsive comparison regions with their supplied context.
 - Host and authored details open on request and share narrow-screen return navigation.
+  Long desktop inspectors scroll within the available workspace without moving the surrounding material.
   Technical instance identities belong inside About this view.
+- Navigation preserves exact destinations and focus ownership.
   Narrow navigation uses a labeled native chooser with every exact destination and publisher context.
   Repeated titles disclose distinguishing publisher or instance identity. Exact chooser selections preserve their destination across subjects.
   Breakpoint focus recovery yields to subsequent panel or navigation actions.
-  Appearance remains available on narrow screens. Coarse-pointer targets retain their 44-pixel minimum.
+- Appearance remains available on narrow screens. Coarse-pointer targets retain their 44-pixel minimum.
 - Root application pages precede Inspector and child views by verified
   publisher identity. Compose authored sections in place. Details open on
   demand. Preserve full columns, literal data, stable local state and all
