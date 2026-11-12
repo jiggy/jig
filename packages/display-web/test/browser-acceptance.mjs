@@ -9,6 +9,7 @@ import {
   factoryFixture,
   hostFixture,
   kitchenFixture,
+  longDetailFixture,
   patchFixture,
   patchText,
   readingFixture,
@@ -1314,6 +1315,13 @@ test('the narrow chooser lists every exact instance without subject redirection'
   })
 })
 
+test('a single root view keeps its narrow chooser label concise', async () => {
+  await withPage(contactFixture(), { viewport: { width: 320, height: 900 } }, async (page) => {
+    const chooser = page.getByRole('combobox', { name: 'Choose view', exact: true })
+    assert.equal(await chooser.locator('option:checked').textContent(), 'Contact preview')
+  })
+})
+
 test('retained publishers with identical labels remain distinguishable in the chooser', async () => {
   const fixture = childFixture()
   fixture.snapshot.mode = 'retained-views'
@@ -1445,15 +1453,7 @@ test('adjacent authored reading sections share wide space and retain their order
 })
 
 test('long authored inspectors scroll within the available desktop workspace', async () => {
-  const fixture = childFixture()
-  fixture.snapshot.views.find(
-    (item) => item.id === 'child-review',
-  ).value.sections[0].blocks[0].rows[0].details = [
-    {
-      kind: 'report',
-      text: 'Retained detail remains complete and independently scrollable.\n\n'.repeat(100),
-    },
-  ]
+  const fixture = longDetailFixture()
   await withPage(fixture, { viewport: { width: 1440, height: 700 } }, async (page) => {
     await openTab(page, 'Specialist material')
     await page.getByRole('button', { name: 'Alpha', exact: true }).click()
