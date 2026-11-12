@@ -89,7 +89,9 @@ let callFilter = ''
 let panel: 'attention' | 'diagnostics' | 'help' | undefined
 let panelOrigin: HTMLElement | undefined
 // A block reference is not a collection record; preserve its actual focus owner.
-let detailOrigin: { destination: string; key: string; element: HTMLElement; referenceKey: string } | undefined
+let detailOrigin:
+  | { destination: string; key: string; element: HTMLElement; referenceKey: string }
+  | undefined
 let announcement = ''
 let feedback = ''
 let closing = false
@@ -98,8 +100,14 @@ let client: PrivateBrowserClient | undefined
 const navigationMedia = matchMedia('(max-width: 700px)')
 navigationMedia.addEventListener('change', () => redraw())
 function focusNavigation(): void {
+  const origin = document.activeElement
+  const originPanel = panel
+  const originDestination = destinationKey
   // CSS can blur the old control before the media-query change event runs.
   requestAnimationFrame(() => {
+    if (panel !== originPanel || destinationKey !== originDestination) return
+    const active = document.activeElement
+    if (active !== origin && active !== document.body && active?.getClientRects().length) return
     const selector = navigationMedia.matches
       ? '.mobile-view-picker select'
       : '[role=tab][tabindex="0"]'
@@ -175,16 +183,17 @@ function redraw(): void {
   const focused = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
   let missingFileDetail = false
   // A publisher update can replace the search field when a section becomes a comparison.
-  const focusedCollection = focused instanceof HTMLInputElement && focused.dataset.collection !== undefined
-    ? {
-        destination: destinationKey,
-        viewId: view()?.id,
-        id: focused.dataset.collection,
-        start: focused.selectionStart,
-        end: focused.selectionEnd,
-        direction: focused.selectionDirection,
-      }
-    : undefined
+  const focusedCollection =
+    focused instanceof HTMLInputElement && focused.dataset.collection !== undefined
+      ? {
+          destination: destinationKey,
+          viewId: view()?.id,
+          id: focused.dataset.collection,
+          start: focused.selectionStart,
+          end: focused.selectionEnd,
+          direction: focused.selectionDirection,
+        }
+      : undefined
   // Native scrolling can precede its queued scroll event.
   if (
     compositionViewportVisible &&
@@ -371,9 +380,12 @@ function redraw(): void {
       focusedCollection.destination === destinationKey &&
       focusedCollection.viewId === view()?.id
     ) {
-      const replacements = [...document.querySelectorAll<HTMLInputElement>('input[data-collection]')]
-        .filter((input) =>
-          input.dataset.collection === focusedCollection.id && input.getClientRects().length > 0)
+      const replacements = [
+        ...document.querySelectorAll<HTMLInputElement>('input[data-collection]'),
+      ].filter(
+        (input) =>
+          input.dataset.collection === focusedCollection.id && input.getClientRects().length > 0,
+      )
       if (replacements.length === 1) {
         const replacement = replacements[0]!
         replacement.focus({ preventScroll: true })
@@ -421,7 +433,10 @@ function focusSelectedEntry(): void {
       ?.focus({ preventScroll: true })
     return
   }
-  if (detailOrigin?.destination === destinationKey && detailOrigin.key === currentLocal().selected) {
+  if (
+    detailOrigin?.destination === destinationKey &&
+    detailOrigin.key === currentLocal().selected
+  ) {
     let owner: HTMLElement | undefined
     if (
       detailOrigin.element.isConnected &&
@@ -432,10 +447,13 @@ function focusSelectedEntry(): void {
       owner = detailOrigin.element
     else {
       // Recover only the same exact reference after an application section was replaced.
-      const matches = [...document.querySelectorAll<HTMLButtonElement>('button.reference[data-reference-key]')]
-        .filter((element) =>
+      const matches = [
+        ...document.querySelectorAll<HTMLButtonElement>('button.reference[data-reference-key]'),
+      ].filter(
+        (element) =>
           element.dataset.referenceRecord === detailOrigin!.key &&
-          element.dataset.referenceKey === detailOrigin!.referenceKey)
+          element.dataset.referenceKey === detailOrigin!.referenceKey,
+      )
       if (matches.length === 1) {
         const candidate = matches[0]!
         const disclosure = candidate.closest('details')
@@ -1011,7 +1029,12 @@ function activate(reference: Reference, record: PrivateBrowserRecord): void {
     const origin = document.activeElement
     detailOrigin =
       origin instanceof HTMLElement
-        ? { destination: destinationKey, key: record.key, element: origin, referenceKey: JSON.stringify(reference) }
+        ? {
+            destination: destinationKey,
+            key: record.key,
+            element: origin,
+            referenceKey: JSON.stringify(reference),
+          }
         : undefined
     currentLocal().selected = record.key
     currentLocal().detailOpen = true
@@ -2402,7 +2425,7 @@ function Panel({ current }: { current: DisplaySnapshotEnvelope }): ComponentChil
             h(
               'p',
               {},
-              'Use the view tabs and select an entry to read context. A single artifact reference opens a read-only preview; multiple references require a choice. Delivered files are available independently of application views.',
+              `${navigationMedia.matches ? 'Use Choose view' : 'Use the view tabs'} and select an entry to read context. A single artifact reference opens a read-only preview; multiple references require a choice. Delivered files are available independently of application views.`,
             ),
             h(
               'p',
@@ -2591,6 +2614,23 @@ function DownloadReference({
 
 function Tabs(): ComponentChildren {
   const allTabs = privateBrowserTabs(client?.body, client?.current?.mode)
+  const choices = allTabs.map((tab) => {
+    const candidate = privateBrowserView(client?.body, tab.id)
+    return {
+      ...tab,
+      label: [tab.title, candidate?.value.target?.label, candidate ? tab.source : undefined]
+        .filter(Boolean)
+        .join(' · '),
+      candidate,
+    }
+  })
+  // Retained publishers can share every human label. Disclose identity only for collisions.
+  const labels = choices.map((choice) => {
+    const peers = choices.filter((item) => item.label === choice.label)
+    if (peers.length === 1) return choice.label
+    const source = choice.candidate?.sourceId
+    return `${choice.label} · ${peers.filter((item) => item.candidate?.sourceId === source).length === 1 ? source : (choice.candidate?.id ?? choice.id)}`
+  })
   const seen = new Set<string>()
   const selected = view()
   const tabs = allTabs.filter((tab) => {
@@ -2643,20 +2683,15 @@ function Tabs(): ComponentChildren {
             'select',
             {
               'aria-label': 'Choose view',
-              value: focusId,
-              onChange: (event: Event) => navigate((event.target as HTMLSelectElement).value),
+              value: destinationKey,
+              onChange: (event: Event) =>
+                navigate((event.target as HTMLSelectElement).value, false),
               onBlur: () => {
                 if (!navigationMedia.matches) focusNavigation()
               },
             },
-            tabs.map((tab) =>
-              h(
-                'option',
-                { key: tab.id, value: tab.id },
-                privateBrowserLiteral(
-                  `${tab.title}${!tab.application && tab.source ? ` · ${tab.source}` : ''}`,
-                ),
-              ),
+            choices.map((tab, index) =>
+              h('option', { key: tab.id, value: tab.id }, privateBrowserLiteral(labels[index]!)),
             ),
           ),
         )
