@@ -175,6 +175,21 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
     recordByKey.get(privateBrowserRowKey(block.id, row.id))!
   const hasDetail = (record: PrivateBrowserRecord) =>
     Boolean(record.row?.details?.length || privateBrowserReferences(record).length)
+  const collections = view.value.sections.flatMap((section) =>
+    section.blocks.filter((block): block is Collection => block.kind === 'collection'),
+  )
+  const collectionLabel = (block: Collection) => {
+    if (collections.filter((item) => item.title === block.title).length < 2)
+      return text(block.title)
+    const section = view.value.sections.find((item) => item.blocks.includes(block))
+    const context = section?.title ? `${block.title} · ${section.title}` : block.title
+    const repeated =
+      collections.filter((item) => {
+        const owner = view.value.sections.find((section) => section.blocks.includes(item))
+        return (owner?.title ? `${item.title} · ${owner.title}` : item.title) === context
+      }).length > 1
+    return text(repeated ? `${context} · ${block.id}` : context)
+  }
   const collection = (block: Collection) => {
     const rows = privateBrowserRows(block, local)
     const sort = local.sorts.get(block.id)
@@ -320,7 +335,7 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
           )
         : h(
             TableViewport,
-            { label: text(block.title) },
+            { label: collectionLabel(block) },
             h(
               'table',
               {},

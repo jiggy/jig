@@ -103,6 +103,7 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
 - All authored publishers share material rendering, including attributed child views.
   Publisher placement never reduces reports or collections to inspection teasers.
 - Table columns size to their content and preserve readable identifiers. Overflowing tables expose scroll controls beside the complete collection.
+  Repeated collection titles use section context and stable IDs to distinguish their scroll controls.
   Preserve natural line lengths for ordinary values. Keep prose bounded and avoid redundant cards around reading content.
 - Adjacent reading sections share wide content space and stack when the available reading area narrows.
 - Small collections disclose search and sorting. Active filters remain visible.
@@ -111,6 +112,8 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
 - Host and authored details open on request and share narrow-screen return navigation.
   Technical instance identities belong inside About this view.
   Narrow navigation uses a labeled native chooser with every exact destination and publisher context.
+  Repeated titles disclose distinguishing publisher or instance identity. Exact chooser selections preserve their destination across subjects.
+  Breakpoint focus recovery yields to subsequent panel or navigation actions.
   Appearance remains available on narrow screens. Coarse-pointer targets retain their 44-pixel minimum.
 - Root application pages precede Inspector and child views by verified
   publisher identity. Compose authored sections in place. Details open on

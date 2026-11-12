@@ -446,7 +446,7 @@ test('Run attention index opens exact matched and unplaced invocations without r
     const index = page.getByRole('region', { name: 'Retained requests needing attention' })
     await index.waitFor()
     assert.equal(await index.locator('[data-attention-call]').count(), 4)
-    assert(await index.getByText(/Not placed on map/).count() > 0)
+    assert((await index.getByText(/Not placed on map/).count()) > 0)
     assert.deepEqual(await mapGeometry(page), original)
     await index.locator('[data-attention-call="prepare-three"]').click()
     await page.getByRole('heading', { name: 'Check a rejected candidate', exact: true }).waitFor()
@@ -476,7 +476,7 @@ test('Run attention index opens exact matched and unplaced invocations without r
     assert.equal(await index.locator('[data-attention-call]').count(), 4)
     for (const item of await index.locator('[data-attention-call]').all())
       assert(!(await item.isEnabled()))
-    assert(await index.getByText(/4 call observations are omitted/).count() > 0)
+    assert((await index.getByText(/4 call observations are omitted/).count()) > 0)
   })
 })
 
@@ -784,16 +784,20 @@ test('a removed selected file neither hides the inventory nor selects another fi
     next.artifacts.files = next.artifacts.files.filter((file) => file.id !== selectedId)
     assert(next.artifacts.files.length > 0, 'a different retained file remains available')
     host.update(next)
-    await page.getByText('The previously selected file is no longer in the retained inventory.', {
-      exact: true,
-    }).waitFor()
+    await page
+      .getByText('The previously selected file is no longer in the retained inventory.', {
+        exact: true,
+      })
+      .waitFor()
     assert.equal(await page.locator('.workspace.host-page.show-detail').count(), 0)
     assert.equal(await page.locator('.detail').count(), 0)
     assert.equal(await page.locator('.file-record[aria-pressed="true"]').count(), 0)
     assert(await page.locator('.workspace.host-page .records').isVisible())
     const picker = page.locator('.mobile-view-picker select')
-    assert(await picker.evaluate((node) => node === document.activeElement),
-      'focus returns to the mobile view picker instead of the removed file detail')
+    assert(
+      await picker.evaluate((node) => node === document.activeElement),
+      'focus returns to the mobile view picker instead of the removed file detail',
+    )
 
     await page.locator('.file-record').first().click()
     await page.locator('.detail').waitFor()
@@ -812,8 +816,7 @@ test('collection search keeps focus and caret when an update changes the section
   await withPage(fixture, {}, async (page, host) => {
     await openTab(page, 'Specialist material')
     const search = page.getByRole('textbox', { name: /Search Candidates/ })
-    if (!(await search.isVisible()))
-      await page.locator('.collection-tools summary').first().click()
+    if (!(await search.isVisible())) await page.locator('.collection-tools summary').first().click()
     await search.fill('Alpha')
     await search.evaluate((input) => input.setSelectionRange(2, 2))
     assert(await search.evaluate((input) => input === document.activeElement))
@@ -830,8 +833,10 @@ test('collection search keeps focus and caret when an update changes the section
     host.update(next)
     await page.locator('.application-section-comparison .collection-search input').waitFor()
     const replacement = page.getByRole('textbox', { name: /Search Candidates/ })
-    assert(await replacement.evaluate((input) => input === document.activeElement),
-      'typing should continue in the same collection after the update')
+    assert(
+      await replacement.evaluate((input) => input === document.activeElement),
+      'typing should continue in the same collection after the update',
+    )
     assert.equal(await replacement.inputValue(), 'Alpha')
     assert.deepEqual(
       await replacement.evaluate((input) => [input.selectionStart, input.selectionEnd]),
@@ -843,14 +848,18 @@ test('collection search keeps focus and caret when an update changes the section
 for (const width of [390, 1440]) {
   test(`captured evidence returns to its exact origin after a layout update at ${width}px`, async () => {
     const fixture = hostFixture()
-    fixture.snapshot.views[0].value.sections = [{
-      title: 'Captured patch',
-      blocks: [{
-        kind: 'content',
-        title: 'Proposed change',
-        reference: { kind: 'artifact', attachment: 'deliverables', path: 'review.patch' },
-      }],
-    }]
+    fixture.snapshot.views[0].value.sections = [
+      {
+        title: 'Captured patch',
+        blocks: [
+          {
+            kind: 'content',
+            title: 'Proposed change',
+            reference: { kind: 'artifact', attachment: 'deliverables', path: 'review.patch' },
+          },
+        ],
+      },
+    ]
     await withPage(fixture, { viewport: { width, height: 900 } }, async (page, host) => {
       await page.locator('.captured-block summary').first().click()
       const reference = page.locator('.captured-block button.reference').first()
@@ -865,14 +874,19 @@ for (const width of [390, 1440]) {
       })
       host.update(next)
       await page.locator('.application-section-comparison').waitFor({ state: 'attached' })
-      assert.equal(await original.evaluate((node) => node.isConnected), false,
-        'the publisher update must replace the original evidence control')
+      assert.equal(
+        await original.evaluate((node) => node.isConnected),
+        false,
+        'the publisher update must replace the original evidence control',
+      )
       await page.keyboard.press('Escape')
       assert.equal(await page.locator('.detail').count(), 0)
       const restored = page.locator('.captured-block button.reference').first()
       assert(await restored.isVisible(), 'the correct source disclosure is reopened')
-      assert(await restored.evaluate((node) => node === document.activeElement),
-        'focus returns to the exact retained reference rather than the page body')
+      assert(
+        await restored.evaluate((node) => node === document.activeElement),
+        'focus returns to the exact retained reference rather than the page body',
+      )
     })
   })
 }
@@ -1254,6 +1268,116 @@ test('changing navigation layout preserves keyboard focus and the chosen view', 
       await chooser.elementHandle(),
     )
     await page.getByRole('region', { name: 'Execution', exact: true }).waitFor()
+  })
+})
+
+test('the narrow chooser lists every exact instance without subject redirection', async () => {
+  const fixture = childFixture()
+  const source = fixture.snapshot.views.find((item) => item.id === 'child-review')
+  fixture.snapshot.views = ['account', 'evidence'].flatMap((definition) =>
+    ['first', 'second'].map((subject) => {
+      const item = structuredClone(source)
+      item.id = `${definition}-${subject}`
+      item.sourceId = 'root'
+      item.value.id = item.id
+      item.value.title = definition
+      item.value.target = {
+        definitionId: definition,
+        instanceKey: subject,
+        subjectKey: subject,
+        label: subject,
+      }
+      item.value.summary = `Exact destination ${item.id}`
+      return item
+    }),
+  )
+  await withPage(fixture, { viewport: { width: 390, height: 900 } }, async (page) => {
+    const chooser = page.getByRole('combobox', { name: 'Choose view', exact: true })
+    for (const id of ['account-first', 'evidence-second', 'account-second', 'evidence-first']) {
+      const key = JSON.stringify(['view', id])
+      assert.equal(
+        await chooser
+          .locator('option')
+          .evaluateAll((nodes, key) => nodes.filter((node) => node.value === key).length, key),
+        1,
+      )
+      await chooser.selectOption(key)
+      await page
+        .locator('.application-summary')
+        .filter({ hasText: `Exact destination ${id}` })
+        .waitFor()
+      assert.equal(await chooser.inputValue(), key)
+    }
+    await page.getByRole('button', { name: 'Help & shortcuts', exact: true }).click()
+    await page.getByText(/Use Choose view and select an entry/).waitFor()
+  })
+})
+
+test('retained publishers with identical labels remain distinguishable in the chooser', async () => {
+  const fixture = childFixture()
+  fixture.snapshot.mode = 'retained-views'
+  const source = fixture.snapshot.views.find((item) => item.id === 'child-review')
+  fixture.snapshot.views = ['archive-one', 'archive-two'].map((id) => {
+    const item = structuredClone(source)
+    item.id = id
+    item.value.id = id
+    item.sourceId = id
+    item.sourceLabel = 'Retained publisher'
+    item.value.summary = `Material from ${id}`
+    return item
+  })
+  await withPage(fixture, { viewport: { width: 390, height: 900 } }, async (page) => {
+    const chooser = page.getByRole('combobox', { name: 'Choose view', exact: true })
+    const labels = await chooser.locator('option').allTextContents()
+    assert.equal(new Set(labels).size, 2)
+    assert(labels.every((label) => label.includes('Retained publisher')))
+    for (const id of ['archive-two', 'archive-one']) {
+      await chooser.selectOption(JSON.stringify(['view', id]))
+      await page
+        .locator('.application-summary')
+        .filter({ hasText: `Material from ${id}` })
+        .waitFor()
+    }
+  })
+})
+
+test('queued navigation restoration preserves a panel opened by a later action', async () => {
+  await withPage(hostFixture(), {}, async (page) => {
+    await page.evaluate(() => {
+      // Reproduce breakpoint blur and the next action within one browser task.
+      document.querySelector('.mobile-view-picker select').dispatchEvent(new FocusEvent('blur'))
+      document.querySelector('button[aria-label="Help & shortcuts"]').click()
+    })
+    await page.getByRole('heading', { name: 'Inspection help', exact: true }).waitFor()
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    )
+    assert(await page.locator('.panel-back').evaluate((node) => node === document.activeElement))
+  })
+})
+
+test('repeated collection titles have distinct scroll controls and regions', async () => {
+  const fixture = childFixture()
+  const material = fixture.snapshot.views.find((item) => item.id === 'child-review')
+  const original = material.value.sections[0].blocks[0]
+  material.value.sections = ['First group', 'Second group', 'Second group'].map((title, index) => {
+    const block = structuredClone(original)
+    block.id = `collection-${index}`
+    return { title, blocks: [block] }
+  })
+  await withPage(fixture, { viewport: { width: 320, height: 900 } }, async (page) => {
+    await openTab(page, 'Specialist material')
+    const names = [
+      'Candidates · First group',
+      'Candidates · Second group · collection-1',
+      'Candidates · Second group · collection-2',
+    ]
+    for (const name of names) {
+      const region = page.getByRole('region', { name, exact: true })
+      const right = page.getByRole('button', { name: `Scroll ${name} right`, exact: true })
+      await right.click()
+      assert(await region.evaluate((node) => node.scrollLeft > 0))
+    }
   })
 })
 
