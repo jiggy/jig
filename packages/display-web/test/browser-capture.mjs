@@ -13,6 +13,7 @@ import {
   factoryFixture,
   hostFixture,
   kitchenFixture,
+  longDetailFixture,
   patchFixture,
   readingFixture,
   supportFixture,
@@ -93,7 +94,7 @@ try {
       async (page) => {
         await page
           .getByRole('heading', { name: 'Source → contact fields', exact: true })
-          .scrollIntoViewIfNeeded()
+          .evaluate((node) => node.scrollIntoView({ block: 'start' }))
       },
     ],
     ['support', supportFixture],
@@ -114,19 +115,19 @@ try {
     ['document', documentFixture],
     ['reading', readingFixture, 'Reading review'],
     [
-      'long-detail',
-      () => {
-        const fixture = childFixture()
-        fixture.snapshot.views.find(
-          (item) => item.id === 'child-review',
-        ).value.sections[0].blocks[0].rows[0].details = [
-          {
-            kind: 'report',
-            text: 'Retained detail remains complete and independently scrollable.\n\n'.repeat(100),
-          },
-        ]
-        return fixture
+      'reading-context',
+      readingFixture,
+      'Reading review',
+      undefined,
+      async (page) => {
+        await page
+          .getByRole('heading', { name: 'Third account', exact: true })
+          .evaluate((node) => node.scrollIntoView({ block: 'start' }))
       },
+    ],
+    [
+      'long-detail',
+      longDetailFixture,
       'Specialist material',
       undefined,
       async (page) => {

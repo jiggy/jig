@@ -2616,9 +2616,24 @@ function Tabs(): ComponentChildren {
   const allTabs = privateBrowserTabs(client?.body, client?.current?.mode)
   const choices = allTabs.map((tab) => {
     const candidate = privateBrowserView(client?.body, tab.id)
+    const target = candidate?.value.target
+    const repeatedDefinition =
+      target &&
+      client?.body?.views.some(
+        (item) =>
+          item.id !== candidate.id &&
+          item.sourceId === candidate.sourceId &&
+          item.value.target?.definitionId === target.definitionId,
+      )
+    const publisher =
+      candidate &&
+      (client?.current?.mode === 'retained-views' ||
+        candidate.sourceId !== client?.body?.rootSourceId)
+        ? tab.source
+        : undefined
     return {
       ...tab,
-      label: [tab.title, candidate?.value.target?.label, candidate ? tab.source : undefined]
+      label: [tab.title, repeatedDefinition ? target?.label : undefined, publisher]
         .filter(Boolean)
         .join(' · '),
       candidate,

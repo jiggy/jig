@@ -511,6 +511,20 @@ export function childFixture() {
   return checked(fixture)
 }
 
+/** Retained row details exceed a workspace while staying within the report contract. */
+export function longDetailFixture() {
+  const fixture = childFixture()
+  fixture.snapshot.views.find(
+    (item) => item.id === 'child-review',
+  ).value.sections[0].blocks[0].rows[0].details = [
+    {
+      kind: 'report',
+      text: 'Retained detail remains complete and independently scrollable.\n\n'.repeat(40),
+    },
+  ]
+  return checked(fixture)
+}
+
 /** Ordinary authored reading material exercises pairing independently of example names. */
 export function readingFixture() {
   const fixture = childFixture()
