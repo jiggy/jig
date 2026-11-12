@@ -511,6 +511,47 @@ export function childFixture() {
   return checked(fixture)
 }
 
+/** Ordinary authored reading material exercises pairing independently of example names. */
+export function readingFixture() {
+  const fixture = childFixture()
+  const material = fixture.snapshot.views.find((item) => item.id === 'child-review')
+  material.value.title = 'Reading review'
+  material.value.summary = 'Read three supplied accounts, then inspect their retained context.'
+  material.value.sections = [
+    {
+      title: 'First account',
+      blocks: [
+        { kind: 'report', text: 'The first account records the supplied observations. '.repeat(8) },
+      ],
+    },
+    {
+      title: 'Second account',
+      blocks: [
+        {
+          kind: 'report',
+          text: 'The second account explains a different interpretation and retains its qualifications. '.repeat(
+            16,
+          ),
+        },
+      ],
+    },
+    {
+      title: 'Third account',
+      blocks: [
+        {
+          kind: 'report',
+          text: 'This unpaired account retains a comfortable reading width. '.repeat(5),
+        },
+      ],
+    },
+    {
+      title: 'Retained context',
+      blocks: [{ kind: 'facts', items: [{ label: 'Source', value: 'Supplied observations' }] }],
+    },
+  ]
+  return checked(fixture)
+}
+
 export function documentFixture() {
   const image = portraitImage()
   const body = snapshot([

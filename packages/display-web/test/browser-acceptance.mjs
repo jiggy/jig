@@ -11,6 +11,7 @@ import {
   kitchenFixture,
   patchFixture,
   patchText,
+  readingFixture,
   supportFixture,
 } from './browser-fixtures.mjs'
 import { startBrowserFixture } from './browser-server.mjs'
@@ -1316,6 +1317,9 @@ test('the narrow chooser lists every exact instance without subject redirection'
 test('retained publishers with identical labels remain distinguishable in the chooser', async () => {
   const fixture = childFixture()
   fixture.snapshot.mode = 'retained-views'
+  fixture.snapshot.calls = []
+  fixture.snapshot.activities = []
+  fixture.snapshot.journal = []
   const source = fixture.snapshot.views.find((item) => item.id === 'child-review')
   fixture.snapshot.views = ['archive-one', 'archive-two'].map((id) => {
     const item = structuredClone(source)
@@ -1352,7 +1356,7 @@ test('queued navigation restoration preserves a panel opened by a later action',
     await page.evaluate(
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     )
-    assert(await page.locator('.panel-back').evaluate((node) => node === document.activeElement))
+    assert(await page.locator('#panel-back').evaluate((node) => node === document.activeElement))
   })
 })
 
@@ -1382,43 +1386,91 @@ test('repeated collection titles have distinct scroll controls and regions', asy
 })
 
 test('adjacent authored reading sections share wide space and retain their order when narrow', async () => {
-  const fixture = childFixture()
+  const fixture = readingFixture()
   const material = fixture.snapshot.views.find((item) => item.id === 'child-review')
-  material.value.sections = [
-    {
-      title: 'First account',
-      blocks: [{ kind: 'report', text: 'A complete first account. '.repeat(30) }],
-    },
-    { title: 'Second account', blocks: [{ kind: 'report', text: 'A complete second account.' }] },
-    {
-      title: 'Retained context',
-      blocks: [{ kind: 'facts', items: [{ label: 'Source', value: 'Supplied' }] }],
-    },
-  ]
   await withPage(fixture, {}, async (page) => {
-    await openTab(page, 'Specialist material')
+    await openTab(page, 'Reading review')
     const first = page.getByRole('heading', { name: 'First account', exact: true }).locator('..')
     const second = page.getByRole('heading', { name: 'Second account', exact: true }).locator('..')
+    const third = page.getByRole('heading', { name: 'Third account', exact: true }).locator('..')
     const context = page
       .getByRole('heading', { name: 'Retained context', exact: true })
       .locator('..')
     const wide = await Promise.all([
       first.boundingBox(),
       second.boundingBox(),
+      third.boundingBox(),
       context.boundingBox(),
     ])
     assert(Math.abs(wide[0].y - wide[1].y) < 2, 'both accounts begin together')
     assert(wide[1].x >= wide[0].x + wide[0].width, 'reading surfaces do not overlap')
-    assert(wide[2].y >= wide[0].y + wide[0].height, 'context follows the complete reading pair')
+    assert(
+      wide[2].y >= Math.max(wide[0].y + wide[0].height, wide[1].y + wide[1].height),
+      'the third account follows the complete reading pair',
+    )
+    assert(
+      wide[2].width > wide[0].width * 1.2,
+      'an unpaired account uses the available reading width',
+    )
+    assert(wide[3].y >= wide[2].y + wide[2].height, 'context follows every account')
+    // Test the actual content-container threshold, independently of sidebar and padding widths.
+    const inset = await page
+      .locator('.application-page')
+      .evaluate((node) => innerWidth - node.clientWidth)
+    for (const contentWidth of [861, 859]) {
+      await page.setViewportSize({ width: inset + contentWidth, height: 1000 })
+      const [a, b] = await Promise.all([first.boundingBox(), second.boundingBox()])
+      if (contentWidth > 860) assert(Math.abs(a.y - b.y) < 2)
+      else assert(b.y >= a.y + a.height)
+    }
     await page.setViewportSize({ width: 390, height: 900 })
-    const narrow = await Promise.all([first.boundingBox(), second.boundingBox()])
+    const narrow = await Promise.all([
+      first.boundingBox(),
+      second.boundingBox(),
+      third.boundingBox(),
+      context.boundingBox(),
+    ])
     assert(
       narrow[1].y >= narrow[0].y + narrow[0].height,
       'the authored sequence stacks on narrow screens',
     )
+    assert(narrow[2].y >= narrow[1].y + narrow[1].height)
+    assert(narrow[3].y >= narrow[2].y + narrow[2].height)
     assert.equal(
       await first.locator('.report').textContent(),
       material.value.sections[0].blocks[0].text,
+    )
+    await noPageOverflow(page)
+  })
+})
+
+test('long authored inspectors scroll within the available desktop workspace', async () => {
+  const fixture = childFixture()
+  fixture.snapshot.views.find(
+    (item) => item.id === 'child-review',
+  ).value.sections[0].blocks[0].rows[0].details = [
+    {
+      kind: 'report',
+      text: 'Retained detail remains complete and independently scrollable.\n\n'.repeat(100),
+    },
+  ]
+  await withPage(fixture, { viewport: { width: 1440, height: 700 } }, async (page) => {
+    await openTab(page, 'Specialist material')
+    await page.getByRole('button', { name: 'Alpha', exact: true }).click()
+    const detail = page.locator('.application-workspace .detail')
+    const available = await page.locator('#view-panel').boundingBox()
+    const bounds = await detail.boundingBox()
+    assert(bounds.y + bounds.height <= available.y + available.height)
+    assert(await detail.evaluate((node) => node.scrollHeight > node.clientHeight))
+    await detail.evaluate((node) => {
+      node.scrollTop = node.scrollHeight
+    })
+    assert(await detail.evaluate((node) => node.scrollTop > 0))
+    await page.keyboard.press('Escape')
+    assert(
+      await page
+        .getByRole('button', { name: 'Alpha', exact: true })
+        .evaluate((node) => node === document.activeElement),
     )
     await noPageOverflow(page)
   })

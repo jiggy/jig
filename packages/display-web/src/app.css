@@ -2420,9 +2420,18 @@ footer {
   .application-sections > * {
     grid-column: 1 / -1;
   }
-  .application-sections > .application-section-reading:has(+ .application-section-reading),
-  .application-sections > .application-section-reading + .application-section-reading {
+  .application-sections > .reading-pair {
     grid-column: auto;
+  }
+}
+@media (min-width: 1001px) {
+  #view-panel {
+    container-type: size;
+  }
+  #view-panel .detail {
+    max-height: 100cqh;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
   }
 }
 .application-section-context {
