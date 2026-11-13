@@ -10,6 +10,9 @@ host retains credential, process, and dispatch authority.
 - `src/flow.ts` owns the ordinary Agent Run method and finite ACP dialogue.
   `src/conversation.ts` owns serial turn controls and essential replies. Native
   dispatch authority remains in the resource, not this controller.
+- `src/native-request-failure.ts` combines validated request diagnostics with
+  host settlement errors. Its pure data checks establish no native ownership,
+  fencing or cleanup evidence. The installed host regression owns that proof.
 - `src/transport.ts` owns the public finite-ACP text framing helper. It neither
   authenticates nor authorizes a frame. The host validates reassembled JSON/0
   and independently enforces its reviewed finite protocol policy.
