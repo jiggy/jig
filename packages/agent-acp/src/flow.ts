@@ -180,7 +180,7 @@ export async function agentAcpFlow(
           : candidateIndex > 0 && sameClientSession === 'fresh' && 'restore' in prepared.session
             ? undefined
             : { ...prepared.session }
-  
+
       let activeCandidate = candidate
       for (;;) {
         try {
@@ -213,22 +213,22 @@ export async function agentAcpFlow(
               break
             }
             throw previousFailoverError
+          }
+          if (
+            candidateIndex + 1 < candidates.length &&
+            canRecover(error, beforePrompt, afterRejectedPrompt)
+          ) {
+            previousFailoverError = error
+            break
+          }
+          throw error
+        }
+      }
+    }
+    throw previousFailoverError
   } finally {
     await updates.finish()
   }
-        }
-        if (
-          candidateIndex + 1 < candidates.length &&
-          canRecover(error, beforePrompt, afterRejectedPrompt)
-        ) {
-          previousFailoverError = error
-          break
-        }
-        throw error
-      }
-    }
-  }
-  throw previousFailoverError
 }
 
 function isUnsupportedSessionError(error: OperationError): boolean {
