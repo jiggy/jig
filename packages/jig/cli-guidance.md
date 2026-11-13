@@ -151,7 +151,9 @@ All selected domain requirements still apply.
   target identity, bounded JSON input, and explicitly selected file bytes.
   The host resolves and rechecks the exact approved selector and unbound read
   attachment names. It refuses missing, duplicate, foreign or bound-input
-  overrides. Required channels and more than eight unbound reads remain
+  overrides.
+
+  Required channels and more than eight unbound reads remain
   launch blockers. Browser text never supplies argv, local paths, grants,
   review consent or process identities.
 
@@ -160,11 +162,13 @@ All selected domain requirements still apply.
   separately staged bounded selected read files, and the existing approval pin.
   Only one selected file per unbound read is permitted. Files are staged in
   private temporary directories with safe filenames and passed through
-  ordinary `--attach` capture. No browser-supplied local path is used. It preserves native admission, schema validation,
-  deadlines, file delivery and independent recovery. No delivery owner is
-  reused after retirement. The ordinary Run receives no explorer control
-  capability. Its private handoff reports only its viewer URL and confirmed
-  settlement. Never parse human stderr to establish either fact.
+  ordinary `--attach` capture. No browser-supplied local path is used.
+
+  The command preserves native admission, schema validation, deadlines,
+  file delivery and independent recovery. No delivery owner is reused after
+  retirement. The ordinary Run receives no explorer control capability.
+  Its private handoff reports only its viewer URL and confirmed settlement.
+  Never parse human stderr to establish either fact.
 
   The child starts in a separate process group and session, with inherited
   terminal output and a referenced process handle. The explorer receives
