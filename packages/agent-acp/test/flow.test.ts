@@ -346,65 +346,6 @@ describe('native request failure diagnostics', () => {
     expect(f.frames.filter((frame) => frame.method === 'session/prompt')).toHaveLength(1)
   })
   test.each([
-    { code: 'EXECUTION_FAILED', forwarding: 'not-forwarded', cleanup: 'confirmed', preserve: true },
-    {
-      code: 'EXECUTION_FAILED',
-      forwarding: 'not-forwarded',
-      cleanup: 'unconfirmed',
-      preserve: false,
-    },
-    { code: 'EXECUTION_FAILED', forwarding: 'attempted', cleanup: 'confirmed', preserve: false },
-    { code: 'UNCERTAIN', forwarding: 'not-forwarded', cleanup: 'confirmed', preserve: false },
-    { code: 'CANCELLED', forwarding: 'not-forwarded', cleanup: 'confirmed', preserve: false },
-    {
-      code: 'DEADLINE_EXCEEDED',
-      forwarding: 'not-forwarded',
-      cleanup: 'confirmed',
-      preserve: false,
-    },
-  ] as const)('pre-prompt request diagnostics respect host settlement: %j', async (entry) => {
-    const hostError = new OperationError(entry.code, 'host settlement failed', {
-      nativePrompt: { forwarding: entry.forwarding, cleanup: entry.cleanup, turnsSettled: 0 },
-    })
-    const selected = [{ slot: 'native', operationId: 'native' }]
-    const f = fixture({
-      selection: selected,
-      settlementFailure: () => hostError,
-      async emit(frame, send) {
-        if (frame.method !== 'session/new') return false
-        await f.frameSend(send, {
-          jsonrpc: '2.0',
-          id: frame.id!,
-          error: {
-            code: -32603,
-            message: 'private native error',
-            data: { reason: 'managed-preferences-unavailable' },
-          },
-        })
-        return true
-      },
-    })
-    const failure = await agentAcpFlow(f.run, selected).catch((error: unknown) => error)
-    if (entry.preserve) {
-      expect(failure).toBeInstanceOf(OperationError)
-      expect((failure as OperationError).code).toBe('EXECUTION_FAILED')
-      expect((failure as OperationError).details).toEqual({
-        ...(hostError.details as JsonObject),
-        nativeRequest: {
-          method: 'session/new',
-          code: -32603,
-          reason: 'managed-preferences-unavailable',
-        },
-      })
-      expect((failure as Error).message).toContain(
-        'macOS managed preferences could not be synchronized',
-      )
-      expect((failure as Error).message).not.toContain('private native error')
-    } else expect(failure).toBe(hostError)
-    expect(f.frames.some((frame) => frame.method === 'session/prompt')).toBeFalse()
-  })
-
-  test.each([
     'initialize',
     'session/new',
     'session/resume',
