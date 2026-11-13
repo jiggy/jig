@@ -55,6 +55,9 @@ execution evidence.
 - Browser composition maps project the exact admitted Run generation without source evaluation or new execution authority.
   Available connections remain distinct from observed invocations and application decisions.
   Missing or conflicting correspondence stays explicit.
+- Two-packet saved comparison reads independently verified recorded file captures
+  without project approval or execution authority. Recorded values do not prove
+  authenticated provenance or historical call behavior.
 - Project exploration reads approved configuration before execution, with separate project and Run observation capabilities.
   Explicit launch rechecks approval and input through the ordinary installed Run path.
   Reconnection never resubmits work, and unknown execution blocks further launch.
