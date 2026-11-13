@@ -97,7 +97,7 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
     expect(flowContext.stdout).toContain('flowchart LR')
     expect(flowContext.stdout).toContain('flow:flows/hello')
     expect(flowContext.stdout).toContain('Captured source: FLOW.ts')
-    expect(flowContext.stdout).toContain('Source paths identify captured package members')
+    expect(flowContext.stdout).toContain('Source paths identify captured members')
     const impact = await command(
       [cli, 'inspect', '--flow', 'flow:flows/hello', '--impact', '--json'],
       project,
