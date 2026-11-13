@@ -543,7 +543,7 @@ export function macPrMatrixStatus(snapshot, expected, previous = {}, now = Date.
   }
 }
 
-/** A failing member of the PR worker matrix triggers GitHub's queued-sibling cancellation. */
+/** Observe execution and queue failures without granting the guard cancellation authority. */
 export async function guardMacPrMatrix(
   budget,
   { token, apiOrigin = githubApiOrigin, pollIntervalMs = 60_000 } = {},

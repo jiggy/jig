@@ -39,7 +39,6 @@ export function macHostWorkerMatrix(event) {
   if (event === 'pull_request') requireMacHostCohortProfiles()
   return {
     include: [
-      ...(event === 'pull_request' ? [{ arch: 'guard', worker: 'guard', guard: true }] : []),
       ...Array.from(
         { length: event === 'pull_request' ? MAC_PR_COHORT.workers : 1 },
         (_, worker) => ({ arch: 'arm64', worker, guard: false }),

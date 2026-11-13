@@ -190,6 +190,41 @@ jobs:
         name: "Require completion within the preparation allowance"
         if: "github.event_name == 'pull_request'"
         run: "node scripts/ci/pr-time-budget.mjs check"
+  pr-deadline-guard:
+    name: "Enforce Mac PR deadline"
+    if: "${{ github.event_name == 'pull_request' && needs.scope.outputs.required == 'true' }}"
+    needs:
+      - "scope"
+      - "host-artifacts"
+    runs-on: "ubuntu-24.04"
+    timeout-minutes: 90
+    permissions:
+      contents: "read"
+      actions: "read"
+    steps:
+      -
+        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        with:
+          persist-credentials: false
+      -
+        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+        with:
+          node-version: "24"
+      -
+        name: "Bind the independent Mac guard to its 90-minute coordination allowance"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          PR_HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
+        run: |
+          node scripts/ci/pr-time-budget.mjs start --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            --head-sha "$PR_HEAD_SHA" --kind coordination \
+            --job-name "Enforce Mac PR deadline" --github-env "$GITHUB_ENV"
+      -
+        name: "Monitor Mac queues and enforce each worker's 25-minute execution limit"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: "node scripts/ci/pr-time-budget.mjs guard-matrix"
   prerequisites:
     name: "${{ matrix.guard && 'Enforce Mac PR deadline' || (github.event_name == 'pull_request' && format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) || format('Native host shard — {0} / 0', matrix.arch)) }}"
     runs-on: "${{ matrix.guard && 'ubuntu-24.04' || 'macos-15' }}"
@@ -199,7 +234,8 @@ jobs:
       cancel-in-progress: false
     # Admit Macs only after canonical inputs and Quick checks are ready on Ubuntu.
     # Each assigned Mac has 25 minutes of execution; queue time is reported separately.
-    # The Ubuntu monitor bounds queues/coordination and cancels failed matrix siblings.
+    # The separate Ubuntu monitor reports queue and coordination violations; it cannot cancel workers.
+    # Native matrix fail-fast cancels unstarted siblings after a native failure.
     # Main and manual runs retain one complete host and their existing allowance.
     timeout-minutes: "${{ github.event_name == 'pull_request' && (matrix.guard && 90 || 25) || (inputs.include_startup_profile && 90 || 60) }}"
     permissions:
@@ -207,12 +243,10 @@ jobs:
       actions: "read"
     env:
       JIG_MACOS_TEST_PLAN: "${{ github.event_name == 'pull_request' && 'pull-request' || 'complete' }}"
-    # Reserve one matrix slot for the Ubuntu guard and two for native Macs.
-    # Queue the remaining workers rather than starving hosted Mac capacity.
-    # A failed worker still fails qualification; do not cancel unstarted peers.
+    # Limit concurrent native Macs; retain fail-fast cancellation for failed workers.
     strategy:
-      fail-fast: false
-      max-parallel: 3
+      fail-fast: "${{ github.event_name == 'pull_request' }}"
+      max-parallel: 2
       matrix: "${{ fromJSON(needs.scope.outputs.workers) }}"
     steps:
       -

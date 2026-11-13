@@ -1203,10 +1203,9 @@ test('allocator selection rejects missing, duplicate, stale, inactive, or failed
     assert.throws(() => selectMacHostAllocatorJob(observed, coordinationIdentity), /allocator/)
 })
 
-test('PRs select an Ubuntu deadline guard and five ARM workers; main retains one complete host', () => {
+test('PRs select five ARM workers for an independent Ubuntu guard; main retains one complete host', () => {
   assert.deepEqual(macHostWorkerMatrix('pull_request'), {
     include: [
-      { arch: 'guard', worker: 'guard', guard: true },
       ...Array.from({ length: 5 }, (_, worker) => ({
         arch: 'arm64',
         worker,
