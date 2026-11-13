@@ -1,9 +1,18 @@
 import type { RunContext, RunResult } from '@jigging/flow'
 
+/** The exact condition used for the code-first branch, also reported in its domain view. */
+export function selectMappingApproach(
+  headers: readonly string[],
+): 'known-format-code' | 'agent-proposal' {
+  const expected = ['Customer', 'Email address', 'Company']
+  return headers.length === 3 && expected.every((heading) => headers.includes(heading))
+    ? 'known-format-code'
+    : 'agent-proposal'
+}
+
 export async function runMethod(run: Pick<RunContext, 'input' | 'call'>): Promise<RunResult> {
   const { headers } = run.input as { headers: string[] }
-  const expected = ['Customer', 'Email address', 'Company']
-  if (headers.length === 3 && expected.every((h) => headers.includes(h)))
+  if (selectMappingApproach(headers) === 'known-format-code')
     return {
       outcome: 'done',
       output: {
