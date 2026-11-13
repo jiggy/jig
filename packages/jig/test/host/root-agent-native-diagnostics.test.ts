@@ -160,7 +160,7 @@ test(
         const plan = await session.plan({ lockMode: 'update' })
         if (plan.state !== 'applicable')
           throw new Error('Diagnostic consumer has no applicable Plan')
-        await session.apply({ planDigest: plan.planDigest })
+        await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
         const receipt = await session.rootAdministration.startRun({
           submissionId: 'native-diagnostic',
           target: { kind: 'binding', id: 'caller' },
