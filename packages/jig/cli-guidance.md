@@ -525,9 +525,11 @@ recorded execution status.
 Recorded-result comparison is independent of project approval and execution.
 `jig compare BEFORE AFTER [--json]` uses two ordinary immutable saved packet
 captures. It reports exact bounded structural changes to recorded results and
-verified file differences; no saved call graph or application verdict is
-inferred. For a matching recorded file digest, only successfully captured and
-verified bytes on both sides can establish unchanged material.
+verified file differences. No saved call graph or application verdict is
+inferred.
+
+For a matching recorded file digest, only successfully captured and verified
+bytes on both sides can establish unchanged material.
 The installed comparison command bypasses execution host acquisition and
 installation verification, just like saved-packet inspection. Incorrect or
 incomplete recorded evidence cannot yield a successful comparison exit.
