@@ -2,6 +2,10 @@
 
 ## Ownership
 
+`portable/cli-discovery.test.ts` covers flow-context grammar, impact traversal, source framing, and explicit scope omissions.
+`portable/activation-admission-store.test.ts` verifies retained package and declaration source without mutable-source reads or state writes.
+`host/installed-cli-lifecycle.test.ts` exercises those commands through the installed CLI on a qualified host.
+
 `portable/jig-version.test.ts` checks exact requirement values, captured metadata and contributor identification.
 `portable/built-authoring.test.ts` checks the actual public and evaluator authoring bundles after building Jig.
 `portable/bun-workspace.test.ts` checks workspace capture, including unrelated external patterns and selected-root containment.

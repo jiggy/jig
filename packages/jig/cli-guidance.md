@@ -201,6 +201,14 @@ All selected domain requirements still apply.
 
 ### Approved target inspection
 
+- `src/cli-flow-context.ts` formats retained relationships and source for coding agents and people.
+  `inspect --flow` preserves Markdown through pipes. Impact includes shared implementations and reverse callers.
+  Source member requests read approved package bytes without source evaluation.
+  Requests without a target read the retained declaration closure instead.
+
+  Bound graph presentation and disclose file/value omissions. Escape source fences and terminal controls.
+  No call order, payload construction, or caller reactions are inferred.
+
 - `inspect` compares the last local approval with current local execution
   identities, including selected children. Report mismatches as review required
   and unverifiable comparisons as unchecked. It does not evaluate source,

@@ -551,6 +551,7 @@ async function createFixture(
   disposition: 'ready' | 'unavailable' = 'unavailable',
   entrypoint?: string,
   attachments: Readonly<Record<string, 'read' | 'read-write'>> = {},
+  sourceFiles: Readonly<Record<string, string>> = {},
 ): Promise<Fixture> {
   const empty = await createEmptyFixture()
   const flowSource = join(empty.base, 'run-flow')
@@ -579,6 +580,8 @@ async function createFixture(
         },
       }),
     )
+    for (const [file, text] of Object.entries(sourceFiles))
+      await writeFile(join(flowSource, file), text)
     await writeFile(join(declarationSource, 'jig.ts'), 'export default {};\n')
 
     const flow = await retainPackage(empty.store, flowSource)
@@ -1850,7 +1853,12 @@ describe.serial('direct alpha activation store', () => {
     }
   })
   test('inspection reads only approved retained meaning without state writes or coordinator acquisition', async () => {
-    const fixture = await createFixture('ready')
+    const fixture = await createFixture(
+      'ready',
+      undefined,
+      {},
+      { 'nul.txt': '\0', 'large.txt': ' '.repeat(262145), 'bom.ts': '\uFEFFexport {};' },
+    )
     let coordinator: PrivateProjectCoordinator | undefined
     try {
       expect(await inspectPrivateApprovedProject(fixture.root)).toEqual({
@@ -1885,6 +1893,81 @@ describe.serial('direct alpha activation store', () => {
         slots: {},
         settings: {},
       })
+      const context = (await inspectPrivateApprovedProject(
+        fixture.root,
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        { target: 'flow:flows/run', source: 'FLOW.ts' },
+      )) as any
+      expect(context.targets[0].flow).toMatchObject({
+        entrypoint: 'FLOW.ts',
+        sourcePath: 'FLOW.ts',
+        source: '#!/usr/bin/env bun\nexport {};\n',
+        routes: [],
+        settings: {},
+      })
+      expect(context.targets[0].flow.files.some((file: any) => file.path === 'FLOW.ts')).toBe(true)
+      await expect(
+        inspectPrivateApprovedProject(
+          fixture.root,
+          undefined,
+          undefined,
+          false,
+          undefined,
+          undefined,
+          { target: 'flow:flows/run', source: 'absent.ts' },
+        ),
+      ).rejects.toMatchObject({ code: 'INSPECTION_SOURCE_UNAVAILABLE' })
+      let rendered = ''
+      expect(
+        await main(['inspect', '--flow', 'flow:flows/run', '--source', 'FLOW.ts'], {
+          currentDirectory: fixture.root,
+          terminalOutput: false,
+          writeOutput: (value) => {
+            rendered += value
+          },
+        }),
+      ).toBe(0)
+      expect(rendered).toContain('flowchart LR')
+      expect(rendered).toContain('export {};')
+      expect(rendered).not.toContain('must not evaluate')
+      for (const source of ['nul.txt', 'large.txt'])
+        await expect(
+          inspectPrivateApprovedProject(
+            fixture.root,
+            undefined,
+            undefined,
+            false,
+            undefined,
+            undefined,
+            { target: 'flow:flows/run', source },
+          ),
+        ).rejects.toMatchObject({ code: 'INSPECTION_SOURCE_UNAVAILABLE' })
+      const bom = (await inspectPrivateApprovedProject(
+        fixture.root,
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        { target: 'flow:flows/run', source: 'bom.ts' },
+      )) as any
+      expect(bom.targets[0].flow.source).toBe('\uFEFFexport {};')
+      let declarationText = ''
+      expect(
+        await main(['inspect', '--flow', '--source', 'jig.ts'], {
+          currentDirectory: fixture.root,
+          terminalOutput: false,
+          writeOutput: (value) => {
+            declarationText += value
+          },
+        }),
+      ).toBe(0)
+      expect(declarationText).toContain('export default {};')
+      expect(declarationText).not.toContain('must not evaluate')
       const explorer = new PrivateProjectProjection(fixture.root)
       const project = await explorer.projectForTarget('flow:flows/run')
       expect(project.state).toBe('approved')

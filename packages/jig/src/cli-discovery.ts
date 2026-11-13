@@ -180,7 +180,7 @@ export function completionScript(shell: string): string | undefined {
       run) opts='${runOptions}';;
       explore) opts='--help --timeout --verification';;
       review) opts='--help --allow-resolution-network --source-root --allow-authority-changes --generate-contracts --yes --details --verification --agent';;
-      inspect) opts='--help --json --verification --result --display';;
+      inspect) opts='--help --json --verification --result --display --flow --impact --source';;
       views) opts='list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision';;
       init) opts='--help --bare --agent';;
       import-contract) opts='--help --list';;

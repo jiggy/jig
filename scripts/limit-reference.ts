@@ -21,6 +21,7 @@ import {
   PRIVATE_FILE_LIMITS,
 } from '../packages/jig/src/internal/file-input-policy.js'
 import { PRIVATE_FINITE_ACP_LIMITS } from '../packages/jig/src/internal/finite-acp-policy.js'
+import { PRIVATE_FLOW_CONTEXT_LIMITS } from '../packages/jig/src/internal/inspection-policy.js'
 import { PRIVATE_NATIVE_TURN_POLICY } from '../packages/jig/src/internal/native-agent-turn-policy.js'
 import { PROJECT_COMMAND_LIMITS } from '../packages/jig/src/internal/private-project-command.js'
 import { RUN_CHECKPOINT_LIMITS } from '../packages/jig/src/internal/private-run-checkpoint.js'
@@ -356,8 +357,18 @@ export const LIMIT_REFERENCE: readonly Group[] = [
     title: 'Inspect application composition',
     explanation:
       'Each live snapshot carries one complete admitted composition or an explicit unavailable state. Fixed display bounds protect observation without changing execution authority.',
-    sources: ['packages/display-model/src/types.ts'],
+    sources: ['packages/display-model/src/types.ts', 'internal/inspection-policy.ts'],
     limits: [
+      fixed(
+        'Flow context selected targets / connections',
+        `${PRIVATE_FLOW_CONTEXT_LIMITS.targets} / ${PRIVATE_FLOW_CONTEXT_LIMITS.connections}`,
+      ),
+      fixed('Flow context source member', bytes(PRIVATE_FLOW_CONTEXT_LIMITS.sourceBytes)),
+      fixed(
+        'Flow context listed members per package',
+        integer(PRIVATE_FLOW_CONTEXT_LIMITS.filesPerPackage),
+      ),
+      fixed('Flow context inline value', bytes(PRIVATE_FLOW_CONTEXT_LIMITS.inlineValueBytes)),
       fixed('Components per composition', integer(DISPLAY_COMPOSITION_NODE_LIMIT)),
       fixed('Connections per composition', integer(DISPLAY_COMPOSITION_EDGE_LIMIT)),
       fixed('Encoded composition', bytes(DISPLAY_COMPOSITION_BYTE_LIMIT)),

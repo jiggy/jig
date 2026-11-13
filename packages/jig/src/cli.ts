@@ -27,9 +27,10 @@ import {
 import { preparePrivateCliRun, privateAttemptFailureMessage } from './cli-attempt-execution.js'
 import { PrivateAttemptInput } from './cli-attempt-io.js'
 import { approvedTargets, completionScript, invocationGuide } from './cli-discovery.js'
+import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-archive.js'
 import { parsePrivateExploreArguments, privateExecuteExplore } from './cli-explore.js'
 import type { PrivateExploreLaunch } from './cli-explore-launch.js'
-import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-archive.js'
+import { flowContextRecord, renderFlowContext } from './cli-flow-context.js'
 import {
   privateCliHumanText,
   privateCliStyleEnabled,
@@ -243,6 +244,7 @@ The destination parent must exist; existing destinations are never replaced.
 Example:
   jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
+       jig inspect --flow [target] [--impact | --source FILE] [--json]
        jig inspect --result DIRECTORY [--display plain|tui|web] [--json]
 
 List the current project's approved targets, or show one target's retained
@@ -253,7 +255,10 @@ Changed environments require review; unverifiable environments remain unchecked.
 No source evaluation, installation, provider requests, recovery or state writes.
 Visible edits, launch readiness and remote provider availability are not checked.
 
-  --json     Emit JSON even in a terminal (redirected output is always JSON)
+  --json     Emit JSON even in a terminal (redirected output is JSON unless --flow is selected)
+  --flow     Emit Markdown relationships and captured file inventory, including when piped
+  --impact   With --flow TARGET: show potential callers and shared implementations
+  --source FILE  Include one captured UTF-8 member (up to 256 KiB); a target selects its package, otherwise project declarations
   --result DIRECTORY  Inspect a saved packet without approval or new execution
   --display MODE      For saved results: plain (default), tui or web
 
@@ -977,8 +982,32 @@ function parseInspect(arguments_: readonly string[]) {
   let verification: string | undefined
   let resultDirectory: string | undefined
   let display: 'plain' | 'tui' | 'web' | undefined
+  let flow = false
+  let impact = false
+  let source: string | undefined
   for (let index = 1; index < arguments_.length; index++) {
     const value = arguments_[index]!
+    if (value === '--flow' && !flow) {
+      flow = true
+      continue
+    }
+    if (value === '--impact' && !impact) {
+      impact = true
+      continue
+    }
+    if (value === '--source' && source === undefined) {
+      const next = arguments_[++index]
+      if (
+        next === undefined ||
+        next.startsWith('-') ||
+        next.startsWith('/') ||
+        next.split('/').some((p) => !p || p === '.' || p === '..') ||
+        /[\\\p{Cc}]/u.test(next)
+      )
+        usage('inspect', '--source requires one captured package-relative member path.')
+      source = next
+      continue
+    }
     if (value === '--result') {
       const next = arguments_[++index]
       if (resultDirectory !== undefined || next === undefined || next.startsWith('-'))
@@ -1013,7 +1042,22 @@ function parseInspect(arguments_: readonly string[]) {
     usage('inspect', '--result cannot be combined with a target or --verification.')
   if (display !== undefined && resultDirectory === undefined)
     usage('inspect', '--display requires --result DIRECTORY.')
-  return { selector, json, verification, resultDirectory, display: display ?? 'plain' }
+  if ((impact || source !== undefined) && !flow)
+    usage('inspect', '--impact and --source require --flow.')
+  if (flow && resultDirectory !== undefined)
+    usage('inspect', 'Saved packets contain no retained flow context.')
+  if (impact && selector === undefined) usage('inspect', '--impact requires an exact target.')
+  if (impact && source !== undefined) usage('inspect', 'Inspect source separately from --impact.')
+  return {
+    selector,
+    json,
+    verification,
+    resultDirectory,
+    display: display ?? 'plain',
+    flow,
+    impact,
+    source,
+  }
 }
 
 /** Complete grammar classification before any installed inspection probes. */
@@ -1098,11 +1142,25 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
   try {
     snapshot = await inspectPrivateApprovedProject(
       runtime.currentDirectory,
-      selector,
+      parsed.flow ? undefined : selector,
       runtime.inspectEnvironment,
-      runtime.humanOutput && !json && selector === undefined,
+      !parsed.flow && runtime.humanOutput && !json && selector === undefined,
+      undefined,
+      undefined,
+      parsed.flow
+        ? {
+            ...(selector === undefined ? {} : { target: selector }),
+            ...(parsed.source === undefined ? {} : { source: parsed.source }),
+          }
+        : undefined,
     )
   } catch (error) {
+    if (error instanceof CheckError && error.code === 'INSPECTION_SOURCE_UNAVAILABLE')
+      throw new CliDiagnostic(
+        'JIG_SOURCE_UNAVAILABLE',
+        'That captured member is unavailable as UTF-8 text within 256 KiB. List the selected target files with jig inspect --flow <target>.',
+        1,
+      )
     if (error instanceof CheckError && error.code === 'INSPECTION_TARGET_MISSING')
       throw new CliDiagnostic(
         'JIG_TARGET_NOT_FOUND',
@@ -1116,6 +1174,24 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
     )
   }
   runtime.signal?.throwIfAborted()
+  if (parsed.flow && !json) {
+    runtime.writeOutput(
+      renderFlowContext(snapshot, {
+        ...(selector === undefined ? {} : { target: selector }),
+        impact: parsed.impact,
+        ...(parsed.source === undefined ? {} : { source: parsed.source }),
+      }),
+    )
+    return 0
+  }
+  if (parsed.flow && json) {
+    const context = flowContextRecord(snapshot, {
+      ...(selector === undefined ? {} : { target: selector }),
+      impact: parsed.impact,
+    })
+    await runtime.writeRecord(`${textDecoder.decode(canonicalJson(context))}\n`)
+    return 0
+  }
   if (runtime.humanOutput && !json) {
     const state =
       typeof snapshot === 'object' && snapshot !== null && 'state' in snapshot

@@ -16,6 +16,7 @@ import type {
 import { parseAttemptFrame } from '../attempt-contract.js'
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from '../json.js'
+import type { CapturedPackage } from '../package/capture.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import { isDirectRunEligible } from '../project/flow-source.js'
 import { resolveInvocationSlots } from '../project/invocation-slots.js'
@@ -55,9 +56,9 @@ import {
 } from './activation-admission.js'
 import { privateActivationTargetKey } from './activation-planning.js'
 import {
-  readPrivateAttemptCheckpointInventory,
   readPrivateAttemptCheckpoint,
   readPrivateAttemptCheckpointFiles,
+  readPrivateAttemptCheckpointInventory,
   retainPrivateAttemptCheckpoint,
 } from './attempt-checkpoint-store.js'
 import { type PrivateAttemptClock, readPrivateAttemptClock } from './attempt-clock.js'
@@ -77,6 +78,7 @@ import {
 import type { PrivateCapturedAttachment } from './file-input.js'
 import { requiresAuthorityApproval } from './grant-review.js'
 import { privateDomainDigest } from './identity.js'
+import { PRIVATE_FLOW_CONTEXT_LIMITS } from './inspection-policy.js'
 import {
   normalizePrivateLinuxConfirmedEnforcementReceipt,
   normalizePrivateLinuxOwnerStateAllocationIdentity,
@@ -114,6 +116,7 @@ import {
   deletePrivateRetiredAttempts,
   PRIVATE_ATTEMPT_SCHEMA,
   PrivateAttemptError,
+  type PrivateAttemptRow,
   type PrivateAuthenticatedAttempt,
   persistPrivatePreparedAttempt,
   privateAttemptBaseObservation,
@@ -122,7 +125,6 @@ import {
   privateAttemptRequest,
   privateAttemptResultDigest,
   privateAttemptRetentionState,
-  type PrivateAttemptRow,
   readPrivateAttemptInputs,
   reconcilePrivateAttemptExportOwners,
   requirePrivateAttemptAcceptable,
@@ -4913,6 +4915,29 @@ function inspectionState(states: readonly PrivateInspectionState[]): PrivateInsp
 /** Read the last approved snapshot, not visible source or a pending review.
  * No coordinator, runtime, recovery, resolution, or write transaction is acquired.
  */
+async function inspectionSource(
+  captured: CapturedPackage,
+  member: string,
+): Promise<{ source: string; sourcePath: string }> {
+  const file = captured.files.find((file) => file.path === member)
+  if (file === undefined || file.size > PRIVATE_FLOW_CONTEXT_LIMITS.sourceBytes)
+    invalid(
+      'INSPECTION_SOURCE_UNAVAILABLE',
+      'captured member is missing or exceeds the presentation bound',
+    )
+  let source: string
+  try {
+    source = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+      await captured.read(file.path, PRIVATE_FLOW_CONTEXT_LIMITS.sourceBytes),
+    )
+  } catch {
+    invalid('INSPECTION_SOURCE_UNAVAILABLE', 'captured member is not UTF-8 text')
+  }
+  if (source!.includes('\0'))
+    invalid('INSPECTION_SOURCE_UNAVAILABLE', 'captured member contains NUL bytes')
+  return { source: source!, sourcePath: file.path }
+}
+
 export async function inspectPrivateApprovedProject(
   projectRoot: string,
   selector?: string,
@@ -4920,6 +4945,7 @@ export async function inspectPrivateApprovedProject(
   describeTargets = false,
   onAdmission?: (digest: string, writableTargets: readonly string[]) => void,
   onCandidate?: (candidate: PrivateActivationCandidateArtifactV5) => void,
+  flowContext?: Readonly<{ target?: string; source?: string }>,
 ): Promise<JsonValue> {
   let owner: StateOwner
   try {
@@ -5020,6 +5046,7 @@ export async function inspectPrivateApprovedProject(
     const listed: JsonValue[] = []
     const states: PrivateInspectionState[] = []
     const descriptions = new Map<string, string>()
+    const flowPackages = new Map<string, JsonValue>()
     for (const index of selectedIndex === undefined ? targets.keys() : [selectedIndex]) {
       const state = await checkWithChildren(index)
       states.push(state)
@@ -5041,11 +5068,101 @@ export async function inspectPrivateApprovedProject(
           await captured.dispose()
         }
       }
+      let flow: JsonValue | undefined
+      if (flowContext !== undefined) {
+        if (flowContext.target !== undefined && !targetIndexes.has(flowContext.target))
+          invalid('INSPECTION_TARGET_MISSING', 'target is not in the approved revision')
+        let shared = flowPackages.get(request.packagePath)
+        if (shared === undefined) {
+          const captured = await captureStoredPackage(
+            descriptorChild(owner.directory, PRIVATE_PACKAGE_STORE_DIRECTORY),
+            request.package,
+          )
+          try {
+            const inspected = await inspectCapturedPackage(captured)
+            requirePackageProjection(
+              request.packagePath,
+              candidate.lock.packages[request.packagePath]!,
+              inspected,
+            )
+            shared = {
+              digest: request.package.digest,
+              description: inspected.metadata.description ?? '',
+              entrypoint: inspected.entrypoint.path,
+              contract: (inspected.contract?.descriptor ?? null) as JsonValue,
+              files: captured.files.map((file) => ({ path: file.path, bytes: file.size })),
+            }
+            // Source text belongs only to the explicitly selected target.
+            flowPackages.set(request.packagePath, shared)
+          } finally {
+            await captured.dispose()
+          }
+        }
+        // A package can occur under several Bindings. Read selected source even when a peer was visited first.
+        if (
+          flowContext.source !== undefined &&
+          targets[index]!.target === flowContext.target &&
+          !Object.hasOwn(shared as object, 'source')
+        ) {
+          const captured = await captureStoredPackage(
+            descriptorChild(owner.directory, PRIVATE_PACKAGE_STORE_DIRECTORY),
+            request.package,
+          )
+          try {
+            shared = {
+              ...(shared as Record<string, JsonValue>),
+              ...(await inspectionSource(captured, flowContext.source)),
+            }
+          } finally {
+            await captured.dispose()
+          }
+        }
+        const { source, sourcePath, ...metadata } = shared as Record<string, JsonValue>
+        flow = {
+          ...metadata,
+          ...(targets[index]!.target === flowContext.target && source !== undefined
+            ? { source, sourcePath: sourcePath! }
+            : {}),
+          settings: request.settings,
+          attachments: request.attachments,
+          artifactResults: request.artifactResults ?? [],
+          routes: Object.entries(request.slots).map(([slot, route]) =>
+            route.kind === 'flow'
+              ? {
+                  slot,
+                  target:
+                    route.target.kind === 'binding'
+                      ? 'binding:' + route.target.id
+                      : flowSelector(route.target.path),
+                }
+              : { slot, resource: route.native },
+          ),
+        }
+      }
       listed.push({
         ...targets[index]!,
         state,
+        ...(flow === undefined ? {} : { flow }),
         ...(describeTargets ? { description: descriptions.get(request.packagePath)! } : {}),
       })
+    }
+    let declarations: JsonValue | undefined
+    if (flowContext !== undefined) {
+      const captured = await captureStoredPackage(
+        descriptorChild(owner.directory, PRIVATE_PACKAGE_STORE_DIRECTORY),
+        candidate.candidate.declarationArtifact.package,
+      )
+      try {
+        declarations = {
+          digest: captured.digest,
+          files: captured.files.map((file) => ({ path: file.path, bytes: file.size })),
+          ...(flowContext.source !== undefined && flowContext.target === undefined
+            ? await inspectionSource(captured, flowContext.source)
+            : {}),
+        }
+      } finally {
+        await captured.dispose()
+      }
     }
     const state = inspectionState(states)
     onAdmission?.(
@@ -5073,6 +5190,7 @@ export async function inspectPrivateApprovedProject(
       ...entrypoint,
       ...agentOrigin,
       targets: listed,
+      ...(declarations === undefined ? {} : { declarations }),
     }
     if (selector !== undefined) {
       const index = selectedIndex!

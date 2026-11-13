@@ -257,3 +257,25 @@ Closing inspection releases presentation captures while keeping the retained edi
 For an unconfirmed publication, follow [receipt recovery](../reference/troubleshooting.md#view-publication-is-unconfirmed).
 Generation-checked removal and reset require explicit current conditions.
 The [archive contract](../spec/display-archive.md) defines capacity, evidence and recovery limits.
+
+## Understand an application from the command line
+
+Use the last approved configuration to locate relationships before changing methods.
+
+```sh
+jig inspect --flow
+jig inspect --flow --source jig.ts
+jig inspect --flow binding:repair --impact
+jig inspect --flow binding:repair --source repair.ts
+```
+
+The first command shows configured relationships, contracts, settings, and captured file locations.
+Project declarations include captured Binding modules and their helpers. Without a target, source requests select that declaration closure.
+The impact view includes callers and other configurations sharing the implementation.
+Source requests supply retained bytes, which can differ from the working tree.
+Read the relevant methods to establish conditions, transformations, and caller reactions.
+
+Agents receive the same Markdown through pipes. A useful investigation follows the caller, supplied values, returned outcome, and subsequent caller handling.
+Use graph source with meaningful identities when describing relationships. Use sequence alternatives only when source or observations support them.
+Application decision fields remain distinct from invocation outcomes and operational failures.
+Saved result inspection does not reconstruct invocation history.

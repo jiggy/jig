@@ -61,6 +61,24 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
     )
     await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
     const lock = await readFile(join(project, 'jig.lock'), 'utf8')
+    const flowContext = await command(
+      [cli, 'inspect', '--flow', 'flow:flows/hello', '--source', 'FLOW.ts'],
+      project,
+    )
+    expect(flowContext.stdout).toContain('flowchart LR')
+    expect(flowContext.stdout).toContain('flow:flows/hello')
+    expect(flowContext.stdout).toContain('Captured source: FLOW.ts')
+    expect(flowContext.stdout).toContain('Source paths identify captured package members')
+    const impact = await command(
+      [cli, 'inspect', '--flow', 'flow:flows/hello', '--impact', '--json'],
+      project,
+    )
+    expect(JSON.parse(impact.stdout).scope).toEqual({
+      target: 'flow:flows/hello',
+      impact: true,
+      omittedTargets: 0,
+    })
+
     for (const display of [[], ['--display', 'plain'], ['--json']]) {
       const result = await command(
         [cli, 'run', 'flow:flows/hello', '--input', JSON.stringify('Ada'), ...display],

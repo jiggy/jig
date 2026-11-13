@@ -14,6 +14,8 @@ import {
   completionScript,
   invocationGuide,
 } from '../../src/cli-discovery.js'
+import { flowContextRecord, renderFlowContext } from '../../src/cli-flow-context.js'
+import type { JsonValue } from '../../src/json.js'
 import { checkPackageDirectory } from '../../src/package/inspect.js'
 import { createFlow, createProject } from '../../src/project-init.js'
 
@@ -349,4 +351,159 @@ test('new rejects symlinked flows, malformed manifests, and a nonproject without
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('flow inspection grammar refuses ambiguous source and result combinations before acquisition', async () => {
+  for (const flags of [
+    ['--impact'],
+    ['--source', 'FLOW.ts'],
+    ['--flow', '--impact'],
+    ['--flow', '--result', 'packet'],
+    ['--flow', 'binding:work', '--source', '../secret'],
+    ['--flow', 'binding:work', '--source', '/secret'],
+    ['--flow', '--flow'],
+  ]) {
+    let text = ''
+    const result = await main(['inspect', ...flags], {
+      writeError: (value) => {
+        text += value
+      },
+    })
+    expect(result).toBe(2)
+    expect(text).toContain('JIG_USAGE')
+  }
+})
+
+test('flow context follows callers and Binding peers while preserving configured semantics', () => {
+  const flow = (routes: JsonValue[], settings: JsonValue = {}) => ({
+    routes,
+    settings,
+    contract: { outcomes: { blocked: 'abstention' } },
+    files: [{ path: 'method.ts', bytes: 30 }],
+    entrypoint: 'FLOW.ts',
+    digest: 'abc',
+    attachments: {},
+    artifactResults: [],
+  })
+  const snapshot: JsonValue = {
+    state: 'unchecked',
+    revision: 'approval',
+    entrypoint: 'binding:root',
+    targets: [
+      {
+        target: 'binding:root',
+        package: 'flows/root',
+        state: 'unchecked',
+        flow: flow([
+          { slot: 'first', target: 'binding:one' },
+          { slot: 'second', target: 'binding:two' },
+        ]),
+      },
+      {
+        target: 'binding:one',
+        package: 'flows/repair',
+        state: 'unchecked',
+        flow: flow([{ slot: 'agent', resource: 'finite-acp' }], { attempts: 1 }),
+      },
+      {
+        target: 'binding:two',
+        package: 'flows/repair',
+        state: 'unchecked',
+        flow: flow([], { attempts: 2 }),
+      },
+      { target: 'flow:unrelated', package: 'flows/other', state: 'unchecked', flow: flow([]) },
+    ],
+  }
+  const context = renderFlowContext(snapshot, { target: 'binding:one', impact: true })
+  expect(context).toContain('binding:root')
+  expect(context).toContain('binding:two')
+  expect(context).toContain('"attempts":1')
+  expect(context).toContain('"attempts":2')
+  expect(context).not.toContain('flow:unrelated')
+  expect(context).toContain('1 other approved targets')
+  expect(
+    (flowContextRecord(snapshot, { target: 'binding:one', impact: true }) as any).scope,
+  ).toEqual({ target: 'binding:one', impact: true, omittedTargets: 1 })
+  expect(
+    JSON.stringify(flowContextRecord(snapshot, { target: 'binding:one', impact: true })),
+  ).not.toContain('flow:unrelated')
+  expect(context).toContain('Configured connections permit calls')
+  expect(renderFlowContext(snapshot)).toContain('finite-acp')
+})
+
+test('captured source cannot terminate its Markdown fence or inject terminal control sequences', () => {
+  const output = renderFlowContext(
+    {
+      state: 'unchecked',
+      revision: 'x',
+      targets: [
+        {
+          target: 'binding:work',
+          package: 'flows/work',
+          flow: {
+            contract: {},
+            routes: [],
+            files: [],
+            source: 'const x = "[31m";\n' + '`'.repeat(6) + '\n<script>literal</script>',
+            sourcePath: 'method.ts',
+          },
+        },
+      ],
+    },
+    { target: 'binding:work' },
+  )
+  expect(output).not.toContain(String.fromCharCode(27))
+  expect(output).toContain('\\u001b')
+  expect(output).toContain('`'.repeat(7) + 'text')
+})
+
+test('flow summaries expose declared result decisions without inferring caller handling', () => {
+  const result = renderFlowContext({
+    state: 'unchecked',
+    revision: 'x',
+    targets: [
+      {
+        target: 'flow:policy',
+        package: 'policy',
+        state: 'unchecked',
+        flow: {
+          contract: {
+            result: {
+              type: 'object',
+              properties: {
+                outcome: { const: 'done' },
+                output: {
+                  type: 'object',
+                  properties: { disposition: { enum: ['credit_eligible', 'manual_review'] } },
+                },
+              },
+            },
+          },
+          routes: [],
+          files: [],
+        },
+      },
+    ],
+  })
+  expect(result).toContain('credit_eligible')
+  expect(result).toContain('manual_review')
+  expect(result).toContain('summary; read FLOW.contract.json')
+})
+
+test('source framing handles many backtick runs within the source bound', () => {
+  const output = renderFlowContext(
+    {
+      state: 'unchecked',
+      revision: 'x',
+      targets: [
+        {
+          target: 'flow:many',
+          package: 'many',
+          flow: { routes: [], files: [], source: '` '.repeat(130000), sourcePath: 'many.txt' },
+        },
+      ],
+    },
+    { target: 'flow:many' },
+  )
+  expect(output).toContain('Captured source: many.txt')
 })

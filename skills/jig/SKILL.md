@@ -24,6 +24,20 @@ Complete this step when the outcome, existing project state, and execution prere
 Read the [project design guide](reference/build/design.md) before choosing boundaries or reviewing an existing project.
 Apply its responsibility and configuration guidance to the actual application.
 Use FLOW's naming and decomposition principles for the methods themselves.
+Use `jig inspect --flow` to locate approved relationships, effective settings, contracts, and captured source members.
+For unreviewed projects, use source and project guidance. Approval remains a separate decision.
+
+Before changing a shared method, inspect potential callers with `jig inspect --flow <target> --impact`.
+Use `--source FILE` with that target to inspect retained implementation bytes.
+Without a target, `--source FILE` selects captured project declarations, including Binding modules.
+
+Check workspace changes before treating those bytes as the current editing context.
+Explain handoffs through supplied data, returned outcomes, caller reactions, and reachable powers.
+Use meaningful identities in graph source, and source-supported alternatives in sequence notation.
+Keep configuration facts, source interpretations, application reports, and observations distinct.
+Treat descriptions and intents as authored claims. Verify behavior from source or observations.
+
+
 Describe which choices belong to the application, each Flow, its local configuration, the operator, and Jig.
 Use a short outline or existing project documentation, without requiring another design artifact.
 

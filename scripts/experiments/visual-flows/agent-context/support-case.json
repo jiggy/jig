@@ -1,0 +1,244 @@
+{
+  "basis": "maintainer-interpreted source; not an admitted snapshot or execution trace",
+  "revision": "b57d5cd8ef3035d93b28c504f008748949a54363",
+  "root": "examples/support-case/",
+  "scope": "Selected cross-component handoffs and caller reactions. Cancellation, reporting, detailed validation branches, and other application components are not expanded.",
+  "entities": {
+    "resolve": "binding:support",
+    "assess": "flow:flows/assess",
+    "agent": "binding:agent",
+    "credit": "flow:flows/check-credit"
+  },
+  "sources": {
+    "jig.ts": {
+      "sha256": "a0a35a4e0d35b385acd1b131f56f9c43b12b5cbb051616141b0f9544c76344a3"
+    },
+    "bindings/support.ts": {
+      "sha256": "59da63baafb0b3d4c3f3810c6055aa6db0a56b9c698f09bc068b3c381534b490"
+    },
+    "bindings/agent.ts": {
+      "sha256": "66ba60ce4fe364c9d4e5f0a6e72f2af7d9b9e03aeecbb6475b854748bab1caa4"
+    },
+    "flows/resolve/resolve.ts": {
+      "sha256": "fe9a0af32efd9efb51dd6f371a7a2905d30ec298a61d34613e2c4d9d736768a7"
+    },
+    "flows/assess/assess.ts": {
+      "sha256": "b9a989b0b2974bd48c06738dd9461dfe1b815a3322346aa981a5797414b55c40"
+    },
+    "flows/check-credit/method.ts": {
+      "sha256": "669715ac5bfa3b8e3242b72f87476a6b764ca13173afb992f1f7e7a825943231"
+    },
+    "flows/check-credit/policy.ts": {
+      "sha256": "8a2e32f96df4648d4033682c858530dd3c95e7acce92f73d7d33d8e281665911"
+    },
+    "flows/assess/FLOW.contract.json": {
+      "sha256": "f73312a74f75ed6b56ee0943515f3f8b3177f492b05d2b301f214dcaf7626365"
+    },
+    "flows/check-credit/FLOW.contract.json": {
+      "sha256": "7f127a10d357a44b5c870ac93e0fda6745b14f86e85efbb24cfd6cf1ed666639"
+    }
+  },
+  "facts": [
+    {
+      "id": "routing",
+      "from": "resolve",
+      "to": "assess",
+      "kind": "route",
+      "text": "support selects flows/assess through assessment and flows/check-credit through credit.",
+      "evidence": [
+        {
+          "file": "bindings/support.ts",
+          "quote": "slots: { assessment: 'flow:flows/assess', credit: 'flow:flows/check-credit' }",
+          "line": 5
+        }
+      ]
+    },
+    {
+      "id": "duplicate",
+      "from": "resolve",
+      "to": "resolve",
+      "kind": "guard",
+      "text": "Duplicate charge IDs throw before the assessment call.",
+      "evidence": [
+        {
+          "file": "flows/resolve/resolve.ts",
+          "quote": "throw new TypeError('Account records must have unique charge IDs.')",
+          "line": 24
+        }
+      ]
+    },
+    {
+      "id": "assessment",
+      "from": "resolve",
+      "to": "assess",
+      "kind": "call",
+      "text": "assess-case sends the whole run.input through assessment.",
+      "evidence": [
+        {
+          "file": "flows/resolve/resolve.ts",
+          "quote": "operationId: 'assess-case',\n      slot: 'assessment',\n      intent: 'Interpret the disputed charge before policy checks',\n      input: run.input,",
+          "line": 28
+        }
+      ]
+    },
+    {
+      "id": "egress",
+      "from": "assess",
+      "to": "agent",
+      "kind": "call",
+      "text": "assess-charge sends instructions containing JSON.stringify(run.input) through agent.",
+      "evidence": [
+        {
+          "file": "flows/assess/assess.ts",
+          "quote": "JSON.stringify(run.input)",
+          "line": 17
+        }
+      ]
+    },
+    {
+      "id": "agent-route",
+      "from": "assess",
+      "to": "agent",
+      "kind": "route",
+      "text": "The project default for the agent-run contract is binding:agent, whose native ACP client is codex.",
+      "evidence": [
+        {
+          "file": "jig.ts",
+          "quote": "'https://jig.md/contracts/agent-run': 'binding:agent'",
+          "line": 8
+        },
+        {
+          "file": "bindings/agent.ts",
+          "quote": "slots: { native: { kind: 'acp', client: 'codex' } }",
+          "line": 5
+        }
+      ]
+    },
+    {
+      "id": "validate",
+      "from": "assess",
+      "to": "assess",
+      "kind": "guard",
+      "text": "The assessor validates reply shape and proposal fields before returning a done proposal.",
+      "evidence": [
+        {
+          "file": "flows/assess/assess.ts",
+          "quote": "throw new TypeError('The Agent omitted a valid charge proposal.')",
+          "line": 52
+        }
+      ]
+    },
+    {
+      "id": "abstain",
+      "from": "assess",
+      "to": "resolve",
+      "kind": "return",
+      "text": "For blocked or limit, resolve returns the assessment unchanged and makes no credit call.",
+      "evidence": [
+        {
+          "file": "flows/resolve/resolve.ts",
+          "quote": "return assessment",
+          "line": 41
+        }
+      ]
+    },
+    {
+      "id": "unexpected",
+      "from": "resolve",
+      "to": "resolve",
+      "kind": "guard",
+      "text": "An assessment outcome outside done, blocked, and limit causes resolve to throw. This is source handling, not proof that another outcome is contract-valid.",
+      "evidence": [
+        {
+          "file": "flows/resolve/resolve.ts",
+          "quote": "throw new TypeError('The assessment returned an unexpected outcome.')",
+          "line": 44
+        }
+      ]
+    },
+    {
+      "id": "credit-input",
+      "from": "resolve",
+      "to": "credit",
+      "kind": "call",
+      "text": "After assessment done, check-credit receives account=input.account and proposal=assessment.output.",
+      "evidence": [
+        {
+          "file": "flows/resolve/resolve.ts",
+          "quote": "input: { account: input.account, proposal: assessment.output }",
+          "line": 51
+        }
+      ]
+    },
+    {
+      "id": "credit-return",
+      "from": "credit",
+      "to": "resolve",
+      "kind": "return",
+      "text": "resolve requires credit outcome done and matching accountId before returning checked unchanged.",
+      "evidence": [
+        {
+          "file": "flows/resolve/resolve.ts",
+          "quote": "if (decision.accountId !== input.account.id)",
+          "line": 56
+        }
+      ]
+    },
+    {
+      "id": "disposition",
+      "from": "credit",
+      "to": "credit",
+      "kind": "data",
+      "text": "manual_review is a disposition in a done result, not an invocation outcome named manual_review.",
+      "evidence": [
+        {
+          "file": "flows/check-credit/method.ts",
+          "quote": "return { outcome: 'done', output: decision }",
+          "line": 32
+        }
+      ]
+    },
+    {
+      "id": "policy",
+      "from": "credit",
+      "to": "credit",
+      "kind": "data",
+      "text": "Credit eligibility policy is local in flows/check-credit/policy.ts and currently caps eligible duplicate charges at 5000 cents.",
+      "evidence": [
+        {
+          "file": "flows/check-credit/policy.ts",
+          "quote": "const maximumCreditCents = 5000",
+          "line": 11
+        }
+      ]
+    },
+    {
+      "id": "provider",
+      "from": "agent",
+      "to": "agent",
+      "kind": "unknown",
+      "text": "Provider-side retention, actual remote dispatch, and model identity are not established by this source packet.",
+      "evidence": [
+        {
+          "file": "bindings/agent.ts",
+          "quote": "slots: { native: { kind: 'acp', client: 'codex' } }",
+          "line": 5
+        }
+      ]
+    },
+    {
+      "id": "observation",
+      "from": "resolve",
+      "to": "resolve",
+      "kind": "unknown",
+      "text": "No run observations are supplied. Counts, observed outcomes, and elapsed times are unknown.",
+      "evidence": [
+        {
+          "file": "flows/resolve/resolve.ts",
+          "quote": "export async function resolve(",
+          "line": 5
+        }
+      ]
+    }
+  ]
+}

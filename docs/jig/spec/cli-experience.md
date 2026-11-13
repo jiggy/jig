@@ -902,6 +902,31 @@ Changed or unchecked environments recommend `jig review`, not `jig run`.
 Unsafe, incompatible or busy state produces a bounded diagnostic without repair.
 Redirected output or `--json` is JSON, never styling.
 
+
+`jig inspect --flow [target]` emits Markdown, including through redirected stdout.
+It joins exact retained component identities, effective settings, contracts, available routes, and captured package file inventories.
+The approved entrypoint selects the default root when present. Otherwise, the view covers the approved inventory.
+Configured edges describe possible calls. Source conditions, ordering, data transformations, and caller reactions are not inferred.
+
+`--impact` requires an exact target and includes reverse callers plus configurations sharing its implementation.
+These relationships describe potential impact, without establishing behavioral dependence for any input.
+Different Bindings and caller-local resource slots remain distinct.
+
+`--source FILE` supplies one retained UTF-8 member. An explicit target selects its package-relative members.
+Without a target, the request selects a project-relative member of the captured declaration closure.
+
+It reads approved captured bytes, even when the workspace file has changed.
+Absolute paths, traversal, missing members, binary text, and members above 256 KiB are refused.
+Markdown fences preserve literal source. Controls except LF and TAB appear as escaped code points.
+Package digests identify the captured basis, without establishing current workspace freshness.
+
+Graph presentation refuses views exceeding its fixed target or connection bounds. File inventories and inline values disclose their own omissions.
+The [limits reference](../reference/limits.md#inspect-application-composition) lists these fixed presentation bounds.
+
+Use a smaller target or ordinary exact JSON inspection for expanded values.
+`--json` explicitly selects the enriched JSON record with the same target selection and an explicit omitted-target count.
+`--impact` and `--source` cannot be combined. Saved packets contain no corresponding flow context.
+
 `jig inspect --result <directory> [--display plain|tui|web] [--json]` reads a
 saved packet without loading a project, verifying an execution installation,
 reading operator configuration or credentials, acquiring execution authority,

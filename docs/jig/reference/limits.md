@@ -238,11 +238,15 @@ Each live snapshot carries one complete admitted composition or an explicit unav
 
 | Setting or bound | Value | Control |
 | --- | --- | --- |
+| Flow context selected targets / connections | 256 / 1024 | Fixed |
+| Flow context source member | 256 KiB (262,144 bytes) | Fixed |
+| Flow context listed members per package | 128 | Fixed |
+| Flow context inline value | 4 KiB (4,096 bytes) | Fixed |
 | Components per composition | 256 | Fixed |
 | Connections per composition | 1,024 | Fixed |
 | Encoded composition | 256 KiB (262,144 bytes) | Fixed |
 
-Policy owners: [`packages/display-model/src/types.ts`](https://github.com/jiggy/jig/blob/main/packages/display-model/src/types.ts).
+Policy owners: [`packages/display-model/src/types.ts`](https://github.com/jiggy/jig/blob/main/packages/display-model/src/types.ts), [`internal/inspection-policy.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/src/internal/inspection-policy.ts).
 
 ## Explore before execution
 

@@ -473,6 +473,11 @@ Version metadata is checked before evaluation and reverified before capture comp
   Missing-target suggestions come from the retained admitted revision, never a
   live filesystem scan, and cannot grant authority or select a replacement.
 
+- Approved flow inspection joins retained package contracts, file inventories and exact routes within one approval snapshot.
+  Captured package source requires an explicit target and member. Project declaration members use the retained author closure.
+  `inspection-policy.ts` owns fixed presentation bounds, independently of execution authority.
+  Never reopen workspace files or disclose native policy payloads through this projection.
+
 ## Work Guidance
 
 ### installation-verification
