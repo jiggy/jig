@@ -1,11 +1,11 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { lstat, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { main, privateCliRequiresHost, privateCliVerification } from '../../src/cli.js'
 import { completionScript } from '../../src/cli-discovery.js'
 import { parsePrivateExploreArguments } from '../../src/cli-explore.js'
-import { privateExploreHandoff } from '../../src/cli-explore-launch.js'
+import { privateExploreHandoff, privateStageExploreFiles } from '../../src/cli-explore-launch.js'
 
 test('explore selects an exact optional target and ordinary per-Run policy without acquiring a host', () => {
   expect(parsePrivateExploreArguments(['explore'])).toEqual({ timeoutMs: 30_000 })
@@ -82,6 +82,48 @@ test('shell completion exposes explore and exact approved target lookup', () => 
     const source = completionScript(shell)!
     expect(source).toContain('explore')
     expect(source).toContain('jig completion targets')
+  }
+})
+
+test('explicit browser files stage exact ordinary bytes under a private root only', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-explore-files-'))
+  const valid = (attachment: string, filename: string, text: string) => ({
+    attachment,
+    filename,
+    base64: Buffer.from(text).toString('base64'),
+  })
+  try {
+    const paths = await privateStageExploreFiles(directory, [
+      valid('source', 'contacts.csv', 'Customer,Email address,Company\\n'),
+      valid('notes', 'message.txt', 'Ada'),
+    ])
+    expect(paths).toEqual([
+      'source=' + join(directory, 'attachments', 'source'),
+      'notes=' + join(directory, 'attachments', 'notes'),
+    ])
+    expect(await readFile(join(directory, 'attachments', 'source', 'contacts.csv'), 'utf8'))
+      .toBe('Customer,Email address,Company\\n')
+    expect(await readFile(join(directory, 'attachments', 'notes', 'message.txt'), 'utf8'))
+      .toBe('Ada')
+    expect((await lstat(join(directory, 'attachments', 'source', 'contacts.csv'))).isFile())
+      .toBeTrue()
+    for (const malformed of [
+      [valid('source', '../escape', 'bad')],
+      [valid('source', '.hidden', 'bad')],
+      [valid('source', 'good.txt', 'one'), valid('source', 'other.txt', 'two')],
+      [{ attachment: 'source', filename: 'bad.txt', base64: 'QR==' }],
+      [{ attachment: 'source', filename: 'large.txt', base64: Buffer.alloc(4 * 1024 * 1024 + 1).toString('base64') }],
+      Array.from({ length: 9 }, (_, index) => valid('read-' + index, 'small.txt', 'a')),
+    ]) {
+      const fresh = await mkdtemp(join(tmpdir(), 'jig-explore-file-reject-'))
+      try {
+        await expect(privateStageExploreFiles(fresh, malformed)).rejects.toThrow()
+      } finally {
+        await rm(fresh, { recursive: true, force: true })
+      }
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
   }
 })
 
