@@ -225,6 +225,13 @@ Portable presentation and delivery inspection cases check pure rendering, stored
 bytes and actual elapsed completion limits. They do not prove authenticated
 capture, retirement acknowledgements or native cleanup.
 Saved-result cases use actual files, descriptors and subprocess output.
+The two-packet comparison cases retain independent descriptor-confined captures,
+recorded-claim provenance, file digest verification on both sides, bounded
+structural changes and literal safe output. A verified matching manifest is not
+authenticated original execution history. The installed command stays
+read-only, no-host and no-replay.
+
+
 Hardware I/O failure windows require separate evidence.
 
 The file-command suite bundles its unchanged peer once in a separate Bun process
