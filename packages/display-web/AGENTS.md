@@ -41,6 +41,7 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   their bounded bytes on the explicit Run action. One selected local file must
   exist for each declared unbound read slot before enabling Run.
   Scenario files store JSON only and cannot silently restore file selections.
+
   Never retry submission after a lost response. Read status until the host resolves that request.
   Read global Run state before any request-specific lookup under the same bounded poll owner.
   Request acknowledgments never replace global state for launch gating. Unknown lookup does not prove that execution never started.
