@@ -533,7 +533,7 @@ bytes on both sides can establish unchanged material.
 The installed comparison command bypasses execution host acquisition and
 installation verification, just like saved-packet inspection. Incorrect or
 incomplete recorded evidence cannot yield a successful comparison exit.
-Human excerpts are escaped, bounded and explicitly clipped; JSON output is one
+Human excerpts are escaped, bounded and explicitly clipped. JSON output is one
 versioned comparison object rather than a Run terminal.
 
 Both source and installed record writers await bounded output completion.
