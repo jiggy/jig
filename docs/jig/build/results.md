@@ -250,7 +250,7 @@ A difference in output does not by itself identify the responsible code change.
 The file list distinguishes verified unchanged bytes, recorded additions,
 removals and changes, and unverified material. A missing file is not made
 unchanged by a matching digest in `result.json`. Large values show short
-explicitly clipped excerpts and digests; the field list discloses its 128-change
+explicitly clipped excerpts and digests. The field list discloses its 128-change
 limit. For complete recorded JSON values inspect each packet directly:
 
 ```sh
@@ -260,7 +260,7 @@ jig inspect --result ./after-result --json
 
 Exit 0 confirms both selected packets were captured consistently, not that
 either application achieved its objective. Exit 1 denotes missing or incomplete
-recorded evidence; exit 2 denotes invalid invocation or interruption.
+recorded evidence. Exit 2 denotes invalid invocation or interruption.
 Saved packets do not retain live invocation trees, so this comparison cannot
 show historical branches or assign causality.
 
