@@ -387,6 +387,7 @@ test('flow context follows callers and Binding peers while preserving configured
   })
   const snapshot: JsonValue = {
     state: 'unchecked',
+    agentOverride: 'claude',
     revision: 'approval',
     entrypoint: 'binding:root',
     targets: [
@@ -415,6 +416,8 @@ test('flow context follows callers and Binding peers while preserving configured
     ],
   }
   const context = renderFlowContext(snapshot, { target: 'binding:one', impact: true })
+  expect(context).toContain('Approved project review Agent choice:')
+  expect(context).toContain('claude')
   expect(context).toContain('binding:root')
   expect(context).toContain('binding:two')
   expect(context).toContain('"attempts":1')
@@ -427,7 +430,7 @@ test('flow context follows callers and Binding peers while preserving configured
   expect(
     JSON.stringify(flowContextRecord(snapshot, { target: 'binding:one', impact: true })),
   ).not.toContain('flow:unrelated')
-  expect(context).toContain('Configured connections permit calls')
+  expect(context).toContain('Configured connections describe potential calls')
   expect(renderFlowContext(snapshot)).toContain('finite-acp')
 })
 
@@ -506,4 +509,38 @@ test('source framing handles many backtick runs within the source bound', () => 
     { target: 'flow:many' },
   )
   expect(output).toContain('Captured source: many.txt')
+})
+
+test('flow context separates retained unavailability from a matching environment', () => {
+  const output = renderFlowContext({
+    state: 'environment-matches',
+    revision: 'x',
+    targets: [
+      {
+        target: 'flow:work',
+        package: 'work',
+        state: 'environment-matches',
+        availability: { state: 'unavailable', code: 'RUNTIME_UNAVAILABLE' },
+        flow: { routes: [], files: [] },
+      },
+    ],
+  })
+  expect(output).toContain('Environment: environment-matches')
+  expect(output).toContain('Approved availability: unavailable (RUNTIME\\_UNAVAILABLE)')
+})
+
+test('reverse flow traversal preserves complete JSON scope beyond the Markdown graph bound', () => {
+  const targets = Array.from({ length: 1200 }, (_, i) => ({
+    target: 'flow:step-' + i,
+    package: 'step-' + i,
+    state: 'unchecked',
+    flow: { routes: i < 1199 ? [{ slot: 'next', target: 'flow:step-' + (i + 1) }] : [], files: [] },
+  }))
+  const snapshot: JsonValue = { state: 'unchecked', revision: 'x', targets }
+  const context = flowContextRecord(snapshot, { target: 'flow:step-1199', impact: true }) as any
+  expect(context.targets).toHaveLength(1200)
+  expect(context.scope.omittedTargets).toBe(0)
+  expect(renderFlowContext(snapshot, { target: 'flow:step-1199', impact: true })).toContain(
+    'No graph was truncated',
+  )
 })

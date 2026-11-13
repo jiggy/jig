@@ -47,11 +47,18 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
     '',
     `Basis: last locally approved configuration. Revision ${markdown(String(snapshot.revision))}.`,
     `Environment: ${markdown(state)}. Visible source freshness, launch readiness, and remote availability remain unchecked.`,
-    'Configured connections permit calls. Order, conditions, payload construction, and feasibility require method source or explicit observations.',
+    'Configured connections describe potential calls. Order, conditions, payload construction, and feasibility require method source or explicit observations.',
     '',
     options.impact ? '## Potential impact' : '## Configured relationships',
     '',
   ]
+  if (typeof snapshot.agentOverride === 'string')
+    lines.splice(
+      5,
+      0,
+      `Approved project review Agent choice: ${literal(snapshot.agentOverride)}. This review argument sets approved effective clients; captured declarations retain authored choices.`,
+      '',
+    )
   const ids = new Map(
     included.map((t, i) => [
       String(t.target),
@@ -92,13 +99,17 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
       '',
       `${markdown(String(item.package))} · ${markdown(String(item.state))}`,
     )
+    const availability = record(item.availability)
+    lines.push(
+      `Approved availability: ${markdown(String(availability.state ?? 'unknown'))}${typeof availability.code === 'string' ? ' (' + markdown(availability.code) + ')' : ''}.`,
+    )
     if (typeof flow.description === 'string' && flow.description)
       lines.push(`Authored purpose: ${markdown(flow.description)}`)
     lines.push(
       `Declared outcomes: ${outcomes.map(markdown).join(', ')}. Operational errors and uncertainty are separate.`,
       `Input: ${schemaSummary(contract.input)}. Result: ${schemaSummary(contract.result)}.`,
       `Settings: ${literal(flow.settings)}.`,
-      `Caller file ports: ${literal(flow.attachments)}. Artifact results: ${literal(flow.artifactResults)}.`,
+      `Declared file ports: ${literal(flow.attachments)}. Artifact results: ${literal(flow.artifactResults)}.`,
       `Channels: ${literal(Object.fromEntries(Object.entries(record(contract.channels)).map(([name, value]) => [name, { direction: record(value).direction ?? null, required: record(value).required !== false }])))}.`,
       `Captured package digest: ${markdown(String(flow.digest))}. Entrypoint: ${markdown(String(flow.entrypoint))}.`,
       '',
@@ -202,19 +213,23 @@ function selectFlowContext(value: JsonValue, options: FlowContextOptions) {
   )
   const selected = new Set<string>(focus === undefined ? byTarget.keys() : [focus])
   const expand = (reverse: boolean) => {
-    let changed = true
-    while (changed) {
-      changed = false
-      for (const edge of edges) {
-        if (typeof edge.target !== 'string') continue
-        const from = reverse ? edge.target : edge.from
-        const to = reverse ? edge.from : edge.target
-        if (selected.has(from) && !selected.has(to)) {
-          selected.add(to)
-          changed = true
+    const adjacency = new Map<string, string[]>()
+    for (const edge of edges) {
+      if (typeof edge.target !== 'string') continue
+      const from = reverse ? edge.target : edge.from
+      const to = reverse ? edge.from : edge.target
+      const neighbours = adjacency.get(from) ?? []
+      neighbours.push(to)
+      adjacency.set(from, neighbours)
+    }
+    const pending = [...selected]
+    for (let index = 0; index < pending.length; index++)
+      for (const target of adjacency.get(pending[index]!) ?? []) {
+        if (!selected.has(target)) {
+          selected.add(target)
+          pending.push(target)
         }
       }
-    }
   }
   if (options.impact) {
     const packages = new Set([...selected].map((t) => byTarget.get(t)?.package))
