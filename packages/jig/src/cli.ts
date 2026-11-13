@@ -38,6 +38,7 @@ import {
 import { PrivateCliProgress } from './cli-progress.js'
 import { renderReviewAgentSelections, renderReviewAgentSetup } from './cli-review-agent-setup.js'
 import { PrivateCliRunPresentation, privateCliInvalidInputText } from './cli-run-presentation.js'
+import { privateCompareSavedResults, privateSavedComparisonPlain } from './cli-saved-result-comparison.js'
 import { privateSavedResultPlain } from './cli-saved-result-presentation.js'
 import { asciiJsonString, CliDiagnostic, spellingHint, usage } from './cli-usage.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
@@ -117,6 +118,7 @@ Usage:
   jig run [target]           Choose or run a reviewed Flow or Binding
   jig explore [target]       Explore reviewed workflows and run with new input
   jig inspect [target]       Show the approved targets or a target's interface
+  jig compare BEFORE AFTER   Compare two recorded result packets (read-only)
   jig views [operation]      Inspect or manage retained application views
   jig attempt <operation>    Use the installed application execution boundary
   jig completion <shell>     Print shell completion for bash, zsh, or fish
@@ -136,6 +138,21 @@ Command options and examples:
 Guide: https://jig.md/start/`
 
 const COMMAND_HELP = {
+  compare: `Usage: jig compare BEFORE AFTER [--json]
+
+Compare two selected local saved result-packet directories without loading a
+project, verifying an execution installation, or starting work.
+Each result.json is decoded through the ordinary safe saved-packet capture.
+Recorded JSON output, outcome fields and file manifests are compared. A matched
+file digest counts as verified unchanged only when both captured files were
+verified. Incomplete capture remains explicit; no historical call graph,
+application verdict, execution causality, or automatic replay is inferred.
+
+  --json  Emit a bounded machine comparison (also used for redirected stdout)
+
+Examples:
+  jig compare ./before-packet ./after-packet
+  jig compare ./before-packet ./after-packet --json`,
   explore: `Usage: jig explore [target] [--timeout DURATION] [--verification MODE]
 
 Open the reviewed application map before starting a Run. Select a workflow,
@@ -494,9 +511,13 @@ export async function main(
   try {
     await runtime.progress.flush()
   } catch {
-    return privateCliSavedResultInspection(arguments_) ? (runtime.signal?.aborted ? 2 : 1) : 2
+    return privateCliSavedResultInspection(arguments_) || privateCliRecordedResultComparison(arguments_)
+      ? (runtime.signal?.aborted ? 2 : 1)
+      : 2
   }
-  return presentationCloseFailed ? (privateCliSavedResultInspection(arguments_) ? 1 : 2) : code
+  return presentationCloseFailed
+    ? (privateCliSavedResultInspection(arguments_) || privateCliRecordedResultComparison(arguments_) ? 1 : 2)
+    : code
 }
 
 async function executeCommand(
@@ -550,6 +571,7 @@ async function executeCommand(
           }),
       })
     if (arguments_[0] === 'run') return await executeRun(arguments_, runtime)
+    if (arguments_[0] === 'compare') return await executeSavedResultCompare(arguments_, runtime)
     if (arguments_[0] === 'inspect') return await executeInspect(arguments_, runtime)
     if (arguments_[0] === 'views') {
       const code = await privateExecuteViews(arguments_, {
@@ -810,6 +832,7 @@ async function executeNew(arguments_: readonly string[], runtime: CliRuntime): P
 export function privateCliRequiresHost(arguments_: readonly string[]): boolean {
   if (isHelpRequest(arguments_)) return false
   if (arguments_[0] === 'attempt') return privateCliAttemptOperation(arguments_) === 'submit'
+  if (arguments_[0] === 'compare') return false
   try {
     if (arguments_[0] === 'review') {
       parseReview(arguments_, '.')
@@ -1023,6 +1046,92 @@ export function privateCliSavedResultInspection(arguments_: readonly string[]): 
     return parseInspect(arguments_).resultDirectory !== undefined
   } catch {
     return false
+  }
+}
+
+/** Pure syntax before installed runtime acquisition; no source or host inspection. */
+export function privateCliRecordedResultComparison(arguments_: readonly string[]): boolean {
+  if (arguments_[0] !== 'compare' || isHelpRequest(arguments_)) return false
+  try {
+    parseCompare(arguments_)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function parseCompare(arguments_: readonly string[]) {
+  if (arguments_[0] !== 'compare') usage('compare', 'Choose two saved result directories.')
+  const directories: string[] = []
+  let json = false
+  for (const value of arguments_.slice(1)) {
+    if (value === '--json' && !json) json = true
+    else if (!value.startsWith('-') && directories.length < 2) directories.push(value)
+    else usage('compare', 'Specify exactly two saved result directories and at most one --json.')
+  }
+  if (directories.length !== 2) usage('compare', 'Specify exactly two saved result directories.')
+  return { before: directories[0]!, after: directories[1]!, json }
+}
+
+async function executeSavedResultCompare(
+  arguments_: readonly string[],
+  runtime: CliRuntime,
+): Promise<number> {
+  const parsed = parseCompare(arguments_)
+  let before: Awaited<ReturnType<typeof privateCaptureSavedResult>> | undefined
+  let after: Awaited<ReturnType<typeof privateCaptureSavedResult>> | undefined
+  try {
+    before = await privateCaptureSavedResult(
+      resolve(runtime.currentDirectory, parsed.before),
+      runtime.signal,
+      false,
+    )
+    after = await privateCaptureSavedResult(
+      resolve(runtime.currentDirectory, parsed.after),
+      runtime.signal,
+      false,
+    )
+    const result = privateCompareSavedResults(before, after)
+    if (!before.complete || !after.complete)
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_RESULT_FILES_INCOMPLETE',
+          'At least one selected packet has incomplete captured files. Recorded differences remain visible but unverified evidence cannot establish unchanged content.',
+          'Recorded comparison incomplete',
+        ),
+      )
+    await runtime.writeRecord(
+      parsed.json || !runtime.humanOutput
+        ? `${textDecoder.decode(canonicalJson(result as unknown as JsonValue))}\n`
+        : privateSavedComparisonPlain(result),
+    )
+    return before.complete && after.complete ? 0 : 1
+  } catch (error) {
+    if (runtime.signal?.aborted) {
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_COMMAND_INTERRUPTED',
+          'Comparison was interrupted. No work was started and the recorded packets are unchanged.',
+        ),
+      )
+      return 2
+    }
+    if (error instanceof PrivateSavedResultError)
+      runtime.writeError(
+        renderDiagnostic('JIG_RESULT_UNAVAILABLE', error.message, 'Saved result unavailable'),
+      )
+    else
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_RESULT_COMPARISON_FAILED',
+          'The selected recorded comparison could not finish or deliver output. No work was started or packets changed.',
+          'Recorded comparison failed',
+        ),
+      )
+    return 1
+  } finally {
+    after?.close()
+    before?.close()
   }
 }
 
