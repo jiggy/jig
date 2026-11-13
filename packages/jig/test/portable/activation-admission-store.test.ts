@@ -35,6 +35,7 @@ import {
   cancelPrivateAttempt,
   capturePrivateActivationPlanningBase,
   claimPrivateNativeSession,
+  discardClaimedPrivateNativeSession,
   closePrivateRootChildOwner,
   closePrivateRootExecution,
   initializePrivateActivationState,
@@ -1400,10 +1401,11 @@ describe.serial('direct alpha activation store', () => {
       ).toBeUndefined()
       const database = openSqlite(fixture.database, 'readonly')
       try {
-        expect(database.query('SELECT count(*) AS count FROM native_sessions').get().count).toBe(0)
+        expect(database.query('SELECT count(*) AS count FROM native_sessions').get().count).toBe(1)
       } finally {
         database.close(true)
       }
+      await discardClaimedPrivateNativeSession({ ...access, snapshot: claimed })
     } finally {
       await coordinator?.dispose()
       await fixture.dispose()
@@ -1467,6 +1469,51 @@ describe.serial('direct alpha activation store', () => {
           reference: receipt.reference,
         }),
       ).toBeUndefined()
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+  test('a claimed snapshot reserves its capacity until release or discard', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const parentRunId = await prepareNativeSessionParent(fixture, coordinator, 'capacity-reservation')
+      const access = { coordinator, projectRoot: fixture.root, parentRunId, scopeDigest: digest('a') }
+      const receipts = []
+      for (let i = 0; i < 16; i++) {
+        const receipt = await savePrivateNativeSession({
+          ...access,
+          ...nativeSession(),
+          bytes: Buffer.from(`{\"index\":${i}}\n`),
+        })
+        expect(receipt).toBeDefined()
+        receipts.push(receipt!)
+      }
+      const claimed = (await claimPrivateNativeSession({ ...access, reference: receipts[0]!.reference }))!
+      expect(claimed).toBeDefined()
+      expect(await savePrivateNativeSession({
+        ...access,
+        ...nativeSession(),
+        bytes: Buffer.from('{}\n'),
+      })).toBeUndefined()
+      await releaseClaimedPrivateNativeSession({ ...access, snapshot: claimed })
+      const database = openSqlite(fixture.database, 'readonly')
+      try {
+        expect(database.query('SELECT count(*) AS count FROM native_sessions').get().count).toBe(16)
+      } finally {
+        database.close(true)
+      }
+      const reclaimed = await claimPrivateNativeSession({ ...access, reference: receipts[0]!.reference })
+      expect(reclaimed).toBeDefined()
+      await discardClaimedPrivateNativeSession({ ...access, snapshot: reclaimed! })
+      expect(await savePrivateNativeSession({
+        ...access,
+        ...nativeSession(),
+        bytes: Buffer.from('{}\n'),
+      })).toBeDefined()
     } finally {
       await coordinator?.dispose()
       await fixture.dispose()

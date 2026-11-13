@@ -198,6 +198,9 @@ const DIGEST = /^sha256:[0-9a-f]{64}$/
 const WIRE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/
 const NATIVE_SESSION_BYTES = 8 * 1024 * 1024
 const NATIVE_SESSION_COUNT = 16
+// A claimed row keeps its capacity reservation until it is restored or
+// explicitly discarded. Its scope sentinel makes it unclaimable by callers.
+const NATIVE_SESSION_CLAIM_PREFIX = 'claimed:'
 const NATIVE_SESSION_RETENTION_MS = 24 * 60 * 60 * 1_000
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\s\S])/
 const stateTurns = new Map<string, Promise<void>>()
@@ -2145,12 +2148,12 @@ export async function claimPrivateNativeSession(
     } catch {
       corrupt('stored native session differs from its bounded identity')
     }
-    const removed = runFinalized(
+    const reserved = runFinalized(
       database,
-      'DELETE FROM native_sessions WHERE reference = ?1 AND scope_digest = ?2',
-      [reference, scopeDigest],
+      'UPDATE native_sessions SET scope_digest = ?3 WHERE reference = ?1 AND scope_digest = ?2',
+      [reference, scopeDigest, `${NATIVE_SESSION_CLAIM_PREFIX}${scopeDigest}`],
     )
-    if (removed.changes !== 1) corrupt('native session claim did not consume its reference')
+    if (reserved.changes !== 1) corrupt('native session claim did not reserve its reference')
     return Object.freeze({
       reference: row.reference,
       lifetime: row.root_run_id === null ? 'project' : 'run',
@@ -2171,21 +2174,27 @@ export async function releaseClaimedPrivateNativeSession(
   return await accessNativeSessions(input, (database, now) => {
     if (snapshot.expiresAtUnixMs <= now || snapshot.expiresAtUnixMs < NATIVE_SESSION_RETENTION_MS)
       return
-    runFinalized(
+    const restored = runFinalized(
       database,
-      'INSERT OR IGNORE INTO native_sessions(reference, scope_digest, native_id, rollout_path, content_digest, content_bytes, created_at, expires_at, root_run_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)',
-      [
-        snapshot.reference,
-        scopeDigest,
-        snapshot.nativeId,
-        snapshot.rolloutPath,
-        snapshot.digest,
-        snapshot.bytes,
-        snapshot.expiresAtUnixMs - NATIVE_SESSION_RETENTION_MS,
-        snapshot.expiresAtUnixMs,
-        snapshot.lifetime === 'run' ? input.parentRunId : null,
-      ],
+      'UPDATE native_sessions SET scope_digest = ?2 WHERE reference = ?1 AND scope_digest = ?3 AND (root_run_id IS NULL OR root_run_id = ?4)',
+      [snapshot.reference, scopeDigest, `${NATIVE_SESSION_CLAIM_PREFIX}${scopeDigest}`, input.parentRunId],
     )
+    if (restored.changes !== 1) corrupt('native session claim cannot be restored')
+  })
+}
+
+/** Consume a claimed capacity reservation after the native resume was accepted. */
+export async function discardClaimedPrivateNativeSession(
+  input: NativeSessionAccess & { readonly snapshot: PrivateNativeSessionSnapshot },
+): Promise<void> {
+  const { snapshot, scopeDigest } = input
+  await accessNativeSessions(input, (database) => {
+    const discarded = runFinalized(
+      database,
+      'DELETE FROM native_sessions WHERE reference = ?1 AND scope_digest = ?2 AND (root_run_id IS NULL OR root_run_id = ?3)',
+      [snapshot.reference, `${NATIVE_SESSION_CLAIM_PREFIX}${scopeDigest}`, input.parentRunId],
+    )
+    if (discarded.changes !== 1) corrupt('native session claim cannot be discarded')
   })
 }
 
