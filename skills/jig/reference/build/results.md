@@ -230,6 +230,40 @@ incomplete file verification, or output failure. Exit 2 means external
 interruption. Always examine the recorded execution and application outcome
 before deciding what to do.
 
+## Compare two recorded outcomes
+
+After reviewing and running a changed application, select two saved packet
+directories from your experiments:
+
+```sh
+jig compare ./before-result ./after-result
+jig compare ./before-result ./after-result --json
+```
+
+This command starts no workflow, needs no project or approved Run, and does not
+contact an Agent. It compares the packet's recorded method/input identity,
+execution and application output, selected returned values, and file manifests.
+The same input digest is evidence that the packets recorded matching input
+identities, not that the application was deterministic or source was unchanged.
+A difference in output does not by itself identify the responsible code change.
+
+The file list distinguishes verified unchanged bytes, recorded additions,
+removals and changes, and unverified material. A missing file is not made
+unchanged by a matching digest in `result.json`. Large values show short
+explicitly clipped excerpts and digests. The field list discloses its 128-change
+limit. For complete recorded JSON values inspect each packet directly:
+
+```sh
+jig inspect --result ./before-result --json
+jig inspect --result ./after-result --json
+```
+
+Exit 0 confirms both selected packets were captured consistently, not that
+either application achieved its objective. Exit 1 denotes missing or incomplete
+recorded evidence. Exit 2 denotes invalid invocation or interruption.
+Saved packets do not retain live invocation trees, so this comparison cannot
+show historical branches or assign causality.
+
 ## Reopen application views
 
 An application can explicitly deliver a final display bundle for local retention.
