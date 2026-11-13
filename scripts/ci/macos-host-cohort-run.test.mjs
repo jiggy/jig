@@ -1051,10 +1051,12 @@ test('artifact inventory reads bound actual response bytes and the caller deadli
     pages: { 2: { total_count: 106, artifacts: retainedArtifactInventory(106).slice(100) } },
   })
   const started = Date.now()
-  // The same absolute cutoff may land during HTTP or the retry pause.
+  // The same absolute cutoff may land before HTTP, during pagination, or
+  // during a retry pause. Three bounded passes can each read both pages.
+  // The other inventory cases prove actual transport and stabilized retries.
   await assert.rejects(changing.list(started + 400), /deadline|timeout|time allowance/)
   assert.ok(Date.now() - started < 3000)
-  assert.ok(changing.requests.length >= 1 && changing.requests.length <= 2)
+  assert.ok(changing.requests.length <= 6)
   const stalled = await artifactInventoryService(t, { artifacts: [], stall: true })
   const bodyStarted = Date.now()
   await assert.rejects(stalled.list(bodyStarted + 400), /byte or time allowance|network or timeout/)

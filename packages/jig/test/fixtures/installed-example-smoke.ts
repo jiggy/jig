@@ -30,6 +30,7 @@ const archiveInputs = [
   ['REPORTING_PACKAGE_ARCHIVE', 'reporting'],
   ['AGENT_METHOD_PACKAGE_ARCHIVE', 'agent-method'],
   ['AGENT_ACP_PACKAGE_ARCHIVE', 'agent-acp'],
+  ['SEMANTIC_ROUTER_PACKAGE_ARCHIVE', 'semantic-router'],
   ['DISPLAY_MODEL_PACKAGE_ARCHIVE', 'display-model'],
   ['DISPLAY_WEB_PACKAGE_ARCHIVE', 'display-web'],
   ['DISPLAY_TUI_PACKAGE_ARCHIVE', 'display-tui'],

@@ -170,6 +170,6 @@ To add a genuinely different eligible method, add candidate data and its slot in
 the factory metadata and Binding. Keep deterministic input/result adaptation in
 application code and preserve independent evidence inspection. Do not change the
 router prompt. For use with unrelated methods, follow the self-contained
-[Semantic Router package](flows/router/README.md). This is bounded semantic dispatch,
+[Semantic Router package](https://jig.md/build/semantic-routing). This is bounded semantic dispatch,
 not open discovery. An explicit method choice is cheaper when the caller already
 knows which configuration it wants; semantic judgment can still choose incorrectly.

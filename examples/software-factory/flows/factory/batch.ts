@@ -8,7 +8,7 @@ import {
   readRepairProgress,
   repairProgressSchema,
 } from 'factory-repair-flow/progress'
-import { checkRoutingResult } from 'semantic-router-flow/decision'
+import { checkRoutingResult } from '@jigging/semantic-router'
 import { checkName, loadChecks } from './checks.ts'
 import {
   checksView,

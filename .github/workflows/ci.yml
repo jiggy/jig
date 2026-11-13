@@ -415,6 +415,7 @@ jobs:
           - flow
           - agent
           - acp
+          - router
           - jig
     env:
       RELEASE_PACKAGE: ${{ matrix.package }}
@@ -457,9 +458,9 @@ jobs:
           JIG_NPM=$FLOW_NPM
           export FLOW_NODE FLOW_NPM JIG_NPM
           node scripts/ci/qualify-candidate.mjs "$RELEASE_PACKAGE" "$RUNNER_TEMP/candidates" "$RUNNER_TEMP/qualification.json"
-          case "$RELEASE_PACKAGE" in flow) kind=flow-sdk;; agent) kind=agent-method;; acp) kind=agent-acp;; jig) kind=jig;; esac
+          case "$RELEASE_PACKAGE" in flow) kind=flow-sdk;; agent) kind=agent-method;; acp) kind=agent-acp;; router) kind=semantic-router;; jig) kind=jig;; esac
           printf 'CANDIDATE_DIRECTORY=%s\n' "$RUNNER_TEMP/candidates/$kind" >> "$GITHUB_ENV"
-          version=$(node -p 'require(process.env.RUNNER_TEMP+"/candidates/"+process.env.RELEASE_PACKAGE.replace("flow","flow-sdk").replace("agent","agent-method").replace("acp","agent-acp")+"/SUCCESS.json").version')
+          version=$(node -p 'require(process.env.RUNNER_TEMP+"/candidates/"+process.env.RELEASE_PACKAGE.replace("flow","flow-sdk").replace("agent","agent-method").replace("acp","agent-acp").replace("router","semantic-router")+"/SUCCESS.json").version')
           printf 'artifact_name=npm-candidate-%s-%s-%s\n' "$RELEASE_PACKAGE" "$version" "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
         id: qualified
       - name: Upload exact candidate

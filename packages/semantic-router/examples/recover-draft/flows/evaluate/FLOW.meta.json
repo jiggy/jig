@@ -1,0 +1,5 @@
+{
+  "name": "recover-draft-evaluate",
+  "description": "Check final report content and binary material.",
+  "uses": {}
+}

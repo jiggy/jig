@@ -227,6 +227,13 @@ test('required Mac checks select a PR ARM cohort or one complete host and retain
   const manual = parse(await readFile(new URL('macos-host-conformance.yml', workflows), 'utf8'))
   assert.deepEqual(Object.keys(manual.on), ['workflow_dispatch'])
   assert.equal(manual.jobs.qualify.environment, 'macos-host-conformance')
+  const standaloneSteps = manual.jobs.qualify.steps
+  const installation = standaloneSteps.find(
+    (step) => step.name === 'Install build dependencies without lifecycle scripts',
+  )
+  const build = standaloneSteps.find((step) => step.name === 'Build candidate')
+  assert.ok(installation.run.includes('--filter @jigging/semantic-router'))
+  assert.ok(standaloneSteps.indexOf(installation) < standaloneSteps.indexOf(build))
 })
 
 test('release readiness requires every canonical Linux shard including example e2e', async () => {
@@ -1214,11 +1221,14 @@ test('publication summary distinguishes verified archives from superseded versio
     AGENT_STATE: 'verified',
     ACP_VERSION: '0.1.0-alpha.2',
     ACP_STATE: 'superseded',
+    ROUTER_VERSION: '0.1.0-alpha.1',
+    ROUTER_STATE: 'verified',
     JIG_VERSION: '0.1.0-alpha.3',
     JIG_STATE: 'published',
   })
   assert.equal(result.status, 0)
   assert.ok(result.summary.includes('@jigging/agent-acp | 0.1.0-alpha.2 | superseded'))
+  assert.ok(result.summary.includes('@jigging/semantic-router | 0.1.0-alpha.1 | verified'))
   assert.ok(result.summary.includes('@jigging/jig | 0.1.0-alpha.3 | published'))
 })
 

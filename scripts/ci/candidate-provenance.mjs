@@ -11,6 +11,7 @@ export const PACKAGE_LAYOUT = Object.freeze({
   reporting: '@jigging/reporting',
   'agent-method': '@jigging/agent-method',
   'agent-acp': '@jigging/agent-acp',
+  'semantic-router': '@jigging/semantic-router',
   'display-model': '@jigging/display-model',
   'display-web': '@jigging/display-web',
   'display-tui': '@jigging/display-tui',
@@ -19,6 +20,7 @@ export const PACKAGE_LAYOUT = Object.freeze({
 export const RELEASE_PACKAGE_LAYOUT = Object.freeze({
   'agent-method': '@jigging/agent-method',
   'agent-acp': '@jigging/agent-acp',
+  'semantic-router': '@jigging/semantic-router',
   jig: '@jigging/jig',
 })
 

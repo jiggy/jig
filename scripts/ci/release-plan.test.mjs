@@ -85,7 +85,7 @@ async function fixture(t) {
       publishConfig: { access: 'public' },
       devDependencies: { '@jigging/flow': '0.1.0-alpha.15' },
     }
-    if (kind === 'agent-acp') value.devDependencies['@jigging/agent-method'] = 'workspace:*'
+    if (kind === 'agent-acp' || kind === 'semantic-router') value.devDependencies['@jigging/agent-method'] = 'workspace:*'
     if (kind === 'jig')
       Object.assign(value.devDependencies, {
         '@jigging/agent-method': 'workspace:*',
@@ -409,6 +409,7 @@ test('PR coverage requires a new note for each directly changed package', async 
     '@jigging/agent-acp',
     '@jigging/agent-method',
     '@jigging/jig',
+    '@jigging/semantic-router',
   ])
   const state = await releaseState(root, nextBase)
   assert.equal(state.eligible, false)
@@ -471,7 +472,7 @@ test('root tooling stays independent, but dependency patches require all affecte
     PACKAGES.map(({ name }) => name),
   )
   commit(root)
-  assert.equal((await checkRelease(root, patchedBase)).affectedPackages.length, 7)
+  assert.equal((await checkRelease(root, patchedBase)).affectedPackages.length, 8)
 })
 
 test('candidate builder coverage includes every package each builder can change', async (t) => {
@@ -483,7 +484,7 @@ test('candidate builder coverage includes every package each builder can change'
     '@jigging/reporting',
   ]
   for (const [path, expected] of [
-    ['scripts/ci/build-candidates.mjs', [...protectedNames, ...qualificationNames].sort()],
+    ['scripts/ci/build-candidates.mjs', [...protectedNames, ...qualificationNames, '@jigging/semantic-router'].sort()],
     ['scripts/build-agent-candidate.ts', protectedNames],
   ]) {
     const { root, base } = await fixture(t)
@@ -493,15 +494,15 @@ test('candidate builder coverage includes every package each builder can change'
     if (path === 'scripts/ci/build-candidates.mjs') {
       await assert.rejects(
         checkRelease(root, base),
-        /Missing new changesets for: @jigging\/display-model, @jigging\/display-tui, @jigging\/display-web, @jigging\/reporting/,
+        /Missing new changesets for: @jigging\/display-model, @jigging\/display-tui, @jigging\/display-web, @jigging\/reporting, @jigging\/semantic-router/,
       )
-      await note(root, 'qualification-builder-change', qualificationNames)
+      await note(root, 'qualification-builder-change', [...qualificationNames, '@jigging/semantic-router'])
       commit(root)
     }
     assert.deepEqual((await checkRelease(root, base)).affectedPackages, expected)
     assert.deepEqual(
       (await releasePlan(root)).releases.map(({ name }) => name),
-      expected,
+      [...new Set([...expected, '@jigging/semantic-router'])].sort(),
     )
   }
 })
@@ -519,6 +520,7 @@ test('real Changesets preserves independent alpha counters and synchronizes all 
       '@jigging/agent-acp': '0.1.0-alpha.12',
       '@jigging/agent-method': '0.1.0-alpha.10',
       '@jigging/jig': '0.1.0-alpha.38',
+      '@jigging/semantic-router': '0.1.0-alpha.2',
     },
   )
   const marker = await versionRelease(root)
@@ -558,7 +560,7 @@ test('real Changesets preserves independent alpha counters and synchronizes all 
   const second = await releasePlan(root)
   assert.deepEqual(
     second.releases.map(({ name, newVersion }) => [name, newVersion]),
-    [['@jigging/jig', '0.1.0-alpha.39']],
+    [['@jigging/jig', '0.1.0-alpha.39'], ['@jigging/semantic-router', '0.1.0-alpha.3']],
   )
   await versionRelease(root)
   commit(root, 'Second generated release')
@@ -597,7 +599,7 @@ test('feature-only clones and detached checkouts generate and replay without a l
 
     const plan = await releasePlan(checkout)
     assert.deepEqual(plan.pendingChangesets, ['committed-method-fix'])
-    assert.equal(plan.releases.length, 3, 'committed notes and their dependents stay in the plan')
+    assert.equal(plan.releases.length, 4, 'committed notes and their dependents stay in the plan')
     const marker = await versionRelease(checkout)
     assert.deepEqual(marker.releases, plan.releases)
     assert.equal(marker.baseRevision, base)
@@ -617,11 +619,11 @@ test('qualification input releases propagate to Jig without adding publication s
   const plan = await releasePlan(root)
   assert.deepEqual(
     plan.releases.map(({ name }) => name),
-    ['@jigging/display-web', '@jigging/jig'],
+    ['@jigging/display-web', '@jigging/jig', '@jigging/semantic-router'],
   )
   assert.deepEqual(
     plan.publicationPackages.map(({ kind }) => kind),
-    ['agent-method', 'agent-acp', 'jig'],
+    ['agent-method', 'agent-acp', 'semantic-router', 'jig'],
   )
   await versionRelease(root)
   assert.equal((await get(root, 'packages/display-web/package.json')).version, '0.1.0-alpha.2')
@@ -646,6 +648,7 @@ test('Reporting releases synchronize the shipped notice and dependent display ve
       '@jigging/display-tui': '0.1.0-alpha.2',
       '@jigging/display-web': '0.1.0-alpha.2',
       '@jigging/jig': '0.1.0-alpha.38',
+      '@jigging/semantic-router': '0.1.0-alpha.2',
       '@jigging/reporting': '0.1.0-alpha.2',
     },
   )
@@ -877,7 +880,8 @@ test('README spelling, hidden files, and extension filters agree with real statu
     const ignored = ['.hidden.md', '.AGENTS.md', 'ignored.MD', readme]
     for (const filename of ignored)
       await put(root, `.changeset/${filename}`, 'This is not release frontmatter.\n')
-    await note(root, 'normal-note', ['@jigging/jig'])
+    // A leaf release isolates filename filtering from inferred artifact dependents.
+    await note(root, 'normal-note', ['@jigging/semantic-router'])
     const base = commit(root)
     const status = await stockStatus(root)
     const plan = await releasePlan(root)

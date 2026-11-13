@@ -12,6 +12,7 @@ const PACKAGE_KINDS = Object.freeze({
   flow: 'flow-sdk',
   agent: 'agent-method',
   acp: 'agent-acp',
+  router: 'semantic-router',
   jig: 'jig',
 })
 const RUNTIME_HASH = '10702245766b225e70bbf6235fd6b47214fd94b4760d00ffaed8ab0df57ac235'
@@ -72,7 +73,7 @@ export async function qualifyCandidate(
 ) {
   const packageKind = PACKAGE_KINDS[kind]
   if (!packageKind || !directory)
-    throw new Error('Qualification requires flow|agent|acp|jig and a frozen bundle')
+    throw new Error('Qualification requires flow|agent|acp|router|jig and a frozen bundle')
   const revision = run('git', ['rev-parse', 'HEAD'], { cwd: repository })
   const bundle = await verify(resolve(directory), { sourceRevision: revision })
   const tools = await candidateTools({ env, run })
@@ -88,6 +89,7 @@ export async function qualifyCandidate(
         ['REPORTING_PACKAGE_ARCHIVE', 'reporting'],
         ['AGENT_METHOD_PACKAGE_ARCHIVE', 'agent-method'],
         ['AGENT_ACP_PACKAGE_ARCHIVE', 'agent-acp'],
+        ['SEMANTIC_ROUTER_PACKAGE_ARCHIVE', 'semantic-router'],
         ['DISPLAY_MODEL_PACKAGE_ARCHIVE', 'display-model'],
         ['DISPLAY_WEB_PACKAGE_ARCHIVE', 'display-web'],
         ['DISPLAY_TUI_PACKAGE_ARCHIVE', 'display-tui'],
@@ -139,7 +141,7 @@ export async function qualifyCandidate(
         { ...options, cwd: consumer },
       )
       gates.push('npm-install-import')
-    } else if (kind === 'agent' || kind === 'acp') {
+    } else if (kind === 'agent' || kind === 'acp' || kind === 'router') {
       // Source and distribution-roundtrip tests have one owner in source-tests.
       // This obligation exercises the installed publishing candidate only.
       run(
@@ -283,7 +285,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   try {
     if (![4, 5].includes(process.argv.length))
       throw new Error(
-        'usage: node scripts/ci/qualify-candidate.mjs <flow|agent|acp|jig> <bundle> [qualification.json]',
+        'usage: node scripts/ci/qualify-candidate.mjs <flow|agent|acp|router|jig> <bundle> [qualification.json]',
       )
     const result = await qualifyCandidate(process.argv[2], process.argv[3])
     const json = `${JSON.stringify(result, null, 2)}\n`
