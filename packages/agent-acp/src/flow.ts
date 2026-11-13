@@ -170,47 +170,52 @@ export async function agentAcpFlow(
       ? DEFAULT_CANDIDATES
       : [native as AgentAcpNativeSelection]
 
-  let previousFailoverError: unknown
-  for (const [candidateIndex, candidate] of candidates.entries()) {
-    let sessionInput =
-      prepared.session === undefined
-        ? undefined
-        : candidateIndex > 0 && sameClientSession === 'fresh' && 'restore' in prepared.session
+  const updates = new OptionalUpdates(events as ChannelSender | undefined, run.signal)
+  try {
+    let previousFailoverError: unknown
+    for (const [candidateIndex, candidate] of candidates.entries()) {
+      let sessionInput =
+        prepared.session === undefined
           ? undefined
-          : { ...prepared.session }
-
-    let activeCandidate = candidate
-    for (;;) {
-      try {
-        return await executeCandidate(
-          run,
-          activeCandidate,
-          sessionInput,
-          prepared,
-          conversational,
-          events,
-          commands,
-          replies,
-        )
-      } catch (error) {
-        if (candidateIndex > 0 && error instanceof OperationError && error.code === 'UNAVAILABLE') {
-          if (sessionInput !== undefined && isUnsupportedSessionError(error)) {
-            if ('retain' in sessionInput) {
-              sessionInput = undefined
-              // This is a changed Run request; a previously consumed operation ID
-              // cannot be reused even when its original dispatch was refused.
-              activeCandidate = {
-                ...candidate,
-                operationId: `${candidate.operationId}:fresh`,
+          : candidateIndex > 0 && sameClientSession === 'fresh' && 'restore' in prepared.session
+            ? undefined
+            : { ...prepared.session }
+  
+      let activeCandidate = candidate
+      for (;;) {
+        try {
+          return await executeCandidate(
+            run,
+            activeCandidate,
+            sessionInput,
+            prepared,
+            conversational,
+            updates,
+            commands,
+            replies,
+          )
+        } catch (error) {
+          if (candidateIndex > 0 && error instanceof OperationError && error.code === 'UNAVAILABLE') {
+            if (sessionInput !== undefined && isUnsupportedSessionError(error)) {
+              if ('retain' in sessionInput) {
+                sessionInput = undefined
+                // This is a changed Run request; a previously consumed operation ID
+                // cannot be reused even when its original dispatch was refused.
+                activeCandidate = {
+                  ...candidate,
+                  operationId: `${candidate.operationId}:fresh`,
+                }
+                continue
               }
-              continue
+              break
             }
-            break
-          }
-          if (isUnboundSlotError(error)) {
-            break
-          }
-          throw previousFailoverError
+            if (isUnboundSlotError(error)) {
+              break
+            }
+            throw previousFailoverError
+  } finally {
+    await updates.finish()
+  }
         }
         if (
           candidateIndex + 1 < candidates.length &&
@@ -243,14 +248,13 @@ async function executeCandidate(
   sessionInput: ReturnType<typeof prepareAgent>['session'],
   prepared: ReturnType<typeof prepareAgent>,
   conversational: boolean,
-  events: RunContext['channels'][string] | undefined,
+  updates: OptionalUpdates,
   commands: RunContext['channels'][string] | undefined,
   replies: RunContext['channels'][string] | undefined,
 ): Promise<RunResult> {
   let requests: ChannelPair | undefined
   let responses: ChannelPair | undefined
   let work: Promise<Settlement> | undefined
-  let updates: OptionalUpdates | undefined
   let closedChannels = false
   const owned = new AbortController()
   const signal = AbortSignal.any([run.signal, owned.signal])
@@ -258,7 +262,6 @@ async function executeCandidate(
   async function closeChannels(strict: boolean): Promise<void> {
     if (closedChannels) return
     closedChannels = true
-    await updates?.finish()
     const closures: Promise<void>[] = []
     if (responses) closures.push(responses.receive.close())
     if (requests) closures.push(requests.send.close())
@@ -276,7 +279,6 @@ async function executeCandidate(
   try {
     requests = await run.channel({ contract: REQUESTS }, { signal })
     responses = await run.channel({ contract: RESPONSES }, { signal })
-    updates = new OptionalUpdates(events as ChannelSender | undefined, run.signal)
     work = run
       .call(
         {

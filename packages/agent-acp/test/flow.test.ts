@@ -1300,9 +1300,10 @@ describe('ACP v2 native method qualification', () => {
     method: 'session/update',
     params: { sessionId: 'owned-session', update },
   })
-  const make = (reason: string, firstFailure?: OperationError) => {
+  const make = (reason: string, firstFailure?: OperationError, events?: ChannelSender) => {
     const f = fixture({
       ready: v2Ready,
+      ...(events === undefined ? {} : { events }),
       ...(firstFailure === undefined
         ? {}
         : {
@@ -1424,6 +1425,41 @@ describe('ACP v2 native method qualification', () => {
       'session/prompt',
       'session/close',
     ])
+  })
+
+  test('keeps the public events writer open until the backup settles', async () => {
+    const first = new OperationError('EXECUTION_FAILED', 'native setup failed', {
+      nativePrompt: { forwarding: 'not-forwarded', cleanup: 'confirmed', turnsSettled: 0 },
+    })
+    const observed: JsonValue[] = []
+    let closes = 0
+    const events: ChannelSender = {
+      direction: 'send',
+      delivery: 'direct',
+      async send(value) {
+        if (closes) throw new Error('Backup progress sent after events EOF')
+        observed.push(value)
+      },
+      async close() {
+        closes++
+      },
+    }
+    const f = make('end_turn', first, events)
+    expect(await agentAcpFlow(f.run, f.selection)).toEqual({
+      outcome: 'done',
+      output: { text: 'corrected' },
+    })
+    expect(f.stats().calls).toBe(2)
+    expect(
+      observed.some(
+        (value) =>
+          value !== null &&
+          typeof value === 'object' &&
+          !Array.isArray(value) &&
+          value.sessionUpdate === 'agent_message_chunk',
+      ),
+    ).toBe(true)
+    expect(closes).toBe(1)
   })
 
   test('an uncertain native failure without rejected-without-output never dispatches a backup', async () => {
