@@ -121,6 +121,44 @@ function wait<T>(operation: Promise<T>, milliseconds: number): Promise<T> {
   ]).finally(() => clearTimeout(timer))
 }
 
+/** Stage selected bytes only under the fresh private explorer directory. No caller paths. */
+export async function privateStageExploreFiles(
+  directory: string,
+  files: readonly DisplayExplorerInputFile[],
+): Promise<readonly string[]> {
+  const staged: string[] = []
+  if (files.length > DISPLAY_EXPLORER_FILE_COUNT)
+    throw new Error('Too many selected input attachments')
+  const names = new Set<string>()
+  let totalBytes = 0
+  if (files.length) await mkdir(join(directory, 'attachments'), { mode: 0o700 })
+  for (const file of files) {
+    if (
+      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(file.attachment) ||
+      names.has(file.attachment) ||
+      !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(file.filename)
+    )
+      throw new Error('Invalid selected input attachment')
+    names.add(file.attachment)
+    const decoded = Buffer.from(file.base64, 'base64')
+    try {
+      if (
+        decoded.toString('base64') !== file.base64 ||
+        decoded.length > DISPLAY_EXPLORER_FILE_BYTES ||
+        (totalBytes += decoded.length) > DISPLAY_EXPLORER_TOTAL_BYTES
+      )
+        throw new Error('Selected input exceeds the immutable capture allowance')
+      const root = join(directory, 'attachments', file.attachment)
+      await mkdir(root, { mode: 0o700 })
+      await writeFile(join(root, file.filename), decoded, { flag: 'wx', mode: 0o600 })
+      staged.push(file.attachment + '=' + root)
+    } finally {
+      decoded.fill(0)
+    }
+  }
+  return staged
+}
+
 /** A fresh ordinary installed Run owns every launch, including native and file recovery. */
 export function privateInstalledExploreLaunch(
   location: Readonly<{
@@ -137,36 +175,7 @@ export function privateInstalledExploreLaunch(
     try {
       const path = join(directory, 'input.json')
       await writeFile(path, bytes, { flag: 'wx', mode: 0o600 })
-      const staged: string[] = []
-      if (input.files.length > DISPLAY_EXPLORER_FILE_COUNT)
-        throw new Error('Too many selected input attachments')
-      const names = new Set<string>()
-      let totalBytes = 0
-      if (input.files.length) await mkdir(join(directory, 'attachments'), { mode: 0o700 })
-      for (const file of input.files) {
-        if (
-          !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(file.attachment) ||
-          names.has(file.attachment) ||
-          !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(file.filename)
-        )
-          throw new Error('Invalid selected input attachment')
-        names.add(file.attachment)
-        const decoded = Buffer.from(file.base64, 'base64')
-        try {
-          if (
-            decoded.toString('base64') !== file.base64 ||
-            decoded.length > DISPLAY_EXPLORER_FILE_BYTES ||
-            (totalBytes += decoded.length) > DISPLAY_EXPLORER_TOTAL_BYTES
-          )
-            throw new Error('Selected input exceeds the immutable capture allowance')
-          const root = join(directory, 'attachments', file.attachment)
-          await mkdir(root, { mode: 0o700 })
-          await writeFile(join(root, file.filename), decoded, { flag: 'wx', mode: 0o600 })
-          staged.push(file.attachment + '=' + root)
-        } finally {
-          decoded.fill(0)
-        }
-      }
+      const staged = await privateStageExploreFiles(directory, input.files)
       const environment = { ...process.env }
       // An explorer never lends another command's coordinator, file owner or approval.
       for (const name of Object.keys(environment))
