@@ -47,11 +47,15 @@ with their producer. This package owns readonly display data and pure meaning.
   It has no workspace, elapsed clock, invocation observations or synthetic Run.
   Root and ordinary component IDs join the bounded catalogue exactly. Selected
   input schemas preserve their root definitions. No fabricated input is inferred.
-  Required file/channel limitations remain explicit launch reasons.
+  Unbound read attachments are available for explicit bounded file selection.
+  Required channels and excessive file slots remain explicit launch blockers.
 - Local Run intents and status are inert data for a separately authorized host.
   Their validators do not submit, retry, admit, cancel or verify input schemas.
   Viewer handoffs accept only the exact numeric-loopback capability URL profile.
   Keep catalogue, schema, complete payload and request bounds explicit.
+  Browser file intent permits only eight declared read slots, one simple safe
+  basename per slot, canonical base64, 4 MiB per file and 8 MiB total.
+  No paths or file grants occur in model data.
 - Composition bounds have one canonical owner in `src/types.ts`.
   Validation enforces node, edge and encoded UTF-8 byte capacities.
   Valid configuration does not guarantee executability or observed execution.
