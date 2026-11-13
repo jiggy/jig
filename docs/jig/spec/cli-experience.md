@@ -966,7 +966,7 @@ other packet or another file.
 The comparison reports differences in recorded method/input identities,
 execution status and application output/details, not historical execution
 paths or causality. Objects compare by member identity regardless of source
-member order; array order remains significant. The machine output is one
+member order. Array order remains significant. The machine output is one
 `recorded-result-comparison/v1` JSON value, not a Run terminal. Human output
 is escaped as untrusted recorded text. Report at most 128 field differences with
 512-byte JSON-pointer locations and 192-byte excerpts, and disclose truncation.
@@ -984,7 +984,7 @@ Exit 0 means both selected packets and their file captures are complete, even
 when their recorded Run outcomes differ. Exit 1 means invalid/unavailable packet,
 incomplete files, or output failure. Exit 2 means interruption or invalid command
 syntax. No result packet is rewritten. `--json` or redirected stdout selects
-machine output; missing or malformed packets emit no invented comparison
+machine output. Missing or malformed packets emit no invented comparison
 record. Separate recorded claims from authenticated provenance and never infer
 application success or required follow-up from field names.
 
