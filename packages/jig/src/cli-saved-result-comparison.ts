@@ -1,3 +1,4 @@
+import { escapeTerminalText } from '@jigging/display-tui/text'
 import { sha256 } from './internal/file-input.js'
 import type { PrivateSavedResult, PrivateSavedResultFile } from './internal/saved-result.js'
 import { canonicalJson, type JsonValue } from './json.js'
@@ -215,8 +216,8 @@ export function privateSavedComparisonPlain(result: PrivateSavedComparison): str
   if (!result.fields.changes.length) lines.push('  No differences in selected recorded fields.')
   for (const value of result.fields.changes) {
     lines.push('  ' + value.change + ' ' + asciiJsonString(value.pointer))
-    if (value.before) lines.push('    - ' + value.before.text + (value.before.clipped ? ' [excerpt clipped]' : ''))
-    if (value.after) lines.push('    + ' + value.after.text + (value.after.clipped ? ' [excerpt clipped]' : ''))
+    if (value.before) lines.push('    - ' + escapeTerminalText(value.before.text) + (value.before.clipped ? ' [excerpt clipped]' : ''))
+    if (value.after) lines.push('    + ' + escapeTerminalText(value.after.text) + (value.after.clipped ? ' [excerpt clipped]' : ''))
   }
   if (result.fields.truncated)
     lines.push('  More field changes were omitted; the comparison limit is ' + result.fields.limit + '.')
