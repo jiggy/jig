@@ -6,8 +6,8 @@ import {
   appendFile,
   mkdir,
   mkdtemp,
-  readFile,
   readdir,
+  readFile,
   rename,
   rm,
   symlink,
@@ -1165,7 +1165,7 @@ test('observed acquisition, readiness, deadline guard, and native failures stop 
     'Enforce Mac PR deadline',
     macHostCohortWorkerName(3),
     'prerequisites',
-    "matrix.guard && 'Enforce Mac PR deadline' || (github.event_name == 'pull_request' && format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) || format('Native host shard — {0} / 0', matrix.arch))",
+    "github.event_name == 'pull_request' && format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) || format('Native host shard — {0} / 0', matrix.arch)",
   ]) {
     for (const conclusion of ['failure', 'cancelled', 'skipped']) {
       const jobs = coordinationJobs()
@@ -1209,13 +1209,12 @@ test('PRs select five ARM workers for an independent Ubuntu guard; main retains 
       ...Array.from({ length: 5 }, (_, worker) => ({
         arch: 'arm64',
         worker,
-        guard: false,
       })),
     ],
   })
   for (const event of ['push', 'workflow_dispatch'])
     assert.deepEqual(macHostWorkerMatrix(event), {
-      include: [{ arch: 'arm64', worker: 0, guard: false }],
+      include: [{ arch: 'arm64', worker: 0 }],
     })
   for (const event of [undefined, '', 'pull_request_target', 'workflow_run'])
     assert.throws(() => macHostWorkerMatrix(event), /Unknown hosted Mac workflow event/)

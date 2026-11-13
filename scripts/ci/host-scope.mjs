@@ -8,7 +8,14 @@ import { releaseState } from '../release/state.mjs'
 const revision = /^[0-9a-f]{40}$/
 const roles = {
   linux: ['scope', 'host-artifacts', 'host-suite', 'rootless-linux'],
-  macos: ['scope', 'host-artifacts', 'cohort-allocator', 'prerequisites', 'qualified-architecture'],
+  macos: [
+    'scope',
+    'host-artifacts',
+    'cohort-allocator',
+    'pr-deadline-guard',
+    'prerequisites',
+    'qualified-architecture',
+  ],
 }
 
 // These inputs do not enter a Jig native host or its npm artifacts. Everything
@@ -93,7 +100,7 @@ export async function hostScope({
   }
 }
 
-export function checkHostJobs(scope, report, statuses) {
+export function checkHostJobs(scope, report, statuses, eventName = process.env.GITHUB_EVENT_NAME) {
   assert.ok(roles[scope], 'Unknown host scope')
   assert.deepEqual(
     Object.keys(statuses).sort(),
@@ -104,7 +111,9 @@ export function checkHostJobs(scope, report, statuses) {
   for (const role of roles[scope].slice(1))
     assert.equal(
       statuses[role],
-      report.required ? 'success' : 'skipped',
+      report.required && (role !== 'pr-deadline-guard' || eventName === 'pull_request')
+        ? 'success'
+        : 'skipped',
       `Unexpected host job result: ${role}`,
     )
   return report

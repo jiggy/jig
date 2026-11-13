@@ -138,8 +138,13 @@ for await (const line of createInterface({ input: process.stdin })) {
       }
       const completed = () =>
         reply({ method: 'turn/completed', params: { threadId: request.params.threadId, turn } })
-      if (scenario === 'completion-before-reply') {
+      if (scenario?.startsWith('completion-before-reply')) {
         completed()
+        if (scenario === 'completion-before-reply-cancel')
+          appendFileSync(
+            process.env.RECORD_PATH!,
+            JSON.stringify({ event: 'completed-before-reply' }) + '\n',
+          )
         setTimeout(() => ok({ turn: { ...turn, status: 'inProgress' } }), 100)
       } else {
         ok({ turn: { ...turn, status: 'inProgress' } })

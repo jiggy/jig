@@ -30,7 +30,7 @@ const maxMetadataBytes = 4 * 1024 * 1024
 const pendingJobStatuses = ['queued', 'in_progress', 'requested', 'waiting', 'pending']
 const macPrGuardExplanation =
   'This Ubuntu monitor watches all five Mac workers: at most 60 minutes queued and 25 minutes executing per assigned worker.\n' +
-  'Native setup and test steps are intentionally skipped on this matrix row.\n' +
+  'This independent Ubuntu job runs no native setup or tests.\n' +
   'Mac workers execute their assigned test roles or record a surplus assignment.\n' +
   'The native qualification aggregate validates complete current-attempt test evidence.\n' +
   'Queue and coordination time are separate from execution. This monitor does not establish a 25-minute end-to-end result.'

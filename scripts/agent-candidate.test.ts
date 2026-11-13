@@ -163,6 +163,7 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
     'scope',
     'host-artifacts',
     'cohort-allocator',
+    'pr-deadline-guard',
     'prerequisites',
     'qualified-architecture',
   ])
@@ -176,7 +177,7 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(mac.jobs.prerequisites.strategy['fail-fast']).toBe(
     "${{ github.event_name == 'pull_request' }}",
   )
-  expect(mac.jobs.prerequisites.strategy['max-parallel']).toBe(6)
+  expect(mac.jobs.prerequisites.strategy['max-parallel']).toBe(2)
   expect(mac.jobs.prerequisites['continue-on-error']).toBeUndefined()
   expect(mac.jobs['qualified-architecture'].needs).toContain('prerequisites')
   expect(mac.jobs['qualified-architecture'].needs).toContain('cohort-allocator')
@@ -199,17 +200,15 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(macHostShardCount('x64')).toBe(4)
   expect(macHostWorkerMatrix('pull_request')).toEqual({
     include: [
-      { arch: 'guard', worker: 'guard', guard: true },
       ...Array.from({ length: 5 }, (_, worker) => ({
         arch: 'arm64',
         worker,
-        guard: false,
       })),
     ],
   })
   for (const event of ['push', 'workflow_dispatch'])
     expect(macHostWorkerMatrix(event)).toEqual({
-      include: [{ arch: 'arm64', worker: 0, guard: false }],
+      include: [{ arch: 'arm64', worker: 0 }],
     })
   // The Node coverage tests execute the scope planner and prove complete inventory,
   // role ownership, surplus refusal, and main/manual timeout semantics.
@@ -237,8 +236,8 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
     )
     expect(required.if).toBe(
       command.startsWith('bun test ')
-        ? "${{ !matrix.guard && steps.role.outputs.execute == 'true' && steps.role.outputs.role == '0' }}"
-        : "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}",
+        ? "${{ steps.role.outputs.execute == 'true' && steps.role.outputs.role == '0' }}"
+        : "${{ steps.role.outputs.execute == 'true' }}",
     )
     expect(nightly.if).toBe(command.startsWith('bun test ') ? 'matrix.shard == 0' : undefined)
     expect(required['continue-on-error']).toBeUndefined()
@@ -269,7 +268,7 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
     mac.jobs.prerequisites.steps.find((s: any) =>
       s.run?.includes('scripts/ci/install-macos-test-clients.ts'),
     ).if,
-  ).toBe("${{ !matrix.guard && steps.role.outputs.installed == 'true' }}")
+  ).toBe("${{ steps.role.outputs.installed == 'true' }}")
   expect(
     intel.jobs.prerequisites.steps.find((s: any) =>
       s.run?.includes('scripts/ci/install-macos-test-clients.ts'),

@@ -51,8 +51,11 @@ host retains credential, process, and dispatch authority.
   parsing error. A terminal essential-channel failure awaits the resource's
   independent settlement without cancelling its result wait. Root cancellation
   and deadline remain binding. Channel failure never replaces an eventual
-  uncertain execution result or manufactures success. Optional public updates
-  never supply execution evidence or authority. Their first loss or exhausted
+  uncertain execution result or manufactures success.
+
+  Optional public updates
+  never supply execution evidence or authority. One relay spans all recovery candidates
+  and closes the public writer only after the invocation settles. Their first loss or exhausted
   local relay bound discards the suffix and closes the writer with
   `error: 'LAGGED'`.
 

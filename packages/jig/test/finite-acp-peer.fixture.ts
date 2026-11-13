@@ -36,7 +36,19 @@ for await (const line of createInterface({ input: process.stdin })) {
     else reply({ sessionId: 'owned', _meta: { secret: 'private-session' } })
   } else if (frame.method === 'session/prompt') {
     if (mode === 'signal') process.kill(process.pid, 'SIGTERM')
-    else if (mode === 'session-failure')
+    else if (mode === 'session-failure' || mode === 'plan-session-failure') {
+      if (mode === 'plan-session-failure')
+        emit({
+          jsonrpc: '2.0',
+          method: 'session/update',
+          params: {
+            sessionId: 'owned',
+            update: {
+              sessionUpdate: 'plan',
+              entries: [{ content: 'visible work', priority: 'medium', status: 'pending' }],
+            },
+          },
+        })
       emit({
         jsonrpc: '2.0',
         method: 'session/update',
@@ -60,7 +72,7 @@ for await (const line of createInterface({ input: process.stdin })) {
           },
         },
       })
-    else {
+    } else {
       emit({
         jsonrpc: '2.0',
         id: `permission-${frame.id}`,

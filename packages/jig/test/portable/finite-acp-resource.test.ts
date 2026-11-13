@@ -152,6 +152,8 @@ describe('finite ACP resource dependencies with actual bounded wire peers', () =
             : {}),
         })
         p.policy.assertSettled()
+        expect(p.policy.hasPeerFailed).toBeTrue()
+        expect(p.policy.hasProducedTurnOutput).toBeFalse()
         expect(JSON.stringify(p.exposed)).not.toMatch(/secret-token|\/private/)
         expect(await p.close()).toEqual({ exitCode: 0, signal: null, fenced: false })
       } finally {
@@ -199,6 +201,30 @@ describe('finite ACP resource dependencies with actual bounded wire peers', () =
       expect(String(error)).not.toContain('secret-token')
       expect(JSON.stringify(error)).not.toMatch(/secret-token|private-action/)
       expect(JSON.stringify(p.exposed)).not.toContain('secret-token')
+    } finally {
+      await p.dispose()
+    }
+  })
+  test('a delivered plan prevents output-free classification after native failure', async () => {
+    const p = peer('plan-session-failure')
+    try {
+      await p.initialize()
+      await p.request(3, 'session/prompt', {
+        sessionId: 'owned',
+        prompt: [{ type: 'text', text: 'Wait.' }],
+      })
+      expect((await p.next())?.toAdapter).toMatchObject({
+        params: {
+          update: {
+            sessionUpdate: 'plan',
+            entries: [{ content: 'visible work', priority: 'medium', status: 'pending' }],
+          },
+        },
+      })
+      expect(p.policy.hasProducedTurnOutput).toBeTrue()
+      await expect(p.next()).rejects.toBeInstanceOf(PrivateFiniteAcpPolicyError)
+      expect(p.policy.hasExplicitPromptRejection).toBeFalse()
+      expect(p.policy.hasProducedTurnOutput).toBeTrue()
     } finally {
       await p.dispose()
     }

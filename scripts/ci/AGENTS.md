@@ -446,15 +446,19 @@ They consume frozen package exports with tracked test helpers and installed
   Floor work minutes for admission, but round the GitHub step backstop up from raw remaining milliseconds plus bounded termination grace.
   The exact Node deadline remains authoritative. Integer-minute rounding must not interrupt its process-group cleanup early.
 
-  Its PR matrix guard waits for all five exact current-attempt Mac workers using read-only Actions metadata.
-  Failed, ambiguous, copied, or overdue workers fail the guard and activate matrix cancellation, including queued siblings.
+  Its independent Ubuntu guard waits for all five exact current-attempt Mac workers using read-only Actions metadata.
+  Failed, ambiguous, copied, or overdue workers fail the guard and refuse qualification.
+  The allocator observes guard failure. Both final gates require guard success on PRs.
+  Main and manual runs require its explicit omission.
+
+  The read-only guard cannot cancel workers.
   Missing job registration and unassigned jobs may wait only within the infrastructure queue allowance.
   Poll once per minute. The worker's exact process deadline and GitHub timeout enforce its execution limit between observations.
-  The guard has a separate Ubuntu matrix slot and grants no native execution credit.
+  The guard runs outside the two-slot native matrix and grants no native execution credit.
 
   CLI logs show original creation, attempt start, assigned job start, queue delay, work cutoff, and final job deadline.
   Summaries report original-run and current-attempt turnaround and explicitly identify totals above the 25-minute target.
-  Successful monitor summaries explain intentionally unused native steps.
+  Successful monitor summaries identify the independent Ubuntu job without claiming native execution.
   Summary output never delays a guard failure or grants qualification.
 
   Main/manual commands retain their existing allowances. Missing metadata or

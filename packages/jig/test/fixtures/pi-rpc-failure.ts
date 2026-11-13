@@ -40,6 +40,15 @@ for await (const line of createInterface({ input: process.stdin })) {
     }
     response()
     send({ type: 'agent_start' })
+    if (scenario === 'retry-compaction') {
+      for (const type of [
+        'auto_retry_start',
+        'auto_retry_end',
+        'auto_compaction_start',
+        'auto_compaction_end',
+      ])
+        send({ type, attempt: 1, maxAttempts: 2, delayMs: 0 })
+    }
     if (scenario !== 'empty-success')
       send({
         type: 'message_update',

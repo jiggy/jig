@@ -2,7 +2,10 @@
  * Executable raw ACP transport peer for direct contained-resource tests.
  * This is not a Codex, Claude or Pi adapter and must never be installed as one.
  */
-export function rawFiniteAcpPeerProgram(failBeforePrompt = false): string {
+export function rawFiniteAcpPeerProgram(
+  failBeforePrompt = false,
+  rejectBeforePrompt = false,
+): string {
   return `import { createInterface } from 'node:readline';
 let authentication;
 let shutdownScenario;
@@ -58,6 +61,7 @@ for await (const line of createInterface({input:process.stdin})) {
     case 'auth/login': authentication = message.params._meta; reply(message.id, {}); break;
     case 'session/new':
       if (${failBeforePrompt}) { console.error('fixture: pre-prompt native startup failure'); process.exit(17); }
+      if (${rejectBeforePrompt}) { send({jsonrpc:'2.0',id:message.id,error:{code:-32603,message:'private startup failure'}}); break; }
       reply(message.id, {sessionId:'fixture-session'}); break;
     case 'session/prompt': void prompt(message).catch(() => { console.error('ACP fixture failed'); process.exitCode = 1; process.stdin.destroy(); }); break;
     case 'session/close': reply(message.id, {}); break;

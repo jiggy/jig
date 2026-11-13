@@ -762,7 +762,7 @@ test('Mac hosts queue after Quick and exact candidate preparation', async () => 
     hostAcquisition['timeout-minutes'],
     "${{ github.event_name == 'pull_request' && 2 || 10 }}",
   )
-  assert.equal(hostAcquisition.if, "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}")
+  assert.equal(hostAcquisition.if, "${{ steps.role.outputs.execute == 'true' }}")
   assert.ok(!workers.steps.some((entry) => entry.run?.includes('candidate-transfer.mjs acquire')))
   const acquisitionIndex = workers.steps.indexOf(hostAcquisition)
   for (const name of [

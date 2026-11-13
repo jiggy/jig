@@ -132,6 +132,7 @@ interface Options {
 
 function fixture(options: Options = {}) {
   const frames: Frame[] = []
+  const operations = new Map<string, string>()
   let calls = 0
   let cancelled = false
   let settled = false
@@ -171,6 +172,11 @@ function fixture(options: Options = {}) {
       return value
     },
     async call(call: FlowCall, settings: { signal: AbortSignal }) {
+      const signature = JSON.stringify({ slot: call.slot, input: call.input })
+      const prior = operations.get(call.operationId)
+      if (prior !== undefined && prior !== signature)
+        throw new OperationError('OPERATION_CONFLICT', 'operationId was reused differently')
+      operations.set(call.operationId, signature)
       const attempt = calls++
       const session = (run.input as JsonObject).session
       const candidate = options.selection?.[attempt] ?? { slot: 'native', operationId: 'native' }
@@ -321,17 +327,20 @@ describe('native request failure diagnostics', () => {
     ]
     const f = fixture({
       selection: selected,
-      settlementFailure: (attempt) => attempt === 0 ? attested : undefined,
+      settlementFailure: (attempt) => (attempt === 0 ? attested : undefined),
       async emit(frame, send, attempt) {
         if (attempt !== 0 || frame.method !== 'session/new') return false
         await f.frameSend(send, {
-          jsonrpc: '2.0', id: frame.id!, error: { code: -32603, message: 'private native error' },
+          jsonrpc: '2.0',
+          id: frame.id!,
+          error: { code: -32603, message: 'private native error' },
         })
         return true
       },
     })
     expect(await agentAcpFlow(f.run, selected)).toMatchObject({
-      outcome: 'done', output: { text: 'The answer.' },
+      outcome: 'done',
+      output: { text: 'The answer.' },
     })
     expect(f.stats().calls).toBe(2)
     expect(f.frames.filter((frame) => frame.method === 'session/prompt')).toHaveLength(1)

@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { decodeJson1, JSON_1_LIMITS, type JsonObject, type JsonValue } from '../json.js'
 import { PrivateAcpV2Foreground, PrivateAcpV2ForegroundError } from './finite-acp-v2-foreground.js'
 import {
@@ -106,7 +105,6 @@ export class PrivateFiniteAcpPolicy {
   private updates = 0
   private textBytes = 0
   private planOutputEmitted = false
-  private piStatusMessageId: string | undefined
 
   constructor(
     configuration: PrivateFiniteAcpConfiguration = {},
@@ -250,7 +248,6 @@ export class PrivateFiniteAcpPolicy {
             fail('ACP prompt exceeds its authority or bounds')
           this.v2?.begin()
           this.planOutputEmitted = false
-          this.piStatusMessageId = undefined
           this.promptSent = true
           this.promptRpcResultReceived = false
           this.promptSettled = false
@@ -355,12 +352,9 @@ export class PrivateFiniteAcpPolicy {
               : undefined)
           if (required === undefined) fail('ACP configuration is not available')
           if (!Array.isArray(result.configOptions)) fail('ACP configuration was not confirmed')
-          // The pinned native Codex/Pi adapters can identify options by `id`.
-          // Normalize only this closed, reviewed option before returning v2 data.
-          const matches = result.configOptions.filter((option) => {
-            const nativeOption = object(option)
-            return (nativeOption.configId ?? nativeOption.id) === required.configId
-          })
+          const matches = result.configOptions.filter(
+            (option) => object(option).configId === required.configId,
+          )
           if (matches.length !== 1 || object(matches[0]).currentValue !== required.value)
             fail('ACP configuration was not confirmed')
           const option =
@@ -465,7 +459,7 @@ export class PrivateFiniteAcpPolicy {
     keys(frame, ['jsonrpc', 'method', 'params'])
     if (frame.method !== UPDATE) fail('ACP client operation is not permitted')
     if (++this.updates > PRIVATE_FINITE_ACP_LIMITS.updates) fail('ACP update capacity exceeded')
-    let update = object(params.update)
+    const update = object(params.update)
     const notice = this.notice(update._meta)
     // Initial client notifications can precede session/new's response. They
     // cannot nominate our session or be exposed before its identity is known.
@@ -500,21 +494,7 @@ export class PrivateFiniteAcpPolicy {
         // foreground validation. Never project its untrusted native content.
         if (update.sessionUpdate === 'agent_message' && !this.turnActive)
           fail('ACP message arrived outside an active turn')
-        // Pinned Pi emits unaddressed retry/compaction progress chunks.
-        // Give those chunks a bounded, host-owned turn ID at the native edge;
-        // they remain counted as output and cannot authorize a replay.
-        const foregroundUpdate =
-          this.nativeClient === 'pi' &&
-          update.sessionUpdate === 'agent_message_chunk' &&
-          update.messageId === undefined &&
-          this.turnActive
-            ? {
-                ...update,
-                messageId: (this.piStatusMessageId ??= `jig-pi-status-${randomUUID()}`),
-              }
-            : update
-        this.v2.update(foregroundUpdate)
-        update = foregroundUpdate
+        this.v2.update(update)
         this.settleV2IfReady()
       } catch (error) {
         if (error instanceof PrivateAcpV2ForegroundError)

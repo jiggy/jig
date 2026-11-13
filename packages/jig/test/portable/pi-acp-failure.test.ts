@@ -176,7 +176,26 @@ for (const [scenario, reason] of [
   })
 }
 
-for (const scenario of ['empty-success', 'recovered-error', 'rpc-error'] as const) {
+test('Pi retry and compaction chunks carry the assistant message identity', async () => {
+  const { prompt, notifications } = await invoke('retry-compaction')
+  expect(typeof prompt.result?.messageId).toBe('string')
+  const chunks = notifications
+    .map((notification) => notification.params?.update)
+    .filter((update) => update?.sessionUpdate === 'agent_message_chunk')
+  expect(chunks).toHaveLength(5)
+  const messageId = chunks[0].messageId
+  expect(typeof messageId).toBe('string')
+  expect(messageId.length).toBeGreaterThan(0)
+  expect(chunks.every((chunk) => chunk.messageId === messageId)).toBeTrue()
+  expect(chunks.at(-1).content.text).toBe('partial answer')
+})
+
+for (const scenario of [
+  'empty-success',
+  'recovered-error',
+  'rpc-error',
+  'retry-compaction',
+] as const) {
   test(`Pi ACP configuration and turn frames satisfy PrivateFiniteAcpPolicy: ${scenario}`, async () => {
     const encoder = new TextEncoder()
     const policy = new PrivateFiniteAcpPolicy(

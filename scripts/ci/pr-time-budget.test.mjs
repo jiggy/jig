@@ -2,11 +2,18 @@ import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { existsSync } from 'node:fs'
-import { appendFile, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import {
+  MAC_COHORT_ALLOCATOR_NAME,
+  MAC_COHORT_GUARD_JOB_NAME,
+  MAC_COHORT_READY_JOB_NAME,
+  MAC_PR_COHORT,
+  macHostCohortWorkerName,
+} from './macos-host-cohort.mjs'
 import {
   fetchPrTimeBudget,
   formatPrTimeBudget,
@@ -22,13 +29,6 @@ import {
   runCommandBeforeDeadline,
   writeMacPrGuardSummary,
 } from './pr-time-budget.mjs'
-import {
-  MAC_COHORT_ALLOCATOR_NAME,
-  MAC_COHORT_GUARD_JOB_NAME,
-  MAC_COHORT_READY_JOB_NAME,
-  MAC_PR_COHORT,
-  macHostCohortWorkerName,
-} from './macos-host-cohort.mjs'
 
 const created = Date.parse('2026-11-03T12:00:00Z')
 const expected = {
@@ -522,7 +522,7 @@ test('real matrix polling observes queued work becoming successful without fabri
   const summary = await readFile(summaryPath, 'utf8')
   assert.ok(summary.startsWith('Existing job summary.\n\n'))
   assert.ok(summary.includes(formatPrTimeBudget(f.budget)))
-  assert.match(summary, /Native setup and test steps are intentionally skipped on this matrix row/)
+  assert.match(summary, /This independent Ubuntu job runs no native setup or tests/)
   assert.match(summary, /assigned test roles or record a surplus assignment/)
   assert.match(summary, /Monitor succeeded: all five current-attempt Mac worker jobs/)
   assert.match(summary, /subsequent native qualification aggregate owns qualification/)

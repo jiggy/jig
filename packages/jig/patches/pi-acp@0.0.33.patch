@@ -1,5 +1,5 @@
 diff --git a/dist/index.js b/dist/index.js
-index ead9809c..e9b3df19 100755
+index ead9809c..7dbb36a2 100755
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -134,11 +134,11 @@ var PiRpcProcess = class _PiRpcProcess {
@@ -53,7 +53,17 @@ index ead9809c..e9b3df19 100755
        if (this.pendingTurn) {
          this.turnQueue.push(queued);
          this.emit({
-@@ -918,39 +923,56 @@ var PiAcpSession = class {
+@@ -870,6 +875,9 @@ var PiAcpSession = class {
+     return this.cancelRequested;
+   }
+   emit(update) {
++    if (update.sessionUpdate === "agent_message_chunk") {
++      update = { ...update, messageId: this.currentAssistantMessageId ??= crypto.randomUUID() };
++    }
+     this.lastEmit = this.lastEmit.then(
+       () => this.conn.sessionUpdate({
+         sessionId: this.sessionId,
+@@ -918,34 +926,49 @@ var PiAcpSession = class {
    }
    startTurn(t) {
      this.cancelRequested = false;
@@ -122,14 +132,7 @@ index ead9809c..e9b3df19 100755
        case "message_update": {
          const ame = ev.assistantMessageEvent;
          if (ame?.type === "text_delta" && typeof ame.delta === "string") {
-+          if (!this.currentAssistantMessageId) this.currentAssistantMessageId = crypto.randomUUID();
-           this.emit({
-             sessionUpdate: "agent_message_chunk",
-+            messageId: this.currentAssistantMessageId,
-             content: { type: "text", text: ame.delta }
-           });
-           break;
-@@ -1210,8 +1232,17 @@ var PiAcpSession = class {
+@@ -1210,8 +1233,17 @@ var PiAcpSession = class {
          break;
        }
        case "agent_settled": {
@@ -149,7 +152,7 @@ index ead9809c..e9b3df19 100755
            this.pendingTurn?.resolve(reason);
            this.pendingTurn = null;
            this.inAgentLoop = false;
-@@ -1228,7 +1259,7 @@ var PiAcpSession = class {
+@@ -1228,7 +1260,7 @@ var PiAcpSession = class {
                _meta: { piAcp: { queueDepth: 0, running: false } }
              });
            }
@@ -158,7 +161,7 @@ index ead9809c..e9b3df19 100755
          break;
        }
        default:
-@@ -1917,10 +1948,16 @@ var PiAcpAgent = class {
+@@ -1917,10 +1949,16 @@ var PiAcpAgent = class {
      }
    }
    async initialize(params) {
@@ -178,7 +181,7 @@ index ead9809c..e9b3df19 100755
        agentInfo: {
          name: pkg.name ?? "pi-acp",
          title: "pi ACP adapter",
-@@ -2431,9 +2468,13 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2431,9 +2469,13 @@ ${JSON.stringify(stats, null, 2)}`;
          return { stopReason: "end_turn" };
        }
      }
@@ -195,7 +198,7 @@ index ead9809c..e9b3df19 100755
    }
    async cancel(params) {
      const session = this.sessions.maybeGet(params.sessionId);
-@@ -2622,6 +2663,17 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2622,6 +2664,17 @@ ${JSON.stringify(stats, null, 2)}`;
      this.store.delete(params.sessionId);
      return {};
    }
@@ -213,7 +216,7 @@ index ead9809c..e9b3df19 100755
    async unstable_setSessionModel(params) {
      const session = await this.restoreSession(params.sessionId);
      await setSessionModel(session.proc, params.modelId);
-@@ -2707,7 +2759,7 @@ function buildConfigOptions(state) {
+@@ -2707,7 +2760,7 @@ function buildConfigOptions(state) {
    const configOptions = [
      {
        type: "select",
@@ -222,7 +225,7 @@ index ead9809c..e9b3df19 100755
        category: "thought_level",
        name: "Thinking",
        description: "Set the reasoning effort for this session",
-@@ -2722,7 +2774,7 @@ function buildConfigOptions(state) {
+@@ -2722,7 +2775,7 @@ function buildConfigOptions(state) {
    if (state.models?.availableModels.length) {
      configOptions.unshift({
        type: "select",
