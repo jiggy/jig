@@ -458,7 +458,11 @@ test('closed native reasons are validated independently and never expose native 
       'secret-token',
     )
     expect(f.frames.at(-1)?.method).toBe(method)
-    expect(f.stats()).toEqual({ calls: 1, cancelled: true, settled: true })
+    expect(f.stats()).toEqual({
+      calls: 1,
+      cancelled: ['session/prompt', 'session/close'].includes(method),
+      settled: true,
+    })
   }
 })
 
