@@ -1,7 +1,12 @@
 import type { RunResult } from '@jigging/flow'
 import type { ViewSnapshot } from '@jigging/reporting'
 
-export function columnsView(headers: string[], approach: string, result?: RunResult): ViewSnapshot {
+export function columnsView(
+  headers: string[],
+  approach: string,
+  result?: RunResult,
+  decision?: 'known-format-code' | 'agent-proposal',
+): ViewSnapshot {
   const output = result?.output as
     | { mapping?: Record<string, number> | null; reason?: string }
     | undefined
@@ -18,6 +23,27 @@ export function columnsView(headers: string[], approach: string, result?: RunRes
       {
         blocks: [
           { kind: 'report', text: approach },
+          ...(decision === undefined
+            ? []
+            : [{
+                kind: 'facts' as const,
+                items: [
+                  { label: 'Condition evaluated', value: 'Exactly Customer, Email address and Company, in any order' },
+                  { label: 'Condition matched', value: decision === 'known-format-code' ? 'yes' : 'no' },
+                  {
+                    label: 'Reported choice',
+                    value: decision === 'known-format-code'
+                      ? 'Use code to select known columns'
+                      : 'Select the Agent-proposal branch',
+                  },
+                  {
+                    label: 'Invocation evidence',
+                    value: decision === 'known-format-code'
+                      ? 'No Agent invocation belongs to this selected branch'
+                      : 'Inspect observed calls to establish whether the Agent request started and returned',
+                  },
+                ],
+              }]),
           {
             kind: 'collection',
             id: 'headings',
