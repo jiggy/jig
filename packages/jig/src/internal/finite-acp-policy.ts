@@ -465,7 +465,7 @@ export class PrivateFiniteAcpPolicy {
     keys(frame, ['jsonrpc', 'method', 'params'])
     if (frame.method !== UPDATE) fail('ACP client operation is not permitted')
     if (++this.updates > PRIVATE_FINITE_ACP_LIMITS.updates) fail('ACP update capacity exceeded')
-    const update = object(params.update)
+    let update = object(params.update)
     const notice = this.notice(update._meta)
     // Initial client notifications can precede session/new's response. They
     // cannot nominate our session or be exposed before its identity is known.
@@ -510,7 +510,7 @@ export class PrivateFiniteAcpPolicy {
               }
             : update
         this.v2.update(foregroundUpdate)
-        if (foregroundUpdate !== update) update.messageId = foregroundUpdate.messageId
+        update = foregroundUpdate
         this.settleV2IfReady()
       } catch (error) {
         if (error instanceof PrivateAcpV2ForegroundError)

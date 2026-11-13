@@ -2188,13 +2188,16 @@ export async function discardClaimedPrivateNativeSession(
   input: NativeSessionAccess & { readonly snapshot: PrivateNativeSessionSnapshot },
 ): Promise<void> {
   const { snapshot, scopeDigest } = input
-  await accessNativeSessions(input, (database) => {
+  await accessNativeSessions(input, (database, now) => {
     const discarded = runFinalized(
       database,
       'DELETE FROM native_sessions WHERE reference = ?1 AND scope_digest = ?2 AND (root_run_id IS NULL OR root_run_id = ?3)',
       [snapshot.reference, `${NATIVE_SESSION_CLAIM_PREFIX}${scopeDigest}`, input.parentRunId],
     )
-    if (discarded.changes !== 1) corrupt('native session claim cannot be discarded')
+    // Expiration removes the reservation at the start of accessNativeSessions.
+    // That is a normal terminal outcome, not missing ownership evidence.
+    if (discarded.changes !== 1 && snapshot.expiresAtUnixMs > now)
+      corrupt('native session claim cannot be discarded')
   })
 }
 
