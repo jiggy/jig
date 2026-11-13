@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
@@ -770,7 +770,7 @@ describe('private project Plan review', () => {
     )
   })
   test('ACP slot selection display includes authProfile when configured and omits it otherwise', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-review-acp-selection-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-review-acp-selection-')))
     try {
       const adapterPath = join(root, 'adapter.js')
       const executablePath = join(root, 'codex')
