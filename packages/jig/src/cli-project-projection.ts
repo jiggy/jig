@@ -283,12 +283,7 @@ export class PrivateProjectProjection {
           : `Input does not match the reviewed schema. ${mismatch} Correct the input and try again.`,
       )
     }
-    return {
-      ...result.selection,
-      unboundRead: result.snapshot.selected!.attachments
-        .filter((attachment) => attachment.mode === 'read' && !attachment.bound)
-        .map((attachment) => attachment.name),
-    }
+    return result.selection
   }
 
   async #read(
@@ -385,16 +380,23 @@ export class PrivateProjectProjection {
         'PROJECT_CHANGED',
         'The project approval changed. Refresh the project and choose a workflow again.',
       )
+    const snapshot = projectPrivateProjectSnapshot(
+      {
+        catalogue: catalogueValue,
+        selected,
+        composition: { root: chosen.request.target, targets },
+      },
+      this.#id,
+    )
     return {
-      snapshot: projectPrivateProjectSnapshot(
-        {
-          catalogue: catalogueValue,
-          selected,
-          composition: { root: chosen.request.target, targets },
-        },
-        this.#id,
-      ),
-      selection: Object.freeze({ target: chosen.request.target, approval }),
+      snapshot,
+      selection: Object.freeze({
+        target: chosen.request.target,
+        approval,
+        unboundRead: snapshot.selected!.attachments
+          .filter((attachment) => attachment.mode === 'read' && !attachment.bound)
+          .map((attachment) => attachment.name),
+      }),
     }
   }
 }
