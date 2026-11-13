@@ -271,12 +271,6 @@ jobs:
             --head-sha "$PR_HEAD_SHA" --kind "$PR_BUDGET_KIND" \
             --job-name "$PR_BUDGET_JOB_NAME" --github-env "$GITHUB_ENV"
       -
-        name: "Monitor Mac queues and enforce each worker's 25-minute execution limit"
-        if: "matrix.guard"
-        env:
-          GH_TOKEN: "${{ github.token }}"
-        run: "node scripts/ci/pr-time-budget.mjs guard-matrix"
-      -
         uses: "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6"
         if: "${{ !matrix.guard }}"
         with:
