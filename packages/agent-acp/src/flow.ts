@@ -195,7 +195,11 @@ export async function agentAcpFlow(
             replies,
           )
         } catch (error) {
-          if (candidateIndex > 0 && error instanceof OperationError && error.code === 'UNAVAILABLE') {
+          if (
+            candidateIndex > 0 &&
+            error instanceof OperationError &&
+            error.code === 'UNAVAILABLE'
+          ) {
             if (sessionInput !== undefined && isUnsupportedSessionError(error)) {
               if ('retain' in sessionInput) {
                 sessionInput = undefined
@@ -394,13 +398,14 @@ async function executeCandidate(
       await requests?.send.close().catch(() => undefined)
       const hostSettlement = await work
       run.signal.throwIfAborted()
-      if ('error' in hostSettlement) throw hostSettlement.error
+      if ('error' in hostSettlement) throw preserveRequestDiagnostic(error, hostSettlement.error)
       throw error
     }
     if (!transportFailed) owned.abort()
     const settled = await work
     run.signal.throwIfAborted()
-    if (settled && 'error' in settled && (resourceFailed || transportFailed)) throw settled.error
+    if (settled && 'error' in settled && (resourceFailed || transportFailed))
+      throw preserveRequestDiagnostic(error, settled.error)
     if (transportFailed) throw error.cause
     if (error instanceof AgentMethodError) throw new OperationError(error.code, error.message)
     if (error instanceof FiniteAcpTransportError)
@@ -411,7 +416,33 @@ async function executeCandidate(
   }
 }
 
-function isPrePromptNativeRejection(error: unknown): boolean {
+function preserveRequestDiagnostic(error: unknown, failure: unknown): unknown {
+  if (
+    !isPrePromptNativeRejection(error) ||
+    !(failure instanceof OperationError) ||
+    failure.code !== 'EXECUTION_FAILED'
+  )
+    return failure
+  const details = failure.details
+  if (details === null || typeof details !== 'object' || Array.isArray(details)) return failure
+  const prompt = (details as JsonObject).nativePrompt
+  if (
+    prompt === null ||
+    typeof prompt !== 'object' ||
+    Array.isArray(prompt) ||
+    (prompt as JsonObject).forwarding !== 'not-forwarded' ||
+    (prompt as JsonObject).cleanup !== 'confirmed'
+  )
+    return failure
+  // Host code and evidence remain authoritative. The request diagnostic has
+  // already been validated independently and grants no recovery authority.
+  return new OperationError(failure.code, error.message, {
+    nativeRequest: object(error.details).nativeRequest!,
+    ...object(details),
+  })
+}
+
+function isPrePromptNativeRejection(error: unknown): error is OperationError {
   if (!(error instanceof OperationError) || error.code !== 'EXECUTION_FAILED') return false
   const details = error.details
   if (details === null || typeof details !== 'object' || Array.isArray(details)) return false
