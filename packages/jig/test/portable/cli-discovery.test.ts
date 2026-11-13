@@ -544,3 +544,26 @@ test('reverse flow traversal preserves complete JSON scope beyond the Markdown g
     'No graph was truncated',
   )
 })
+
+test('named-operation contracts never acquire a synthetic default interface in flow context', () => {
+  const output = renderFlowContext({
+    state: 'unchecked',
+    revision: 'x',
+    targets: [
+      {
+        target: 'flow:named',
+        package: 'named',
+        availability: { state: 'unavailable' },
+        flow: {
+          routes: [],
+          files: [],
+          contract: { operations: { check: { input: { type: 'string' } } } },
+        },
+      },
+    ],
+  })
+  expect(output).toContain('Named operations:')
+  expect(output).toContain('No default executable operation is supported')
+  expect(output).not.toContain('Declared outcomes: done')
+  expect(output).not.toContain('Input: unconstrained')
+})

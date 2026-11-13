@@ -106,8 +106,12 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
     if (typeof flow.description === 'string' && flow.description)
       lines.push(`Authored purpose: ${markdown(flow.description)}`)
     lines.push(
-      `Declared outcomes: ${outcomes.map(markdown).join(', ')}. Operational errors and uncertainty are separate.`,
-      `Input: ${schemaSummary(contract.input)}. Result: ${schemaSummary(contract.result)}.`,
+      contract.operations === undefined
+        ? `Declared outcomes: ${outcomes.map(markdown).join(', ')}. Operational errors and uncertainty are separate.`
+        : `Named operations: ${literal(Object.keys(record(contract.operations)))}. No default executable operation is supported in this profile.`,
+      contract.operations === undefined
+        ? `Input: ${schemaSummary(contract.input)}. Result: ${schemaSummary(contract.result)}.`
+        : 'Input and result constraints belong to each named operation; read FLOW.contract.json.',
       `Settings: ${literal(flow.settings)}.`,
       `Declared file ports: ${literal(flow.attachments)}. Artifact results: ${literal(flow.artifactResults)}.`,
       `Channels: ${literal(Object.fromEntries(Object.entries(record(contract.channels)).map(([name, value]) => [name, { direction: record(value).direction ?? null, required: record(value).required !== false }])))}.`,
