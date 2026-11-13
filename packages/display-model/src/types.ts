@@ -95,12 +95,25 @@ export type DisplayProjectSnapshot = Readonly<{
   targets: readonly DisplayProjectTarget[]
   selected?: DisplayProjectSelection
 }>
+/** Browser input files are copied as inert, selected bytes, not local paths or grants. */
+export const DISPLAY_EXPLORER_FILE_BYTES = 4 * 1024 * 1024
+export const DISPLAY_EXPLORER_TOTAL_BYTES = 8 * 1024 * 1024
+export const DISPLAY_EXPLORER_FILE_COUNT = 8
+
+export type DisplayExplorerInputFile = Readonly<{
+  attachment: string
+  filename: string
+  /** Canonical base64, decoded and staged only after exact approval revalidation. */
+  base64: string
+}>
+
 /** Intent sent to a separately authorized local host; these values grant no powers. */
 export type DisplayProjectRunRequest = Readonly<{
   requestId: string
   revision: string
   targetId: string
   input: DisplayJsonValue
+  files?: readonly DisplayExplorerInputFile[]
 }>
 export type DisplayProjectRun =
   | Readonly<{ state: 'idle' }>
