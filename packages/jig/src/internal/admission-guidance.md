@@ -20,7 +20,11 @@ These links locate module rules. All selected domain requirements still apply.
 It uses the existing contained evaluator and linker, never the review planner or admission store.
 Installed npm sources require declared dependencies, canonical package identity and protected-state refusal.
 No dependency install, contract generation, provider readiness, recipe preparation or project-state write is permitted.
-`inspection-source.ts` supplies the shared bounded UTF-8 member selection for both working and approved inspection.
+
+`inspection-source.ts` supplies ordered UTF-8 selections for working and approved inspection, with one aggregate byte bound.
+Missing, duplicate, oversized, or binary members refuse the complete selection.
+Implementation bundles select recognizable package-local source and JSON, without traversing imports or external packages.
+They disclose excluded member counts and retain the same aggregate source bound.
 
 Project requirement failures preserve only validated exact Jig versions and trusted recovery text.
 The two closed `PROJECT_JIG_*` diagnostics survive project planning without rendering authored exceptions or arbitrary dependency requests.
@@ -480,7 +484,7 @@ Version metadata is checked before evaluation and reverified before capture comp
   live filesystem scan, and cannot grant authority or select a replacement.
 
 - Approved flow inspection joins retained package contracts, file inventories and exact routes within one approval snapshot.
-  Captured package source requires an explicit target and member. Project declaration members use the retained author closure.
+  Captured package source requires an explicit target and members. Project declaration members use the retained author closure.
   `inspection-policy.ts` owns fixed presentation bounds, independently of execution authority.
   Never reopen workspace files or disclose native policy payloads through this projection.
 

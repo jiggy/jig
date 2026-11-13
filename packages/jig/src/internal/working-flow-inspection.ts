@@ -15,14 +15,14 @@ import { captureProjectAuthoring } from '../project/captured-authoring.js'
 import { parseProjectEntrypoint } from '../project/entrypoint.js'
 import { type CapturedFlowMember, captureOpenedFlowSource } from '../project/flow-source.js'
 import { captureGrantSource } from '../project/grant-source.js'
-import { inspectPackageProject } from '../project/package-project.js'
 import { resolveInvocationSlots } from '../project/invocation-slots.js'
+import { inspectPackageProject } from '../project/package-project.js'
 import { flowSelector, npmPackageName } from '../project/package-selector.js'
 import { isProtectedProjectPath } from '../project/paths.js'
 import { retainFlowSourcePackages } from '../project/retained-flow.js'
 import { openPrivateProjectRoot } from '../project/root.js'
 import { privateDomainDigest } from './identity.js'
-import { inspectionSource } from './inspection-source.js'
+import { inspectionImplementation, inspectionSources } from './inspection-source.js'
 
 /** Capture and link current authoring with the ordinary resolver. Never opens admission state. */
 export async function inspectWorkingFlow(
@@ -31,6 +31,11 @@ export async function inspectWorkingFlow(
   options: FlowContextOptions = {},
   signal?: AbortSignal,
 ): Promise<JsonValue> {
+  if (options.implementation && (options.target === undefined || options.sources !== undefined))
+    invalid(
+      'INSPECTION_SOURCE_UNAVAILABLE',
+      'implementation requires one target without explicit source members',
+    )
   const root = await openPrivateProjectRoot(project)
   let temporary: string | undefined
   let authoring: Awaited<ReturnType<typeof captureProjectAuthoring>> | undefined
@@ -151,8 +156,11 @@ export async function inspectWorkingFlow(
       const member = members.get(request.packagePath)!
       const inspected = member.inspected
       const selectedSource =
-        options.target === selector(request.target) && options.source !== undefined
-          ? await inspectionSource(member.captured, options.source)
+        options.target === selector(request.target) &&
+        (options.sources !== undefined || options.implementation)
+          ? options.implementation
+            ? await inspectionImplementation(member.captured, inspected.entrypoint!.path)
+            : await inspectionSources(member.captured, options.sources!)
           : {}
       targets.push({
         target: selector(request.target),
@@ -188,18 +196,15 @@ export async function inspectWorkingFlow(
         },
       })
     }
-    let selectedDeclaration: { source: string; sourcePath: string } | undefined
-    if (options.source !== undefined && options.target === undefined) {
-      const member = closure.modules.find((m) => m.projectPath === options.source)
-      if (member === undefined)
-        invalid('INSPECTION_SOURCE_UNAVAILABLE', 'captured declaration member is missing')
+    let selectedDeclaration: { sources: { source: string; sourcePath: string }[] } | undefined
+    if (options.sources !== undefined && options.target === undefined) {
       // Reuse the exact bounded UTF-8 member check without reopening workspace paths.
-      selectedDeclaration = await inspectionSource(
+      selectedDeclaration = await inspectionSources(
         {
           files: closure.modules.map((m) => ({ path: m.projectPath, size: m.sourceBytes })),
           read: async (path) => closure.read(path),
         },
-        options.source,
+        options.sources,
       )
     }
     await bindingSource.verify()

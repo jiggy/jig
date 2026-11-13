@@ -65,6 +65,7 @@ import {
   sha256,
 } from './internal/file-input.js'
 import { PrivateInputInspectionCapture } from './internal/input-inspection.js'
+import { PRIVATE_FLOW_CONTEXT_LIMITS } from './internal/inspection-policy.js'
 import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
 import { PrivateAttemptError } from './internal/prepared-attempt-store.js'
 import { privateProfileSpan } from './internal/private-profile.js'
@@ -244,7 +245,7 @@ The destination parent must exist; existing destinations are never replaced.
 Example:
   jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
-       jig inspect --flow [target] [--approved] [--impact] [--source FILE] [--json]
+       jig inspect --flow [target] [--approved] [--impact] [--implementation] [--source FILE]... [--json]
        jig inspect --result DIRECTORY [--display plain|tui|web] [--json]
 
 List the current project's approved targets, or show one target's retained
@@ -255,13 +256,15 @@ Changed environments require review; unverifiable environments remain unchecked.
 Ordinary inspection and --approved read retained state without source evaluation.
 --flow captures current source and evaluates declarations in containment.
 No installation, provider requests, recovery, approval or project-state writes.
-Visible edits, launch readiness and remote provider availability are not checked.
+Ordinary approval inspection does not compare visible source.
+Launch readiness and remote provider availability remain unchecked.
 
   --json     Emit JSON even in a terminal (redirected output is JSON unless --flow is selected)
-  --flow     Emit Markdown relationships and captured file inventory, including when piped
+  --flow     Emit Markdown relationships and implementation source locations, including when piped
   --approved With --flow: use the last approved snapshot instead of the working tree
   --impact   With --flow TARGET: show potential callers and shared implementations
-  --source FILE  Include one captured UTF-8 member (up to 256 KiB); a target selects its package, otherwise project declarations
+  --implementation With --flow TARGET: include a bounded bundle of recognizable source and local JSON
+  --source FILE  Include captured UTF-8 source; repeat for related files (256 KiB combined). A target selects its package, otherwise project declarations
   --result DIRECTORY  Inspect a saved packet without approval or new execution
   --display MODE      For saved results: plain (default), tui or web
 
@@ -997,7 +1000,8 @@ function parseInspect(arguments_: readonly string[]) {
   let flow = false
   let approved = false
   let impact = false
-  let source: string | undefined
+  let implementation = false
+  const sources: string[] = []
   for (let index = 1; index < arguments_.length; index++) {
     const value = arguments_[index]!
     if (value === '--approved' && !approved) {
@@ -1008,11 +1012,15 @@ function parseInspect(arguments_: readonly string[]) {
       flow = true
       continue
     }
+    if (value === '--implementation' && !implementation) {
+      implementation = true
+      continue
+    }
     if (value === '--impact' && !impact) {
       impact = true
       continue
     }
-    if (value === '--source' && source === undefined) {
+    if (value === '--source') {
       const next = arguments_[++index]
       if (
         next === undefined ||
@@ -1022,7 +1030,9 @@ function parseInspect(arguments_: readonly string[]) {
         /[\\\p{Cc}]/u.test(next)
       )
         usage('inspect', '--source requires one captured package-relative member path.')
-      source = next
+      if (sources.includes(next) || sources.length >= PRIVATE_FLOW_CONTEXT_LIMITS.filesPerPackage)
+        usage('inspect', 'Select distinct source members within the 128-member inventory bound.')
+      sources.push(next)
       continue
     }
     if (value === '--result') {
@@ -1059,10 +1069,12 @@ function parseInspect(arguments_: readonly string[]) {
     usage('inspect', '--result cannot be combined with a target or --verification.')
   if (display !== undefined && resultDirectory === undefined)
     usage('inspect', '--display requires --result DIRECTORY.')
-  if ((approved || impact || source !== undefined) && !flow)
-    usage('inspect', '--approved, --impact and --source require --flow.')
+  if ((approved || impact || implementation || sources.length > 0) && !flow)
+    usage('inspect', '--approved, --impact, --implementation and --source require --flow.')
   if (flow && resultDirectory !== undefined)
     usage('inspect', 'Saved packets contain no retained flow context.')
+  if (implementation && (selector === undefined || sources.length > 0))
+    usage('inspect', '--implementation requires one exact target and cannot accompany --source.')
   if (impact && selector === undefined) usage('inspect', '--impact requires an exact target.')
   return {
     selector,
@@ -1073,7 +1085,8 @@ function parseInspect(arguments_: readonly string[]) {
     flow,
     approved,
     impact,
-    source,
+    implementation,
+    sources: sources.length ? sources : undefined,
   }
 }
 
@@ -1168,7 +1181,8 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
         runtime.currentDirectory,
         {
           ...(selector === undefined ? {} : { target: selector }),
-          ...(parsed.source === undefined ? {} : { source: parsed.source }),
+          ...(parsed.sources === undefined ? {} : { sources: parsed.sources }),
+          ...(parsed.implementation ? { implementation: true } : {}),
         },
         runtime.signal,
       )
@@ -1183,7 +1197,8 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
         parsed.flow
           ? {
               ...(selector === undefined ? {} : { target: selector }),
-              ...(parsed.source === undefined ? {} : { source: parsed.source }),
+              ...(parsed.sources === undefined ? {} : { sources: parsed.sources }),
+              ...(parsed.implementation ? { implementation: true } : {}),
             }
           : undefined,
       )
@@ -1199,7 +1214,7 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
     if (error instanceof CheckError && error.code === 'INSPECTION_SOURCE_UNAVAILABLE')
       throw new CliDiagnostic(
         'JIG_SOURCE_UNAVAILABLE',
-        'That captured member is unavailable as UTF-8 text within 256 KiB. List the selected target files with jig inspect --flow <target>.',
+        'The selected captured members are unavailable as UTF-8 text within the combined 256 KiB bound. List the selected target files with jig inspect --flow <target>.',
         1,
       )
     if (error instanceof CheckError && error.code === 'INSPECTION_TARGET_MISSING')
@@ -1226,7 +1241,8 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
       renderFlowContext(snapshot, {
         ...(selector === undefined ? {} : { target: selector }),
         impact: parsed.impact,
-        ...(parsed.source === undefined ? {} : { source: parsed.source }),
+        ...(parsed.sources === undefined ? {} : { sources: parsed.sources }),
+        ...(parsed.implementation ? { implementation: true } : {}),
       }),
     )
     return 0

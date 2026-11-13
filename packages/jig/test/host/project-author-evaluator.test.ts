@@ -1,10 +1,10 @@
-import { inspectWorkingFlow } from '../../src/internal/working-flow-inspection.js'
 import { describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import { closedTestErrorCauses } from '../../src/internal/project-session-controller.js'
+import { inspectWorkingFlow } from '../../src/internal/working-flow-inspection.js'
 import {
   type EvaluatedAuthorDeclaration,
   evaluateAuthorClosure,
@@ -93,9 +93,14 @@ describe.serial('finite isolated author declaration batches', () => {
         )
         const second = (await inspectWorkingFlow(root, options, {
           target: 'binding:first',
-          source: 'FLOW.ts',
+          sources: ['FLOW.ts', 'settings.schema.json'],
         })) as any
         expect(second.revision).not.toBe(first.revision)
+        expect(
+          second.targets
+            .find((t: any) => t.target === 'binding:first')
+            .flow.sources.map((member: any) => member.sourcePath),
+        ).toEqual(['FLOW.ts', 'settings.schema.json'])
         expect(second.targets.find((t: any) => t.target === 'binding:first').flow.settings).toEqual(
           { revision: 2 },
         )

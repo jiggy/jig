@@ -239,7 +239,7 @@ Each live snapshot carries one complete admitted composition or an explicit unav
 | Setting or bound | Value | Control |
 | --- | --- | --- |
 | Flow context selected targets / connections | 256 / 1024 | Fixed |
-| Flow context source member | 256 KiB (262,144 bytes) | Fixed |
+| Flow context selected source, combined | 256 KiB (262,144 bytes) | Fixed |
 | Flow context listed members per package | 128 | Fixed |
 | Flow context inline value | 4 KiB (4,096 bytes) | Fixed |
 | Components per composition | 256 | Fixed |

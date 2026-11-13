@@ -11,7 +11,7 @@ const list = (value: JsonValue | undefined): JsonValue[] => (Array.isArray(value
 const literal = (value: JsonValue | undefined): string => {
   const text = JSON.stringify(value ?? null)
   if (Buffer.byteLength(text) > PRIVATE_FLOW_CONTEXT_LIMITS.inlineValueBytes)
-    return '[value omitted: exceeds inline presentation bound; use jig inspect TARGET --json]'
+    return '[value omitted: exceeds inline presentation bound; repeat this --flow request with --json]'
   const fence = '`'.repeat(Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length)) + 1)
   return fence + ' ' + text + ' ' + fence
 }
@@ -24,14 +24,22 @@ const diagram = (value: string): string =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/[\p{Cc}\u2028\u2029]/gu, ' ')
-export type FlowContextOptions = Readonly<{ target?: string; impact?: boolean; source?: string }>
+export type FlowContextOptions = Readonly<{
+  target?: string
+  impact?: boolean
+  implementation?: boolean
+  sources?: readonly string[]
+}>
 
 /** Read-only presentation of retained facts. No source evaluation or behavioral inference. */
 export function renderFlowContext(value: JsonValue, options: FlowContextOptions = {}): string {
   const snapshot = record(value)
   if (snapshot.state === 'unreviewed' && snapshot.basis !== 'working-tree')
     return '# Application flow\n\nNo locally approved revision. Run `jig review` to prepare and review this project.\n'
-  const { targets, edges, selected, callers, included, state } = selectFlowContext(value, options)
+  const { targets, edges, selected, callers, included, focus, state } = selectFlowContext(
+    value,
+    options,
+  )
   const selectedEdges = edges.filter(
     (edge) =>
       selected.has(edge.from) &&
@@ -57,6 +65,8 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
     options.impact ? '## Potential impact' : '## Configured relationships',
     '',
   ]
+  if (focus !== undefined)
+    lines.splice(2, 0, `${options.target ? 'Focus' : 'Entrypoint'}: ${markdown(focus)}.`, '')
   if (typeof snapshot.agentOverride === 'string')
     lines.splice(
       5,
@@ -93,74 +103,74 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
       ...callers.map((e) => `- ${markdown(e.from)} through ${markdown(String(e.slot))}`),
       '',
     )
-  lines.push('## Boundaries and source', '')
+  lines.push('## Source for behavioral reading', '')
   const listedPackages = new Set<string>()
-  for (const item of included) {
+  const readingOrder = [...included].sort((a, b) =>
+    a.target === focus ? -1 : b.target === focus ? 1 : 0,
+  )
+  for (const item of readingOrder) {
+    const packageName = String(item.package)
+    if (listedPackages.has(packageName)) continue
+    listedPackages.add(packageName)
     const flow = record(item.flow)
     const contract = record(flow.contract)
-    const outcomes = ['done', ...Object.keys(record(contract.outcomes))]
+    const peers = included.filter((t) => t.package === item.package)
     lines.push(
-      `### ${markdown(String(item.target))}`,
+      `### ${peers.map((t) => markdown(String(t.target))).join(' · ')}`,
       '',
-      `${markdown(String(item.package))} · ${markdown(String(item.state))}`,
+      `Implementation: ${markdown(packageName)}. Entrypoint: ${markdown(String(flow.entrypoint))}.`,
     )
-    const availability = record(item.availability)
-    lines.push(
-      working
-        ? 'Execution availability: not qualified.'
-        : `Approved availability: ${markdown(String(availability.state ?? 'unknown'))}${typeof availability.code === 'string' ? ' (' + markdown(availability.code) + ')' : ''}.`,
-    )
+    for (const peer of peers) {
+      const settings = record(record(peer.flow).settings)
+      if (Object.keys(settings).length)
+        lines.push(`${markdown(String(peer.target))} settings: ${literal(settings)}.`)
+      const available = record(peer.availability)
+      if (!working && available.state === 'unavailable')
+        lines.push(
+          `Approved availability: unavailable${typeof available.code === 'string' ? ' (' + markdown(available.code) + ')' : ''}.`,
+        )
+    }
     if (typeof flow.description === 'string' && flow.description)
       lines.push(`Authored purpose: ${markdown(flow.description)}`)
-    lines.push(
-      contract.operations === undefined
-        ? `Declared outcomes: ${outcomes.map(markdown).join(', ')}. Operational errors and uncertainty are separate.`
-        : `Named operations: ${literal(Object.keys(record(contract.operations)))}. No default executable operation is supported in this profile.`,
-      contract.operations === undefined
-        ? `Input: ${schemaSummary(contract.input)}. Result: ${schemaSummary(contract.result)}.`
-        : 'Input and result constraints belong to each named operation; read FLOW.contract.json.',
-      `Settings: ${literal(flow.settings)}.`,
-      `Declared file ports: ${literal(flow.attachments)}. Artifact results: ${literal(flow.artifactResults)}.`,
-      `Channels: ${literal(Object.fromEntries(Object.entries(record(contract.channels)).map(([name, value]) => [name, { direction: record(value).direction ?? null, required: record(value).required !== false }])))}.`,
-      `Captured package digest: ${markdown(String(flow.digest))}. Entrypoint: ${markdown(String(flow.entrypoint))}.`,
-      '',
-    )
+    if (contract.operations !== undefined)
+      lines.push(
+        `Named operations: ${literal(Object.keys(record(contract.operations)))}. No default executable operation is supported in this profile.`,
+      )
     if (flow.installedDependency !== undefined)
       lines.push(
         `Local installed dependency: ${literal(record(flow.installedDependency).version)}. Agreement with the manifest request and lock is unchecked.`,
         '',
       )
-    const peers = targets.filter((t) => t.target !== item.target && t.package === item.package)
-    if (peers.length)
-      lines.push(
-        `Shared implementation: ${peers.map((t) => markdown(String(t.target))).join(', ')}.`,
-        '',
-      )
     const files = list(flow.files).map(record)
-    const packageName = String(item.package)
     const maximum = options.target === item.target ? PRIVATE_FLOW_CONTEXT_LIMITS.filesPerPackage : 8
-    if (!listedPackages.has(packageName) || options.target === item.target) {
-      listedPackages.add(packageName)
+    const implementationFiles = files.filter(
+      (file) =>
+        file.path === flow.entrypoint ||
+        (typeof file.path === 'string' &&
+          !file.path.startsWith('contracts/') &&
+          /\.(?:[cm]?[jt]sx?|py|md)$/.test(file.path) &&
+          !/(?:^|\/)(?:AGENTS|README|CHANGELOG)\.md$/.test(file.path)),
+    )
+    implementationFiles.sort((a, b) =>
+      a.path === flow.entrypoint ? -1 : b.path === flow.entrypoint ? 1 : 0,
+    )
+    lines.push(
+      'Read the entrypoint and follow its implementation imports:',
+      ...implementationFiles.slice(0, maximum).map((file) => `- ${markdown(String(file.path))}`),
+      '',
+    )
+    if (implementationFiles.length > maximum)
       lines.push(
-        'Captured files:',
-        ...files
-          .slice(0, maximum)
-          .map((file) => `- ${markdown(String(file.path))} (${file.bytes} bytes)`),
+        `${implementationFiles.length - maximum} implementation members omitted. Focus this target or use --json for the complete inventory.`,
         '',
       )
-      if (files.length > maximum)
-        lines.push(
-          `${files.length - maximum} further members omitted. Focus this target with --flow or request --source FILE.`,
-          '',
-        )
-    }
     lines.push(...sourceBlock(flow))
   }
   const declarations = record(snapshot.declarations)
   if (Array.isArray(declarations.files)) {
     const files = list(declarations.files).map(record)
     lines.push(
-      '## Project declarations',
+      '## Project sources',
       '',
       ...files
         .slice(0, PRIVATE_FLOW_CONTEXT_LIMITS.filesPerPackage)
@@ -173,21 +183,29 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
           ' further project declaration members omitted.',
         '',
       )
-    lines.push(
-      'Captured declaration digest: ' + markdown(String(declarations.digest)) + '.',
-      '',
-      ...sourceBlock(declarations),
-    )
+    lines.push(...sourceBlock(declarations))
   }
   const omitted = targets.length - included.length
   lines.push(
     `Scope: ${included.length} targets included; ${omitted} other targets outside this view.`,
-    'Connections outside the selected scope are omitted. Source paths identify captured package members. Workspace files may differ. No invocation history or inferred caller reactions are supplied.',
+    'Connections outside the selected scope are omitted. Lists prioritize implementation files; --json retains complete inventories and contracts. Source paths identify captured members. Workspace files may differ. No invocation history or inferred caller reactions are supplied.',
     '',
   )
   return lines.join('\n')
 }
 function sourceBlock(value: Record<string, JsonValue>): string[] {
+  const omitted = record(value.implementation).omittedMembers
+  return [
+    ...(typeof omitted === 'number'
+      ? [
+          `Implementation bundle: recognizable source and package-local JSON; ${omitted} other members excluded. This is not a complete dependency closure.`,
+          '',
+        ]
+      : []),
+    ...list(value.sources).flatMap((member) => sourceMemberBlock(record(member))),
+  ]
+}
+function sourceMemberBlock(value: Record<string, JsonValue>): string[] {
   if (typeof value.source !== 'string') return []
   const content = value.source.replace(/[\p{Cc}]/gu, (character) =>
     character === '\n' || character === '\t'
@@ -277,30 +295,4 @@ export function flowContextRecord(value: JsonValue, options: FlowContextOptions)
     },
     targets: selection.included,
   }
-}
-
-function schemaSummary(value: JsonValue | undefined): string {
-  if (value === undefined) return 'unconstrained bounded JSON'
-  if (typeof value === 'boolean') return String(value)
-  const s = record(value)
-  if (s.$ref !== undefined) return 'reference ' + literal(s.$ref)
-  if (s.enum !== undefined) return 'declared enum ' + literal(s.enum)
-  if (s.const !== undefined) return 'constant ' + literal(s.const)
-  if (s.oneOf !== undefined) return list(s.oneOf).map(schemaSummary).join(' OR ')
-  const properties = record(s.properties)
-  if (properties.outcome !== undefined && properties.output !== undefined)
-    return schemaSummary(properties.outcome) + ' => ' + schemaSummary(properties.output)
-  const fields = Object.entries(properties).map(([name, value]) => {
-    const field = record(value)
-    return (
-      markdown(name) +
-      ': ' +
-      (field.enum !== undefined
-        ? 'enum ' + literal(field.enum)
-        : field.$ref !== undefined
-          ? 'ref ' + literal(field.$ref)
-          : literal(field.type ?? 'schema'))
-    )
-  })
-  return `${literal(s.type ?? 'schema')}${fields.length ? ' {' + fields.join(', ') + '}' : ''} (summary; read FLOW.contract.json for exact constraints)`
 }

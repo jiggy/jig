@@ -15,9 +15,70 @@ import {
   invocationGuide,
 } from '../../src/cli-discovery.js'
 import { flowContextRecord, renderFlowContext } from '../../src/cli-flow-context.js'
+import {
+  inspectionImplementation,
+  inspectionSources,
+} from '../../src/internal/inspection-source.js'
 import type { JsonValue } from '../../src/json.js'
+import { capturePackageDirectory } from '../../src/package/capture.js'
 import { checkPackageDirectory } from '../../src/package/inspect.js'
 import { createFlow, createProject } from '../../src/project-init.js'
+
+test('implementation bundles include imported method candidates and local data with explicit exclusions', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-implementation-source-'))
+  try {
+    await mkdir(join(root, 'contracts'))
+    await writeFile(join(root, 'FLOW.ts'), "import { method } from './method.ts';")
+    await writeFile(join(root, 'method.ts'), 'export const method = () => 1')
+    await writeFile(join(root, 'policy.json'), '{"limit":2}')
+    await writeFile(join(root, 'README.md'), 'Documentation')
+    await writeFile(join(root, 'contracts/vendor.json'), '{}')
+    const captured = await capturePackageDirectory(root)
+    try {
+      const bundle = await inspectionImplementation(captured, 'FLOW.ts')
+      expect(bundle.sources.map((member) => member.sourcePath)).toEqual([
+        'FLOW.ts',
+        'method.ts',
+        'policy.json',
+      ])
+      expect(bundle.sources[1]!.source).toBe('export const method = () => 1')
+      expect(bundle.implementation.omittedMembers).toBe(2)
+    } finally {
+      await captured.dispose()
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('related captured sources preserve order and share one aggregate byte allowance', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-related-source-'))
+  try {
+    await writeFile(join(root, 'first.ts'), 'a'.repeat(120000))
+    await writeFile(join(root, 'second.ts'), 'b'.repeat(120000))
+    await writeFile(join(root, 'third.ts'), 'c'.repeat(30000))
+    await writeFile(join(root, 'binary.txt'), '\0')
+    const captured = await capturePackageDirectory(root)
+    try {
+      const selected = await inspectionSources(captured, ['second.ts', 'first.ts'])
+      expect(selected.sources.map((member) => member.sourcePath)).toEqual(['second.ts', 'first.ts'])
+      expect(selected.sources[0]!.source).toBe('b'.repeat(120000))
+      for (const members of [
+        ['first.ts', 'second.ts', 'third.ts'],
+        ['first.ts', 'first.ts'],
+        ['first.ts', 'missing.ts'],
+        ['first.ts', 'binary.txt'],
+      ])
+        await expect(inspectionSources(captured, members)).rejects.toMatchObject({
+          code: 'INSPECTION_SOURCE_UNAVAILABLE',
+        })
+    } finally {
+      await captured.dispose()
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
 
 test('usage mistakes show one correction, not the entire manual', async () => {
   for (const [args, expected] of [
@@ -366,6 +427,10 @@ test('flow inspection grammar refuses ambiguous source and result combinations b
     ['--flow', 'binding:work', '--source', '../secret'],
     ['--flow', 'binding:work', '--source', '/secret'],
     ['--flow', '--flow'],
+    ['--implementation'],
+    ['--flow', '--implementation'],
+    ['--flow', 'binding:work', '--implementation', '--source', 'FLOW.ts'],
+    ['--flow', 'binding:work', '--source', 'FLOW.ts', '--source', 'FLOW.ts'],
   ]) {
     let text = ''
     const result = await main(['inspect', ...flags], {
@@ -451,8 +516,12 @@ test('captured source cannot terminate its Markdown fence or inject terminal con
             contract: {},
             routes: [],
             files: [],
-            source: 'const x = "[31m";\n' + '`'.repeat(6) + '\n<script>literal</script>',
-            sourcePath: 'method.ts',
+            sources: [
+              {
+                source: 'const x = "[31m";\n' + '`'.repeat(6) + '\n<script>literal</script>',
+                sourcePath: 'method.ts',
+              },
+            ],
           },
         },
       ],
@@ -464,8 +533,8 @@ test('captured source cannot terminate its Markdown fence or inject terminal con
   expect(output).toContain('`'.repeat(7) + 'text')
 })
 
-test('flow summaries expose declared result decisions without inferring caller handling', () => {
-  const result = renderFlowContext({
+test('lean flow reading retains exact result contracts in JSON without inventing summaries', () => {
+  const snapshot: JsonValue = {
     state: 'unchecked',
     revision: 'x',
     targets: [
@@ -491,10 +560,12 @@ test('flow summaries expose declared result decisions without inferring caller h
         },
       },
     ],
-  })
-  expect(result).toContain('credit_eligible')
-  expect(result).toContain('manual_review')
-  expect(result).toContain('summary; read FLOW.contract.json')
+  }
+  const exact = flowContextRecord(snapshot, {}) as any
+  expect(
+    exact.targets[0].flow.contract.result.properties.output.properties.disposition.enum,
+  ).toEqual(['credit_eligible', 'manual_review'])
+  expect(renderFlowContext(snapshot)).not.toContain('Input:')
 })
 
 test('source framing handles many backtick runs within the source bound', () => {
@@ -506,7 +577,11 @@ test('source framing handles many backtick runs within the source bound', () => 
         {
           target: 'flow:many',
           package: 'many',
-          flow: { routes: [], files: [], source: '` '.repeat(130000), sourcePath: 'many.txt' },
+          flow: {
+            routes: [],
+            files: [],
+            sources: [{ source: '` '.repeat(130000), sourcePath: 'many.txt' }],
+          },
         },
       ],
     },

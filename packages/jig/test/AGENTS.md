@@ -3,7 +3,10 @@
 ## Ownership
 
 `portable/cli-discovery.test.ts` covers flow-context grammar, impact traversal, source framing, and explicit scope omissions.
+It verifies ordered related source selection, aggregate bounds, and whole-selection refusal through real package captures.
+It also checks implementation bundles, excluded-member counts, and grammar refusal before acquisition.
 `portable/activation-admission-store.test.ts` verifies retained package and declaration source without mutable-source reads or state writes.
+
 `host/installed-cli-lifecycle.test.ts` checks working-tree inspection before approval and after source edits, alongside explicit approved inspection, through the installed CLI.
 `host/project-author-evaluator.test.ts` checks current Binding changes, invalid declarations, and absent project-state writes through real contained evaluation.
 `portable/package-project.test.ts` checks source-only linking and refusal to turn its unbranded result into activation requests.

@@ -10,6 +10,7 @@ Task guides own composition, Agent setup, dependencies, effects, files,
 conversations, progress, project design, collaboration, and result interpretation.
 `results.md` explains live application maps alongside observed calls, without implying sequence, branch evaluation, or saved invocation history.
 It also owns current working-tree flow inspection, explicit approved inspection, captured source selection, and potential impact guidance.
+It teaches source-derived behavioral overviews, scope expansion, named omissions, and the limits of reference or freshness checks.
 It owns the pre-run explorer guide, explicit input and launch steps, supported interfaces, and separate Close meanings.
 `../reference/troubleshooting.md` owns operational diagnosis and recovery procedures.
 

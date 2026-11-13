@@ -30,15 +30,33 @@ No prior approval is required. Use `--approved` only when investigating the auth
 Missing declared dependencies must be installed separately. Inspection never installs or approves them.
 
 Before changing a shared method, inspect potential callers with `jig inspect --flow <target> --impact`.
+Use `jig inspect --flow <target> --implementation` to read its method and recognizable package-local helpers together.
+Follow imports through entrypoint wrappers before explaining behavior. A wrapper alone rarely establishes the method's sequence.
+
 Use `--source FILE` with that target to inspect implementation bytes from the same captured working tree.
+Repeat `--source FILE` to retrieve a method and its helpers in one capture.
 Without a target, `--source FILE` selects captured project declarations, including Binding modules.
 
 When using `--approved`, compare workspace changes before treating retained bytes as the editing context.
-Explain handoffs through supplied data, returned outcomes, caller reactions, and reachable powers.
-Use meaningful identities in graph source, and source-supported alternatives in sequence notation.
+
+When explaining how an application flows, follow the [behavior-reading guidance](reference/build/results.md#explain-application-behavior).
+Start from the coordinator and read the complete methods and helpers governing its branches and effects.
+Follow the selected root and configured routes. Keep unselected implementations outside that path.
+
+Lead with a compact behavioral Mermaid graph of actions, decisions, repetitions, and exits.
+Expand relevant scopes separately, such as application coordination, one job, and an internal correction loop.
+Explain handoffs through supplied data, returned outcomes, and subsequent caller behavior.
+Derive continuation from actual calls, returns, throws, and loop statements. Reporting phases are not returned outcomes.
+
+Preserve concurrency, joins, timer boundaries, validation gates, and effects that can precede failure.
+Name folded behavior and cite supporting source. A scope's summary must preserve consequences visible to its caller.
+
 Keep configuration facts, source interpretations, application reports, and observations distinct.
 Treat descriptions and intents as authored claims. Verify behavior from source or observations.
 
+Treat existing diagrams as interpretations. Matching source anchors or hashes do not establish behavioral correctness.
+Check important guards, early returns, joins, timer cleanup, and writes before presenting the explanation.
+Keep the explanation in the requested response unless project documentation is part of the task.
 
 Describe which choices belong to the application, each Flow, its local configuration, the operator, and Jig.
 Use a short outline or existing project documentation, without requiring another design artifact.

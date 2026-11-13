@@ -1900,16 +1900,33 @@ describe.serial('direct alpha activation store', () => {
         false,
         undefined,
         undefined,
-        { target: 'flow:flows/run', source: 'FLOW.ts' },
+        { target: 'flow:flows/run', sources: ['FLOW.ts', 'bom.ts'] },
       )) as any
       expect(context.targets[0].flow).toMatchObject({
         entrypoint: 'FLOW.ts',
-        sourcePath: 'FLOW.ts',
-        source: '#!/usr/bin/env bun\nexport {};\n',
+        sources: [
+          { sourcePath: 'FLOW.ts', source: '#!/usr/bin/env bun\nexport {};\n' },
+          { sourcePath: 'bom.ts', source: '\uFEFFexport {};' },
+        ],
         routes: [],
         settings: {},
       })
       expect(context.targets[0].flow.files.some((file: any) => file.path === 'FLOW.ts')).toBe(true)
+      const implementation = (await inspectPrivateApprovedProject(
+        fixture.root,
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        { target: 'flow:flows/run', implementation: true },
+      )) as any
+      expect(
+        implementation.targets[0].flow.sources.some(
+          (member: any) => member.sourcePath === 'bom.ts',
+        ),
+      ).toBe(true)
+      expect(implementation.targets[0].flow.implementation.omittedMembers).toBeGreaterThan(0)
       await expect(
         inspectPrivateApprovedProject(
           fixture.root,
@@ -1918,7 +1935,7 @@ describe.serial('direct alpha activation store', () => {
           false,
           undefined,
           undefined,
-          { target: 'flow:flows/run', source: 'absent.ts' },
+          { target: 'flow:flows/run', sources: ['FLOW.ts', 'absent.ts'] },
         ),
       ).rejects.toMatchObject({ code: 'INSPECTION_SOURCE_UNAVAILABLE' })
       let rendered = ''
@@ -1946,7 +1963,7 @@ describe.serial('direct alpha activation store', () => {
             false,
             undefined,
             undefined,
-            { target: 'flow:flows/run', source },
+            { target: 'flow:flows/run', sources: [source] },
           ),
         ).rejects.toMatchObject({ code: 'INSPECTION_SOURCE_UNAVAILABLE' })
       const bom = (await inspectPrivateApprovedProject(
@@ -1956,9 +1973,9 @@ describe.serial('direct alpha activation store', () => {
         false,
         undefined,
         undefined,
-        { target: 'flow:flows/run', source: 'bom.ts' },
+        { target: 'flow:flows/run', sources: ['bom.ts'] },
       )) as any
-      expect(bom.targets[0].flow.source).toBe('\uFEFFexport {};')
+      expect(bom.targets[0].flow.sources[0].source).toBe('\uFEFFexport {};')
       let declarationText = ''
       expect(
         await main(['inspect', '--flow', '--approved', '--source', 'jig.ts'], {

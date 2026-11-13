@@ -266,15 +266,20 @@ Inspect current local relationships before changing methods. Prior review or app
 jig inspect --flow
 jig inspect --flow --source jig.ts
 jig inspect --flow binding:repair --impact
+jig inspect --flow binding:repair --implementation
 jig inspect --flow binding:repair --source repair.ts
+jig inspect --flow binding:factory --source batch.ts --source methods.ts
 jig inspect --flow --approved
 ```
 
-The first command shows configured relationships, contracts, settings, and captured file locations.
+The first command shows configured relationships and implementation locations. Shared implementations appear once, with their configured differences.
+Exact contracts and complete file inventories remain available through `--json`.
 
 Project declarations include captured Binding modules and their helpers. Without a target, source requests select that declaration closure.
 The impact view includes callers and other configurations sharing the implementation.
 Source requests use the same captured working tree as the graph. Explicit `--approved` selects retained approved bytes instead.
+
+Repeat `--source` to read related files together. Their combined source allowance is 256 KiB.
 
 Declared npm Flow dependencies must already be installed. Inspection reports missing dependencies without installing them.
 Project declarations run in Jig’s contained evaluator. Flow methods and providers are never invoked.
@@ -285,3 +290,69 @@ Agents receive the same Markdown through pipes. A useful investigation follows t
 Use graph source with meaningful identities when describing relationships. Use sequence alternatives only when source or observations support them.
 Application decision fields remain distinct from invocation outcomes and operational failures.
 Saved result inspection does not reconstruct invocation history.
+
+### Explain application behavior
+
+A configured map identifies available calls. A behavioral overview explains what starts, what changes the path, what repeats, and what ends.
+Coding agents construct that overview from implementation source. Jig does not infer method behavior or make hidden model requests.
+
+Read the coordinator, its called methods, and helpers governing decisions or effects.
+Follow the selected root and configured routes. Unselected implementations are alternatives, not steps on that path.
+Use complete functions when interpreting early returns, exception handling, and cleanup.
+
+An entrypoint can merely import the actual method. Read that method before explaining its behavior.
+Use `--implementation` with an exact target to retrieve recognizable package-local source and JSON together.
+The bundle reports exclusions and shares the 256 KiB source allowance. It is not a complete dependency closure.
+
+Retrieve related members together when their relationship controls the behavior:
+
+```sh
+jig inspect --flow binding:factory --source batch.ts --source methods.ts
+jig inspect --flow binding:factory --implementation
+jig inspect --flow binding:checked-correction --source repair.ts --source policy.ts --source evidence.ts
+```
+
+Lead the explanation with actions and decisions in Mermaid flowchart source.
+Choose the scope relevant to the task. Expand application coordination, one job, and internal loops separately when needed.
+Sequence diagrams suit specific handoffs when source or observations establish the ordering.
+
+For example, a factory's application view should retain its join and final readiness decision:
+
+```mermaid
+flowchart TD
+    Prepare["Capture all jobs and write their goal files"] --> Jobs["Start concurrent job workers"]
+    Jobs -->|"fulfilled job record"| Save["Serialize aggregate checkpoint save"]
+    Jobs -->|"worker rejects"| Join["Join all workers, including checkpoint chains"]
+    Save -->|"chain settles"| Join
+    Join --> Rejected{"Any rejected worker promise?"}
+    Rejected -->|yes| Fail["Fail the Run"]
+    Rejected -->|no| Summary["Compute readiness and write batch summary"]
+    Summary --> Ready{"Every job ready and no conflicting contents?"}
+    Ready -->|yes| Done(["done"])
+    Ready -->|no| Blocked(["blocked"])
+```
+
+This example folds preparation errors, file-write errors, cancellation, reporting, and each job's internals.
+It does not imply rollback of files written before a failure.
+The job view must distinguish routing refusal, invalid results, returned-evidence validation, and deliverables.
+The repair view must preserve baseline checks, proposal validation, correction feedback, and budget exhaustion.
+
+A useful scope summary preserves these caller-visible consequences:
+
+- Outcomes and exceptions that change continuation.
+- Data supplied, returned, or used in later decisions.
+- Writes or other effects that can precede failure.
+- Concurrency, joining, cancellation, and the scope of each timer.
+
+Build continuation edges from the caller's actual next call, return, throw, or loop continuation.
+A declared child outcome does not establish how the caller handles it.
+Reporting phases such as failed or cancelled do not become returned domain outcomes unless the method actually returns them.
+Keep unread callee internals opaque instead of inferring their behavior from contracts or entrypoint wrappers.
+
+Cite the source supporting important decisions and name folded regions.
+Avoid replacing a precise guard with a broader claim, such as equating any overlap with conflicting contents.
+Distinguish domain outcomes, result fields, operational failures, and successful promise settlement.
+
+Existing diagrams remain source interpretations. Valid references and matching hashes do not verify control flow or completeness.
+Check important claims against source, especially when planning a change.
+Keep the explanation in the requested response unless the task includes project documentation.

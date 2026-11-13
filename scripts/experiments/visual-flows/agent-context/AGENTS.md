@@ -7,6 +7,7 @@ Test whether textual relationship representations improve understanding of Jig a
 ## Ownership
 
 Owns the audited support-case source packet, equivalent renderers, and bounded provider screening harness.
+It also owns source-bound behavioral briefs and read-only source-tool studies across public examples.
 Product CLI, admission, and runtime behavior remain outside this experiment.
 
 ## Local Contracts
@@ -17,7 +18,10 @@ Product CLI, admission, and runtime behavior remain outside this experiment.
 - Preserve bounded credential-screened response bodies, failed requests, usage, and protocol corrections under `.tmp/`.
 - Keep response-schema validity separate from answer omissions and edit validity. Derive provider/model coverage from actual receipts.
 - Use only authorized provider capacity with credentials supplied through environment variables.
-- Never evaluate provider-generated code. Apply only the exact allowed numeric replacement to original policy source.
+- Never execute provider-generated code. The original screening applies only its exact numeric replacement.
+- Behavioral studies retain bounded edits as inert data. Check edit scope, source identity, and syntax separately from semantic review.
+- Keep generation, reuse, and maintenance costs separate. A matching source anchor does not verify behavior.
+- Label deliberately misleading briefs as experimental negative controls in receipts, outside consumer-visible prompts.
 - Distinguish screening from independent consumer or general coding-performance evidence.
 
 ## Work Guidance

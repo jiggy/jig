@@ -14,7 +14,8 @@ It owns no Jig runtime behavior, public command, FLOW contract, or admission dec
 - Treat every configured edge as a possible invocation, never execution order.
 - Keep Binding identities separate from package identities.
 - Preserve explicit unknowns and evidence provenance.
-- Read source as data and reject unsupported syntax without evaluation.
+- Experimental source parsers read data and reject unsupported syntax without evaluation.
+- Public CLI studies use ordinary contained declaration capture, never direct module imports or method execution.
 - Keep source selection consistent with the public project authoring contract.
 - Visual explorer projections omit settings, resource policies, attachment source paths, and entrypoint arguments.
 - Agent context screening may supply selected public example source under its own scoped contract.

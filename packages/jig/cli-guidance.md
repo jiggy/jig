@@ -202,6 +202,13 @@ All selected domain requirements still apply.
 ### Current and approved inspection
 
 - `src/cli-flow-context.ts` formats working-tree or approved relationships and source for coding agents and people.
+  Markdown groups shared implementations and prioritizes implementation files over package inventories and lossy schema summaries.
+  Exact contract data remains in JSON. Source-derived behavioral explanation belongs to the consuming coding agent.
+  Repeated `--source` selects ordered related files from one basis, with a combined byte allowance and atomic refusal.
+
+  Exact-target `--implementation` selects recognizable package-local code and JSON with explicit exclusions and the same aggregate bound.
+  It follows no imports, evaluates no methods, and does not establish dependency completeness or behavior.
+
   `inspect --flow` preserves Markdown through pipes. Impact includes shared implementations and reverse callers.
   Working-tree inspection uses shared captured declaration evaluation and the ordinary linker without admission state.
   `--approved` selects retained package bytes without declaration evaluation.

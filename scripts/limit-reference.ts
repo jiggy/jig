@@ -363,7 +363,10 @@ export const LIMIT_REFERENCE: readonly Group[] = [
         'Flow context selected targets / connections',
         `${PRIVATE_FLOW_CONTEXT_LIMITS.targets} / ${PRIVATE_FLOW_CONTEXT_LIMITS.connections}`,
       ),
-      fixed('Flow context source member', bytes(PRIVATE_FLOW_CONTEXT_LIMITS.sourceBytes)),
+      fixed(
+        'Flow context selected source, combined',
+        bytes(PRIVATE_FLOW_CONTEXT_LIMITS.sourceBytes),
+      ),
       fixed(
         'Flow context listed members per package',
         integer(PRIVATE_FLOW_CONTEXT_LIMITS.filesPerPackage),

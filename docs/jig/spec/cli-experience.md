@@ -905,7 +905,10 @@ Ordinary redirected inspection emits JSON. Explicit `--json` selects JSON, while
 
 `jig inspect --flow [target]` emits Markdown, including through redirected stdout.
 It captures the current working tree and evaluates project and Binding declarations through the contained declaration evaluator.
-It joins component identities, configured settings, contracts, resolved routes, and captured source inventories without requiring local approval.
+It joins configured relationships and implementation source locations without requiring local approval.
+Markdown groups shared implementations and shows nonempty effective settings without repeating contract summaries or complete package inventories.
+Explicit JSON retains exact contracts, file inventories, and the selected scope.
+
 The current entrypoint selects the default root when present. Otherwise, the view covers the captured inventory.
 
 Inspection uses the ordinary linker without qualifying execution or retaining approval.
@@ -924,13 +927,38 @@ Configured edges describe possible calls. Source conditions, ordering, data tran
 These relationships describe potential impact, without establishing behavioral dependence for any input.
 Different Bindings and caller-local resource slots remain distinct.
 
-`--source FILE` supplies one retained UTF-8 member. An explicit target selects its package-relative members.
+`--implementation` requires an exact target and cannot accompany `--source`.
+It supplies that package's entrypoint, recognizable source members, and package-local JSON in one capture.
+Recognized suffixes are:
+
+```text
+.ts .tsx .js .jsx .mjs .cjs .mts .cts
+.py .rb .go .rs .sh .java .c .cc .cpp .h .hpp
+.json .md
+```
+
+Members under `contracts/` and files named `AGENTS.md`, `README.md`, or `CHANGELOG.md` are excluded, except the executable entrypoint.
+
+The bundle identifies its excluded-member count. JSON retains the complete captured inventory.
+This selection is not a dependency closure or behavioral analysis. Unknown formats and external helpers can require explicit source requests.
+
+The entrypoint appears first. Other members retain captured inventory order.
+Implementation bundles share the explicit source request's aggregate byte and member bounds below.
+
+`--source FILE` supplies captured UTF-8 source. Repeat the option to retrieve related members from one capture in request order.
+An explicit target selects its package-relative members.
 Without a target, the request selects a project-relative member of the captured declaration closure.
 
 It reads bytes from the selected inspection basis. With `--approved`, these can differ from the working tree.
-Absolute paths, traversal, missing members, binary text, and members above 256 KiB are refused.
+Absolute paths, traversal, duplicate selections, missing members, and binary text are refused.
+Selected source bytes share one 256 KiB allowance, with at most 128 distinct members.
+Any refused selection fails the complete source request without partial output.
+
 Markdown fences preserve literal source. Controls except LF and TAB appear as escaped code points.
-Package digests identify the captured basis, without establishing current workspace freshness.
+
+The JSON `sources` arrays pair each selected member's `sourcePath` with literal `source` text.
+For implementation bundles, `implementation.omittedMembers` counts excluded captured members.
+Package digests identify the captured basis, without establishing current workspace freshness or behavioral correctness.
 
 Graph presentation refuses views exceeding its fixed target or connection bounds. File inventories and inline values disclose their own omissions.
 The [limits reference](../reference/limits.md#inspect-application-composition) lists these fixed presentation bounds.

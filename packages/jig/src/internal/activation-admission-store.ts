@@ -78,7 +78,7 @@ import {
 import type { PrivateCapturedAttachment } from './file-input.js'
 import { requiresAuthorityApproval } from './grant-review.js'
 import { privateDomainDigest } from './identity.js'
-import { inspectionSource } from './inspection-source.js'
+import { inspectionImplementation, inspectionSources } from './inspection-source.js'
 import {
   normalizePrivateLinuxConfirmedEnforcementReceipt,
   normalizePrivateLinuxOwnerStateAllocationIdentity,
@@ -4923,8 +4923,20 @@ export async function inspectPrivateApprovedProject(
   describeTargets = false,
   onAdmission?: (digest: string, writableTargets: readonly string[]) => void,
   onCandidate?: (candidate: PrivateActivationCandidateArtifactV5) => void,
-  flowContext?: Readonly<{ target?: string; source?: string }>,
+  flowContext?: Readonly<{
+    target?: string
+    sources?: readonly string[]
+    implementation?: boolean
+  }>,
 ): Promise<JsonValue> {
+  if (
+    flowContext?.implementation &&
+    (flowContext.target === undefined || flowContext.sources !== undefined)
+  )
+    invalid(
+      'INSPECTION_SOURCE_UNAVAILABLE',
+      'implementation requires one target without explicit source members',
+    )
   let owner: StateOwner
   try {
     owner = await openStateOwner(projectRoot, false, 'read-only')
@@ -5078,9 +5090,9 @@ export async function inspectPrivateApprovedProject(
         }
         // A package can occur under several Bindings. Read selected source even when a peer was visited first.
         if (
-          flowContext.source !== undefined &&
+          (flowContext.sources !== undefined || flowContext.implementation) &&
           targets[index]!.target === flowContext.target &&
-          !Object.hasOwn(shared as object, 'source')
+          !Object.hasOwn(shared as object, 'sources')
         ) {
           const captured = await captureStoredPackage(
             descriptorChild(owner.directory, PRIVATE_PACKAGE_STORE_DIRECTORY),
@@ -5089,17 +5101,22 @@ export async function inspectPrivateApprovedProject(
           try {
             shared = {
               ...(shared as Record<string, JsonValue>),
-              ...(await inspectionSource(captured, flowContext.source)),
+              ...(flowContext.implementation
+                ? await inspectionImplementation(
+                    captured,
+                    String((shared as Record<string, JsonValue>).entrypoint),
+                  )
+                : await inspectionSources(captured, flowContext.sources!)),
             }
           } finally {
             await captured.dispose()
           }
         }
-        const { source, sourcePath, ...metadata } = shared as Record<string, JsonValue>
+        const { sources, implementation, ...metadata } = shared as Record<string, JsonValue>
         flow = {
           ...metadata,
-          ...(targets[index]!.target === flowContext.target && source !== undefined
-            ? { source, sourcePath: sourcePath! }
+          ...(targets[index]!.target === flowContext.target && sources !== undefined
+            ? { sources, ...(implementation === undefined ? {} : { implementation }) }
             : {}),
           settings: request.settings,
           attachments: request.attachments,
@@ -5134,8 +5151,8 @@ export async function inspectPrivateApprovedProject(
         declarations = {
           digest: captured.digest,
           files: captured.files.map((file) => ({ path: file.path, bytes: file.size })),
-          ...(flowContext.source !== undefined && flowContext.target === undefined
-            ? await inspectionSource(captured, flowContext.source)
+          ...(flowContext.sources !== undefined && flowContext.target === undefined
+            ? await inspectionSources(captured, flowContext.sources)
             : {}),
         }
       } finally {

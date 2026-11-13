@@ -60,11 +60,32 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
       authoredPaths.map((path) => readFile(join(project, path))),
     )
     const beforeApproval = await command(
-      [cli, 'inspect', '--flow', 'flow:flows/hello', '--source', 'FLOW.ts'],
+      [
+        cli,
+        'inspect',
+        '--flow',
+        'flow:flows/hello',
+        '--source',
+        'FLOW.ts',
+        '--source',
+        'FLOW.meta.json',
+      ],
       project,
     )
     expect(beforeApproval.stdout).toContain('captured working tree (unapproved)')
     expect(beforeApproval.stdout).toContain('Captured source: FLOW.ts')
+    expect(beforeApproval.stdout).toContain('Captured source: FLOW.meta.json')
+    const implementation = await command(
+      [cli, 'inspect', '--flow', 'flow:flows/hello', '--implementation', '--json'],
+      project,
+    )
+    const implementationTarget = JSON.parse(implementation.stdout).targets.find(
+      (target: any) => target.target === 'flow:flows/hello',
+    )
+    expect(
+      implementationTarget.flow.sources.some((member: any) => member.sourcePath === 'FLOW.ts'),
+    ).toBe(true)
+    expect(Number.isInteger(implementationTarget.flow.implementation.omittedMembers)).toBe(true)
     expect(existsSync(join(project, '.jig'))).toBe(false)
     expect(existsSync(join(project, 'jig.lock'))).toBe(false)
     await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
