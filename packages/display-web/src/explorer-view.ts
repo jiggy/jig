@@ -22,6 +22,7 @@ export type PrivateExplorerViewProps = {
   input: string
   inputOpen: boolean
   inputTouched: boolean
+  selectedFiles: readonly { attachment: string; filename: string; bytes: number }[]
   draftNotice: string
   scenarioName: string
   scenarioNotice: string
@@ -36,6 +37,7 @@ export type PrivateExplorerViewProps = {
   onRefreshRun: () => void
   onInput: (value: string) => void
   onInputTouched: () => void
+  onFileSelected: (attachment: string, file?: File) => void
   onScenarioName: (name: string) => void
   onScenarioDownload: () => void
   onScenarioFile: (file: File) => void
@@ -351,8 +353,41 @@ function InputPanel(props: PrivateExplorerViewProps): ComponentChildren {
                       ? 'Output captured for this run'
                       : item.bound
                         ? 'Input captured by the Binding'
-                        : 'Input files required',
+                        : 'Choose one local file for this read attachment',
                   ),
+                  item.mode === 'read' && !item.bound
+                    ? h(
+                        'div',
+                        { class: 'explorer-file-select' },
+                        h(
+                          'label',
+                          {},
+                          'Choose input for ',
+                          literal(item.name),
+                          h('input', {
+                            type: 'file',
+                            'aria-label': 'Choose file for ' + item.name,
+                            disabled: props.sending,
+                            onChange: (event: Event) => {
+                              const input = event.currentTarget as HTMLInputElement
+                              props.onFileSelected(item.name, input.files?.[0])
+                              input.value = ''
+                            },
+                          }),
+                        ),
+                        props.selectedFiles.find((file) => file.attachment === item.name)
+                          ? h(
+                              'p',
+                              { class: 'secondary' },
+                              literal(props.selectedFiles.find((file) => file.attachment === item.name)!.filename),
+                              ' · ',
+                              String(props.selectedFiles.find((file) => file.attachment === item.name)!.bytes),
+                              ' bytes',
+                              button('Remove file', () => props.onFileSelected(item.name)),
+                            )
+                          : h('p', { class: 'secondary' }, 'No local file selected'),
+                      )
+                    : null,
                 ),
               ),
             ),
@@ -380,6 +415,13 @@ function InputPanel(props: PrivateExplorerViewProps): ComponentChildren {
       launch.state === 'unavailable'
         ? h('p', { class: 'explorer-blocker', role: 'status' }, literal(launch.reason))
         : null,
+      selected.attachments.some((item) => item.mode === 'read' && !item.bound)
+        ? h(
+            'p',
+            { class: 'secondary' },
+            'Select one file per unbound read attachment. Each file may be up to 4 MiB; total 8 MiB. Only the selected bytes are sent to the local Jig host when you choose Run. Scenario files retain JSON only.',
+          )
+        : null,
       !props.runCurrent && !props.sending
         ? h('p', { class: 'secondary' }, 'Waiting for current run status before enabling Run.')
         : null,
@@ -402,7 +444,10 @@ function InputPanel(props: PrivateExplorerViewProps): ComponentChildren {
         {
           type: 'submit',
           class: 'explorer-primary',
-          disabled: !props.canLaunch || parsed.state !== 'valid',
+          disabled: !props.canLaunch || parsed.state !== 'valid' ||
+            selected.attachments.some((item) =>
+              item.mode === 'read' && !item.bound &&
+              !props.selectedFiles.some((file) => file.attachment === item.name)),
         },
         icon('play'),
         props.sending ? 'Submitting…' : 'Run workflow',
