@@ -85,7 +85,10 @@ test('project replacement rejects private fields, inconsistent identity and inve
     { ...fixture, selected: { ...selected, input: { state: 'schema', schema: false } } },
     {
       ...fixture,
-      selected: { ...selected, attachments: [{ name: 'evidence', mode: 'read', bound: false }] },
+      selected: {
+        ...selected,
+        attachments: [{ name: 'evidence', mode: 'read', bound: false }, { name: 'evidence', mode: 'read', bound: false }],
+      },
     },
     { ...fixture, selected: { ...selected, receives: [{ name: 'progress', required: true }] } },
     { ...fixture, selected: { ...selected, input: { state: 'unconstrained', schema: {} } } },
@@ -196,6 +199,39 @@ test('explicit launch intent accepts JSON values without executing or inferring 
     { ...request, requestId: 'request with spaces' },
   ])
     expect(() => validateDisplayProjectRunRequest(malformed)).toThrow(TypeError)
+})
+
+test('browser file intent is strictly bounded and accepts only canonical single-file selections', () => {
+  const request = {
+    requestId: 'chosen-file',
+    revision: 'approved-revision',
+    targetId: 'workflow',
+    input: {},
+    files: [{ attachment: 'source', filename: 'contacts.csv', base64: 'QWRh' }],
+  }
+  const accepted = validateDisplayProjectRunRequest(request)
+  expect(accepted).toEqual(request)
+  expect(Object.isFrozen(accepted.files)).toBeTrue()
+  expect(() => validateDisplayProjectSnapshot({
+    ...project(),
+    selected: {
+      ...project().selected!,
+      attachments: [{ name: 'source', mode: 'read', bound: false }],
+    },
+  })).not.toThrow()
+  for (const bad of [
+    [{ attachment: 'source', filename: '../private', base64: 'QWRh' }],
+    [{ attachment: 'source', filename: '/etc/passwd', base64: 'QWRh' }],
+    [{ attachment: 'source', filename: '.secret', base64: 'QWRh' }],
+    [{ attachment: 'source', filename: 'contacts.csv', base64: 'QWRh=' }],
+    [{ attachment: 'source', filename: 'contacts.csv', base64: 'QR==' }],
+    [{ attachment: 'source', filename: 'contacts.csv', base64: 'QWRh' },
+      { attachment: 'source', filename: 'other.csv', base64: 'QWRh' }],
+    Array.from({length: 9}, (_, index) => ({
+      attachment: 'source-' + index, filename: 'input.txt', base64: 'QQ==',
+    })),
+  ])
+    expect(() => validateDisplayProjectRunRequest({ ...request, files: bad })).toThrow(TypeError)
 })
 
 test('launch handoff only navigates to the exact capability-bound numeric loopback viewer', () => {
