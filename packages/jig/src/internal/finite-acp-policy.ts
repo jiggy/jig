@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { decodeJson1, JSON_1_LIMITS, type JsonObject, type JsonValue } from '../json.js'
 import { PrivateAcpV2Foreground, PrivateAcpV2ForegroundError } from './finite-acp-v2-foreground.js'
 import {
@@ -105,6 +106,7 @@ export class PrivateFiniteAcpPolicy {
   private updates = 0
   private textBytes = 0
   private planOutputEmitted = false
+  private piStatusMessageId: string | undefined
 
   constructor(
     configuration: PrivateFiniteAcpConfiguration = {},
@@ -248,6 +250,7 @@ export class PrivateFiniteAcpPolicy {
             fail('ACP prompt exceeds its authority or bounds')
           this.v2?.begin()
           this.planOutputEmitted = false
+          this.piStatusMessageId = undefined
           this.promptSent = true
           this.promptRpcResultReceived = false
           this.promptSettled = false
@@ -493,7 +496,21 @@ export class PrivateFiniteAcpPolicy {
           (update.sessionUpdate !== 'state_update' || update.state !== 'idle')
         )
           fail('ACP v2 update attempted to reopen a settled turn')
-        this.v2.update(update)
+        // Pinned Pi emits unaddressed retry/compaction progress chunks.
+        // Give those chunks a bounded, host-owned turn ID at the native edge;
+        // they remain counted as output and cannot authorize a replay.
+        const foregroundUpdate =
+          this.nativeClient === 'pi' &&
+          update.sessionUpdate === 'agent_message_chunk' &&
+          update.messageId === undefined &&
+          this.turnActive
+            ? {
+                ...update,
+                messageId: (this.piStatusMessageId ??= `jig-pi-status-${randomUUID()}`),
+              }
+            : update
+        this.v2.update(foregroundUpdate)
+        if (foregroundUpdate !== update) update.messageId = foregroundUpdate.messageId
         this.settleV2IfReady()
       } catch (error) {
         if (error instanceof PrivateAcpV2ForegroundError)
