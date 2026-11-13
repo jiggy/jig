@@ -22,7 +22,7 @@ Generate inspectable text into a new directory:
 
 ```sh
 node scripts/experiments/visual-flows/agent-context/experiment.mjs .tmp/context-reading
-node --test scripts/experiments/visual-flows/agent-context/*.test.mjs
+node --test scripts/experiments/visual-flows/agent-context.test.mjs
 ```
 
 ## Screening protocol

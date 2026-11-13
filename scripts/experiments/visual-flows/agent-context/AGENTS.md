@@ -26,7 +26,8 @@ Record semantic audit and protocol limitations before selecting a representation
 
 ## Verification
 
-Run `node --test scripts/experiments/visual-flows/agent-context/*.test.mjs`.
+Run `node --test scripts/experiments/visual-flows/agent-context.test.mjs`.
+The parent directory's test pattern includes these checks in ordinary tooling CI.
 Generate representations into a fresh directory with `node scripts/experiments/visual-flows/agent-context/experiment.mjs NEW_DIRECTORY`.
 Run the opt-in provider screening with `node scripts/experiments/visual-flows/agent-context/run.mjs NEW_DIRECTORY`.
 

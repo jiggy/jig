@@ -12,7 +12,7 @@ import {
   directory,
   score,
   expected,
-} from './experiment.mjs'
+} from './agent-context/experiment.mjs'
 
 test('all representations preserve every audited fact and source reference once', async () => {
   const packet = await loadPacket()
