@@ -102,16 +102,20 @@ The operator supplies explicit JSON input, including valid scalar values.
 The editor must not invent required values or silently remove duplicate object members.
 One launch envelope, including its selection and request identity, allows 16 MiB.
 Ordinary JSON and invocation-schema validation still apply before execution.
+
 Up to eight unbound read attachments may take one explicitly selected local file
 each through the browser. Each file is limited to 4 MiB and the aggregate to 8 MiB.
 Only single-component ASCII filenames containing letters, digits, dots,
 underscores, or dashes are accepted. No local paths, directory uploads, or
-arbitrary file routes are accepted. The selected bytes are captured on the
-explicit Run action, staged under a new private temporary directory, and passed
-to the ordinary installed Run through its declared `--attach` input boundary.
+arbitrary file routes are accepted.
+
+The explicit Run action captures selected bytes. The host stages them under
+a new private temporary directory, then passes them to the ordinary installed
+Run through its declared `--attach` input boundary.
 The host checks that every unbound read attachment has exactly one matching
-selection after revalidating the approved project. Bound reads cannot be
-overridden. An interface needing more than eight unbound reads remains unavailable.
+selection after revalidating the approved project.
+
+Bound reads cannot be overridden. An interface needing more than eight unbound reads remains unavailable.
 Required channels still block browser launch. Ordinary automatic output
 delivery and Binding-provided file inputs retain their existing behavior.
 
@@ -183,7 +187,9 @@ Ordinary inspector links never delegate those actions.
 Validate the parser-visible Host and canonical request origin against the exact
 numeric listener authority, without hostname aliases or forwarded-header
 substitution. For authenticated endpoints, present Origin must match exactly. Close requires explicit exact
-Origin. Present fetch-site metadata must be same-origin. No permissive CORS,
+Origin.
+
+Present fetch-site metadata must be same-origin. No permissive CORS,
 preflight exception or authentication fallback exists. Duplicate Host values,
 malformed routes, unsupported queries, unsupported uploaded bodies and unknown
 artifacts fail closed. Only the authenticated explicit explorer launch accepts
@@ -199,11 +205,13 @@ Explorer project reads accept only one opaque target selector.
 Run status reads accept only one optional request identity, distinct from the global current state.
 Launch and Close require an explicit exact Origin and the project control capability.
 Launch accepts one bounded JSON body with a ten-second read allowance and one active submission.
+
 Its optional files field contains only the selected attachment names, safe
 filenames, and canonical base64 bytes. No filename or JSON member grants
 filesystem access. Browser file selections are tab-only and are not stored
 in named scenarios. The browser cannot select root directories or read other
 local files. An uncertain POST is never replayed.
+
 Compressed bodies and malformed JSON are refused before dispatch.
 The explorer retains at most eight ordinary requests and two project responses, without a waiting queue.
 
