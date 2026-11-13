@@ -207,9 +207,12 @@ jobs:
       actions: "read"
     env:
       JIG_MACOS_TEST_PLAN: "${{ github.event_name == 'pull_request' && 'pull-request' || 'complete' }}"
+    # Reserve one matrix slot for the Ubuntu guard and two for native Macs.
+    # Queue the remaining workers rather than starving hosted Mac capacity.
+    # A failed worker still fails qualification; do not cancel unstarted peers.
     strategy:
-      fail-fast: "${{ github.event_name == 'pull_request' }}"
-      max-parallel: 6
+      fail-fast: false
+      max-parallel: 3
       matrix: "${{ fromJSON(needs.scope.outputs.workers) }}"
     steps:
       -
