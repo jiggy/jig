@@ -78,7 +78,6 @@ import {
 import type { PrivateCapturedAttachment } from './file-input.js'
 import { requiresAuthorityApproval } from './grant-review.js'
 import { privateDomainDigest } from './identity.js'
-import { PRIVATE_FLOW_CONTEXT_LIMITS } from './inspection-policy.js'
 import { inspectionSource } from './inspection-source.js'
 import {
   normalizePrivateLinuxConfirmedEnforcementReceipt,

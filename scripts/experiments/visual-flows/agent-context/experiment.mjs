@@ -112,9 +112,70 @@ export const expected = {
   caller: 'resolve',
   guard: 'yes',
 }
+export function decodeScreeningResponse(raw) {
+  const answer = JSON.parse(raw.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, ''))
+  const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
+  const schemaValid =
+    object(answer) &&
+    object(answer.answers) &&
+    object(answer.edit) &&
+    ['file', 'old', 'new'].every((key) => typeof answer.edit[key] === 'string') &&
+    typeof answer.rationale === 'string'
+  return { answer, schemaValid }
+}
+
+/** Preserve bounded provider protocol evidence, screening every configured credential. */
+export async function screeningResponseBody(response, secrets) {
+  const limit = 65536
+  const reader = response.body?.getReader()
+  const chunks = []
+  let bytes = 0,
+    truncated = false,
+    readFailed = false
+  try {
+    if (reader)
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const count = Math.min(limit - bytes, value.byteLength)
+        chunks.push(value.subarray(0, count))
+        bytes += count
+        if (bytes === limit) {
+          truncated = true
+          break
+        }
+      }
+  } catch {
+    readFailed = true
+  } finally {
+    if (reader) {
+      await reader.cancel().catch(() => {})
+      reader.releaseLock()
+    }
+  }
+  let body = Buffer.concat(chunks).toString('utf8')
+  for (const secret of secrets.filter((value) => typeof value === 'string' && value.length))
+    for (const spelling of [
+      secret,
+      encodeURIComponent(secret),
+      Buffer.from(secret).toString('base64'),
+    ])
+      body = body.replaceAll(spelling, '[redacted]')
+  body = body.replace(
+    /("(?:api[_-]?key|authorization|access[_-]?token|refresh[_-]?token|password|secret)"\s*:\s*)"(?:[^"\\]|\\.)*"/gi,
+    '$1"[redacted]"',
+  )
+  body = body.replace(/Bearer\s+[^\s"\\]+/gi, 'Bearer [redacted]')
+  return {
+    rawHttpBody: body.slice(0, limit),
+    bodyTruncated: truncated || body.length > limit,
+    bodyReadFailed: readFailed,
+  }
+}
+
 export function score(answer) {
   return Object.fromEntries(
-    Object.entries(expected).map(([id, value]) => [id, answer.answers?.[id] === value]),
+    Object.entries(expected).map(([id, value]) => [id, answer?.answers?.[id] === value]),
   )
 }
 export function applyEdit(source, edit) {

@@ -10,6 +10,8 @@ import {
   arms,
   questions,
   score,
+  decodeScreeningResponse,
+  screeningResponseBody,
   applyEdit,
   repository,
   digest,
@@ -99,16 +101,24 @@ for (let repetition = 0; repetition < 2; repetition++) {
           }),
           signal: AbortSignal.timeout(60000),
         })
-        if (!http.ok) {
-          results.push({
-            attempt: true,
-            provider: provider.name,
-            model: provider.model,
-            status: http.status,
-          })
+        const body = await screeningResponseBody(
+          http,
+          candidates.map((candidate) => candidate.key),
+        )
+        results.push({
+          attempt: true,
+          arm,
+          repetition,
+          promptSha256: row.promptSha256,
+          provider: provider.name,
+          requestedModel: provider.model,
+          status: http.status,
+          ...body,
+        })
+        if (!http.ok || body.bodyTruncated || body.bodyReadFailed) {
           continue
         }
-        response = await http.json()
+        response = JSON.parse(body.rawHttpBody)
         row.elapsedMs = Math.round(performance.now() - start)
         row.provider = provider.name
         row.requestedModel = provider.model
@@ -126,12 +136,13 @@ for (let repetition = 0; repetition < 2; repetition++) {
       row.finishReason = response.choices?.[0]?.finish_reason
       row.usage = response.usage
       row.raw = response.choices?.[0]?.message?.content ?? ''
+      row.schemaValid = false
       try {
-        const answer = JSON.parse(row.raw.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, ''))
-        if (!answer.answers || typeof answer.answers !== 'object')
-          throw Error('Missing answers object')
+        const { answer, schemaValid } = decodeScreeningResponse(row.raw)
+        row.schemaValid = schemaValid
         row.scores = score(answer)
         row.correct = Object.values(row.scores).filter(Boolean).length
+        if (!row.schemaValid) throw Error('Invalid response schema')
         const changed = applyEdit(policy, answer.edit)
         const temporary = await mkdtemp(path.join(tmpdir(), 'jig-context-policy-'))
         try {

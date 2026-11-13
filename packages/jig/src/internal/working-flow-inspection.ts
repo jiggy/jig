@@ -36,7 +36,7 @@ export async function inspectWorkingFlow(
   let authoring: Awaited<ReturnType<typeof captureProjectAuthoring>> | undefined
   let metadata: Awaited<ReturnType<typeof captureOpenedPackageDirectory>> | undefined
   let flows: Awaited<ReturnType<typeof captureOpenedFlowSource>> | undefined
-  const dependencies: CapturedFlowMember[] = []
+  const dependencies: (CapturedFlowMember & { installedVersion: string | null })[] = []
   let operationFailure: unknown
   try {
     signal?.throwIfAborted()
@@ -160,6 +160,18 @@ export async function inspectWorkingFlow(
         state: 'unreviewed',
         flow: {
           digest: member.captured.digest,
+          ...(dependencies.find(
+            (dependency) => dependency.provenance.projectPath === request.packagePath,
+          )
+            ? {
+                installedDependency: {
+                  version: dependencies.find(
+                    (dependency) => dependency.provenance.projectPath === request.packagePath,
+                  )!.installedVersion,
+                  agreement: 'unchecked',
+                },
+              }
+            : {}),
           description: inspected.metadata.description ?? '',
           entrypoint: inspected.entrypoint!.path,
           contract: (inspected.contract?.descriptor ?? null) as JsonValue,
@@ -258,7 +270,7 @@ async function captureInstalledFlow(
   project: string,
   selected: string,
   declarations: Record<string, unknown>,
-): Promise<CapturedFlowMember> {
+): Promise<CapturedFlowMember & { installedVersion: string | null }> {
   const name = npmPackageName(selected)
   if (typeof declarations[name] !== 'string')
     invalid(
@@ -306,7 +318,12 @@ async function captureInstalledFlow(
         await opened.verify()
         if ((await realpath(candidate)) !== location)
           invalid('PROJECT_SOURCE_CHANGED', 'installed dependency changed during capture', selected)
-        return { provenance: { membership: 'exact', projectPath: selected }, captured, inspected }
+        return {
+          provenance: { membership: 'exact', projectPath: selected },
+          captured,
+          inspected,
+          installedVersion: typeof metadata.version === 'string' ? metadata.version : null,
+        }
       } catch (error) {
         await captured.dispose()
         throw error

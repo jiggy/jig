@@ -125,6 +125,11 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
       `Captured package digest: ${markdown(String(flow.digest))}. Entrypoint: ${markdown(String(flow.entrypoint))}.`,
       '',
     )
+    if (flow.installedDependency !== undefined)
+      lines.push(
+        `Local installed dependency: ${literal(record(flow.installedDependency).version)}. Agreement with the manifest request and lock is unchecked.`,
+        '',
+      )
     const peers = targets.filter((t) => t.target !== item.target && t.package === item.package)
     if (peers.length)
       lines.push(

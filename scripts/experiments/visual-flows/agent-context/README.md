@@ -40,7 +40,8 @@ node scripts/experiments/visual-flows/agent-context/run.mjs .tmp/context-screen
 The runner prefers direct Mistral, then the configured Google and Mistral BYOK identifiers, then OpenRouter's shared free pool.
 The selected endpoint and returned model remain recorded for each request.
 Each request has a 60-second deadline and a bounded completion budget.
-The runner writes exact prompts, raw responses, usage, durations, failures, and scores into the selected directory.
+The runner writes exact prompts, bounded credential-screened HTTP bodies, model responses, usage, durations, failures, and scores into the selected directory.
+Summary output separates schema validity, answer omissions, and edit results, and discloses provider/model identities per sample.
 Use `node scripts/experiments/visual-flows/agent-context/summarize.mjs RECEIPT_DIRECTORY` to report wrong and omitted answers separately.
 Existing destinations refuse reuse.
 

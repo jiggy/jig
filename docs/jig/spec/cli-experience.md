@@ -911,6 +911,8 @@ The current entrypoint selects the default root when present. Otherwise, the vie
 Inspection uses the ordinary linker without qualifying execution or retaining approval.
 Declared Binding file ports are validated without opening their input data.
 Declared `npm:` Flows use already installed local packages through ordinary `node_modules` ancestry.
+Their installed versions are identified. Agreement with manifest version requests and locks remains unchecked.
+
 Inspection never installs dependencies, invokes methods or providers, prepares evaluation recipes, generates contracts, updates `jig.lock`, or writes project state.
 Missing dependencies and invalid declarations fail with source diagnostics. They never substitute approved bytes.
 

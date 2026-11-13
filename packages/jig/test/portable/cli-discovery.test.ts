@@ -525,7 +525,11 @@ test('flow context separates retained unavailability from a matching environment
         package: 'work',
         state: 'environment-matches',
         availability: { state: 'unavailable', code: 'RUNTIME_UNAVAILABLE' },
-        flow: { routes: [], files: [] },
+        flow: {
+          routes: [],
+          files: [],
+          installedDependency: { version: '1.0.0', agreement: 'unchecked' },
+        },
       },
     ],
   })
@@ -613,12 +617,17 @@ test('working-tree flow inspection requires the contained evaluator while approv
         target: 'flow:flows/work',
         package: 'flows/work',
         state: 'unreviewed',
-        flow: { routes: [], files: [] },
+        flow: {
+          routes: [],
+          files: [],
+          installedDependency: { version: '1.0.0', agreement: 'unchecked' },
+        },
       },
     ],
   }
   const output = renderFlowContext(snapshot)
   expect(output).toContain('captured working tree (unapproved)')
+  expect(output).toContain('Agreement with the manifest request and lock is unchecked')
   expect(output).toContain('flow:flows/work')
   expect(output).not.toContain('Approved availability')
   expect(output).not.toContain('No locally approved revision')
