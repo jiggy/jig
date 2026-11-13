@@ -9,7 +9,8 @@ Teach practical applications built from code and Agent methods.
 Task guides own composition, Agent setup, dependencies, effects, files,
 conversations, progress, project design, collaboration, and result interpretation.
 `results.md` explains live application maps alongside observed calls, without implying sequence, branch evaluation, or saved invocation history.
-It also owns the pre-run explorer guide, explicit input and launch steps, supported interfaces, and separate Close meanings.
+It also owns the pre-run explorer guide, explicit input, bounded file
+selection and launch steps, supported interfaces, and separate Close meanings.
 `../reference/troubleshooting.md` owns operational diagnosis and recovery procedures.
 
 ## Local Contracts
