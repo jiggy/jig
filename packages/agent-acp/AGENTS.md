@@ -71,6 +71,10 @@ host retains credential, process, and dispatch authority.
   check as the next step, without prescribing a repair. Unknown causes remain
   unavailable. No raw strings or extra fields acquire the explanation.
 
+  Preserve that validated diagnostic when host settlement confirms an
+  `EXECUTION_FAILED` with unforwarded work and confirmed cleanup. Retain the
+  host's code and details. Cancellation, deadline and uncertainty take precedence.
+
   The report does not diagnose sandbox policy, authentication, remote dispatch,
   cleanup or permission to retry.
 - Optional conversational mode owns bounded direct commands/replies and per-turn

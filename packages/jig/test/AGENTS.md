@@ -84,6 +84,12 @@ These cases establish native protocol behavior, not live provider availability o
 The Linux example shard exercises the selected gateway through genuine Codex 0.166.0 and the installed public packages.
 Live API qualification independently requires all selected native clients against the exact candidate.
 
+`host/root-agent-native-diagnostics.test.ts` runs the packed public ACP method
+through real admission, a controlled ACP subprocess, host fencing and cleanup.
+It preserves safe request diagnostics alongside host settlement and rejects raw
+native text. The operator-selected protocol producer does not qualify Codex
+installation, authentication or inference.
+
 `portable/codex-agent-provider.test.ts` checks canonical credential projection with optional native token metadata and unchanged source bytes.
 It retains required-field, unknown-field, file, expiry, account and strict private-projection refusals using synthetic credentials.
 The Linux provider suite checks that unsupported layouts preserve their closed diagnostic through ordinary resource selection.

@@ -6,8 +6,8 @@ import {
   mkdir,
   mkdtemp,
   readdir,
-  realpath,
   readFile,
+  realpath,
   rename,
   rm,
   stat,
@@ -36,9 +36,9 @@ import {
   cancelPrivateAttempt,
   capturePrivateActivationPlanningBase,
   claimPrivateNativeSession,
-  discardClaimedPrivateNativeSession,
   closePrivateRootChildOwner,
   closePrivateRootExecution,
+  discardClaimedPrivateNativeSession,
   initializePrivateActivationState,
   inspectPrivateApprovedProject,
   inspectPrivateAttempt,
@@ -1228,6 +1228,117 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
+  test('terminal storage reclaims crashed project-session claims without deleting unclaimed history', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const origin = await prepareNativeSessionParent(fixture, coordinator, 'claim-origin')
+      const access = { projectRoot: fixture.root, scopeDigest: digest('a') }
+      const receipts = []
+      for (let index = 0; index < 16; index++)
+        receipts.push(
+          (await savePrivateNativeSession({
+            ...access,
+            coordinator,
+            parentRunId: origin,
+            ...nativeSession(),
+            bytes: Buffer.from('{}\n'),
+          }))!,
+        )
+      const consuming = await prepareNativeSessionParent(fixture, coordinator, 'claim-consumer')
+      const snapshot = await claimPrivateNativeSession({
+        ...access,
+        coordinator,
+        parentRunId: consuming,
+        reference: receipts[0]!.reference,
+      })
+      expect(snapshot?.lifetime).toBe('project')
+      const claimed = openSqlite(fixture.database, 'readonly')
+      try {
+        expect(
+          claimed
+            .query('SELECT root_run_id FROM native_sessions WHERE reference = ?1')
+            .get(receipts[0]!.reference).root_run_id,
+        ).toBe(consuming)
+      } finally {
+        claimed.close(true)
+      }
+      await coordinator.dispose()
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      // This checks durable packet ordering and row ownership only. These
+      // checkpoints establish no native process, fencing or cleanup evidence.
+      const terminal = {
+        status: 'lost',
+        code: 'COORDINATOR_LOST',
+        message: 'prior owner lost',
+      } as const
+      await checkpoint(fixture, coordinator, consuming, 'provisional', terminal)
+      await expect(
+        closePrivateRootExecution({
+          coordinator,
+          projectRoot: fixture.root,
+          runId: consuming,
+          terminal,
+        }),
+      ).rejects.toBeDefined()
+      await checkpoint(fixture, coordinator, consuming, 'fence', { populated: false })
+      await checkpoint(fixture, coordinator, consuming, 'release', { released: true })
+      await checkpoint(fixture, coordinator, consuming, 'admitted', terminal)
+      await closePrivateRootExecution({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: consuming,
+        terminal,
+      })
+      const next = await prepareNativeSessionParent(fixture, coordinator, 'claim-successor')
+      expect(
+        await claimPrivateNativeSession({
+          ...access,
+          coordinator,
+          parentRunId: next,
+          reference: receipts[0]!.reference,
+        }),
+      ).toBeUndefined()
+      expect(
+        await savePrivateNativeSession({
+          ...access,
+          coordinator,
+          parentRunId: next,
+          ...nativeSession(),
+          bytes: Buffer.from('{}\n'),
+        }),
+      ).toBeDefined()
+      const retained = await claimPrivateNativeSession({
+        ...access,
+        coordinator,
+        parentRunId: next,
+        reference: receipts[1]!.reference,
+      })
+      expect(retained?.lifetime).toBe('project')
+      await releaseClaimedPrivateNativeSession({
+        ...access,
+        coordinator,
+        parentRunId: next,
+        snapshot: retained!,
+      })
+      const released = openSqlite(fixture.database, 'readonly')
+      try {
+        expect(
+          released
+            .query('SELECT root_run_id FROM native_sessions WHERE reference = ?1')
+            .get(receipts[1]!.reference).root_run_id,
+        ).toBeNull()
+        expect(released.query('SELECT count(*) AS count FROM native_sessions').get().count).toBe(16)
+      } finally {
+        released.close(true)
+      }
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
   test('Run-owned session rows are claimable only by their active root and deleted by terminal storage', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
@@ -1481,25 +1592,39 @@ describe.serial('direct alpha activation store', () => {
     try {
       await admit(fixture)
       coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
-      const parentRunId = await prepareNativeSessionParent(fixture, coordinator, 'capacity-reservation')
-      const access = { coordinator, projectRoot: fixture.root, parentRunId, scopeDigest: digest('a') }
+      const parentRunId = await prepareNativeSessionParent(
+        fixture,
+        coordinator,
+        'capacity-reservation',
+      )
+      const access = {
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId,
+        scopeDigest: digest('a'),
+      }
       const receipts = []
       for (let i = 0; i < 16; i++) {
         const receipt = await savePrivateNativeSession({
           ...access,
           ...nativeSession(),
-          bytes: Buffer.from(`{\"index\":${i}}\n`),
+          bytes: Buffer.from(`{"index":${i}}\n`),
         })
         expect(receipt).toBeDefined()
         receipts.push(receipt!)
       }
-      const claimed = (await claimPrivateNativeSession({ ...access, reference: receipts[0]!.reference }))!
-      expect(claimed).toBeDefined()
-      expect(await savePrivateNativeSession({
+      const claimed = (await claimPrivateNativeSession({
         ...access,
-        ...nativeSession(),
-        bytes: Buffer.from('{}\n'),
-      })).toBeUndefined()
+        reference: receipts[0]!.reference,
+      }))!
+      expect(claimed).toBeDefined()
+      expect(
+        await savePrivateNativeSession({
+          ...access,
+          ...nativeSession(),
+          bytes: Buffer.from('{}\n'),
+        }),
+      ).toBeUndefined()
       await releaseClaimedPrivateNativeSession({ ...access, snapshot: claimed })
       const database = openSqlite(fixture.database, 'readonly')
       try {
@@ -1507,14 +1632,19 @@ describe.serial('direct alpha activation store', () => {
       } finally {
         database.close(true)
       }
-      const reclaimed = await claimPrivateNativeSession({ ...access, reference: receipts[0]!.reference })
+      const reclaimed = await claimPrivateNativeSession({
+        ...access,
+        reference: receipts[0]!.reference,
+      })
       expect(reclaimed).toBeDefined()
       await discardClaimedPrivateNativeSession({ ...access, snapshot: reclaimed! })
-      expect(await savePrivateNativeSession({
-        ...access,
-        ...nativeSession(),
-        bytes: Buffer.from('{}\n'),
-      })).toBeDefined()
+      expect(
+        await savePrivateNativeSession({
+          ...access,
+          ...nativeSession(),
+          bytes: Buffer.from('{}\n'),
+        }),
+      ).toBeDefined()
     } finally {
       await coordinator?.dispose()
       await fixture.dispose()

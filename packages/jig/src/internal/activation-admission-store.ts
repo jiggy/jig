@@ -2148,10 +2148,12 @@ export async function claimPrivateNativeSession(
     } catch {
       corrupt('stored native session differs from its bounded identity')
     }
+    // Root terminal recovery must reclaim even project-lifetime claims. Keep
+    // the original lifetime in the returned snapshot for a safe release.
     const reserved = runFinalized(
       database,
-      'UPDATE native_sessions SET scope_digest = ?3 WHERE reference = ?1 AND scope_digest = ?2',
-      [reference, scopeDigest, `${NATIVE_SESSION_CLAIM_PREFIX}${scopeDigest}`],
+      'UPDATE native_sessions SET scope_digest = ?3, root_run_id = ?4 WHERE reference = ?1 AND scope_digest = ?2',
+      [reference, scopeDigest, `${NATIVE_SESSION_CLAIM_PREFIX}${scopeDigest}`, input.parentRunId],
     )
     if (reserved.changes !== 1) corrupt('native session claim did not reserve its reference')
     return Object.freeze({
@@ -2176,8 +2178,14 @@ export async function releaseClaimedPrivateNativeSession(
       return
     const restored = runFinalized(
       database,
-      'UPDATE native_sessions SET scope_digest = ?2 WHERE reference = ?1 AND scope_digest = ?3 AND (root_run_id IS NULL OR root_run_id = ?4)',
-      [snapshot.reference, scopeDigest, `${NATIVE_SESSION_CLAIM_PREFIX}${scopeDigest}`, input.parentRunId],
+      'UPDATE native_sessions SET scope_digest = ?2, root_run_id = ?5 WHERE reference = ?1 AND scope_digest = ?3 AND root_run_id = ?4',
+      [
+        snapshot.reference,
+        scopeDigest,
+        `${NATIVE_SESSION_CLAIM_PREFIX}${scopeDigest}`,
+        input.parentRunId,
+        snapshot.lifetime === 'project' ? null : input.parentRunId,
+      ],
     )
     if (restored.changes !== 1) corrupt('native session claim cannot be restored')
   })
@@ -2191,7 +2199,7 @@ export async function discardClaimedPrivateNativeSession(
   await accessNativeSessions(input, (database, now) => {
     const discarded = runFinalized(
       database,
-      'DELETE FROM native_sessions WHERE reference = ?1 AND scope_digest = ?2 AND (root_run_id IS NULL OR root_run_id = ?3)',
+      'DELETE FROM native_sessions WHERE reference = ?1 AND scope_digest = ?2 AND root_run_id = ?3',
       [snapshot.reference, `${NATIVE_SESSION_CLAIM_PREFIX}${scopeDigest}`, input.parentRunId],
     )
     // Expiration removes the reservation at the start of accessNativeSessions.

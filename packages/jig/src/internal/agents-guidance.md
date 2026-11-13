@@ -17,7 +17,11 @@ These links locate module rules. All selected domain requirements still apply.
   recipient scopes. It permits at most sixteen 8 MiB UTF-8 rollouts, with
   24-hour logical expiry. Atomic single-use claims reserve their row and capacity
   until restoration or accepted native resume. Claimed rows cannot be claimed again.
-  Successful resume discards the reservation. Failed startup restores its original scope.
+
+  Claims atomically bind to the consuming root, including project-lifetime
+  snapshots. Successful resume discards the reservation. Failed startup restores
+  its original scope and lifetime. Fenced root terminal recovery discards any
+  outstanding claims while preserving unclaimed project-lifetime history.
 
   Access requires the current coordinator and an active prepared root Run. Run-scoped
   snapshots additionally bind to that root. Successors inherit their lifetime.
