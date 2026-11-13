@@ -89,7 +89,7 @@ test('browser launch limitations follow the retained interface without hiding th
   const cases: readonly [Record<string, JsonValue>, string][] = [
     [{ availability: { state: 'unavailable' } }, 'reviewed as unavailable'],
     [{ contract: { input: false } }, 'no input value'],
-    [{ attachments: { evidence: 'read' } }, 'local input files'],
+    [{ attachments: Object.fromEntries(Array.from({ length: 9 }, (_, index) => ['input-' + index, 'read'])) }, 'more than eight unbound read attachments'],
     [
       { contract: { channels: { requests: { direction: 'receive', required: true } } } },
       'incoming channel',
@@ -106,6 +106,13 @@ test('browser launch limitations follow the retained interface without hiding th
     if (result.selected!.launch.state !== 'unavailable') throw new Error('Expected launch refusal')
     expect(result.selected!.launch.reason).toContain(cause)
   }
+  const fileReady = projectPrivateProjectSnapshot(source({
+    attachments: { evidence: 'read' },
+  }), identity)
+  expect(fileReady.selected!.launch.state).toBe('available')
+  expect(fileReady.selected!.attachments).toEqual([
+    { name: 'evidence', mode: 'read', bound: false },
+  ])
   const supported = projectPrivateProjectSnapshot(
     source({
       contract: { channels: { progress: { direction: 'send', required: false } } },
