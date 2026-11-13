@@ -3,6 +3,7 @@ import {
   DISPLAY_COMPOSITION_BYTE_LIMIT,
   DISPLAY_COMPOSITION_EDGE_LIMIT,
   DISPLAY_COMPOSITION_NODE_LIMIT,
+  DISPLAY_EXPLORER_FILE_COUNT,
   type DisplayComposition,
   type DisplayCompositionNode,
   type DisplayProjectInput,
@@ -65,6 +66,7 @@ export type PrivateProjectProjectionSource = Readonly<{
 export type PrivateProjectSelection = Readonly<{
   target: RunTargetIdentity
   approval: string
+  unboundRead: readonly string[]
 }>
 
 type ProjectIdentity = (kind: string, ...parts: string[]) => string
@@ -112,9 +114,9 @@ function interfaceProjection(
     reason = 'This workflow was reviewed as unavailable. Correct its setup, then run jig review.'
   else if (contract.input === false)
     reason = 'This workflow declares that no input value is accepted.'
-  else if (attachments.some((attachment) => attachment.mode === 'read' && !attachment.bound))
-    reason =
-      'This workflow needs local input files. Run it with jig run --attach, or review a Binding that supplies those files.'
+  else if (attachments.filter((attachment) => attachment.mode === 'read' && !attachment.bound).length >
+    DISPLAY_EXPLORER_FILE_COUNT)
+    reason = 'This workflow needs more than eight unbound read attachments. Use jig run --attach or a Binding.'
   else if (channels.some((channel) => channel.direction === 'receive' && channel.required))
     reason =
       'This workflow needs an incoming channel. Invoke it from a Flow that connects that channel.'
@@ -281,7 +283,12 @@ export class PrivateProjectProjection {
           : `Input does not match the reviewed schema. ${mismatch} Correct the input and try again.`,
       )
     }
-    return result.selection
+    return {
+      ...result.selection,
+      unboundRead: result.snapshot.selected!.attachments
+        .filter((attachment) => attachment.mode === 'read' && !attachment.bound)
+        .map((attachment) => attachment.name),
+    }
   }
 
   async #read(
