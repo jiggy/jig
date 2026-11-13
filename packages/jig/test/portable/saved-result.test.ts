@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { validateReportingMessage } from '@jigging/reporting'
 import { privateCliRequiresHost, privateCliRecordedResultComparison, privateCliSavedResultInspection } from '../../src/cli.js'
-import { privateCompareSavedResults } from '../../src/cli-saved-result-comparison.js'
+import { privateCompareSavedResults, privateSavedComparisonPlain } from '../../src/cli-saved-result-comparison.js'
 import { PrivateCliProgress } from '../../src/cli-progress.js'
 import { PrivateRunModel } from '../../src/cli-run-model.js'
 import {
@@ -134,12 +134,19 @@ test('saved comparison reads two packets without a project, reports exact values
       ['same.txt', 'unchanged-verified'],
     ])
     expect(result.files).toMatchObject({ unchanged: 1, changed: 3, unverified: 0 })
-    const human = await compare(before, after)
-    expect(human.code, human.stderr).toBe(0)
-    expect(human.stdout).toContain('Recorded result comparison')
-    expect(human.stdout).toContain('changed "/output/rows/0/score"')
-    expect(human.stdout).toContain('unchanged-verified "same.txt"')
-    expect(human.stdout).not.toContain('runId')
+    // Redirected stdout deliberately stays machine JSON. Check the human presenter directly.
+    const first = await privateCaptureSavedResult(before)
+    const second = await privateCaptureSavedResult(after)
+    try {
+      const human = privateSavedComparisonPlain(privateCompareSavedResults(first, second))
+      expect(human).toContain('Recorded result comparison')
+      expect(human).toContain('changed "/output/rows/0/score"')
+      expect(human).toContain('unchanged-verified "same.txt"')
+      expect(human).not.toContain('runId')
+    } finally {
+      second.close()
+      first.close()
+    }
   }))
 
 test('saved comparison never calls unverified recorded file digests unchanged', async () =>
