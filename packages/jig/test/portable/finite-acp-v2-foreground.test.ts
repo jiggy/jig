@@ -144,6 +144,34 @@ describe('ACP v2 foreground completion authority', () => {
     expect(() => turn.accept({ messageId: 'u' })).toThrow('reused')
   })
 
+  test('whole-message byte budget remains cumulative when foreground evidence resets', () => {
+    const turn = new PrivateAcpV2Foreground()
+    const text = 'x'.repeat(5 * 1_048_576)
+    turn.begin()
+    turn.accept({ messageId: 'first-user' })
+    turn.update(user('first-user'))
+    turn.update(running)
+    turn.update({
+      sessionUpdate: 'agent_message',
+      messageId: 'first-answer',
+      content: [{ type: 'text', text }],
+    })
+    turn.update(idle('end_turn'))
+    expect(turn.settle().text).toHaveLength(text.length)
+    turn.begin()
+    expect(turn.hasOutput).toBeFalse()
+    turn.accept({ messageId: 'second-user' })
+    turn.update(user('second-user'))
+    turn.update(running)
+    expect(() =>
+      turn.update({
+        sessionUpdate: 'agent_message',
+        messageId: 'second-answer',
+        content: [{ type: 'text', text }],
+      }),
+    ).toThrow('text capacity exceeded')
+  })
+
   test('unknown completion reasons, nontext patches and excessive cumulative output fail closed', () => {
     const turn = new PrivateAcpV2Foreground()
     turn.begin()
