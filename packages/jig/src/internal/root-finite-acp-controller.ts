@@ -18,6 +18,7 @@ import { PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 import {
   allocatePrivateRootChildOwner,
   claimPrivateNativeSession,
+  discardClaimedPrivateNativeSession,
   closePrivateRootChildOwner,
   listPrivateRootChildOwners,
   type PrivateNativeSessionSnapshot,
@@ -489,6 +490,18 @@ async function executeOwnedProvider(
     await privateProfileSpan('finite-acp-release', () =>
       releaseKnownAcp(input, lifecycle, completedExecution.fence),
     )
+    if (restored !== undefined) {
+      const access = {
+        coordinator: input.coordinator,
+        projectRoot: input.projectRoot,
+        parentRunId: input.parent.run.runId,
+        scopeDigest,
+        snapshot: restored,
+      }
+      if (!resumeAccepted && execution.sessionId === undefined)
+        await releaseClaimedPrivateNativeSession(access)
+      else await discardClaimedPrivateNativeSession(access)
+    }
   } catch (error) {
     reportFailure(input, failurePhase, error)
     let cleanupRecovered = false
@@ -512,14 +525,27 @@ async function executeOwnedProvider(
         },
       )
     }
-    if (restored !== undefined && !resumeAccepted && execution?.sessionId === undefined) {
-      await releaseClaimedPrivateNativeSession({
+    if (restored !== undefined) {
+      const access = {
         coordinator: input.coordinator,
         projectRoot: input.projectRoot,
         parentRunId: input.parent.run.runId,
         scopeDigest,
         snapshot: restored,
-      }).catch(() => undefined)
+      }
+      try {
+        if (!resumeAccepted && execution?.sessionId === undefined)
+          await releaseClaimedPrivateNativeSession(access)
+        else await discardClaimedPrivateNativeSession(access)
+      } catch (restoreError) {
+        reportFailure(input, 'cleanup', restoreError)
+        throw new RunHostFatalOperationError('UNCERTAIN', {
+          cause: new AggregateError(
+            [error, restoreError],
+            'finite ACP execution and session-claim cleanup failed',
+          ),
+        })
+      }
     }
     if (error instanceof RunHostFatalOperationError) throw error
     return privateFiniteAcpFailureTerminal({
