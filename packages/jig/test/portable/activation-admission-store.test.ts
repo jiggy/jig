@@ -6,6 +6,7 @@ import {
   mkdir,
   mkdtemp,
   readdir,
+  realpath,
   readFile,
   rename,
   rm,
