@@ -1,5 +1,5 @@
 diff --git a/dist/index.js b/dist/index.js
-index b8cc7b7a..12c34a5e 100755
+index b8cc7b7a..10b928f9 100755
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -3741,7 +3741,7 @@ var CLIENT_METHODS = {
@@ -176,7 +176,7 @@ index b8cc7b7a..12c34a5e 100755
        }
 -      return await this.awaitTurnCompleted(params.threadId, turnStarted.turn.id);
 +      const earlyCompletion = capturedCompletions.find((event) => event.turn.id === expectedTurnId);
-+      onTurnStarted?.(expectedTurnId);
++      onTurnStarted?.(expectedTurnId, earlyCompletion !== undefined);
 +      releaseCapture();
 +      if (earlyCompletion) return earlyCompletion;
 +      return await this.awaitTurnCompleted(params.threadId, expectedTurnId);
@@ -388,16 +388,26 @@ index b8cc7b7a..12c34a5e 100755
          return {
            stopReason: "end_turn",
            usage: this.buildPromptUsage(sessionState.lastTokenUsage),
-@@ -33627,11 +33744,24 @@ Check ${configPath} and project .codex directories, especially their config.toml
-             activePrompt.currentTurn = turn;
-             if (this.promptShouldStop(params.sessionId, activePrompt)) {
+@@ -33622,16 +33739,29 @@ Check ${configPath} and project .codex directories, especially their config.toml
+           disableSummary,
+           sessionState.cwd,
+           sessionState.additionalDirectories,
+-          (turnId) => {
++          (turnId, completed = false) => {
+             const turn = { threadId: params.sessionId, turnId };
+-            activePrompt.currentTurn = turn;
+-            if (this.promptShouldStop(params.sessionId, activePrompt)) {
++            activePrompt.currentTurn = completed ? null : turn;
++            if (!completed && this.promptShouldStop(params.sessionId, activePrompt)) {
                this.interruptLateStartedTurn(turn);
 +              resolveTurnStartGate();
                return;
              }
-             sessionState.currentTurnId = turnId;
-             pendingTurnStart?.resolve(turnId);
+-            sessionState.currentTurnId = turnId;
+-            pendingTurnStart?.resolve(turnId);
 -            onTurnStarted?.();
++            sessionState.currentTurnId = completed ? null : turnId;
++            pendingTurnStart?.resolve(completed ? null : turnId);
 +            const sessionConn = new ACPSessionConnection(this.connection, params.sessionId);
 +            pendingTurnStartUpdates = sessionConn.update({
 +              sessionUpdate: "user_message",

@@ -394,7 +394,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   Lane assignment does not balance load or guarantee both lanes are occupied.
   PR branches retain their cancellation groups. Their five independent workers
-  have distinct concurrency keys and never wait for another worker to start.
+  have distinct concurrency keys. At most two native workers execute concurrently.
+  Each worker receives its role without waiting for another worker to start.
 
   Each lane uses GitHub's `queue: max` to retain up to 100 pending jobs.
   GitHub cancels submissions beyond that limit, which cannot qualify publication.
@@ -439,14 +440,18 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   The Node wrapper owns the exact work deadline. The GitHub timer is a later backstop.
 
   Late, failed, cancelled or incomplete work cannot produce a passing final gate.
-  A read-only Ubuntu deadline guard shares the PR worker matrix.
-  Six matrix slots prevent waiting Mac jobs from occupying the guard's slot.
+  A separate read-only Ubuntu deadline guard runs beside the PR worker matrix.
+  Its allocation does not consume either native matrix slot.
+
   The guard requires every current-attempt worker to succeed within its assigned execution allowance.
   It polls at most once per minute and rejects excessive queues, changed assignments, and copied prior-attempt execution.
-  Its failure activates matrix fail-fast cancellation, including workers that have no runner.
+  Its failure refuses qualification through the allocator, architecture collector and final gate.
+  The monitor has no cancellation authority.
+
+  Native worker failures retain matrix fail-fast cancellation.
 
   Step summaries distinguish the Ubuntu monitor, worker assignments and aggregate proof.
-  The monitor explains its unused native steps and distinguishes worker execution limits from queue and coordination limits.
+  The monitor runs no native steps and distinguishes worker execution limits from queue and coordination limits.
   Timing summaries report original-run and current-attempt turnaround, explicitly identifying totals above the 25-minute target.
   Worker summaries identify assigned roles or unassigned surplus workers.
   The aggregate links each selected role to its executing job and reports verified file and case counts.

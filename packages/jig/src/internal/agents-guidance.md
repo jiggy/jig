@@ -15,8 +15,11 @@ These links locate module rules. All selected domain requirements still apply.
 
 - Admission storage retains private native-session snapshots under exact
   recipient scopes. It permits at most sixteen 8 MiB UTF-8 rollouts, with
-  24-hour logical expiry. Atomic single-use claims delete the payload. Access
-  requires the current coordinator and an active prepared root Run. Run-scoped
+  24-hour logical expiry. Atomic single-use claims reserve their row and capacity
+  until restoration or accepted native resume. Claimed rows cannot be claimed again.
+  Successful resume discards the reservation. Failed startup restores its original scope.
+
+  Access requires the current coordinator and an active prepared root Run. Run-scoped
   snapshots additionally bind to that root. Successors inherit their lifetime.
 
   Terminal commit atomically removes temporary state, including through

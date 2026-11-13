@@ -41,7 +41,7 @@ export function macHostWorkerMatrix(event) {
     include: [
       ...Array.from(
         { length: event === 'pull_request' ? MAC_PR_COHORT.workers : 1 },
-        (_, worker) => ({ arch: 'arm64', worker, guard: false }),
+        (_, worker) => ({ arch: 'arm64', worker }),
       ),
     ],
   }
@@ -148,7 +148,7 @@ function sameArtifact(left, right) {
 
 const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 const skippedWorkerMatrixName =
-  "matrix.guard && 'Enforce Mac PR deadline' || (github.event_name == 'pull_request' && format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) || format('Native host shard — {0} / 0', matrix.arch))"
+  "github.event_name == 'pull_request' && format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) || format('Native host shard — {0} / 0', matrix.arch)"
 
 export function macHostCohortPollDelay(lastArrival, now = Date.now()) {
   if (!Number.isSafeInteger(lastArrival) || !Number.isSafeInteger(now) || lastArrival > now)

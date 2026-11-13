@@ -94,7 +94,9 @@ the actual cancelled response and clean shutdown. The unpatched race times out.
 The correction settles normally. Additional cases deliver the native start
 notification before or after the reply, reject interruption before activation,
 and include unrelated thread/turn notifications. Completion before the start
-reply remains authoritative even without a start notification.
+reply remains authoritative even without a start notification. A concurrent cancellation
+waits for that reply without interrupting an already completed turn. Its insertion
+updates still precede terminal idle, and completion supplies the actual result.
 
 ## Removal condition
 

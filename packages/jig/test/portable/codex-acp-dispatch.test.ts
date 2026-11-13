@@ -21,6 +21,7 @@ for (const scenario of [
   'immediate-follow-up-start-before-reply',
   'immediate-follow-up-start-after-reply',
   'completion-before-reply',
+  'completion-before-reply-cancel',
   'http-status-503',
   'http-status-429',
   'http-status-invalid',
@@ -164,10 +165,23 @@ for (const scenario of [
         ).error,
       ).toBeUndefined()
       const prompt1StartIdx = notifications.length
-      const answer = await request(4, 'session/prompt', {
+      const answering = request(4, 'session/prompt', {
         sessionId,
         prompt: [{ type: 'text', text: 'Only this requested work' }],
       })
+      if (scenario === 'completion-before-reply-cancel') {
+        while (!(await readFile(recording, 'utf8')).includes('completed-before-reply'))
+          await Bun.sleep(5)
+        child.stdin.write(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'session/cancel',
+            params: { sessionId },
+          }) + '\n',
+        )
+        await child.stdin.flush()
+      }
+      const answer = await answering
       if (scenario === 'rejected') {
         expect(answer.error).toBeDefined()
       } else {
@@ -209,7 +223,7 @@ for (const scenario of [
       const exit = await child.exited
       if (
         scenario === 'completed' ||
-        scenario === 'completion-before-reply' ||
+        scenario.startsWith('completion-before-reply') ||
         scenario === 'rejected' ||
         scenario.startsWith('http-status-') ||
         scenario.startsWith('immediate-follow-up')
@@ -233,6 +247,8 @@ for (const scenario of [
         expect(interrupted).toHaveLength(1)
         expect(interrupted[0].params.turnId).toBe('turn-2')
       }
+      if (scenario === 'completion-before-reply-cancel')
+        expect(recorded.filter((record) => record.method === 'turn/interrupt')).toHaveLength(0)
       expect(started[0].params.model).toBe('fixture')
       expect(recorded.filter((record) => record.method === 'thread/start')).toHaveLength(1)
       expect(

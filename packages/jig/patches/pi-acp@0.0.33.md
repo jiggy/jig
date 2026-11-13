@@ -27,7 +27,9 @@ The patch also updates the adapter to ACP v2 (`protocolVersion: 2`) with
 `configId` configuration options, `user_message` insertion, `state_update`
 lifecycle events, assistant `messageId` correlation, suppression of
 unsolicited startup `agent_message_chunk` banners outside active turns, and
-`session/close` subprocess disposal.
+`session/close` subprocess disposal. Every assistant text chunk receives the
+current assistant message ID at emission, including retry, compaction and queue notices.
+Text deltas reuse that identity. The host requires IDs without repairing missing native fields.
 
 The original defect was reproduced with Pi 0.84.4 under Node 24.11.1 against
 a local HTTP 503 fixture: unpatched ACP returned `end_turn`; patched ACP

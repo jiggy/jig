@@ -103,44 +103,61 @@ function deniesAndCloses(policy: PrivateFiniteAcpPolicy, action: () => unknown):
 }
 
 describe('finite ACP authority policy', () => {
-  test('accepts pinned Codex/Pi id-based configuration replies at the native boundary', () => {
+  test('configuration replies require v2 configId on every native client', () => {
     for (const client of ['openai-codex', 'pi']) {
-      const policy = new PrivateFiniteAcpPolicy({
-        configuration: [{ configId: 'model', value: 'reviewed-model' }],
-        modeId: 'read-only',
-      }, client)
+      const policy = new PrivateFiniteAcpPolicy(
+        {
+          configuration: [{ configId: 'model', value: 'reviewed-model' }],
+        },
+        client,
+      )
       initialize(policy)
       policy.fromAdapter(request(2, 'session/new', { cwd: '/work', mcpServers: [] }))
       policy.fromClient(reply(2, { sessionId: 'owned-session' }))
-      policy.fromAdapter(request(3, 'session/set_config_option', {
-        sessionId: 'owned-session', configId: 'model', type: 'id', value: 'reviewed-model',
-      }))
-      expect(policy.fromClient(reply(3, {
-        configOptions: [{ id: 'model', currentValue: 'reviewed-model' }],
-      })).toAdapter).toMatchObject({ result: { configOptions: [{ configId: 'model' }] } })
-      policy.fromAdapter(request(4, 'session/set_config_option', {
-        sessionId: 'owned-session', configId: 'mode', type: 'id', value: 'read-only',
-      }))
-      expect(policy.fromClient(reply(4, {
-        configOptions: [{ id: 'mode', currentValue: 'read-only' }],
-      })).toAdapter).toMatchObject({ result: { configOptions: [{ configId: 'mode' }] } })
+      policy.fromAdapter(
+        request(3, 'session/set_config_option', {
+          sessionId: 'owned-session',
+          configId: 'model',
+          type: 'id',
+          value: 'reviewed-model',
+        }),
+      )
+      deniesAndCloses(policy, () =>
+        policy.fromClient(
+          reply(3, {
+            configOptions: [{ id: 'model', currentValue: 'reviewed-model' }],
+          }),
+        ),
+      )
     }
   })
 
   test('does not forward unvalidated state or native message metadata', () => {
     const policy = session()
-    deniesAndCloses(policy, () => policy.fromClient(update({
-      sessionUpdate: 'state_update', state: { path: '/private/native-state' },
-    })))
+    deniesAndCloses(policy, () =>
+      policy.fromClient(
+        update({
+          sessionUpdate: 'state_update',
+          state: { path: '/private/native-state' },
+        }),
+      ),
+    )
     const another = session()
     prompt(another)
-    const projection = another.fromClient(update({
-      sessionUpdate: 'agent_message', messageId: 'safe-id',
-      content: [{ type: 'text', text: 'answer', _meta: { privatePath: '/private/state' } }],
-    }))
-    expect(projection.toAdapter).toMatchObject({ params: { update: {
-      content: [{ type: 'text', text: 'answer' }],
-    } } })
+    const projection = another.fromClient(
+      update({
+        sessionUpdate: 'agent_message',
+        messageId: 'safe-id',
+        content: [{ type: 'text', text: 'answer', _meta: { privatePath: '/private/state' } }],
+      }),
+    )
+    expect(projection.toAdapter).toMatchObject({
+      params: {
+        update: {
+          content: [{ type: 'text', text: 'answer' }],
+        },
+      },
+    })
     expect(JSON.stringify(projection)).not.toContain('/private/state')
     expect(another.hasProducedTurnOutput).toBeTrue()
   })
@@ -149,30 +166,31 @@ describe('finite ACP authority policy', () => {
     const policy = session()
     prompt(policy)
     expect(policy.hasProducedTurnOutput).toBeFalse()
-    policy.fromClient(update({ sessionUpdate: 'plan', entries: [
-      { content: 'work step', priority: 'medium', status: 'pending' },
-    ] }))
+    policy.fromClient(
+      update({
+        sessionUpdate: 'plan',
+        entries: [{ content: 'work step', priority: 'medium', status: 'pending' }],
+      }),
+    )
     expect(policy.hasProducedTurnOutput).toBeTrue()
   })
 
-  test('normalizes Pi retry and compaction status chunks into stable foreground IDs', () => {
+  test('Pi chunks require native message IDs before projection', () => {
     const policy = new PrivateFiniteAcpPolicy({}, 'pi')
     initialize(policy)
     policy.fromAdapter(request(2, 'session/new', { cwd: '/work', mcpServers: [] }))
     policy.fromClient(reply(2, { sessionId: 'owned-session' }))
     prompt(policy)
-    const ids = []
-    for (const text of ['retry started', 'compaction completed']) {
-      const projected = policy.fromClient(update({
-        sessionUpdate: 'agent_message_chunk', content: { type: 'text', text },
-      }))
-      const value = projected.toAdapter?.params as { update: { messageId: string } }
-      ids.push(value.update.messageId)
-    }
-    expect(ids[0]).toBeTruthy()
-    expect(ids[1]).toBe(ids[0])
-    expect(policy.hasProducedTurnOutput).toBeTrue()
+    expect(() =>
+      policy.fromClient(
+        update({
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text: 'retry started' },
+        }),
+      ),
+    ).toThrow(PrivateFiniteAcpPolicyError)
   })
+
   const diagnostic = (severity: string) => ({
     jetbrains: {
       air: {

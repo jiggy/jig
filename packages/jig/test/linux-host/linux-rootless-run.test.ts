@@ -193,6 +193,7 @@ describe('private rootless Linux Run', () => {
       'signal',
       'pre-prompt-exit',
       'pre-prompt-v2-exit',
+      'pre-prompt-v2-rejection',
       'v2-success',
       'linger',
       'credential-text',
@@ -212,6 +213,7 @@ describe('private rootless Linux Run', () => {
             const fixture = await createFixture(
               rawFiniteAcpPeerProgram(
                 scenario === 'pre-prompt-exit' || scenario === 'pre-prompt-v2-exit',
+                scenario === 'pre-prompt-v2-rejection',
               ),
             )
             const evidence = await mkdtemp(join(tmpdir(), 'jig-acp-settlement-evidence-'))
@@ -370,6 +372,13 @@ describe('private rootless Linux Run', () => {
                   // forwarded. Host evidence must not depend on error text.
                   await expect(next()).rejects.toThrow()
                   if (scenario === 'pre-prompt-v2-exit') mark('v2-pre-prompt-fenced')
+                } else if (scenario === 'pre-prompt-v2-rejection') {
+                  expect((await next()).error).toEqual({
+                    code: -32603,
+                    message: 'Native ACP request failed',
+                  })
+                  // Request EOF must fence a still-live peer without caller cancellation.
+                  app.close(requests.send.endpoint)
                 } else {
                   expect((await next()).result).toEqual({ sessionId: 'fixture-session' })
                   await request(3, 'session/prompt', {
@@ -438,7 +447,12 @@ describe('private rootless Linux Run', () => {
               expect(fence.fenced).toBe(true)
               expect(fence.stopReason).not.toBe('deadline')
               expect(phases.filter((item) => item.phase === 'prompt-dispatched')).toHaveLength(
-                ['credential-ready', 'pre-prompt-exit', 'pre-prompt-v2-exit'].includes(scenario)
+                [
+                  'credential-ready',
+                  'pre-prompt-exit',
+                  'pre-prompt-v2-exit',
+                  'pre-prompt-v2-rejection',
+                ].includes(scenario)
                   ? 0
                   : 1,
               )
@@ -456,13 +470,21 @@ describe('private rootless Linux Run', () => {
               } else {
                 expect(settled.error).toBeDefined()
                 expect(fence.exitCode === 0 && fence.signal === null).toBe(false)
-                if (scenario === 'pre-prompt-exit' || scenario === 'pre-prompt-v2-exit') {
+                if (
+                  ['pre-prompt-exit', 'pre-prompt-v2-exit', 'pre-prompt-v2-rejection'].includes(
+                    scenario,
+                  )
+                ) {
+                  expect(abort.signal.aborted).toBe(false)
                   expect(privateFiniteAcpTaskPromptNotForwarded(settled.error)).toBe(true)
-                  expect(fence).toMatchObject({
-                    stopReason: 'payload_exit',
-                    exitCode: 17,
-                    signal: null,
-                  })
+                  if (scenario === 'pre-prompt-v2-rejection')
+                    expect(fence.stopReason).toBe('cancelled')
+                  else
+                    expect(fence).toMatchObject({
+                      stopReason: 'payload_exit',
+                      exitCode: 17,
+                      signal: null,
+                    })
                 }
                 if (scenario === 'exit') {
                   expect(privateFiniteAcpTaskPromptNotForwarded(settled.error)).toBe(false)

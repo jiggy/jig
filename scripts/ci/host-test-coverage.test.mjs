@@ -562,10 +562,7 @@ test('every required and nightly hosted Mac shard checks its exact target before
       'utf8',
     ),
   )
-  assert.equal(
-    workflow.jobs.prerequisites['runs-on'],
-    "${{ matrix.guard && 'ubuntu-24.04' || 'macos-15' }}",
-  )
+  assert.equal(workflow.jobs.prerequisites['runs-on'], 'macos-15')
   const nightly = parse(
     await readFile(
       resolve(import.meta.dirname, '../../.github/workflows/macos-intel-nightly.yml'),
@@ -579,7 +576,7 @@ test('every required and nightly hosted Mac shard checks its exact target before
     )
     assert.equal(probes.length, 1)
     const probe = probes[0]
-    assert.equal(probe.if, job === workflow.jobs.prerequisites ? '${{ !matrix.guard }}' : undefined)
+    assert.equal(probe.if, undefined)
     assert.match(probe.env.EXPECTED_ARCH, /^\$\{\{ matrix\.arch \}\}$/)
     assert.match(probe.run, /set -o pipefail/)
     assert.match(probe.run, /tee "\$RUNNER_TEMP\/mac-evidence\/prerequisites\.json"/)
@@ -642,7 +639,6 @@ test('PR roles retain native and installed ownership while complete hosts keep t
   assert.ok(job.steps.indexOf(coordinator) < job.steps.findIndex((step) => step.id === 'role'))
   const context = (event, role, count, profile = false) => ({
     github: { event_name: event },
-    matrix: { guard: false },
     inputs: { include_startup_profile: profile },
     steps: {
       role: {
@@ -714,12 +710,13 @@ test('PR roles retain native and installed ownership while complete hosts keep t
   assert.ok(executed.length >= 6)
   for (const step of [...executed, native, clients, qualifier])
     assert.equal(evaluate(step.if, surplus), false, step.name ?? step.uses)
-  for (const role of [0, 2]) {
-    const guard = { ...context('pull_request', role, 3), matrix: { guard: true } }
-    assert.equal(evaluate(coordinator.if, guard), false)
-    for (const step of [...executed, native, clients, qualifier])
-      assert.equal(evaluate(step.if, guard), false, step.name ?? step.uses)
-  }
+  const guard = workflow.jobs['pr-deadline-guard']
+  assert.equal(guard['runs-on'], 'ubuntu-24.04')
+  assert.equal(guard.strategy, undefined)
+  assert.equal(guard.steps.filter((step) => /guard-matrix/.test(step.run ?? '')).length, 1)
+  assert.ok(
+    guard.steps.every((step) => !/clang |bun install |qualify-macos-host/.test(step.run ?? '')),
+  )
   const receipt = workflow.jobs['qualified-architecture'].steps.find((step) =>
     /candidate-provenance\.mjs qualification/.test(step.run ?? ''),
   )

@@ -87,24 +87,45 @@ test('unverified main, manual, unavailable and forged PR comparisons cannot omit
 })
 
 test('always-present host gates require successful scope and exactly complete or omitted role sets', () => {
-  for (const [scope, jobs] of [
-    ['linux', ['host-artifacts', 'host-suite', 'rootless-linux']],
-    ['macos', ['host-artifacts', 'cohort-allocator', 'prerequisites', 'qualified-architecture']],
-  ]) {
-    for (const required of [true, false]) {
-      const report = { required },
-        statuses = {
+  for (const scope of ['linux', 'macos']) {
+    const jobs =
+      scope === 'linux'
+        ? ['host-artifacts', 'host-suite', 'rootless-linux']
+        : [
+            'host-artifacts',
+            'cohort-allocator',
+            'pr-deadline-guard',
+            'prerequisites',
+            'qualified-architecture',
+          ]
+    for (const event of ['pull_request', 'push', 'workflow_dispatch']) {
+      for (const required of [true, false]) {
+        const report = { required }
+        const statuses = {
           scope: 'success',
-          ...Object.fromEntries(jobs.map((job) => [job, required ? 'success' : 'skipped'])),
+          ...Object.fromEntries(
+            jobs.map((job) => [
+              job,
+              required && (job !== 'pr-deadline-guard' || event === 'pull_request')
+                ? 'success'
+                : 'skipped',
+            ]),
+          ),
         }
-      assert.equal(checkHostJobs(scope, report, statuses), report)
-      for (const job of jobs)
-        for (const state of ['failure', 'cancelled', required ? 'skipped' : 'success'])
-          assert.throws(() => checkHostJobs(scope, report, { ...statuses, [job]: state }))
-      assert.throws(() => checkHostJobs(scope, report, { ...statuses, scope: 'failure' }))
-      const missing = { ...statuses }
-      delete missing[jobs[1]]
-      assert.throws(() => checkHostJobs(scope, report, missing))
+        assert.equal(checkHostJobs(scope, report, statuses, event), report)
+        for (const job of jobs) {
+          for (const state of [
+            'failure',
+            'cancelled',
+            statuses[job] === 'success' ? 'skipped' : 'success',
+          ])
+            assert.throws(() => checkHostJobs(scope, report, { ...statuses, [job]: state }, event))
+          const missing = { ...statuses }
+          delete missing[job]
+          assert.throws(() => checkHostJobs(scope, report, missing, event))
+        }
+        assert.throws(() => checkHostJobs(scope, report, { ...statuses, scope: 'failure' }, event))
+      }
     }
   }
   assert.equal(independentHostInput('docs/flow/spec/run.md'), false)
