@@ -124,6 +124,7 @@ interface Options {
   readonly signal?: AbortSignal
   readonly emit?: (frame: Frame, send: ChannelSender, attempt: number) => Promise<boolean>
   readonly initialNativeFailure?: OperationError
+  readonly settlementFailure?: (attempt: number) => OperationError | undefined
   readonly rejectAttempt?: (call: FlowCall, attempt: number) => void
   readonly selection?: readonly { readonly slot: string; readonly operationId: string }[]
   readonly disposeFailure?: Error
@@ -290,6 +291,8 @@ function fixture(options: Options = {}) {
           }
           await frameSend(send, { jsonrpc: '2.0', id: frame.id!, result })
         }
+        const failure = options.settlementFailure?.(attempt)
+        if (failure) throw failure
         return options.result ?? completed
       } finally {
         settled = true
@@ -308,6 +311,31 @@ function fixture(options: Options = {}) {
 }
 
 describe('native request failure diagnostics', () => {
+  test('pre-prompt native RPC rejection advances only after host attests fencing', async () => {
+    const attested = new OperationError('EXECUTION_FAILED', 'native process fenced', {
+      nativePrompt: { forwarding: 'not-forwarded', cleanup: 'confirmed', turnsSettled: 0 },
+    })
+    const selected = [
+      { slot: 'native', operationId: 'native' },
+      { slot: 'backup1', operationId: 'backup1' },
+    ]
+    const f = fixture({
+      selection: selected,
+      settlementFailure: (attempt) => attempt === 0 ? attested : undefined,
+      async emit(frame, send, attempt) {
+        if (attempt !== 0 || frame.method !== 'session/new') return false
+        await f.frameSend(send, {
+          jsonrpc: '2.0', id: frame.id!, error: { code: -32603, message: 'private native error' },
+        })
+        return true
+      },
+    })
+    expect(await agentAcpFlow(f.run, selected)).toMatchObject({
+      outcome: 'done', output: { text: 'The answer.' },
+    })
+    expect(f.stats().calls).toBe(2)
+    expect(f.frames.filter((frame) => frame.method === 'session/prompt')).toHaveLength(1)
+  })
   test.each([
     'initialize',
     'session/new',
@@ -355,7 +383,11 @@ describe('native request failure diagnostics', () => {
         'secret-token',
       )
       expect(f.frames.at(-1)?.method).toBe(method)
-      expect(f.stats()).toEqual({ calls: 1, cancelled: true, settled: true })
+      expect(f.stats()).toEqual({
+        calls: 1,
+        cancelled: ['session/prompt', 'session/close'].includes(method),
+        settled: true,
+      })
     },
   )
 })
