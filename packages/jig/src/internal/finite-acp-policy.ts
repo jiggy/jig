@@ -104,6 +104,7 @@ export class PrivateFiniteAcpPolicy {
   private clientFrames = 0
   private updates = 0
   private textBytes = 0
+  private planOutputEmitted = false
 
   constructor(
     configuration: PrivateFiniteAcpConfiguration = {},
@@ -246,6 +247,7 @@ export class PrivateFiniteAcpPolicy {
           )
             fail('ACP prompt exceeds its authority or bounds')
           this.v2?.begin()
+          this.planOutputEmitted = false
           this.promptSent = true
           this.promptRpcResultReceived = false
           this.promptSettled = false
@@ -350,9 +352,12 @@ export class PrivateFiniteAcpPolicy {
               : undefined)
           if (required === undefined) fail('ACP configuration is not available')
           if (!Array.isArray(result.configOptions)) fail('ACP configuration was not confirmed')
-          const matches = result.configOptions.filter(
-            (option) => object(option).configId === required.configId,
-          )
+          // The pinned native Codex/Pi adapters can identify options by `id`.
+          // Normalize only this closed, reviewed option before returning v2 data.
+          const matches = result.configOptions.filter((option) => {
+            const nativeOption = object(option)
+            return (nativeOption.configId ?? nativeOption.id) === required.configId
+          })
           if (matches.length !== 1 || object(matches[0]).currentValue !== required.value)
             fail('ACP configuration was not confirmed')
           const option =
@@ -417,7 +422,7 @@ export class PrivateFiniteAcpPolicy {
   }
 
   get hasProducedTurnOutput(): boolean {
-    return this.textBytes > 0 || this.v2?.hasOutput === true
+    return this.textBytes > 0 || this.planOutputEmitted || this.v2?.hasOutput === true
   }
 
   /** Protocol accounting only: whether the pending prompt was explicitly rejected before insertion. */
@@ -535,7 +540,17 @@ export class PrivateFiniteAcpPolicy {
         const projected: JsonObject = {
           sessionUpdate: 'agent_message',
           messageId: identifier(update.messageId),
-          ...(content === undefined ? {} : { content: content as JsonValue }),
+          ...(content === undefined
+            ? {}
+            : {
+                content:
+                  content === null
+                    ? null
+                    : (content as JsonValue[]).map((block) => ({
+                        type: 'text',
+                        text: object(block).text as string,
+                      })),
+              }),
         }
         return freeze({
           toAdapter: {
@@ -581,6 +596,7 @@ export class PrivateFiniteAcpPolicy {
           fail('Invalid ACP plan entry')
         return { content: entry.content, priority: entry.priority!, status: entry.status! }
       })
+      this.planOutputEmitted = true
       projected = { sessionUpdate: 'plan', entries }
     } else {
       // Non-public client updates cannot confer authority or escape as raw diagnostics.

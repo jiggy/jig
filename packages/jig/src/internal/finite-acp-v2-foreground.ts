@@ -96,12 +96,21 @@ export class PrivateAcpV2Foreground {
 
   /** Caller has already checked the notification's owned session ID. */
   update(candidate: unknown): void {
-    if (!this.pending) {
-      // An idle session may emit background or initialization notifications.
-      return
-    }
     const value = record(candidate)
     const kind = value.sessionUpdate
+    if (kind === 'state_update') {
+      if (!['running', 'requires_action', 'idle'].includes(value.state as string))
+        this.protocol('Unknown ACP v2 foreground state')
+      if (value.stopReason !== undefined && !stopReason(value.stopReason))
+        this.protocol('ACP v2 foreground ended without a known reason')
+    }
+    if (!this.pending) {
+      // A repeated terminal snapshot must match, even after prompt settlement.
+      if (kind === 'state_update' && this.terminal !== undefined &&
+          (value.state !== 'idle' || value.stopReason !== this.terminal))
+        this.protocol('Conflicting ACP v2 terminal snapshot')
+      return
+    }
     if (kind === 'user_message' || kind === 'user_message_chunk') {
       const id = identifier(value.messageId)
       if (this.pastUsers.has(id)) this.protocol('ACP v2 replayed a user message')
@@ -123,7 +132,11 @@ export class PrivateAcpV2Foreground {
           // An initial idle snapshot or a stale idle cannot settle this prompt.
           return
         }
-        if (this.terminal !== undefined) return // Repeated snapshot is idempotent.
+        if (this.terminal !== undefined) {
+          if (value.stopReason !== this.terminal)
+            this.protocol('Conflicting ACP v2 terminal snapshot')
+          return // Identical terminal snapshots are idempotent.
+        }
         this.state = 'idle'
         const reason = value.stopReason
         if (!stopReason(reason)) this.protocol('ACP v2 foreground ended without a known reason')

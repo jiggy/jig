@@ -179,11 +179,12 @@ export async function agentAcpFlow(
           ? undefined
           : { ...prepared.session }
 
+    let activeCandidate = candidate
     for (;;) {
       try {
         return await executeCandidate(
           run,
-          candidate,
+          activeCandidate,
           sessionInput,
           prepared,
           conversational,
@@ -196,6 +197,12 @@ export async function agentAcpFlow(
           if (sessionInput !== undefined && isUnsupportedSessionError(error)) {
             if ('retain' in sessionInput) {
               sessionInput = undefined
+              // This is a changed Run request; a previously consumed operation ID
+              // cannot be reused even when its original dispatch was refused.
+              activeCandidate = {
+                ...candidate,
+                operationId: `${candidate.operationId}:fresh`,
+              }
               continue
             }
             break
@@ -378,6 +385,16 @@ async function executeCandidate(
   } catch (error) {
     const resourceFailed = owned.signal.aborted
     const transportFailed = error instanceof EssentialTransportFailure
+    // A sanitized, pre-prompt native RPC rejection is not itself recovery
+    // authority. Close the request side and allow the host to fence the client
+    // and return its own prompt-forwarding/cleanup evidence instead.
+    if (!resourceFailed && !transportFailed && isPrePromptNativeRejection(error) && work) {
+      await requests?.send.close().catch(() => undefined)
+      const hostSettlement = await work
+      run.signal.throwIfAborted()
+      if ('error' in hostSettlement) throw hostSettlement.error
+      throw error
+    }
     if (!transportFailed) owned.abort()
     const settled = await work
     run.signal.throwIfAborted()
@@ -390,6 +407,17 @@ async function executeCandidate(
   } finally {
     await closeChannels(false)
   }
+}
+
+function isPrePromptNativeRejection(error: unknown): boolean {
+  if (!(error instanceof OperationError) || error.code !== 'EXECUTION_FAILED') return false
+  const details = error.details
+  if (details === null || typeof details !== 'object' || Array.isArray(details)) return false
+  const request = (details as JsonObject).nativeRequest
+  if (request === null || typeof request !== 'object' || Array.isArray(request)) return false
+  return ['initialize', 'session/new', 'session/resume', 'session/set_config_option'].includes(
+    (request as JsonObject).method as string,
+  )
 }
 
 function canRecover(

@@ -235,6 +235,7 @@ export async function runPrivateFiniteAcpResource(
     }
     frames.finish()
     policy.assertSettled()
+    if (policy.hasPeerFailed) invalid('Native ACP rejected a request before completion')
     await writes
     await component.closeInput()
     const natural = await within(enforcement, CLOSE_GRACE_MS, local.signal)

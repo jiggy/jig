@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createPrivateAcpAgentProvider } from '../../src/internal/acp-agent-provider.js'
@@ -41,7 +41,7 @@ describe('finite ACP cleanup-ledger kind classifier (ordinary data only)', () =>
 
 describe('finite ACP session scope & failover terminal mapping', () => {
   test('session scope matches across Codex authProfile, model, and credentialMode but isolates executables/adapters/clients', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-controller-scope-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-controller-scope-')))
     try {
       const adapterA = join(root, 'adapter-a.js')
       const adapterB = join(root, 'adapter-b.js')
