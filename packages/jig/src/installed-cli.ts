@@ -1,7 +1,6 @@
 import { realpath } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-
 import {
   main,
   type PrivateCliCommandHost,
@@ -28,6 +27,7 @@ import {
 } from './internal/installation-verification.js'
 import {
   openPrivateInstalledBunHost,
+  openPrivateInstalledDeclarationEvaluator,
   privateInstalledEnvironmentCheck,
 } from './internal/installed-bun-host.js'
 import { PrivateRootlessLinuxAcquisitionError } from './internal/linux-rootless-acquisition.js'
@@ -47,6 +47,7 @@ import {
   recoverPrivateCheckpointRun,
 } from './internal/project-session-controller.js'
 import { privatePresentationDeadline } from './internal/root-run-timeout-policy.js'
+import { inspectWorkingFlow } from './internal/working-flow-inspection.js'
 import { canonicalJson } from './json.js'
 
 interface InstalledCliOutcome {
@@ -304,6 +305,17 @@ async function runWithEnvironment(
         return exit(0)
       }
       const host: PrivateCliCommandHost = Object.freeze({
+        inspectFlow: async (
+          project: string,
+          options: import('./cli-flow-context.js').FlowContextOptions,
+          signal?: AbortSignal,
+        ) =>
+          inspectWorkingFlow(
+            project,
+            await openPrivateInstalledDeclarationEvaluator(location, project),
+            options,
+            signal,
+          ),
         ...(delivery === undefined ? {} : { delivery }),
 
         acquire: async (

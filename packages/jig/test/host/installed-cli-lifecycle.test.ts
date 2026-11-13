@@ -59,6 +59,14 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
     const authoredBytes = await Promise.all(
       authoredPaths.map((path) => readFile(join(project, path))),
     )
+    const beforeApproval = await command(
+      [cli, 'inspect', '--flow', 'flow:flows/hello', '--source', 'FLOW.ts'],
+      project,
+    )
+    expect(beforeApproval.stdout).toContain('captured working tree (unapproved)')
+    expect(beforeApproval.stdout).toContain('Captured source: FLOW.ts')
+    expect(existsSync(join(project, '.jig'))).toBe(false)
+    expect(existsSync(join(project, 'jig.lock'))).toBe(false)
     await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
     const lock = await readFile(join(project, 'jig.lock'), 'utf8')
     const flowContext = await command(
@@ -78,6 +86,23 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
       impact: true,
       omittedTargets: 0,
     })
+
+    const methodPath = join(project, 'flows/hello/FLOW.ts')
+    const originalMethod = await readFile(methodPath, 'utf8')
+    await writeFile(methodPath, originalMethod + '\n// local inspection marker\n')
+    const currentSource = await command(
+      [cli, 'inspect', '--flow', 'flow:flows/hello', '--source', 'FLOW.ts'],
+      project,
+    )
+    const approvedSource = await command(
+      [cli, 'inspect', '--flow', '--approved', 'flow:flows/hello', '--source', 'FLOW.ts'],
+      project,
+    )
+    expect(currentSource.stdout).toContain('local inspection marker')
+    expect(approvedSource.stdout).not.toContain('local inspection marker')
+    expect(approvedSource.stdout).toContain('last locally approved configuration')
+    expect(await readFile(join(project, 'jig.lock'), 'utf8')).toBe(lock)
+    await writeFile(methodPath, originalMethod)
 
     for (const display of [[], ['--display', 'plain'], ['--json']]) {
       const result = await command(

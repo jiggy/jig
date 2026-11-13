@@ -79,6 +79,7 @@ import type { PrivateCapturedAttachment } from './file-input.js'
 import { requiresAuthorityApproval } from './grant-review.js'
 import { privateDomainDigest } from './identity.js'
 import { PRIVATE_FLOW_CONTEXT_LIMITS } from './inspection-policy.js'
+import { inspectionSource } from './inspection-source.js'
 import {
   normalizePrivateLinuxConfirmedEnforcementReceipt,
   normalizePrivateLinuxOwnerStateAllocationIdentity,
@@ -4915,28 +4916,6 @@ function inspectionState(states: readonly PrivateInspectionState[]): PrivateInsp
 /** Read the last approved snapshot, not visible source or a pending review.
  * No coordinator, runtime, recovery, resolution, or write transaction is acquired.
  */
-async function inspectionSource(
-  captured: CapturedPackage,
-  member: string,
-): Promise<{ source: string; sourcePath: string }> {
-  const file = captured.files.find((file) => file.path === member)
-  if (file === undefined || file.size > PRIVATE_FLOW_CONTEXT_LIMITS.sourceBytes)
-    invalid(
-      'INSPECTION_SOURCE_UNAVAILABLE',
-      'captured member is missing or exceeds the presentation bound',
-    )
-  let source: string
-  try {
-    source = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
-      await captured.read(file.path, PRIVATE_FLOW_CONTEXT_LIMITS.sourceBytes),
-    )
-  } catch {
-    invalid('INSPECTION_SOURCE_UNAVAILABLE', 'captured member is not UTF-8 text')
-  }
-  if (source!.includes('\0'))
-    invalid('INSPECTION_SOURCE_UNAVAILABLE', 'captured member contains NUL bytes')
-  return { source: source!, sourcePath: file.path }
-}
 
 export async function inspectPrivateApprovedProject(
   projectRoot: string,

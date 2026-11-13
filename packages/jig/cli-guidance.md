@@ -12,7 +12,7 @@ All selected domain requirements still apply.
 | Application client or machine request framing | [Installed-host client](#installed-host-client) |
 | Discovery, completion, or caller creation | [CLI discovery](#src-cli-discovery) |
 | Grammar, acquisition, or review readiness | [Command grammar and review](#command-grammar-and-review) |
-| Inspect approved targets | [Approved target inspection](#approved-target-inspection) |
+| Inspect current or approved targets | [Current and approved inspection](#current-and-approved-inspection) |
 | Select installation verification | [Installation verification](#installation-verification) |
 | Change presentation, progress, or reporting | [Shared presentation](#shared-presentation) |
 | Verify observable output | [Verification](#verification), [acceptance checks](#acceptance-checks) |
@@ -199,12 +199,15 @@ All selected domain requirements still apply.
   Browser inspection owns no publish, remove, reset or execution action.
   External interruption must retain the command's interrupted exit status.
 
-### Approved target inspection
+### Current and approved inspection
 
-- `src/cli-flow-context.ts` formats retained relationships and source for coding agents and people.
+- `src/cli-flow-context.ts` formats working-tree or approved relationships and source for coding agents and people.
   `inspect --flow` preserves Markdown through pipes. Impact includes shared implementations and reverse callers.
-  Source member requests read approved package bytes without source evaluation.
-  Requests without a target read the retained declaration closure instead.
+  Working-tree inspection uses shared captured declaration evaluation and the ordinary linker without admission state.
+  `--approved` selects retained package bytes without declaration evaluation.
+  Requests without a target select the declaration closure for that same basis.
+
+  Working-tree inspection reads installed declared npm packages without installation or execution qualification.
 
   Bound graph presentation and disclose file/value omissions. Escape source fences and terminal controls.
   No call order, payload construction, or caller reactions are inferred.

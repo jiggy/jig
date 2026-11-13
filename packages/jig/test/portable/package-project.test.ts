@@ -17,6 +17,7 @@ import { captureFlowSource } from '../../src/project/flow-source.js'
 import {
   type InjectedBindingDeclaration,
   linkPackageProject,
+  inspectPackageProject,
 } from '../../src/project/package-project.js'
 import { buildPrivateActivationRequests } from '../../src/project/package-resolution.js'
 import {
@@ -147,6 +148,50 @@ function expectCode(action: () => unknown, code: string, pointer?: string): void
 }
 setDefaultTimeout(30_000)
 describe('private package-project linker', () => {
+  test('working-tree resolution validates declared file ports without acquiring input bytes or execution authority', async () => {
+    await withFlows(
+      {
+        'flows/read': {
+          ...run('read'),
+          'FLOW.contract.json': invocation({ attachments: { source: 'read' } }),
+        },
+      },
+      (flows) => {
+        const input = {
+          flows,
+          bindings: [
+            binding('bindings/read.ts', {
+              package: 'flows/read',
+              attachments: { source: 'missing-local-fixtures' },
+            }),
+          ],
+        }
+        expectCode(() => linkPackageProject(input), 'PROJECT_BINDING_ATTACHMENTS_NOT_CAPTURED')
+        const inspected = inspectPackageProject(input)
+        expect(inspected.bindings[0]!.id).toBe('read')
+        expect(inspected.bindings[0]!.boundAttachments).toBeUndefined()
+        expect(() => buildPrivateActivationRequests(inspected)).toThrow('package-project linker')
+        expectCode(
+          () =>
+            inspectPackageProject({ ...input, entrypoint: 'binding:read --attach source=other' }),
+          'PROJECT_ENTRYPOINT_INVALID',
+        )
+        expectCode(
+          () =>
+            inspectPackageProject({
+              flows,
+              bindings: [
+                binding('bindings/read.ts', {
+                  package: 'flows/read',
+                  attachments: { unknown: 'missing' },
+                }),
+              ],
+            }),
+          'PROJECT_BINDING_ATTACHMENT_UNDECLARED',
+        )
+      },
+    )
+  })
   test('constructs one review client for all mixed inline and shared named ACP selections only', async () => {
     await withFlows(nativeAgentTrees(true), (flows) => {
       const slots = {

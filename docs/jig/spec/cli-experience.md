@@ -893,8 +893,8 @@ required; automation must examine `state`.
 
 Inspection may read operator credentials to construct the same non-secret
 provider identity, but never publishes or retains them or sends provider requests.
-It never evaluates visible source, fetches dependencies, acquires execution
-authority, probes namespace execution, recovers state, or writes project state.
+Ordinary inspection and explicit `--flow --approved` never evaluate visible source, fetch dependencies, acquire execution
+authority, probe namespace execution, recover state, or write project state.
 It may run the selected trusted Bubblewrap's bounded `--version` query.
 
 The display identifies its retained basis: source freshness, launch readiness
@@ -904,8 +904,18 @@ Unsafe, incompatible or busy state produces a bounded diagnostic without repair.
 Ordinary redirected inspection emits JSON. Explicit `--json` selects JSON, while `--flow` selects the Markdown presentation below.
 
 `jig inspect --flow [target]` emits Markdown, including through redirected stdout.
-It joins exact retained component identities, effective settings, contracts, available routes, and captured package file inventories.
-The approved entrypoint selects the default root when present. Otherwise, the view covers the approved inventory.
+It captures the current working tree and evaluates project and Binding declarations through the contained declaration evaluator.
+It joins component identities, configured settings, contracts, resolved routes, and captured source inventories without requiring local approval.
+The current entrypoint selects the default root when present. Otherwise, the view covers the captured inventory.
+
+Inspection uses the ordinary linker without qualifying execution or retaining approval.
+Declared Binding file ports are validated without opening their input data.
+Declared `npm:` Flows use already installed local packages through ordinary `node_modules` ancestry.
+Inspection never installs dependencies, invokes methods or providers, prepares evaluation recipes, generates contracts, updates `jig.lock`, or writes project state.
+Missing dependencies and invalid declarations fail with source diagnostics. They never substitute approved bytes.
+
+`--approved` explicitly selects the last locally approved snapshot and requires no declaration evaluation.
+The output identifies its working-tree or approved basis. Working-tree execution readiness remains unchecked.
 Configured edges describe possible calls. Source conditions, ordering, data transformations, and caller reactions are not inferred.
 
 `--impact` requires an exact target and includes reverse callers plus configurations sharing its implementation.
@@ -915,7 +925,7 @@ Different Bindings and caller-local resource slots remain distinct.
 `--source FILE` supplies one retained UTF-8 member. An explicit target selects its package-relative members.
 Without a target, the request selects a project-relative member of the captured declaration closure.
 
-It reads approved captured bytes, even when the workspace file has changed.
+It reads bytes from the selected inspection basis. With `--approved`, these can differ from the working tree.
 Absolute paths, traversal, missing members, binary text, and members above 256 KiB are refused.
 Markdown fences preserve literal source. Controls except LF and TAB appear as escaped code points.
 Package digests identify the captured basis, without establishing current workspace freshness.

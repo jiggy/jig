@@ -260,19 +260,25 @@ The [archive contract](https://jig.md/spec/display-archive.md) defines capacity,
 
 ## Understand an application from the command line
 
-Use the last approved configuration to locate relationships before changing methods.
+Inspect current local relationships before changing methods. Prior review or approval is unnecessary.
 
 ```sh
 jig inspect --flow
 jig inspect --flow --source jig.ts
 jig inspect --flow binding:repair --impact
 jig inspect --flow binding:repair --source repair.ts
+jig inspect --flow --approved
 ```
 
 The first command shows configured relationships, contracts, settings, and captured file locations.
+
 Project declarations include captured Binding modules and their helpers. Without a target, source requests select that declaration closure.
 The impact view includes callers and other configurations sharing the implementation.
-Source requests supply retained bytes, which can differ from the working tree.
+Source requests use the same captured working tree as the graph. Explicit `--approved` selects retained approved bytes instead.
+
+Declared npm Flow dependencies must already be installed. Inspection reports missing dependencies without installing them.
+Project declarations run in Jig’s contained evaluator. Flow methods and providers are never invoked.
+
 Read the relevant methods to establish conditions, transformations, and caller reactions.
 
 Agents receive the same Markdown through pipes. A useful investigation follows the caller, supplied values, returned outcome, and subsequent caller handling.

@@ -175,6 +175,9 @@ test('completion scripts contain only static shell code and read-only target loo
     expect(script).not.toMatch(/\beval\b/)
     expect(script).toContain(shell === 'fish' ? '-l verification' : '--verification')
     expect(script).toContain(shell === 'fish' ? '-l source-root' : '--source-root')
+    for (const flag of ['flow', 'approved', 'impact', 'source'])
+      expect(script).toContain(shell === 'fish' ? '-l ' + flag : '--' + flag)
+    if (shell === 'fish') expect(script).toContain('-l source -r')
   }
   expect(completionScript('sh')).toBeUndefined()
   const bash =
@@ -355,6 +358,7 @@ test('new rejects symlinked flows, malformed manifests, and a nonproject without
 
 test('flow inspection grammar refuses ambiguous source and result combinations before acquisition', async () => {
   for (const flags of [
+    ['--approved'],
     ['--impact'],
     ['--source', 'FLOW.ts'],
     ['--flow', '--impact'],
@@ -423,7 +427,7 @@ test('flow context follows callers and Binding peers while preserving configured
   expect(context).toContain('"attempts":1')
   expect(context).toContain('"attempts":2')
   expect(context).not.toContain('flow:unrelated')
-  expect(context).toContain('1 other approved targets')
+  expect(context).toContain('1 other targets')
   expect(
     (flowContextRecord(snapshot, { target: 'binding:one', impact: true }) as any).scope,
   ).toEqual({ target: 'binding:one', impact: true, omittedTargets: 1 })
@@ -573,7 +577,7 @@ test('flow Markdown uses asynchronous raw output even on a terminal and leaves a
   try {
     let output = '',
       delivered = false
-    const result = await main(['inspect', '--flow'], {
+    const result = await main(['inspect', '--flow', '--approved'], {
       currentDirectory: root,
       terminalOutput: true,
       writeOutput: () => {
@@ -593,4 +597,30 @@ test('flow Markdown uses asynchronous raw output even on a terminal and leaves a
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('working-tree flow inspection requires the contained evaluator while approved inspection stays inert', () => {
+  expect(privateCliRequiresHost(['inspect', '--flow'])).toBe(true)
+  expect(privateCliRequiresHost(['inspect', '--flow', '--source', 'jig.ts'])).toBe(true)
+  expect(privateCliRequiresHost(['inspect', '--flow', '--approved'])).toBe(false)
+  expect(privateCliRequiresHost(['inspect', '--approved'])).toBe(false)
+  const snapshot: JsonValue = {
+    basis: 'working-tree',
+    state: 'unreviewed',
+    revision: 'source',
+    targets: [
+      {
+        target: 'flow:flows/work',
+        package: 'flows/work',
+        state: 'unreviewed',
+        flow: { routes: [], files: [] },
+      },
+    ],
+  }
+  const output = renderFlowContext(snapshot)
+  expect(output).toContain('captured working tree (unapproved)')
+  expect(output).toContain('flow:flows/work')
+  expect(output).not.toContain('Approved availability')
+  expect(output).not.toContain('No locally approved revision')
+  expect((flowContextRecord(snapshot, {}) as any).targets).toHaveLength(1)
 })

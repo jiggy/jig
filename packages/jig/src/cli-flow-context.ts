@@ -29,7 +29,7 @@ export type FlowContextOptions = Readonly<{ target?: string; impact?: boolean; s
 /** Read-only presentation of retained facts. No source evaluation or behavioral inference. */
 export function renderFlowContext(value: JsonValue, options: FlowContextOptions = {}): string {
   const snapshot = record(value)
-  if (snapshot.state === 'unreviewed')
+  if (snapshot.state === 'unreviewed' && snapshot.basis !== 'working-tree')
     return '# Application flow\n\nNo locally approved revision. Run `jig review` to prepare and review this project.\n'
   const { targets, edges, selected, callers, included, state } = selectFlowContext(value, options)
   const selectedEdges = edges.filter(
@@ -41,12 +41,17 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
     included.length > PRIVATE_FLOW_CONTEXT_LIMITS.targets ||
     selectedEdges.length > PRIVATE_FLOW_CONTEXT_LIMITS.connections
   )
-    return '# Application flow unavailable\n\nThe selected view exceeds the fixed presentation bounds. Choose a smaller exact target with jig inspect --flow TARGET. No graph was truncated or work started.\n'
+    return '# Application flow unavailable\n\nThe selected view exceeds the fixed presentation bounds. Choose a smaller exact target with jig inspect --flow TARGET. No graph was truncated or workflow started.\n'
+  const working = snapshot.basis === 'working-tree'
   const lines = [
     '# Application flow',
     '',
-    `Basis: last locally approved configuration. Revision ${markdown(String(snapshot.revision))}.`,
-    `Environment: ${markdown(state)}. Visible source freshness, launch readiness, and remote availability remain unchecked.`,
+    working
+      ? `Basis: captured working tree (unapproved). Revision ${markdown(String(snapshot.revision))}.`
+      : `Basis: last locally approved configuration. Revision ${markdown(String(snapshot.revision))}.`,
+    working
+      ? 'Execution readiness is unchecked. No approval, dependency installation or workflow execution was performed.'
+      : `Environment: ${markdown(state)}. Visible source freshness, launch readiness, and remote availability remain unchecked.`,
     'Configured connections describe potential calls. Order, conditions, payload construction, and feasibility require method source or explicit observations.',
     '',
     options.impact ? '## Potential impact' : '## Configured relationships',
@@ -101,7 +106,9 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
     )
     const availability = record(item.availability)
     lines.push(
-      `Approved availability: ${markdown(String(availability.state ?? 'unknown'))}${typeof availability.code === 'string' ? ' (' + markdown(availability.code) + ')' : ''}.`,
+      working
+        ? 'Execution availability: not qualified.'
+        : `Approved availability: ${markdown(String(availability.state ?? 'unknown'))}${typeof availability.code === 'string' ? ' (' + markdown(availability.code) + ')' : ''}.`,
     )
     if (typeof flow.description === 'string' && flow.description)
       lines.push(`Authored purpose: ${markdown(flow.description)}`)
@@ -169,7 +176,7 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
   }
   const omitted = targets.length - included.length
   lines.push(
-    `Scope: ${included.length} targets included; ${omitted} other approved targets outside this view.`,
+    `Scope: ${included.length} targets included; ${omitted} other targets outside this view.`,
     'Connections outside the selected scope are omitted. Source paths identify captured package members. Workspace files may differ. No invocation history or inferred caller reactions are supplied.',
     '',
   )
@@ -253,7 +260,7 @@ function selectFlowContext(value: JsonValue, options: FlowContextOptions) {
 }
 
 export function flowContextRecord(value: JsonValue, options: FlowContextOptions): JsonValue {
-  if (record(value).state === 'unreviewed') return value
+  if (record(value).state === 'unreviewed' && record(value).basis !== 'working-tree') return value
   const selection = selectFlowContext(value, options)
   return {
     ...selection.snapshot,

@@ -2,4 +2,4 @@
 "@jigging/jig": minor
 ---
 
-Add Markdown application flow inspection, reverse caller impact, and retained source access for coding agents and people.
+Add working-tree Markdown flow inspection without prior approval, reverse caller impact, captured source access, and explicit approved-snapshot inspection for coding agents and people.

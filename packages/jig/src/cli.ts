@@ -244,7 +244,7 @@ The destination parent must exist; existing destinations are never replaced.
 Example:
   jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
-       jig inspect --flow [target] [--impact] [--source FILE] [--json]
+       jig inspect --flow [target] [--approved] [--impact] [--source FILE] [--json]
        jig inspect --result DIRECTORY [--display plain|tui|web] [--json]
 
 List the current project's approved targets, or show one target's retained
@@ -252,11 +252,14 @@ input/result schemas, settings, child slots, capabilities, files and channels.
 
 Compare the last approval with the current local execution environment.
 Changed environments require review; unverifiable environments remain unchecked.
-No source evaluation, installation, provider requests, recovery or state writes.
+Ordinary inspection and --approved read retained state without source evaluation.
+--flow captures current source and evaluates declarations in containment.
+No installation, provider requests, recovery, approval or project-state writes.
 Visible edits, launch readiness and remote provider availability are not checked.
 
   --json     Emit JSON even in a terminal (redirected output is JSON unless --flow is selected)
   --flow     Emit Markdown relationships and captured file inventory, including when piped
+  --approved With --flow: use the last approved snapshot instead of the working tree
   --impact   With --flow TARGET: show potential callers and shared implementations
   --source FILE  Include one captured UTF-8 member (up to 256 KiB); a target selects its package, otherwise project declarations
   --result DIRECTORY  Inspect a saved packet without approval or new execution
@@ -394,6 +397,11 @@ const textDecoder = new TextDecoder()
 /** Private injection seam until the installed host owns project acquisition. */
 export interface PrivateCliCommandHost {
   readonly prepareRun?: typeof preparePrivateCliRun
+  readonly inspectFlow?: (
+    project: string,
+    options: import('./cli-flow-context.js').FlowContextOptions,
+    signal?: AbortSignal,
+  ) => Promise<JsonValue>
   acquire(
     project: string,
     options?: {
@@ -816,6 +824,10 @@ export function privateCliRequiresHost(arguments_: readonly string[]): boolean {
   if (isHelpRequest(arguments_)) return false
   if (arguments_[0] === 'attempt') return privateCliAttemptOperation(arguments_) === 'submit'
   try {
+    if (arguments_[0] === 'inspect') {
+      const parsed = parseInspect(arguments_)
+      return parsed.flow && !parsed.approved
+    }
     if (arguments_[0] === 'review') {
       parseReview(arguments_, '.')
       return true
@@ -983,10 +995,15 @@ function parseInspect(arguments_: readonly string[]) {
   let resultDirectory: string | undefined
   let display: 'plain' | 'tui' | 'web' | undefined
   let flow = false
+  let approved = false
   let impact = false
   let source: string | undefined
   for (let index = 1; index < arguments_.length; index++) {
     const value = arguments_[index]!
+    if (value === '--approved' && !approved) {
+      approved = true
+      continue
+    }
     if (value === '--flow' && !flow) {
       flow = true
       continue
@@ -1042,8 +1059,8 @@ function parseInspect(arguments_: readonly string[]) {
     usage('inspect', '--result cannot be combined with a target or --verification.')
   if (display !== undefined && resultDirectory === undefined)
     usage('inspect', '--display requires --result DIRECTORY.')
-  if ((impact || source !== undefined) && !flow)
-    usage('inspect', '--impact and --source require --flow.')
+  if ((approved || impact || source !== undefined) && !flow)
+    usage('inspect', '--approved, --impact and --source require --flow.')
   if (flow && resultDirectory !== undefined)
     usage('inspect', 'Saved packets contain no retained flow context.')
   if (impact && selector === undefined) usage('inspect', '--impact requires an exact target.')
@@ -1054,6 +1071,7 @@ function parseInspect(arguments_: readonly string[]) {
     resultDirectory,
     display: display ?? 'plain',
     flow,
+    approved,
     impact,
     source,
   }
@@ -1139,21 +1157,45 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
   let snapshot: JsonValue
   runtime.signal?.throwIfAborted()
   try {
-    snapshot = await inspectPrivateApprovedProject(
-      runtime.currentDirectory,
-      parsed.flow ? undefined : selector,
-      runtime.inspectEnvironment,
-      !parsed.flow && runtime.humanOutput && !json && selector === undefined,
-      undefined,
-      undefined,
-      parsed.flow
-        ? {
-            ...(selector === undefined ? {} : { target: selector }),
-            ...(parsed.source === undefined ? {} : { source: parsed.source }),
-          }
-        : undefined,
-    )
+    if (parsed.flow && !parsed.approved) {
+      if (runtime.host.inspectFlow === undefined)
+        throw new CliDiagnostic(
+          'JIG_SOURCE_INSPECTION_UNAVAILABLE',
+          'Working-tree inspection needs the installed Jig declaration evaluator on a supported host. Use the installed jig command; --approved selects only retained approval.',
+          2,
+        )
+      snapshot = await runtime.host.inspectFlow(
+        runtime.currentDirectory,
+        {
+          ...(selector === undefined ? {} : { target: selector }),
+          ...(parsed.source === undefined ? {} : { source: parsed.source }),
+        },
+        runtime.signal,
+      )
+    } else {
+      snapshot = await inspectPrivateApprovedProject(
+        runtime.currentDirectory,
+        parsed.flow ? undefined : selector,
+        runtime.inspectEnvironment,
+        !parsed.flow && runtime.humanOutput && !json && selector === undefined,
+        undefined,
+        undefined,
+        parsed.flow
+          ? {
+              ...(selector === undefined ? {} : { target: selector }),
+              ...(parsed.source === undefined ? {} : { source: parsed.source }),
+            }
+          : undefined,
+      )
+    }
   } catch (error) {
+    if (error instanceof CliDiagnostic) throw error
+    if (parsed.flow && !parsed.approved && error instanceof CheckError)
+      throw new CliDiagnostic(
+        'JIG_SOURCE_INSPECTION_FAILED',
+        `Working-tree inspection failed (${error.code})${error.path ? ' at ' + asciiJsonString(error.path) : ''}: ${error.message}. Correct the local declaration or missing dependency and retry. No project approval or lock was changed.`,
+        error.kind === 'invalid' ? 1 : 2,
+      )
     if (error instanceof CheckError && error.code === 'INSPECTION_SOURCE_UNAVAILABLE')
       throw new CliDiagnostic(
         'JIG_SOURCE_UNAVAILABLE',
@@ -1165,6 +1207,12 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
         'JIG_TARGET_NOT_FOUND',
         'That target is not in the approved revision. List approved targets:\n\n  $ jig inspect\n\nTo review source changes:\n  $ jig review',
         1,
+      )
+    if (parsed.flow && !parsed.approved)
+      throw new CliDiagnostic(
+        'JIG_SOURCE_INSPECTION_UNAVAILABLE',
+        'Working-tree source or dependency inspection could not finish safely. Check the local declarations, installed dependencies and supported-host setup. No approval or project lock was changed.',
+        2,
       )
     throw new CliDiagnostic(
       'JIG_INSPECTION_UNAVAILABLE',
