@@ -1761,9 +1761,11 @@ describe.serial('direct alpha activation store', () => {
       const saved = []
       for (let i = 0; i < 16; i++) saved.push((await savePrivateNativeSession(input))!)
       expect(await savePrivateNativeSession(input)).toBeUndefined()
-      expect(
-        await claimPrivateNativeSession({ ...input, reference: saved[0]!.reference }),
-      ).toBeDefined()
+      const claimed = await claimPrivateNativeSession({ ...input, reference: saved[0]!.reference })
+      expect(claimed).toBeDefined()
+      // Claiming makes the reference unavailable without releasing its capacity.
+      expect(await savePrivateNativeSession(input)).toBeUndefined()
+      await discardClaimedPrivateNativeSession({ ...input, snapshot: claimed! })
       expect(await savePrivateNativeSession(input)).toBeDefined()
       expect(await savePrivateNativeSession(input)).toBeUndefined()
       const database = openSqlite(fixture.database, 'readwrite')
