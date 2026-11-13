@@ -32,9 +32,13 @@ test('ordinary packing retains editable source, registry dependencies and a stan
     const entries = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }).trim().split('\n')
     expect(entries).toContain('package/src/flow.ts')
     expect(entries).toContain('package/FLOW.contract.json')
+    expect(entries).toContain('package/settings.schema.json')
     expect(entries.some((name) => name.includes('/tooling/') || name.endsWith('.tgz'))).toBe(false)
     expect(entries.some((name) => name.includes('/node_modules/'))).toBe(false)
     execFileSync('tar', ['-xzf', archive, '--strip-components=1', '-C', extracted])
+    expect(await readFile(join(extracted, 'settings.schema.json'), 'utf8')).toBe(
+      await readFile(join(root, 'settings.schema.json'), 'utf8'),
+    )
     const manifest = JSON.parse(await readFile(join(extracted, 'package.json'), 'utf8'))
     for (const name of ['@jigging/flow', '@jigging/agent-method']) {
       const version = manifest.devDependencies[name]
@@ -64,6 +68,11 @@ test('ordinary packing retains editable source, registry dependencies and a stan
       }),
     )
     expect(nextManifest.devDependencies).toEqual(manifest.devDependencies)
+    expect(
+      execFileSync('tar', ['-xOf', join(repacked, next[0]!), 'package/settings.schema.json'], {
+        encoding: 'utf8',
+      }),
+    ).toBe(await readFile(join(extracted, 'settings.schema.json'), 'utf8'))
     expect(
       execFileSync('tar', ['-xOf', join(repacked, next[0]!), 'package/src/flow.ts'], {
         encoding: 'utf8',

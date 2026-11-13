@@ -16,7 +16,9 @@ host retains credential, process, and dispatch authority.
 - `contracts/finite-acp/` mirrors `docs/jig/spec/contracts/finite-acp/` exactly.
   `FLOW.contract.json` and its three public channel descriptors mirror Agent
   Run.
-- Package source, tests, descriptors and the bundled runtime form one artifact.
+- Package source, tests, descriptors, `settings.schema.json` and the bundled
+  runtime form one artifact. The settings schema declares the recovery policy
+  for ordinary installed consumers and survives repacking.
 - `justfile` owns explicit build/test/pack recipes. Ordinary `bun pm pack`
   retains source and bundles with versioned development dependencies. No nested
   dependency archives or private manifest rewrites are part of distribution.

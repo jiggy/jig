@@ -25,6 +25,7 @@
     "FLOW.ts",
     "FLOW.contract.json",
     "FLOW.meta.json",
+    "settings.schema.json",
     "contracts",
     "README.md",
     "AGENTS.md",
