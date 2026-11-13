@@ -1475,7 +1475,7 @@ describe.serial('direct alpha activation store', () => {
   test('cross-profile Codex sessions share scope across authProfile/model and release cleanly before resume', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
-    const supportRoot = await mkdtemp(join(tmpdir(), 'jig-cross-profile-store-'))
+    const supportRoot = await realpath(await mkdtemp(join(tmpdir(), 'jig-cross-profile-store-')))
     try {
       const adapterPath = join(supportRoot, 'adapter.js')
       const codexPath = join(supportRoot, 'codex')

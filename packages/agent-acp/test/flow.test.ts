@@ -1630,7 +1630,7 @@ describe('ACP v2 native method qualification', () => {
       selection: [
         { slot: 'native', operationId: 'native' },
         { slot: 'backup1', operationId: 'backup1' },
-        { slot: 'backup1', operationId: 'backup1' },
+        { slot: 'backup1', operationId: 'backup1:fresh' },
       ],
       rejectAttempt(call, attempt) {
         seenInputs.push(call.input as JsonValue)
