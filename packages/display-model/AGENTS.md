@@ -47,6 +47,7 @@ with their producer. This package owns readonly display data and pure meaning.
   It has no workspace, elapsed clock, invocation observations or synthetic Run.
   Root and ordinary component IDs join the bounded catalogue exactly. Selected
   input schemas preserve their root definitions. No fabricated input is inferred.
+
   Unbound read attachments are available for explicit bounded file selection.
   Required channels and excessive file slots remain explicit launch blockers.
 - Local Run intents and status are inert data for a separately authorized host.
