@@ -159,6 +159,7 @@ The file must have a simple filename without a directory component.
 Jig captures only those selected bytes after you choose **Run workflow**.
 It stages them privately, rechecks the approved target and file requirements,
 and supplies them through ordinary `--attach` input capture.
+
 Bound read attachments cannot be replaced. Required channels still need a
 composed Flow or an ordinary `jig run` invocation.
 
