@@ -60,7 +60,20 @@ describe.serial('finite isolated author declaration batches', () => {
       async (root, _captured, options) => {
         await mkdir(join(root, 'flows/work'), { recursive: true })
         await mkdir(join(root, 'bindings'), { recursive: true })
-        await writeFile(join(root, 'flows/work/FLOW.ts'), 'export {};\n')
+        await writeFile(
+          join(root, 'flows/work/FLOW.ts'),
+          'throw new Error("method must not execute"); export {};\n',
+        )
+        await writeFile(
+          join(root, 'flows/work/settings.schema.json'),
+          JSON.stringify({
+            $schema: 'https://flow.jig.md/schemas/schema-0.json',
+            type: 'object',
+            properties: { revision: { type: 'integer' } },
+            required: ['revision'],
+            additionalProperties: false,
+          }),
+        )
         await writeFile(
           join(root, 'flows/work/FLOW.meta.json'),
           JSON.stringify({ name: 'work', description: 'Working source.' }),
