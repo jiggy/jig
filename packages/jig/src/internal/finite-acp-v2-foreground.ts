@@ -50,6 +50,7 @@ export class PrivateAcpV2Foreground {
   private terminal: PrivateAcpV2StopReason | undefined
   private readonly messages = new Map<string, string>()
   private cumulativeBytes = 0
+  private turnBytes = 0
 
   begin(): void {
     if (this.pending) this.protocol('ACP v2 turn is already active')
@@ -61,7 +62,8 @@ export class PrivateAcpV2Foreground {
     this.state = 'idle'
     this.terminal = undefined
     this.messages.clear()
-    this.cumulativeBytes = 0
+    // Preserve the conversation-wide budget while resetting only turn evidence.
+    this.turnBytes = 0
   }
 
   /** An RPC success is acceptance, never terminal evidence. */
@@ -193,7 +195,7 @@ export class PrivateAcpV2Foreground {
   }
 
   get hasOutput(): boolean {
-    return this.cumulativeBytes > 0 || this.messages.size > 0
+    return this.turnBytes > 0 || this.messages.size > 0
   }
 
   /** Fail closed unless insertion, matching user report and completion concur. */
@@ -230,7 +232,9 @@ export class PrivateAcpV2Foreground {
   }
 
   private charge(value: string): void {
-    this.cumulativeBytes += encoder.encode(value).byteLength
+    const bytes = encoder.encode(value).byteLength
+    this.cumulativeBytes += bytes
+    this.turnBytes += bytes
     if (this.cumulativeBytes > MAX_TEXT_BYTES) this.protocol('ACP v2 text capacity exceeded')
   }
 

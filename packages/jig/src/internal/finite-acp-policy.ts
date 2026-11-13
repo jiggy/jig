@@ -496,6 +496,10 @@ export class PrivateFiniteAcpPolicy {
           (update.sessionUpdate !== 'state_update' || update.state !== 'idle')
         )
           fail('ACP v2 update attempted to reopen a settled turn')
+        // A background/initialization whole-message update has no admitted
+        // foreground validation. Never project its untrusted native content.
+        if (update.sessionUpdate === 'agent_message' && !this.turnActive)
+          fail('ACP message arrived outside an active turn')
         // Pinned Pi emits unaddressed retry/compaction progress chunks.
         // Give those chunks a bounded, host-owned turn ID at the native edge;
         // they remain counted as output and cannot authorize a replay.

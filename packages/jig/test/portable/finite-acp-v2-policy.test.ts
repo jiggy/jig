@@ -17,8 +17,8 @@ const update = (payload: unknown) =>
     params: { sessionId: 'owned-v2', update: payload },
   })
 
-function admittedV2(): PrivateFiniteAcpPolicy {
-  const policy = new PrivateFiniteAcpPolicy()
+function admittedV2(maxTurns?: number): PrivateFiniteAcpPolicy {
+  const policy = new PrivateFiniteAcpPolicy(maxTurns === undefined ? {} : { maxTurns })
   policy.fromAdapter(
     request(1, 'initialize', {
       protocolVersion: 2,
@@ -156,6 +156,52 @@ describe('v2 finite ACP host policy in explicit qualification mode', () => {
     policy.fromClient(reply(3, { messageId: 'user-before-acceptance' }))
     expect(policy.turnActive).toBeFalse()
     expect(policy.settledSessionId).toBe('owned-v2')
+  })
+
+  test('rejects whole-message content outside a foreground turn before projection', () => {
+    const policy = admittedV2()
+    expect(() =>
+      policy.fromClient(
+        update({
+          sessionUpdate: 'agent_message',
+          messageId: 'native-background',
+          content: [{ type: 'text', text: { privatePath: '/private/native/state' } }],
+        }),
+      ),
+    ).toThrow('ACP message arrived outside an active turn')
+    expect(() => policy.assertSettled()).toThrow('closed after failure')
+  })
+
+  test('bounds whole-message output across two accepted foreground turns', () => {
+    const policy = admittedV2(2)
+    const text = 'x'.repeat(5 * 1_048_576)
+    for (let i = 0; i < 2; i++) {
+      const userId = `user-${i}`
+      policy.fromAdapter(
+        request(3 + i, 'session/prompt', {
+          sessionId: 'owned-v2',
+          prompt: [{ type: 'text', text: 'Continue.' }],
+        }),
+      )
+      policy.fromClient(reply(3 + i, { messageId: userId }))
+      policy.fromClient(update({ sessionUpdate: 'user_message', messageId: userId, content: [] }))
+      policy.fromClient(update({ sessionUpdate: 'state_update', state: 'running' }))
+      const message = update({
+        sessionUpdate: 'agent_message',
+        messageId: `answer-${i}`,
+        content: [{ type: 'text', text }],
+      })
+      if (i === 0) {
+        expect(() => policy.fromClient(message)).not.toThrow()
+        policy.fromClient(
+          update({ sessionUpdate: 'state_update', state: 'idle', stopReason: 'end_turn' }),
+        )
+        expect(policy.turnActive).toBeFalse()
+      } else {
+        expect(() => policy.fromClient(message)).toThrow('ACP v2 foreground protocol')
+        expect(() => policy.assertSettled()).toThrow('closed after failure')
+      }
+    }
   })
 
   test('an error after insertion remains a failed native operation', () => {
