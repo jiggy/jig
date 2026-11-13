@@ -244,7 +244,7 @@ The destination parent must exist; existing destinations are never replaced.
 Example:
   jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
-       jig inspect --flow [target] [--impact | --source FILE] [--json]
+       jig inspect --flow [target] [--impact] [--source FILE] [--json]
        jig inspect --result DIRECTORY [--display plain|tui|web] [--json]
 
 List the current project's approved targets, or show one target's retained
@@ -1047,7 +1047,6 @@ function parseInspect(arguments_: readonly string[]) {
   if (flow && resultDirectory !== undefined)
     usage('inspect', 'Saved packets contain no retained flow context.')
   if (impact && selector === undefined) usage('inspect', '--impact requires an exact target.')
-  if (impact && source !== undefined) usage('inspect', 'Inspect source separately from --impact.')
   return {
     selector,
     json,
@@ -1175,7 +1174,7 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
   }
   runtime.signal?.throwIfAborted()
   if (parsed.flow && !json) {
-    runtime.writeOutput(
+    await runtime.writeRecord(
       renderFlowContext(snapshot, {
         ...(selector === undefined ? {} : { target: selector }),
         impact: parsed.impact,

@@ -896,12 +896,12 @@ provider identity, but never publishes or retains them or sends provider request
 It never evaluates visible source, fetches dependencies, acquires execution
 authority, probes namespace execution, recovers state, or writes project state.
 It may run the selected trusted Bubblewrap's bounded `--version` query.
+
 The display identifies its retained basis: source freshness, launch readiness
 and remote availability remain unchecked. Run still revalidates before execution.
 Changed or unchecked environments recommend `jig review`, not `jig run`.
 Unsafe, incompatible or busy state produces a bounded diagnostic without repair.
-Redirected output or `--json` is JSON, never styling.
-
+Ordinary redirected inspection emits JSON. Explicit `--json` selects JSON, while `--flow` selects the Markdown presentation below.
 
 `jig inspect --flow [target]` emits Markdown, including through redirected stdout.
 It joins exact retained component identities, effective settings, contracts, available routes, and captured package file inventories.
@@ -925,7 +925,7 @@ The [limits reference](../reference/limits.md#inspect-application-composition) l
 
 Use a smaller target or ordinary exact JSON inspection for expanded values.
 `--json` explicitly selects the enriched JSON record with the same target selection and an explicit omitted-target count.
-`--impact` and `--source` cannot be combined. Saved packets contain no corresponding flow context.
+`--impact` can accompany a source request for the selected target. Saved packets contain no corresponding flow context.
 
 `jig inspect --result <directory> [--display plain|tui|web] [--json]` reads a
 saved packet without loading a project, verifying an execution installation,

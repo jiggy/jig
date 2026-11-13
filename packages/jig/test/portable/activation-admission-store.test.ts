@@ -1923,7 +1923,7 @@ describe.serial('direct alpha activation store', () => {
       ).rejects.toMatchObject({ code: 'INSPECTION_SOURCE_UNAVAILABLE' })
       let rendered = ''
       expect(
-        await main(['inspect', '--flow', 'flow:flows/run', '--source', 'FLOW.ts'], {
+        await main(['inspect', '--flow', 'flow:flows/run', '--source', 'FLOW.ts', '--impact'], {
           currentDirectory: fixture.root,
           terminalOutput: false,
           writeOutput: (value) => {

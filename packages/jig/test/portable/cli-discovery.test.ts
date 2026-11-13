@@ -567,3 +567,30 @@ test('named-operation contracts never acquire a synthetic default interface in f
   expect(output).not.toContain('Declared outcomes: done')
   expect(output).not.toContain('Input: unconstrained')
 })
+
+test('flow Markdown uses asynchronous raw output even on a terminal and leaves an unreviewed project untouched', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-flow-raw-output-'))
+  try {
+    let output = '',
+      delivered = false
+    const result = await main(['inspect', '--flow'], {
+      currentDirectory: root,
+      terminalOutput: true,
+      writeOutput: () => {
+        throw new Error('Unexpected human formatting')
+      },
+      writeRecord: async (text) => {
+        await new Promise((resolve) => setImmediate(resolve))
+        output += text
+        delivered = true
+      },
+    })
+    expect(result).toBe(0)
+    expect(delivered).toBe(true)
+    expect(output).toStartWith('# Application flow\n')
+    expect(output).toContain('`jig review`')
+    expect(await readdir(root)).toEqual([])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
