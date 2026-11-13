@@ -148,14 +148,19 @@ All selected domain requirements still apply.
 - `src/cli-explorer-web.ts` owns the authenticated local project-control
   transport. Its capability is separate from every Run inspector capability.
   The browser submits only request identity, opaque approval revision, opaque
-  target identity and bounded JSON input. The host resolves and rechecks the
-  exact approved selector. Missing local input files and required channels are
-  explicit launch blockers. Browser text never supplies argv, local paths,
-  grants, review consent or process identities.
+  target identity, bounded JSON input, and explicitly selected file bytes.
+  The host resolves and rechecks the exact approved selector and unbound read
+  attachment names. It refuses missing, duplicate, foreign or bound-input
+  overrides. Required channels and more than eight unbound reads remain
+  launch blockers. Browser text never supplies argv, local paths, grants,
+  review consent or process identities.
 
 - `src/cli-explore-launch.ts` launches a fresh ordinary installed `jig run`
-  command for each accepted intent, with a private captured input file and the
-  existing approval pin. It preserves native admission, schema validation,
+  command for each accepted intent, with a private captured JSON input file,
+  separately staged bounded selected read files, and the existing approval pin.
+  Only one selected file per unbound read is permitted. Files are staged in
+  private temporary directories with safe filenames and passed through
+  ordinary `--attach` capture. No browser-supplied local path is used. It preserves native admission, schema validation,
   deadlines, file delivery and independent recovery. No delivery owner is
   reused after retirement. The ordinary Run receives no explorer control
   capability. Its private handoff reports only its viewer URL and confirmed
