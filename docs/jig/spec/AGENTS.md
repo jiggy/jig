@@ -56,6 +56,9 @@ execution evidence.
   Available connections remain distinct from observed invocations and application decisions.
   Missing or conflicting correspondence stays explicit.
 - Project exploration reads approved configuration before execution, with separate project and Run observation capabilities.
+  Selected local browser files are inert until explicit Run submission, bound
+  to reviewed unbound read attachment names, and captured through the ordinary
+  installed file boundary. No browser paths or arbitrary file grants.
   Explicit launch rechecks approval and input through the ordinary installed Run path.
   Reconnection never resubmits work, and unknown execution blocks further launch.
 - Execution client examples preserve selected receipt approval, exact tickets,
