@@ -1517,7 +1517,17 @@ describe.serial('direct alpha activation store', () => {
       } finally {
         database.close(true)
       }
-      await discardClaimedPrivateNativeSession({ ...access, snapshot: claimed })
+      await expect(
+        releaseClaimedPrivateNativeSession({ ...access, snapshot: claimed }),
+      ).rejects.toThrow('native session claim cannot be restored')
+      await expect(
+        discardClaimedPrivateNativeSession({ ...access, snapshot: claimed }),
+      ).rejects.toThrow('native session claim cannot be discarded')
+      await discardClaimedPrivateNativeSession({
+        ...access,
+        parentRunId: nextRunId,
+        snapshot: claimed,
+      })
     } finally {
       await coordinator?.dispose()
       await fixture.dispose()
