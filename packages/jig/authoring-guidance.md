@@ -265,7 +265,8 @@ remain supported and are not rewritten by a review default.
   Executable recovery can suggest `--agent` for an unpinned client,
   without treating PATH discovery as authorization. The option applies only
   to selected unpinned ACP grants. Explicit pins, models and native retention
-  stay intact. A review with no unpinned client rejects an inapplicable option.
+  stay intact. With only pinned grants, an exact same-client choice is a no-op.
+  A mismatched choice is rejected instead of changing any pin.
   The chosen default is retained in capture identity and the lock, alongside
   the effective concrete slot clients. The strict lock decoder requires at least
   one matching policy and allows independent pinned clients.
