@@ -262,8 +262,7 @@ export async function privateAgentReadinessReport(input: {
           ? {
               rejectedOverride: `${cause.client.toUpperCase()}_PATH` as
                 | 'CODEX_PATH'
-                | 'CLAUDE_PATH'
-                ,
+                | 'CLAUDE_PATH',
             }
           : {}),
         recipients: Object.freeze([]),
