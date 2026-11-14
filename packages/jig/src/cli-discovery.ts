@@ -163,7 +163,7 @@ export function completionScript(shell: string): string | undefined {
   if (( COMP_CWORD == 1 )); then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W '${commands} --help --version' -- "$cur")
   elif [[ "$prev" == --agent && ( "$command" == review || "$command" == init ) ]]; then
-    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'codex claude pi' -- "$cur")
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'codex claude' -- "$cur")
   elif [[ "$prev" == --source-root && "$command" == review ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -d -- "$cur")
   elif [[ "$prev" == --verification ]]; then
@@ -208,7 +208,7 @@ _jig() {
   if (( CURRENT == 2 )); then
     choices=(${commands} --help --version)
   elif [[ "$words[CURRENT-1]" == --agent && ( "$words[2]" == review || "$words[2]" == init ) ]]; then
-    choices=(codex claude pi)
+    choices=(codex claude)
   elif [[ "$words[CURRENT-1]" == --source-root && "$words[2]" == review ]]; then
     _files -/; return
   elif [[ "$words[CURRENT-1]" == --verification ]]; then
@@ -256,9 +256,9 @@ complete -c jig -n '__fish_seen_subcommand_from inspect' -l display -r -a 'plain
 complete -c jig -n '__fish_seen_subcommand_from run' -l display -r -a 'auto plain tui web'
 complete -c jig -n '__fish_seen_subcommand_from run' -l updates -r -a off
 complete -c jig -n '__fish_seen_subcommand_from init' -l bare
-complete -c jig -n '__fish_seen_subcommand_from init' -l agent -r -a 'codex claude pi'
+complete -c jig -n '__fish_seen_subcommand_from init' -l agent -r -a 'codex claude'
 ${['input', 'attach', 'select', 'out', 'receive', 'timeout'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from run' -l ${flag} -r`).join('\n')}
-complete -c jig -n '__fish_seen_subcommand_from review' -l agent -r -a 'codex claude pi'
+complete -c jig -n '__fish_seen_subcommand_from review' -l agent -r -a 'codex claude'
 complete -c jig -n '__fish_seen_subcommand_from review' -l source-root -r -a '(__fish_complete_directories)'
 ${['yes', 'details', 'allow-resolution-network', 'allow-authority-changes', 'generate-contracts'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from review' -l ${flag}`).join('\n')}
 `
