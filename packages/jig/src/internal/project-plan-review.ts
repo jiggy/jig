@@ -296,7 +296,8 @@ function projectAcpSelections(
         recipe.request.digest !== target.request.digest ||
         recipe.digest !== target.disposition.recipeDigest ||
         recipe.observation.digest !== target.disposition.observationDigest ||
-        route.grant?.kind !== 'acp'
+        route.grant?.kind !== 'acp' ||
+        route.grant.client === undefined
       )
         throw new TypeError('ACP review selection does not match the exact proposed recipe')
       selected[slot] = privateProjectReviewedAcpSelection(route.grant, recipe.acp[slot])
