@@ -18,8 +18,11 @@ import { nativeElf } from '.././fixtures/native-elf.js'
 import { nativeMachO } from '.././fixtures/native-macho.js'
 
 test('installed Claude adapter disables unreviewed SDK title inference when Jig blocks nonessential traffic', async () => {
+  // Newer direct-v2 adapters export only their public library. Resolve that
+  // published entrypoint, then inspect the adjacent built distribution file.
   const installed = new URL(
-    import.meta.resolve('@agentclientprotocol/claude-agent-acp/dist/session-titles.js'),
+    './session-titles.js',
+    import.meta.resolve('@agentclientprotocol/claude-agent-acp'),
   )
   const source = await readFile(installed, 'utf8')
   expect(source).toContain('process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC !== "1"')
