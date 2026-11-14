@@ -134,8 +134,8 @@ and the approved generation.
 
 A subsequent review requires a new choice, although an interactive prompt may
 suggest the previously approved client. A noninteractive review without a
-choice fails if any selected ACP resource is unpinned. Supplying `--agent`
-when no such resource exists is inapplicable.
+choice fails if any selected ACP resource is unpinned. Supplying `--agent` with only pinned recipients is a harmless no-op when
+all of those pins match the selected client. A mismatch remains inapplicable.
 [Project policy](project-policy.md#review-client-selection) defines the exact
 construction and retained identity. Review never silently substitutes Agents.
 
