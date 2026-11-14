@@ -451,7 +451,9 @@ jobs:
               'Publication requires every native client to pass against the same candidate.' '' \
               'Inspect the failed step and its bounded conversation diagnostics.' \
               'A native-session **limit** category does not identify the underlying provider cause.' \
-              'Check provider availability and quota without exposing credentials or private responses.' '' \
+              'Check provider availability and quota without exposing credentials or private responses.' \
+              'The protected operator may explicitly configure a first-party key and model for Codex or Claude.' \
+              'Those paths may be billed; incomplete pairs are rejected before Agent execution.' '' \
               'Fix the cause, then choose **Re-run all jobs** in this workflow.' \
               'Partial qualification reruns cannot reuse earlier proof.' >> "$GITHUB_STEP_SUMMARY"
           fi
