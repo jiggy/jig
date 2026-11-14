@@ -289,4 +289,7 @@ jig inspect --flow --json
 Working-tree inspection evaluates captured declarations through containment. It does not invoke methods, install dependencies, approve work, or write project state.
 Declared npm dependencies must already be installed. Their manifest and lock agreement remains unchecked.
 
+An Agent resource can remain unselected while inspecting. Choose its native client during review.
+Inspection checks the project's declared Jig version before evaluating declarations.
+
 This configured map is a structural aid. It does not supply a behavioral overview or establish the consequences of an edit.

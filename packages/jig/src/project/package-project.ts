@@ -27,7 +27,7 @@ import {
   validateEntrypointInterface,
 } from './entrypoint.js'
 import { isDirectRunEligible } from './flow-source.js'
-import { type GrantPolicy, type NativeAcpClient, grantName, normalizeGrant } from './grants.js'
+import { type GrantPolicy, grantName, type NativeAcpClient, normalizeGrant } from './grants.js'
 import {
   type InvocationIdentity,
   type InvocationRequirement,
@@ -321,10 +321,14 @@ function resolvePackageProject(
   )
   // Inert, unpinned ACP requests require one operator choice during review.
   // Unbound optional recovery slots do not create an Agent selection request.
-  if (agentOverride === undefined) {
+  if (agentOverride === undefined && !inspection) {
     for (const binding of value.bindings) {
       for (const [slot, route] of Object.entries(binding.slots)) {
-        if (route.kind !== 'grant' || route.policy.kind !== 'acp' || route.policy.client !== undefined)
+        if (
+          route.kind !== 'grant' ||
+          route.policy.kind !== 'acp' ||
+          route.policy.client !== undefined
+        )
           continue
         invalid(
           'PROJECT_AGENT_SELECTION_REQUIRED',

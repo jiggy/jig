@@ -906,13 +906,21 @@ Markdown remains literal through pipes. Explicit `--json` returns the selected c
 Each target retains its exact selector, package identity, settings, and resolved caller-local routes.
 Separate Bindings remain distinct. Native resources retain their configured caller slots.
 
+Markdown identifies each Binding's implementing package even when its settings are empty.
+Bidirectional controls in rendered labels and values are shown as visible code points.
+
 Current working-tree capture is the default. It uses the ordinary contained declaration evaluator and linker.
+It checks the project's exact Jig requirement before declaration evaluation and rechecks captured compatibility metadata before returning.
 Declared npm Flows use already installed local packages. Manifest and lock agreement remains unchecked.
+
 Inspection never installs dependencies, invokes methods or providers, prepares recipes, generates contracts, updates locks, or writes project state.
 Invalid declarations and missing dependencies fail without substituting approved bytes.
+An unpinned ACP resource remains unselected during inspection. Operator client selection remains required for review.
 
 `--approved` selects retained authorized configuration without declaration evaluation.
 The output identifies its basis and revision. Working-tree execution readiness remains unchecked.
+Working-tree JSON records and targets remain `unreviewed`, including an empty inventory. No environment comparison is implied.
+Relative Flow selectors accepted by the command grammar are normalized before either current or approved lookup.
 
 An exact target selects contextual topology: its downstream closure, other configured uses of the same package, and their downstream closures.
 It also includes every upstream caller path and those callers' direct slot targets.

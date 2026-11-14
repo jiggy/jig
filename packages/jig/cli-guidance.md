@@ -222,6 +222,10 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Caller peers are not recursively expanded. Boundary notices count omitted incoming and outgoing connections.
   The focus is distinct from the declared entrypoint. Shared package identity does not imply a call or equivalent behavior.
 
+  Binding package identity remains visible with empty settings. Rendered directional controls are visible code points.
+  Relative Flow selectors are canonical before current or approved lookup.
+  Working-tree records remain unreviewed even for an empty target inventory.
+
   Working-tree capture uses the shared contained evaluator and linker without admission or project-state writes.
   `--approved` selects retained authorized configuration without evaluating visible source.
   Installed npm dependencies remain required and their manifest/lock agreement stays unchecked.

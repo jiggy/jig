@@ -51,6 +51,20 @@ async function fixture(
 }
 
 describe.serial('finite isolated author declaration batches', () => {
+  test('working-tree inspection checks the exact Jig requirement before evaluating declarations', async () => {
+    await fixture(
+      { 'jig.ts': 'throw new Error("declarations must not execute"); export default {};' },
+      async (root, _captured, options) => {
+        await writeFile(join(root, 'package.json'), JSON.stringify({ engines: { jig: '999.0.0' } }))
+        await expect(inspectWorkingFlow(root, options)).rejects.toMatchObject({
+          code: 'PROJECT_JIG_VERSION_MISMATCH',
+          path: 'package.json',
+          pointer: '/engines/jig',
+        })
+        expect((await readdir(root)).sort()).toEqual(['jig.ts', 'package.json'])
+      },
+    )
+  })
   test('working-tree flow inspection follows new Bindings and refuses invalid source without creating project state', async () => {
     await fixture(
       {

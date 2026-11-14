@@ -211,7 +211,7 @@ When host or provider prerequisites are unavailable, report inspection separatel
 For a request such as “call C instead of B when J holds,” locate the caller that owns that decision.
 Use `jig inspect --flow` to find configured targets, distinct Bindings, and available powers.
 Read the caller's guard, dispatch, and return handling to establish the behavior.
-Check other callers and entrypoints when changing a shared method.
+Use `jig inspect --flow <target>` to retain other callers, entrypoints, and uses of a shared method.
 
 Keep a focused Mermaid flowchart in the task context or existing project documentation.
 Use actions and decisions as nodes, name callees at handoffs, and label edges with guards or outcomes established in source.
