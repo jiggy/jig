@@ -150,8 +150,12 @@ A native-session `limit` diagnostic does not identify the underlying provider ca
 Check provider availability and quota without exposing credentials or private responses.
 
 - **Release versions fails:** Read its run summary and failed step.
-  After fixing the cause, choose **Re-run all jobs**, or run the workflow again on current `main`.
-  **Re-run failed jobs** cannot reuse prepared version changes from an earlier attempt.
+  An opaque GitHub GraphQL error from the version action may be a GitHub
+  commit-on-branch service failure. The action uses a scoped Git push instead;
+  do not weaken write permissions or release-source checks in response.
+  After fixing the cause, choose **Re-run all jobs**, or run the workflow again
+  on current `main`. **Re-run failed jobs** cannot reuse prepared version
+  changes from an earlier attempt.
 - **Qualification fails:** Fix the failing check before publishing.
   A transient failure requires a complete workflow rerun. Partial runs cannot qualify a release.
 - **Publication fails:** Choose **Re-run failed jobs** while the original archives remain available for seven days.
