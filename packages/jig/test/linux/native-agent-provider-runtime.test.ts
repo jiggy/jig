@@ -11,12 +11,9 @@ import { fixture, temporary } from '.././native-agent-provider-runtime.fixture.j
 afterEach(async () => {
   await Promise.all(temporary.splice(0).map((path) => rm(path, { recursive: true, force: true })))
 })
-for (const client of ['claude', 'pi'] as const) {
-  describe(`${client} reviewed native installation`, () => {
-    if (client === 'pi') {
-    } else {
+describe('Claude reviewed native installation', () => {
       test('retains and revalidates a declarative native wrapper target', async () => {
-        const f = await fixture(client)
+        const f = await fixture()
         const wrapped = join(f.root, '.claude-wrapped')
         await writeFile(wrapped, nativeElf(), { mode: 0o700 })
         await writeFile(
@@ -33,8 +30,7 @@ for (const client of ['claude', 'pi'] as const) {
         await writeFile(wrapped, nativeElf({ needed: ['changed.so'] }))
         await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow('support changed')
       })
-    }
-  })
-}
+
+})
 
 if (process.platform !== 'linux') throw Error('This suite requires Linux')
