@@ -929,55 +929,39 @@ meaning without admitting it.
 
 ### Review client selection
 
-The CLI's explicit `jig review --agent codex|claude|pi` argument requires one
-supported value. Validate authored declarations normally, then change only
-`client` in every selected normalized ACP resource policy before qualification.
-Inline, named/shared and computed policies use the same construction boundary.
-The source closure remains unchanged. HTTP-backed Agents, Flow/package/provider
-routes and unselected policies are unaffected; no Agent is created.
+An ACP grant with omitted `client` requests the operator's native Agent.
+It is not an executable client. Such a grant may specify common `maxTurns`,
+but not a vendor model, `authProfile`, or `retainSessions`. Those require
+an explicit client pin. The operator's default never rewrites a pin, even if
+the client uses a named authentication profile.
 
-This operand is part of retained candidate meaning wherever authenticity and
-reuse require it. Effective requests, qualification, execution recipes, lock,
-admission and inspection MUST agree on the selected client and complete policy.
-Review identifies source versus effective clients, argument origin and affected
-recipients before normal approval. The ordinary lock retains effective slot
-policies and optional top-level
-`agentOverride`, whose value is exactly `codex`, `claude` or `pi`. Its presence
-requires at least one selected ACP policy and every selected ACP policy must
-use that client. Inspection's approved snapshot includes this retained
-`agentOverride` beside the effective slots; human output explains its
-review-argument origin. Neither view guesses origin from current source
-differences. The operand is also bound into retained capture identity; replay
-or reuse cannot pair another argument with the captured proposal.
+After capturing and validating source, Jig links the candidate. If a bound
+ACP resource lacks a client, interactive review asks the operator for
+`codex`, `claude` or `pi`. A previous approved choice may be suggested,
+but is not silently reused. Declining the prompt leaves approval unchanged.
+Noninteractive review and `--yes` must supply `--agent codex|claude|pi`
+or receive `PROJECT_AGENT_SELECTION_REQUIRED` at the Binding slot.
 
-A same-client choice preserves every field and still qualifies. An actual
-cross-client change with an authored authentication profile, model pin, or
-incompatible `retainSessions` refuses the entire request. Profile names belong
-to the selected client's operator authentication method and cannot be translated
-by `--agent`.
+The choice binds only existing unpinned ACP grant routes. Optional recovery
+slots without a binding remain unbound and gain no authority. Explicitly
+pinned candidates and backups are preserved, including their models,
+authentication profiles, and retention settings. A review operand with no
+unpinned recipient is refused as inapplicable.
 
-Never clear, translate or infer model/retention
-policy, and preserve `maxTurns`. A pinned-model refusal states the operand's
-restriction, not an unproved claim about model compatibility or native setup.
-Refuse an inapplicable request when no ACP resources are selected. Global scope
-includes mixed source clients. There are no per-slot exceptions, force modes,
-automatic alternatives or partial semantic success.
+The choice participates in retained capture identity, effective grant
+policies, lock, qualification and admission. The optional top-level
+`agentOverride` records the selected default and must match at least one
+effective ACP policy. Other pinned ACP policies may use different clients.
+Source origin remains separate from effective policy so the review never
+misattributes a client literal or a named authentication profile.
 
-The operand does not grant execution, resolution networking, contract generation
-or new resource authority. Existing approval, `--yes` restrictions, generation,
-verification, preparation and cleanup remain unchanged. Run has no client operand
-and consumes only the complete admitted policy without substitution.
-
-Each later review uses newly captured source and its explicit arguments again.
-No client preference is inherited from lock, admission or environment. Repeating
-`--agent` proposes that selection again; editing the Binding persists a project
-choice. A bare review explains a proposed source-derived client change before
-approval or in its refusal. If it fails, the earlier approved code and client
-remain together: newly edited code is not admitted with the earlier client.
-Apply reopens the retained candidate and never reevaluates source or reconstructs
-this selection. Replay and exact reuse retain the same operand and effective
-meaning. Captured source locations remain source locations; an overridden Pi
-literal cannot become an originating Codex literal.
+The operator prompt runs after a bounded, validated source capture and before
+resource qualification. Jig rechecks retained source identity after the
+choice, without rerunning project code. A Run consumes only exact reviewed
+clients and never selects an Agent or launches an unauthorized backup.
+Changing the choice requires ordinary review and authority approval when
+effective resources change. It grants neither dependency resolution access
+nor model execution by itself.
 
 ## 7. Lock and local admission
 
