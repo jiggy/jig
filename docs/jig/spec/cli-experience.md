@@ -713,34 +713,31 @@ Agent configuration. Existing destinations are never overwritten.
 
 ### Review client selection
 
-`jig review --agent codex|claude|pi` requires exactly one supported value, even
-on a terminal. It proposes that client for every selected normalized ACP policy
-before qualification. It changes only `client`; declarations and named grants
-remain unchanged. The argument neither creates an Agent nor changes HTTP grants,
-Flow/package routes or ordinary provider selection. Run has no corresponding
-flag and never substitutes a client at execution time.
+The ordinary ACP source policy omits `client`. During interactive `jig review`,
+Jig asks the operator to choose `codex`, `claude` or `pi` when at least
+one selected ACP resource has no pinned client. A previous approved choice
+may be displayed as a suggested answer. It must be explicitly accepted.
+Declining or interrupting the prompt records no new approval.
 
-Before approval, show source and effective clients, the review-argument origin
-and all affected selections within ordinary truthful report bounds. Retain this
-selection summary even when the ordinary policy diff is empty; same-client
-and unchanged review still disclose the explicit operand. Mixed source
-clients use the same global selection. A same-client no-op preserves every field
-and still undergoes qualification. Refuse the complete request when no ACP
-policies are selected, or when an actual cross-client change has a model pin or
-incompatible session retention. Do not clear, translate or infer those fields;
-preserve `maxTurns`. A pin refusal explains this argument's restriction rather
-than asserting model incompatibility or a native setup failure.
+`jig review --agent codex|claude|pi` supplies that choice without prompting.
+Noninteractive reviews and `--yes` must supply the operand if an unpinned
+ACP resource is selected. Otherwise review refuses with
+`PROJECT_AGENT_SELECTION_REQUIRED` and the affected Binding slot.
+An explicit `--agent` with no unpinned recipient is inapplicable.
 
-Normal exact approval and new/changed resource-authority opt-ins still apply.
-The argument grants neither resolution networking nor execution. A later review
-starts from its newly captured source and explicit arguments: it does not inherit
-this selection from a lock, admission or environment. When bare review proposes
-returning to a source client, explain that change before approval or in the
-refusal. A failed review retains the earlier approved code and client together.
-Inspection identifies the approved effective policy and retained origin without
-inferring a past argument from current source. An originating source Pi literal
-must never be presented as an originating Codex literal.
-[Project policy](project-policy.md#review-client-selection) owns exact candidate
+The choice changes only the client of unpinned selected ACP policies.
+Explicitly pinned clients, models and native retention requirements remain
+intact. HTTP grants and other Flow routes are unaffected. Review retains
+the source-versus-effective selection and the operand origin, including a
+choice made through the prompt. The source closure is never rewritten.
+
+The operator-selected default and every exact effective client become part
+of the reviewed lock and approval identity. Different pinned Agents may coexist
+with the default. Runs use those concrete admitted clients and never substitute
+another Agent automatically. A later review needs its own selection, even when
+the prior approval has the same client. Ordinary authorization, cancellation,
+resolution-network restrictions and failure reporting remain in effect.
+[Project policy](project-policy.md#review-client-selection) owns exact linking
 and lock semantics.
 
 ### Agent setup during review
