@@ -123,6 +123,28 @@ test('named ACP authentication profiles are reviewed, bounded and model-independ
   expect(requiresAuthorityApproval(lock('personal-codex'), lock('work-codex'))).toBeTrue()
   expect(requiresAuthorityApproval(lock('personal-codex'), lock('personal-codex'))).toBeFalse()
 })
+test('omitted ACP client defers review selection but cannot pin model, profile or retention', () => {
+  expect(normalizeGrant({ kind: 'acp' })).toEqual({ kind: 'acp' })
+  expect(normalizeGrant({ kind: 'acp', maxTurns: 3 })).toEqual({
+    kind: 'acp',
+    maxTurns: 3,
+  })
+  const binding = defineBinding({
+    package: 'flows/agent',
+    slots: { native: { kind: 'acp', maxTurns: 3 } },
+  })
+  expect(binding.slots.native).toEqual({ kind: 'acp', maxTurns: 3 })
+  for (const extra of [
+    { model: 'pinned' },
+    { authProfile: 'work-account' },
+    { retainSessions: true },
+    { client: 'operator' },
+    { client: null },
+    { environment: { CODEX_PATH: '/usr/bin/codex' } },
+  ])
+    expect(() => normalizeGrant({ kind: 'acp', ...extra })).toThrow()
+})
+
 test('ACP additional turns are an explicit bounded reviewed grant', () => {
   expect(normalizeGrant({ kind: 'acp', client: 'codex', maxTurns: 3 })).toEqual({
     kind: 'acp',
@@ -164,7 +186,7 @@ test('finite ACP is an exact resource grant, never an implicit Agent permission'
   expect(() => resolveInvocationSlots({ native: http }, { native: selected })).toThrow('exact')
   expect(() => resolveInvocationSlots({}, { native: selected })).toThrow('exact')
   for (const policy of [
-    { kind: 'acp' },
+    { kind: 'acp', client: 'operator' },
     { kind: 'acp', client: 'unknown' },
     { kind: 'acp', client: 'codex', executable: '/bin/sh' },
     { kind: 'acp', client: 'codex', permissions: ['*'] },
