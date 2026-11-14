@@ -25,10 +25,11 @@ Keep the example's declared dependencies and supplied acceptance cases.
 
 ## Try it
 
-The example declares the ACP Agent dependency and keeps its inline policy in `bindings/agent.ts`.
-[Choose your client](../build/agents.md#switching) there, or explicitly propose one for the current review.
-Pi is an example choice, not a Jig preference.
+The example declares the ACP Agent dependency and keeps an unpinned
+native grant in `bindings/agent.ts`. [Choose your client](../build/agents.md#switching)
+during interactive review, or use `--agent codex|claude|pi` in automation.
 The `defaultProviders` map selects that Binding for the Agent Run contract.
+To require a particular client for a specialist, pin it explicitly in source.
 
 Inspect `issue.json`, `bindings/specialist.ts`, and `flows/read-project/logs-cases.json`.
 Review prepares the declared dependencies.
