@@ -158,7 +158,7 @@ All selected domain requirements still apply.
   review consent or process identities.
 
 - `src/cli-explore-launch.ts` launches a fresh ordinary installed `jig run`
-  command for each accepted intent, with a private captured JSON input file,
+  command for each accepted intent. Its input uses a private captured JSON file,
   separately staged bounded selected read files, and the existing approval pin.
   Only one selected file per unbound read is permitted. Files are staged in
   private temporary directories with safe filenames and passed through
