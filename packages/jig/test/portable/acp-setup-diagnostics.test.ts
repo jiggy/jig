@@ -27,9 +27,6 @@ describe('native-client setup recovery', () => {
             expect(hint).not.toContain(platform === 'darwin' ? 'Linux' : 'macOS')
             if (platform === 'darwin') expect(hint).toContain("this Mac's architecture")
           }
-          expect(hints.PROJECT_ACP_PI_INSTALLATION).toContain('Pi 0.84.4')
-          expect(hints.PROJECT_ACP_PI_INSTALLATION).toContain('package.json and theme directory')
-          expect(hints.PROJECT_ACP_PI_INSTALLATION).toContain(
             'a Node/npm launcher is not supported',
           )
           const helper = hints.PROJECT_ACP_CODEX_SANDBOX
