@@ -40,7 +40,7 @@ import {
   type PrepareCapturedFlow,
 } from './flow-source.js'
 import { captureGrantSource } from './grant-source.js'
-import type { AcpGrant, GrantPolicy } from './grants.js'
+import type { GrantPolicy, NativeAcpClient } from './grants.js'
 import type { JigLimits } from './limits.js'
 import { captureProjectJigRequirement } from './jig-version.js'
 import { linkPackageProject, type PackageProjectValue } from './package-project.js'
@@ -59,7 +59,8 @@ export interface PrivateRetainedProjectOptions {
   readonly projectRoot: string
   readonly storeRoot: PrivateFileLocation
   readonly evaluator: PrivateAuthorEvaluatorOptions
-  readonly agentOverride?: AcpGrant['client']
+  readonly agentOverride?: NativeAcpClient
+  readonly onAgentSelection?: () => Promise<NativeAcpClient | undefined>
 }
 
 export interface PrivateRetainedOpenedProjectOptions {
@@ -67,7 +68,8 @@ export interface PrivateRetainedOpenedProjectOptions {
   readonly projectRoot: PrivateProjectRoot
   readonly storeRoot: PrivateFileLocation
   readonly evaluator: PrivateAuthorEvaluatorOptions
-  readonly agentOverride?: AcpGrant['client']
+  readonly agentOverride?: NativeAcpClient
+  readonly onAgentSelection?: () => Promise<NativeAcpClient | undefined>
   readonly prepareFlow?: PrepareCapturedFlow
   readonly reviewEvaluation?: (
     grant: ProjectEvaluation,
@@ -86,7 +88,7 @@ export interface RetainedBindingDeclaration {
 
 export interface PrivateRetainedPackageProject {
   readonly captureDigest: string
-  readonly agentOverride?: AcpGrant['client']
+  readonly agentOverride?: NativeAcpClient
   readonly root: {
     readonly device: string
     readonly inode: string
@@ -336,8 +338,7 @@ export async function retainOpenedPackageProject(
     await grantSource.verify()
     await root.verify()
 
-    const linked = linkPackageProject(
-      {
+    const linkInput = {
         flows: retainedFlows,
         ...(project.value.entrypoint === undefined ? {} : { entrypoint: project.value.entrypoint }),
         grants: grantSource.grants,
@@ -352,16 +353,36 @@ export async function retainOpenedPackageProject(
             ? {}
             : { capturedEvaluations: retainedEvaluations }),
         })),
-      },
-      PRIVATE_ACTIVATION_TARGET_LIMIT,
-      options.agentOverride,
-    )
+    }
+    let selectedAgent = options.agentOverride
+    let linked: PackageProjectValue
+    try {
+      linked = linkPackageProject(linkInput, PRIVATE_ACTIVATION_TARGET_LIMIT, selectedAgent)
+    } catch (error) {
+      if (
+        selectedAgent !== undefined ||
+        options.onAgentSelection === undefined ||
+        !(error instanceof CheckError) ||
+        error.code !== 'PROJECT_AGENT_SELECTION_REQUIRED'
+      )
+        throw error
+      const chosen = await options.onAgentSelection()
+      signal?.throwIfAborted()
+      if (chosen === undefined) throw error
+      if (!['codex', 'claude', 'pi'].includes(chosen))
+        throw new TypeError('operator Agent selection must be a supported native client')
+      await bindingSource.verify()
+      await grantSource.verify()
+      await root.verify()
+      selectedAgent = chosen
+      linked = linkPackageProject(linkInput, PRIVATE_ACTIVATION_TARGET_LIMIT, selectedAgent)
+    }
     const agentSources: Record<
       string,
       Readonly<Record<string, PrivateAgentSourceLocation>>
     > = Object.create(null)
     for (const binding of bindings) {
-      const clients: Record<string, string> = Object.create(null)
+      const clients: Record<string, string | undefined> = Object.create(null)
       for (const [slot, selection] of Object.entries(binding.evaluation.value.slots)) {
         const policy =
           typeof selection === 'string'
@@ -382,7 +403,7 @@ export async function retainOpenedPackageProject(
       inode: root.information.ino.toString(),
     })
     const captureDigest = digestCapture({
-      ...(options.agentOverride === undefined ? {} : { agentOverride: options.agentOverride }),
+      ...(selectedAgent === undefined ? {} : { agentOverride: selectedAgent }),
       root: rootIdentity,
       declarationArtifact,
       project,
@@ -395,7 +416,7 @@ export async function retainOpenedPackageProject(
     })
     const value = Object.freeze({
       captureDigest,
-      ...(options.agentOverride === undefined ? {} : { agentOverride: options.agentOverride }),
+      ...(selectedAgent === undefined ? {} : { agentOverride: selectedAgent }),
       root: rootIdentity,
       declarationArtifact,
       project,
@@ -483,7 +504,7 @@ function assertBootstrapPreserved(
 }
 
 function digestCapture(input: {
-  readonly agentOverride?: AcpGrant['client']
+  readonly agentOverride?: NativeAcpClient
   readonly root: { readonly device: string; readonly inode: string }
   readonly declarationArtifact: RetainedAuthorClosure
   readonly project: EvaluatedAuthorDeclaration<JigDefinition>
