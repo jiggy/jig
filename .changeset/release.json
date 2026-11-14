@@ -1,55 +1,19 @@
 {
   "schemaVersion": 1,
-  "baseRevision": "276b796be9e02e754bbba92eb04aa7873ed66fcb",
-  "sourceDigest": "1d98621195ed908a1f45ed34416d3c9c4272b7402e2e5a5e744befe03faba48c",
+  "baseRevision": "16f23056f4b0fd9765d056c61626d335d214e9c1",
+  "sourceDigest": "40e29d445fa54926af942a382ef01b109d094fc7c7ad4512187ac2c393bfa054",
   "changesets": [
     {
-      "id": "claude-acp-direct-v2",
-      "sha256": "ec48eab1a303a88c6911c3b6061ee0897095f1d25fc79555181676067d1f31e9"
+      "id": "configured-topology-inspection",
+      "sha256": "659e0c17cec9c76c09258e86b79fe80b7898514ca7ab8d3c9b3f775a1358ece1"
     }
   ],
   "releases": [
     {
-      "name": "@jigging/agent-acp",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.14",
-      "newVersion": "0.1.0-alpha.15"
-    },
-    {
-      "name": "@jigging/agent-method",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.12",
-      "newVersion": "0.1.0-alpha.13"
-    },
-    {
-      "name": "@jigging/display-model",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.7",
-      "newVersion": "0.1.0-alpha.8"
-    },
-    {
-      "name": "@jigging/display-tui",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.7",
-      "newVersion": "0.1.0-alpha.8"
-    },
-    {
-      "name": "@jigging/display-web",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.8",
-      "newVersion": "0.1.0-alpha.9"
-    },
-    {
       "name": "@jigging/jig",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.53",
-      "newVersion": "0.1.0-alpha.54"
-    },
-    {
-      "name": "@jigging/reporting",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.5",
-      "newVersion": "0.1.0-alpha.6"
+      "type": "minor",
+      "oldVersion": "0.1.0-alpha.54",
+      "newVersion": "0.1.0-alpha.55"
     }
   ]
 }
