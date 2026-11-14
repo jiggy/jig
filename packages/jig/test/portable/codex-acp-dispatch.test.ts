@@ -52,6 +52,7 @@ for (const scenario of [
           CODEX_PATH: scenario === 'missing-executable' ? join(root, 'missing-codex') : fixture,
           RECORD_PATH: recording,
           RECORD_SCENARIO: scenario,
+          APP_SERVER_LOGS: join(root, 'logs'),
         },
         stdin: 'pipe',
         stdout: 'pipe',
@@ -154,6 +155,17 @@ for (const scenario of [
         ).error,
       ).toBeUndefined()
       const opened = await request(2, 'session/new', { cwd: root, mcpServers: [] })
+      if (opened.error !== undefined) {
+        const requests = await readFile(recording, 'utf8').catch(() => '')
+        console.error('Codex native-v2 session setup failed', {
+          error: opened.error,
+          nativeMethods: requests.trim().split('\\n').filter(Boolean).map((line) => {
+            const item = JSON.parse(line)
+            return { method: item.method ?? item.event, params: item.params?.type ?? null }
+          }),
+          diagnostics: await readFile(join(root, 'logs', 'app-server.log'), 'utf8').catch(() => ''),
+        })
+      }
       expect(opened.error).toBeUndefined()
       const sessionId = opened.result.sessionId
       expect(
