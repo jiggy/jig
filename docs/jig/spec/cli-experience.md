@@ -723,7 +723,8 @@ Declining or interrupting the prompt records no new approval.
 Noninteractive reviews and `--yes` must supply the operand if an unpinned
 ACP resource is selected. Otherwise review refuses with
 `PROJECT_AGENT_SELECTION_REQUIRED` and the affected Binding slot.
-An explicit `--agent` with no unpinned recipient is inapplicable.
+When all selected clients are already pinned, a matching `--agent` is an inert
+confirmation. Mismatched pinned clients cannot be overridden.
 
 The choice changes only the client of unpinned selected ACP policies.
 Explicitly pinned clients, models and native retention requirements remain
