@@ -60,7 +60,7 @@ describe('private package-project portable lock projection', () => {
         bindings: [
           binding('bindings/inline.ts', {
             package: 'flows/native',
-            slots: { native: { kind: 'acp', client: 'pi', maxTurns: 3 } },
+            slots: { native: { kind: 'acp', maxTurns: 3 } },
           }),
           binding('bindings/named.ts', {
             package: 'flows/native',
@@ -71,9 +71,9 @@ describe('private package-project portable lock projection', () => {
             slots: { native: 'grant:shared' },
           }),
         ],
-        grants: { shared: { kind: 'acp' as const, client: 'claude' as const, maxTurns: 2 } },
+        grants: { shared: { kind: 'acp' as const, maxTurns: 2 } },
       }
-      const authored = linkPackageProject(input)
+      const authored = linkPackageProject(input, undefined, 'pi')
       const effective = linkPackageProject(input, undefined, 'codex')
       const lock = createPrivateProjectLocalLock(effective, 'codex')
       const encoded = encodePrivateProjectLocalLock(lock)
@@ -115,10 +115,11 @@ describe('private package-project portable lock projection', () => {
           }),
         ).toThrow()
       }
-      expect(createPrivateProjectLocalLock(linkPackageProject(input)).agentOverride).toBeUndefined()
-      expect(linkPackageProject(input)).toEqual(authored)
+      expect(createPrivateProjectLocalLock(authored).agentOverride).toBeUndefined()
+      expect(linkPackageProject(input, undefined, 'pi')).toEqual(authored)
+      expect(() => linkPackageProject(input)).toThrow()
       expect(() => createPrivateProjectLocalLock(effective, 'pi')).toThrow(
-        'agree with every selected ACP policy',
+        'match at least one effective ACP policy',
       )
       expect(() => createPrivateProjectLocalLock(effective, 'unknown' as never)).toThrow(
         'must be codex, claude or pi',
@@ -143,6 +144,10 @@ describe('private package-project portable lock projection', () => {
                   retainSessions: true,
                 },
               },
+            }),
+            binding('bindings/default.ts', {
+              package: 'flows/native',
+              slots: { native: { kind: 'acp', maxTurns: 2 } },
             }),
           ],
         },
@@ -203,14 +208,27 @@ describe('private package-project portable lock projection', () => {
         (value) => {
           value.agentOverride = 'pi'
         },
-        'agree with every selected ACP policy',
+        'match at least one effective ACP policy',
+      )
+      // Explicitly pinned clients need not equal the operator's default.
+      const mixed = structuredClone(base)
+      mixed.bindings.second.slots.native.policy.client = 'pi'
+      expect(decodePrivateProjectLocalLock(lockBytes(mixed)).bindings.second!.slots.native)
+        .toMatchObject({ policy: { client: 'pi' } })
+      expectInvalid(
+        base,
+        (value) => {
+          value.bindings.first.slots.native.policy.client = 'pi'
+          value.bindings.second.slots.native.policy.client = 'pi'
+        },
+        'match at least one effective ACP policy',
       )
       expectInvalid(
         base,
         (value) => {
-          value.bindings.second.slots.native.policy.client = 'pi'
+          delete value.bindings.first.slots.native.policy.client
         },
-        'agree with every selected ACP policy',
+        'lock cannot contain an unresolved Agent client',
       )
       expectInvalid(
         base,
@@ -221,11 +239,11 @@ describe('private package-project portable lock projection', () => {
       )
       const zero = { packages: {}, bindings: {}, agentOverride: 'codex' }
       expect(() => decodePrivateProjectLocalLock(lockBytes(zero))).toThrow(
-        'agree with every selected ACP policy',
+        'match at least one effective ACP policy',
       )
       const ordinary = linkPackageProject({ flows: [], bindings: [] })
       expect(() => createPrivateProjectLocalLock(ordinary, 'codex')).toThrow(
-        'agree with every selected ACP policy',
+        'match at least one effective ACP policy',
       )
       expectInvalid(
         base,
@@ -237,7 +255,7 @@ describe('private package-project portable lock projection', () => {
               method: 'GET',
             }
         },
-        'agree with every selected ACP policy',
+        'match at least one effective ACP policy',
       )
     })
   })
