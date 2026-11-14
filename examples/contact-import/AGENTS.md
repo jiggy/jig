@@ -65,6 +65,11 @@ or both, then using ordinary code to produce a contact preview.
   Confirmed stage counts survive export failure and cancellation without implying file delivery.
   `previewCollection` bounds lists by whole rows, preserves values and reports totals.
 
+  The mixed mapper reports its explicit known-format condition and selected
+  code/Agent branch in the existing Columns view. A reported choice is not
+  proof that an Agent request started, returned or produced correct semantics.
+  The selected branch must use the same condition as the running method.
+
   All child Flows have independent optional domain views
   through `progress`. FLOW entrypoints own scoped publishers, activity and
   failure notices. Pure methods retain their exact results and policy. The

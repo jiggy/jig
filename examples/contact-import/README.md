@@ -73,7 +73,11 @@ Code returns `needs_mapping`. The Agent is asked to interpret `Organisation`,
 `Courriel`, and `Nom complet`; the intended mapping is
 `{"name":2,"email":1,"organization":0}`. Its answer may differ or it may abstain.
 Mixed recognizes the known format in code and invokes the Agent only for
-unfamiliar headings. Try `binding:mixed` with `fixtures/known` to take
+unfamiliar headings. Its **Columns** view now reports the condition it evaluated
+(exactly `Customer`, `Email address`, and `Company`, in any order), its match,
+and the code or Agent-proposal branch it selected. This is an application-authored
+choice, not evidence that the Agent request started or succeeded. Inspect the
+corresponding observed child request in the Run map for execution evidence. Try `binding:mixed` with `fixtures/known` to take
 the direct code path. Each invocation receives its own temporary packet unless
 you choose a new destination with `--out DIR`.
 

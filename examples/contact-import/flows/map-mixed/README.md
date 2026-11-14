@@ -9,6 +9,11 @@ Agent variants. Preserve blocked and limited outcomes and propagate errors
 without retry. Structural validity does not establish correct interpretation.
 
 The optional `progress` channel uses the standard reporting contract. **Columns**
-shows the headings and code-first column proposal. Jig renders these same semantic
+reports the exact known-format condition, whether it matched, and the selected
+code or Agent-proposal branch alongside the supplied headings and proposal.
+The choice is reported by the application. An observed Agent invocation must be
+checked separately in Jig's Run map, not inferred from this statement.
+
+**Columns** shows the headings and code-first column proposal. Jig renders these same semantic
 declarations in terminal and web dashboards. Views preserve literal outcomes and
 explicit excerpts; they do not execute actions or establish host success.

@@ -9,6 +9,7 @@ import {
 import { columnsView as agent } from '../flows/map-agent/dashboard.ts'
 import { columnsView as code } from '../flows/map-code/dashboard.ts'
 import { columnsView as mixed } from '../flows/map-mixed/dashboard.ts'
+import { selectMappingApproach } from '../flows/map-mixed/method.ts'
 
 function checked(view: ViewSnapshot) {
   const item = validateReportingMessage({ kind: 'view', id: 'test', title: 'Domain view', ...view })
@@ -31,6 +32,45 @@ test('column methods show bounded proposals rather than import receipts', () => 
         ),
       ).toContain('No database is changed')
     }
+  }
+})
+
+test('mixed mapper reports the actual rule and choice without claiming an observed Agent invocation', () => {
+  const cases = [
+    {
+      headers: ['Company', 'Customer', 'Email address'],
+      choice: 'known-format-code',
+      matched: 'yes',
+      label: 'Use code to select known columns',
+    },
+    {
+      headers: ['Nom complet', 'Courriel', 'Organisation'],
+      choice: 'agent-proposal',
+      matched: 'no',
+      label: 'Select the Agent-proposal branch',
+    },
+    {
+      headers: ['Customer', 'Customer', 'Company'],
+      choice: 'agent-proposal',
+      matched: 'no',
+      label: 'Select the Agent-proposal branch',
+    },
+  ] as const
+  for (const item of cases) {
+    const decision = selectMappingApproach([...item.headers])
+    expect(decision).toBe(item.choice)
+    const initial = checked(mixed([...item.headers], 'Use the code rule first.', undefined, decision))
+    const facts = initial.sections[0].blocks.find((block: any) =>
+      block.kind === 'facts' && block.items.some((value: any) => value.label === 'Reported choice'),
+    ) as any
+    expect(facts).toBeDefined()
+    expect(facts.items.find((value: any) => value.label === 'Condition matched').value)
+      .toBe(item.matched)
+    expect(facts.items.find((value: any) => value.label === 'Reported choice').value)
+      .toBe(item.label)
+    expect(facts.items.find((value: any) => value.label === 'Invocation evidence').value)
+      .toContain(item.choice === 'agent-proposal' ? 'Inspect observed calls' : 'No Agent invocation')
+    expect(JSON.stringify(initial)).not.toContain('Agent request returned')
   }
 })
 

@@ -1,15 +1,16 @@
 import { handle } from '@jigging/flow'
 import { withReporting } from '@jigging/reporting'
 import { columnsView } from './dashboard.ts'
-import { runMethod } from './method.ts'
+import { runMethod, selectMappingApproach } from './method.ts'
 
 await handle((run) =>
   withReporting(run, 'progress', async (updates) => {
     const { headers } = run.input as { headers: string[] }
     const approach =
       'Recognize the known format in code first; otherwise ask one operator-selected Agent. Missing or ambiguous fields require abstention.'
+    const decision = selectMappingApproach(headers)
     const view = updates.view('columns', { title: 'Columns', landing: true })
-    view.update(columnsView(headers, approach))
+    view.update(columnsView(headers, approach, undefined, decision))
     updates.activity('mapping', 'Choosing contact columns')
     try {
       const result = await runMethod(run)
@@ -21,7 +22,7 @@ await handle((run) =>
           'error',
         )
       }
-      view.update(columnsView(headers, approach, result))
+      view.update(columnsView(headers, approach, result, decision))
       return result
     } catch (error) {
       updates.notice('Column proposal failed. Inspect the final diagnostic.', 'error')
