@@ -194,7 +194,7 @@ export function privateCliHumanText(
           rendered = privateCliHeading(wrapped, 'warning', true)
         else if (/^ {2}Agent unavailable:/.test(line))
           rendered = privateCliHeading(wrapped, 'warning', true)
-        else if (/^ {2}(?:Next step|Or use (?:Codex|Claude Code|Pi))$/.test(line))
+        else if (/^ {2}(?:Next step|Or use (?:Codex|Claude Code))$/.test(line))
           rendered = privateCliHeading(wrapped, 'info', true)
         else if (/^(Error:|Review could not finish|Run failed|Execution lost)/.test(line))
           rendered = privateCliHeading(wrapped, 'error', true)
