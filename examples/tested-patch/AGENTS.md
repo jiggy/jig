@@ -23,7 +23,9 @@ after executed checks and independent acceptance.
 - `test/` owns pure proposal/evidence validation and actual file checks.
   The public guide owns the walkthrough.
 
-- `bindings/agent.ts` owns the inline ACP client/model/turn/session policy.
+- `bindings/agent.ts` owns the inline ACP grant. Its omitted client
+  delegates selection to review. Explicit client/model/turn/session pins are
+  advanced method-specific policy.
   `jig.ts` supplies that ordinary Agent through the contract-keyed default.
 
 ## Local Contracts
