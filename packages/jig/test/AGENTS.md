@@ -2,6 +2,12 @@
 
 ## Ownership
 
+`portable/cli-discovery.test.ts` covers configured-topology grammar, stable identities, selected scope, and explicit graph bounds.
+`portable/activation-admission-store.test.ts` verifies retained topology without mutable-source reads or state writes.
+`host/installed-cli-lifecycle.test.ts` checks pre-approval topology and current versus approved source identity through the installed CLI.
+`host/project-author-evaluator.test.ts` checks current Bindings, invalid declarations, and absent project-state writes through contained evaluation.
+`portable/package-project.test.ts` checks source-only linking and refusal to create activation requests.
+
 `portable/jig-version.test.ts` checks exact requirement values, captured metadata and contributor identification.
 `portable/built-authoring.test.ts` checks the actual public and evaluator authoring bundles after building Jig.
 `portable/bun-workspace.test.ts` checks workspace capture, including unrelated external patterns and selected-root containment.

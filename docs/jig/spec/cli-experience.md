@@ -893,14 +893,40 @@ required; automation must examine `state`.
 
 Inspection may read operator credentials to construct the same non-secret
 provider identity, but never publishes or retains them or sends provider requests.
-It never evaluates visible source, fetches dependencies, acquires execution
-authority, probes namespace execution, recovers state, or writes project state.
+Ordinary inspection and explicit `--flow --approved` never evaluate visible source, fetch dependencies, acquire execution
+authority, probe namespace execution, recover state, or write project state.
 It may run the selected trusted Bubblewrap's bounded `--version` query.
+
 The display identifies its retained basis: source freshness, launch readiness
 and remote availability remain unchecked. Run still revalidates before execution.
 Changed or unchecked environments recommend `jig review`, not `jig run`.
 Unsafe, incompatible or busy state produces a bounded diagnostic without repair.
-Redirected output or `--json` is JSON, never styling.
+Ordinary redirected inspection emits JSON. Explicit `--json` selects JSON, while `--flow` selects the Markdown presentation below.
+
+`jig inspect --flow [target] [--approved] [--json]` projects configured topology.
+Markdown remains literal through pipes. Explicit `--json` returns the selected configured records.
+Each target retains its exact selector, package identity, settings, and resolved caller-local routes.
+Separate Bindings remain distinct. Native resources retain their configured caller slots.
+
+Current working-tree capture is the default. It uses the ordinary contained declaration evaluator and linker.
+Declared npm Flows use already installed local packages. Manifest and lock agreement remains unchecked.
+Inspection never installs dependencies, invokes methods or providers, prepares recipes, generates contracts, updates locks, or writes project state.
+Invalid declarations and missing dependencies fail without substituting approved bytes.
+
+`--approved` selects retained authorized configuration without declaration evaluation.
+The output identifies its basis and revision. Working-tree execution readiness remains unchecked.
+
+An exact target selects its downstream configured closure. Otherwise, the declared entrypoint selects the root.
+Without an entrypoint, the view includes the target inventory. The output counts targets outside its scope.
+Mermaid identities remain stable when unrelated targets are added or reordered.
+
+Arrows describe available configured calls, never execution order, conditions, feasibility, or caller reactions.
+This projection supplies no behavioral interpretation, source bundle, invocation history, or behavioral impact claim.
+Ordinary target inspection retains its separate contract and environment details.
+
+Markdown refuses graphs beyond fixed target and connection bounds. Inline settings disclose omission, while JSON retains exact settings.
+The [limits reference](../reference/limits.md#inspect-application-composition) lists these fixed presentation bounds.
+Saved packets contain no configured-topology record.
 
 `jig inspect --result <directory> [--display plain|tui|web] [--json]` reads a
 saved packet without loading a project, verifying an execution installation,

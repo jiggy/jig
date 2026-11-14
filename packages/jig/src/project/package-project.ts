@@ -120,6 +120,23 @@ export function linkPackageProject(
   maximumActivationTargets?: number,
   agentOverride?: AcpGrant['client'],
 ): PackageProjectValue {
+  return resolvePackageProject(input, maximumActivationTargets, agentOverride, false)
+}
+
+/** Resolve declarations for inspection only. Its output cannot become an execution request. */
+export function inspectPackageProject(
+  input: PackageProjectInput,
+  maximumTargets?: number,
+): PackageProjectValue {
+  return resolvePackageProject(input, maximumTargets, undefined, true)
+}
+
+function resolvePackageProject(
+  input: PackageProjectInput,
+  maximumActivationTargets: number | undefined,
+  agentOverride: AcpGrant['client'] | undefined,
+  inspection: boolean,
+): PackageProjectValue {
   if (agentOverride !== undefined && !['codex', 'claude', 'pi'].includes(agentOverride))
     throw new TypeError('review Agent selection must be codex, claude or pi')
   if (
@@ -157,6 +174,7 @@ export function linkPackageProject(
     readBoundedArray(root.bindings, 'bindings'),
     flowByPath,
     budget,
+    inspection,
   )
   const declaredBindingById = new Map(preparedBindings.map((binding) => [binding.id, binding]))
   const defaults = prepareDefaults(root.defaultProviders, flowByPath, declaredBindingById)
@@ -243,7 +261,7 @@ export function linkPackageProject(
         parsed.target.kind === 'flow' ? flowByPath.get(parsed.target.path) : binding?.flow
       if (!flow || (parsed.target.kind === 'flow' && !flow.value.directRun))
         throw new TypeError('entrypoint must select an invokable project Flow or Binding')
-      validateEntrypointInterface(parsed, flow.value.invocation, binding?.boundAttachments)
+      validateEntrypointInterface(parsed, flow.value.invocation, binding?.definition.attachments)
       const words = entrypointWords(root.entrypoint)
       if (
         words.some((word, index) => index % 2 === 1 && word === '--input') &&
@@ -353,7 +371,7 @@ export function linkPackageProject(
       )
     value = Object.freeze({ ...value, bindings: Object.freeze(bindings) })
   }
-  authenticPackageProjects.add(value)
+  if (!inspection) authenticPackageProjects.add(value)
   return value
 }
 
@@ -476,6 +494,7 @@ function prepareBindings(
   values: readonly unknown[],
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   budget: WorkBudget,
+  inspection: boolean,
 ): readonly PreparedBinding[] {
   const bindings = values.map((value, index) => {
     const record = readClosedRecord(
@@ -547,7 +566,10 @@ function prepareBindings(
     validateSettings(definition.settings, flow.inspected, declarationPath)
     const boundAttachments = normalizeBoundAttachments(record.capturedAttachments ?? {})
     const selected = definition.attachments ?? {}
-    if (Object.keys(selected).sort().join('\0') !== Object.keys(boundAttachments).sort().join('\0'))
+    if (
+      !inspection &&
+      Object.keys(selected).sort().join('\0') !== Object.keys(boundAttachments).sort().join('\0')
+    )
       invalid(
         'PROJECT_BINDING_ATTACHMENTS_NOT_CAPTURED',
         'Binding attachments require retained file capture',
@@ -561,7 +583,7 @@ function prepareBindings(
           declarationPath,
           `/attachments/${name}`,
         )
-      if (boundAttachments[name]!.source !== source)
+      if (!inspection && boundAttachments[name]!.source !== source)
         invalid(
           'PROJECT_BINDING_ATTACHMENTS_NOT_CAPTURED',
           'Binding attachment capture does not match its selection',
@@ -853,7 +875,7 @@ function linkFlowSlots(
     }
     let attachments: BindingAttachmentMap | undefined
     if (mapped !== undefined) {
-      if (Object.keys(childBinding?.boundAttachments ?? {}).length !== 0)
+      if (Object.keys(childBinding?.definition.attachments ?? {}).length !== 0)
         invalid(
           'PROJECT_CHILD_BOUND_ATTACHMENTS_UNSUPPORTED',
           'mapped child Bindings cannot own independently retained attachments',

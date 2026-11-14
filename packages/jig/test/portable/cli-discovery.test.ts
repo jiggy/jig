@@ -14,6 +14,8 @@ import {
   completionScript,
   invocationGuide,
 } from '../../src/cli-discovery.js'
+import { flowContextRecord, renderFlowContext } from '../../src/cli-flow-context.js'
+import type { JsonValue } from '../../src/json.js'
 import { checkPackageDirectory } from '../../src/package/inspect.js'
 import { createFlow, createProject } from '../../src/project-init.js'
 
@@ -173,6 +175,8 @@ test('completion scripts contain only static shell code and read-only target loo
     expect(script).not.toMatch(/\beval\b/)
     expect(script).toContain(shell === 'fish' ? '-l verification' : '--verification')
     expect(script).toContain(shell === 'fish' ? '-l source-root' : '--source-root')
+    for (const flag of ['flow', 'approved'])
+      expect(script).toContain(shell === 'fish' ? '-l ' + flag : '--' + flag)
   }
   expect(completionScript('sh')).toBeUndefined()
   const bash =
@@ -346,6 +350,114 @@ test('new rejects symlinked flows, malformed manifests, and a nonproject without
     expect(await readdir(join(root, 'outside'))).toEqual([])
     await writeFile(join(root, 'package.json'), '{')
     await expect(createFlow(root, 'hello')).rejects.toMatchObject({ code: 'JIG_NEW_INVALID' })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('configured topology grammar rejects removed source and impact modes before acquisition', async () => {
+  for (const flag of ['--source', '--implementation', '--impact']) {
+    expect(privateCliRequiresHost(['inspect', '--flow', 'binding:work', flag])).toBe(false)
+    expect(await main(['inspect', '--flow', 'binding:work', flag], { writeError: () => {} })).toBe(
+      2,
+    )
+  }
+  expect(privateCliRequiresHost(['inspect', '--flow'])).toBe(true)
+  expect(privateCliRequiresHost(['inspect', '--flow', '--approved'])).toBe(false)
+})
+
+test('configured topology keeps identities stable and does not emit source inventories', () => {
+  const root = {
+    target: 'binding:root',
+    package: 'flows/root',
+    state: 'unchecked',
+    flow: {
+      settings: {},
+      routes: [
+        { slot: 'first', target: 'binding:one' },
+        { slot: 'second', target: 'binding:two' },
+      ],
+    },
+  }
+  const one = {
+    target: 'binding:one',
+    package: 'flows/shared',
+    state: 'unchecked',
+    flow: { settings: { attempts: 1 }, routes: [{ slot: 'agent', resource: 'finite-acp' }] },
+  }
+  const two = {
+    target: 'binding:two',
+    package: 'flows/shared',
+    state: 'unchecked',
+    flow: { settings: { attempts: 2 }, routes: [] },
+  }
+  const snapshot: JsonValue = {
+    basis: 'working-tree',
+    revision: 'x',
+    state: 'unreviewed',
+    entrypoint: 'binding:root',
+    targets: [root, one, two],
+  }
+  const first = renderFlowContext(snapshot)
+  const reordered = renderFlowContext({
+    ...(snapshot as object),
+    targets: [two, root, one],
+  } as JsonValue)
+  const lines = (text: string) =>
+    text
+      .split('\n')
+      .filter((line) => line.startsWith('    '))
+      .sort()
+  expect(lines(first)).toEqual(lines(reordered))
+  expect(first).toContain('binding:one')
+  expect(first).toContain('binding:two')
+  expect(first).toContain('finite-acp')
+  expect(first).toContain('attempts')
+  expect(first).not.toContain('Source for behavioral reading')
+  expect(first).not.toContain('Captured source:')
+  expect((flowContextRecord(snapshot, { target: 'binding:one' }) as any).scope).toEqual({
+    target: 'binding:one',
+    omittedTargets: 2,
+  })
+})
+
+test('configured topology retains literal framing and refuses oversized graphs without truncation', () => {
+  const hostile = renderFlowContext({
+    basis: 'working-tree',
+    revision: 'x',
+    targets: [{ target: 'flow:a"<script>\u001b', flow: { routes: [] } }],
+  })
+  expect(hostile).not.toContain(String.fromCharCode(27))
+  expect(hostile).not.toContain('<script>')
+  expect(
+    renderFlowContext({
+      targets: Array.from({ length: 257 }, (_, i) => ({
+        target: `flow:${i}`,
+        flow: { routes: [] },
+      })),
+    }),
+  ).toContain('No graph was truncated')
+})
+
+test('approved configured Markdown uses awaited literal output without creating approval state', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-topology-'))
+  try {
+    let output = ''
+    expect(
+      await main(['inspect', '--flow', '--approved'], {
+        currentDirectory: root,
+        terminalOutput: true,
+        writeOutput: () => {
+          throw Error('Unexpected styling')
+        },
+        writeRecord: async (value) => {
+          await new Promise((resolve) => setImmediate(resolve))
+          output += value
+        },
+      }),
+    ).toBe(0)
+    expect(output).toStartWith('# Configured topology')
+    expect(await readdir(root)).toEqual([])
   } finally {
     await rm(root, { recursive: true, force: true })
   }

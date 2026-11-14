@@ -12,7 +12,7 @@ All selected domain requirements still apply.
 | Application client or machine request framing | [Installed-host client](#installed-host-client) |
 | Discovery, completion, or caller creation | [CLI discovery](#src-cli-discovery) |
 | Grammar, acquisition, or review readiness | [Command grammar and review](#command-grammar-and-review) |
-| Inspect approved targets | [Approved target inspection](#approved-target-inspection) |
+| Inspect current or approved targets | [Current and approved inspection](#current-and-approved-inspection) |
 | Select installation verification | [Installation verification](#installation-verification) |
 | Change presentation, progress, or reporting | [Shared presentation](#shared-presentation) |
 | Verify observable output | [Verification](#verification), [acceptance checks](#acceptance-checks) |
@@ -199,7 +199,28 @@ All selected domain requirements still apply.
   Browser inspection owns no publish, remove, reset or execution action.
   External interruption must retain the command's interrupted exit status.
 
-### Approved target inspection
+### Current and approved inspection
+
+Coding agents need connected behavioral context when changing workflow routes.
+Evaluate relationship features through these tasks:
+
+- Redirect a conditional handoff while preserving other routes.
+- Require validation before every relevant effect, including alternate entrypoints.
+- Change one configured use without altering other users of shared implementation.
+
+Execute acceptance checks through ordinary public interfaces. Record covered routes, remaining unknowns, and map construction and maintenance costs.
+Source retrieval, reference integrity, and graph rendering checks establish only their respective properties.
+
+
+- `src/cli-flow-context.ts` renders current or approved configured topology as literal Markdown.
+  It preserves exact Binding identities, caller slots, selected resources, and configured settings.
+  Mermaid identities do not depend on target inventory order.
+
+  Working-tree capture uses the shared contained evaluator and linker without admission or project-state writes.
+  `--approved` selects retained authorized configuration without evaluating visible source.
+  Installed npm dependencies remain required and their manifest/lock agreement stays unchecked.
+  Graph and inline-value bounds disclose unavailable or omitted presentation.
+  No behavior, source bundles, caller reactions, or behavioral impact are supplied.
 
 - `inspect` compares the last local approval with current local execution
   identities, including selected children. Report mismatches as review required

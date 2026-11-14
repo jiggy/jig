@@ -19,17 +19,13 @@ import {
   privateAgentSourceLocations,
 } from './agent-source-location.js'
 import type { BindingDefinition, JigDefinition } from './author.js'
-import {
-  type EvaluatedAuthorDeclaration,
-  evaluateAuthorClosure,
-  evaluateAuthorClosureBatch,
-  type PrivateAuthorEvaluatorOptions,
+import type {
+  EvaluatedAuthorDeclaration,
+  PrivateAuthorEvaluatorOptions,
 } from './author-evaluator.js'
-import { type CapturedAuthorClosure, captureOpenedAuthorClosure } from './author-module.js'
-import {
-  captureDeclarationSource,
-  type DeclarationSourceObservation,
-} from './declaration-source.js'
+import type { CapturedAuthorClosure } from './author-module.js'
+import { captureProjectAuthoring } from './captured-authoring.js'
+import type { DeclarationSourceObservation } from './declaration-source.js'
 import { entrypointWords, parseProjectEntrypoint } from './entrypoint.js'
 import type { ProjectEvaluation } from './evaluation.js'
 import {
@@ -41,8 +37,8 @@ import {
 } from './flow-source.js'
 import { captureGrantSource } from './grant-source.js'
 import type { AcpGrant, GrantPolicy } from './grants.js'
-import type { JigLimits } from './limits.js'
 import { captureProjectJigRequirement } from './jig-version.js'
+import type { JigLimits } from './limits.js'
 import { linkPackageProject, type PackageProjectValue } from './package-project.js'
 import { npmPackageName } from './package-selector.js'
 import { type RetainedAuthorClosure, retainAuthorClosure } from './retained-author-closure.js'
@@ -142,7 +138,6 @@ export async function retainOpenedPackageProject(
   options: PrivateRetainedOpenedProjectOptions,
   signal?: AbortSignal,
 ): Promise<PrivateRetainedPackageProject> {
-  const entry = 'jig.ts'
   const root = requirePrivateProjectRoot(options.projectRoot)
   let bootstrap: CapturedAuthorClosure | undefined
   let closure: CapturedAuthorClosure | undefined
@@ -151,41 +146,10 @@ export async function retainOpenedPackageProject(
   let operationFailure: unknown
   try {
     const jigRequirement = await captureProjectJigRequirement(root)
-    const bootstrapClosure = await captureOpenedAuthorClosure(root, [entry])
-    bootstrap = bootstrapClosure
-    const bootstrapProject = (await privateProfileSpan('author-configuration-evaluation', () =>
-      evaluateAuthorClosure(options.evaluator, bootstrapClosure, entry, 'project', signal),
-    )) as EvaluatedAuthorDeclaration<JigDefinition>
-
-    const bindingSource = await captureDeclarationSource(root, bootstrapProject.value.bindings)
-    const capturedClosure = await captureOpenedAuthorClosure(root, [
-      entry,
-      ...bindingSource.members.map(({ projectPath }) => projectPath),
-    ])
-    closure = capturedClosure
-    assertBootstrapPreserved(bootstrapClosure, capturedClosure)
-    const evaluations = await privateProfileSpan('author-configuration-evaluation', () =>
-      evaluateAuthorClosureBatch(
-        options.evaluator,
-        capturedClosure,
-        [
-          { entryProjectPath: entry, expected: 'project' },
-          ...bindingSource.members.map(({ projectPath }) => ({
-            entryProjectPath: projectPath,
-            expected: 'binding' as const,
-          })),
-        ],
-        signal,
-      ),
-    )
-    const project = evaluations[0] as EvaluatedAuthorDeclaration<JigDefinition>
-    if (project.outputDigest !== bootstrapProject.outputDigest) {
-      invalid(
-        'PROJECT_SOURCE_CHANGED',
-        'project definition changed while its complete declaration closure was captured',
-        entry,
-      )
-    }
+    const authoring = await captureProjectAuthoring(root, options.evaluator, signal)
+    bootstrap = authoring.bootstrap
+    closure = authoring.closure
+    const { bindingSource, project, evaluations } = authoring
 
     options.onProjectLimits?.(project.value.limits)
     const grantSource = await captureGrantSource(root, project.value.grants)
@@ -455,33 +419,6 @@ export function requirePrivateRetainedPackageProject(
   return value as PrivateRetainedPackageProject
 }
 
-function assertBootstrapPreserved(
-  bootstrap: CapturedAuthorClosure,
-  complete: CapturedAuthorClosure,
-): void {
-  const completeByPath = new Map(complete.modules.map((module) => [module.projectPath, module]))
-  for (const module of bootstrap.modules) {
-    const current = completeByPath.get(module.projectPath)
-    const mismatch =
-      current === undefined
-        ? 'missing module'
-        : current.sourceBytes !== module.sourceBytes
-          ? 'byte count'
-          : current.sourceDigest !== module.sourceDigest
-            ? 'content digest'
-            : !sameImports(current.imports, module.imports)
-              ? 'import edges'
-              : undefined
-    if (mismatch !== undefined) {
-      invalid(
-        'PROJECT_SOURCE_CHANGED',
-        `project declaration closure changed during source expansion (${mismatch})`,
-        module.projectPath,
-      )
-    }
-  }
-}
-
 function digestCapture(input: {
   readonly agentOverride?: AcpGrant['client']
   readonly root: { readonly device: string; readonly inode: string }
@@ -525,18 +462,4 @@ function evaluationIdentity(value: EvaluatedAuthorDeclaration): object {
     outputDigest: value.outputDigest,
     value: value.value,
   }
-}
-
-function sameImports(
-  left: readonly { readonly specifier: string; readonly projectPath: string }[],
-  right: readonly { readonly specifier: string; readonly projectPath: string }[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every(
-      (edge, index) =>
-        edge.specifier === right[index]!.specifier &&
-        edge.projectPath === right[index]!.projectPath,
-    )
-  )
 }

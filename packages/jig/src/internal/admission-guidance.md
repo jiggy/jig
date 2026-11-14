@@ -16,6 +16,11 @@ These links locate module rules. All selected domain requirements still apply.
 
 ## Ownership
 
+`working-flow-inspection.ts` captures current declarations and package source in a command-owned temporary lifetime.
+It uses the existing contained evaluator and linker, never the review planner or admission store.
+Installed npm sources require declared dependencies, canonical package identity and protected-state refusal.
+No dependency install, contract generation, provider readiness, recipe preparation or project-state write is permitted.
+
 Project requirement failures preserve only validated exact Jig versions and trusted recovery text.
 The two closed `PROJECT_JIG_*` diagnostics survive project planning without rendering authored exceptions or arbitrary dependency requests.
 Version metadata is checked before evaluation and reverified before capture completes.
@@ -472,6 +477,11 @@ Version metadata is checked before evaluation and reverified before capture comp
   remains available without revealing private recipes or consent tokens.
   Missing-target suggestions come from the retained admitted revision, never a
   live filesystem scan, and cannot grant authority or select a replacement.
+
+- Approved flow inspection joins retained package contracts, file inventories and exact routes within one approval snapshot.
+  Captured package source requires an explicit target and members. Project declaration members use the retained author closure.
+  `inspection-policy.ts` owns fixed presentation bounds, independently of execution authority.
+  Never reopen workspace files or disclose native policy payloads through this projection.
 
 ## Work Guidance
 

@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import { closedTestErrorCauses } from '../../src/internal/project-session-controller.js'
+import { inspectWorkingFlow } from '../../src/internal/working-flow-inspection.js'
 import {
   type EvaluatedAuthorDeclaration,
   evaluateAuthorClosure,
@@ -50,6 +51,63 @@ async function fixture(
 }
 
 describe.serial('finite isolated author declaration batches', () => {
+  test('working-tree flow inspection follows new Bindings and refuses invalid source without creating project state', async () => {
+    await fixture(
+      {
+        'jig.ts':
+          "import {defineJig,discover} from '@jigging/jig';export default defineJig({flows:discover('flows'),bindings:discover('bindings')});",
+      },
+      async (root, _captured, options) => {
+        await mkdir(join(root, 'flows/work'), { recursive: true })
+        await mkdir(join(root, 'bindings'), { recursive: true })
+        await writeFile(
+          join(root, 'flows/work/FLOW.ts'),
+          'throw new Error("method must not execute"); export {};\n',
+        )
+        await writeFile(
+          join(root, 'flows/work/settings.schema.json'),
+          JSON.stringify({
+            $schema: 'https://flow.jig.md/schemas/schema-0.json',
+            type: 'object',
+            properties: { revision: { type: 'integer' } },
+            required: ['revision'],
+            additionalProperties: false,
+          }),
+        )
+        await writeFile(
+          join(root, 'flows/work/FLOW.meta.json'),
+          JSON.stringify({ name: 'work', description: 'Working source.' }),
+        )
+        await writeFile(
+          join(root, 'bindings/first.ts'),
+          "import {defineBinding} from '@jigging/jig';export default defineBinding({package:'flows/work',settings:{revision:1}});",
+        )
+        const first = (await inspectWorkingFlow(root, options, { target: 'binding:first' })) as any
+        expect(first.basis).toBe('working-tree')
+        expect(first.targets.find((t: any) => t.target === 'binding:first').flow.settings).toEqual({
+          revision: 1,
+        })
+        await writeFile(
+          join(root, 'bindings/first.ts'),
+          "import {defineBinding} from '@jigging/jig';export default defineBinding({package:'flows/work',settings:{revision:2}});",
+        )
+        const second = (await inspectWorkingFlow(root, options, {
+          target: 'binding:first',
+        })) as any
+        expect(second.revision).not.toBe(first.revision)
+        expect(second.targets.find((t: any) => t.target === 'binding:first').flow.settings).toEqual(
+          { revision: 2 },
+        )
+        expect((await readdir(root)).sort()).toEqual(['bindings', 'flows', 'jig.ts'])
+        await writeFile(join(root, 'jig.ts'), 'throw new Error("must fail");export default {};')
+        await expect(inspectWorkingFlow(root, options)).rejects.toMatchObject({
+          code: 'PROJECT_EVALUATION_FAILED',
+          path: 'jig.ts',
+        })
+        expect((await readdir(root)).sort()).toEqual(['bindings', 'flows', 'jig.ts'])
+      },
+    )
+  }, 60_000)
   test('does not accept guest exception codes as observed host deadlines', async () => {
     for (const code of ['EXECUTION_PREPARATION_DEADLINE', 'PROJECT_EVALUATOR_DEADLINE']) {
       await fixture(

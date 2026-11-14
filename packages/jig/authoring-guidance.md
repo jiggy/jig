@@ -23,6 +23,11 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### src project author
 
+- `project/captured-authoring.ts` owns the shared captured declaration evaluation used by review and working-tree inspection.
+  It preserves bootstrap/complete-closure consistency and owns no approval or dependency preparation.
+  `inspectPackageProject` uses ordinary linking rules without capturing Binding input payloads.
+  Its result is unbranded and cannot produce activation requests.
+
 - `src/project/limits.ts` owns closed project preparation choices, their defaults,
   supported ranges and environment names. It stays inert. `src/package/capacity.ts`
   owns shared Package/0 and protected archive capacities without importing native

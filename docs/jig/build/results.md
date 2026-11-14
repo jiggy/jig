@@ -257,3 +257,25 @@ Closing inspection releases presentation captures while keeping the retained edi
 For an unconfirmed publication, follow [receipt recovery](../reference/troubleshooting.md#view-publication-is-unconfirmed).
 Generation-checked removal and reset require explicit current conditions.
 The [archive contract](../spec/display-archive.md) defines capacity, evidence and recovery limits.
+
+## Inspect configured topology
+
+Use `jig inspect --flow` to see current configured connections without prior approval.
+The Markdown graph distinguishes Bindings, direct Flows, caller slots, and resources.
+It shows available calls, without establishing execution order, conditions, or caller reactions.
+
+An exact target selects its downstream configured connections. The entrypoint selects the default root when present.
+Without an entrypoint, the graph includes the captured target inventory. Excluded targets are counted.
+
+```sh
+jig inspect --flow
+jig inspect --flow binding:repair
+jig inspect --flow --approved
+jig inspect --flow --json
+```
+
+`--approved` selects retained authorized configuration instead of current source.
+Working-tree inspection evaluates captured declarations through containment. It does not invoke methods, install dependencies, approve work, or write project state.
+Declared npm dependencies must already be installed. Their manifest and lock agreement remains unchecked.
+
+This configured map is a structural aid. It does not supply a behavioral overview or establish the consequences of an edit.
