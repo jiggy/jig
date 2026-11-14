@@ -1,5 +1,5 @@
 import { isAbsolute } from 'node:path'
-import type { AcpGrant } from '../project/grants.js'
+import type { NativeAcpClient } from '../project/grants.js'
 import type { InvocationSlots } from '../project/invocation-slots.js'
 import {
   type PrivateAcpAgentProvider,
@@ -34,7 +34,7 @@ export interface PrivateAcpResources {
 
 /** Package-private fault injection; never selected by project code or exported by Jig. */
 export type PrivateAcpClientOpener = (
-  client: AcpGrant['client'],
+  client: NativeAcpClient,
   support: PrivateInstalledBunSupport,
   environment: Readonly<Record<string, string | undefined>>,
   projectDirectory: string,
@@ -48,7 +48,7 @@ export class PrivateAcpResourceUnavailableError extends Error {
   readonly overrideRejected: boolean
   constructor(
     readonly slot: string,
-    client: AcpGrant['client'],
+    client: NativeAcpClient,
     error?: unknown,
   ) {
     super(`ACP slot ${JSON.stringify(slot)} could not open its selected ${client} runtime`)
@@ -196,6 +196,7 @@ export async function selectPrivateAcpResources(
       state === undefined ||
       state.support !== requirePrivateInstalledBunSupport(installedSupport) ||
       route.grant?.kind !== 'acp' ||
+      route.grant.client === undefined ||
       !['codex', 'claude', 'pi'].includes(route.grant.client)
     )
       throw new TypeError('the selected ACP resource has no matching private operator owner')
@@ -239,7 +240,7 @@ export async function selectPrivateAcpResources(
 }
 
 async function openQualifiedClient(
-  client: AcpGrant['client'],
+  client: NativeAcpClient,
   support: PrivateInstalledBunSupport,
   environment: Readonly<Record<string, string | undefined>>,
   projectDirectory: string,
