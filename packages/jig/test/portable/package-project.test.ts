@@ -386,6 +386,7 @@ describe('private package-project linker', () => {
         slots: { native: { kind: 'acp', client: 'codex', authProfile: 'primary' } },
       })
       const pinned = linkPackageProject({ flows, bindings: [onlyPinned] })
+      expect(linkPackageProject({ flows, bindings: [onlyPinned] }, undefined, 'codex')).toEqual(pinned)
       expect(pinned.bindings[0]!.slots).not.toHaveProperty('backup1')
       expectCode(() => linkPackageProject({ flows, bindings: [onlyPinned] }, undefined, 'pi'), 'PROJECT_AGENT_OVERRIDE_UNUSED')
     })
