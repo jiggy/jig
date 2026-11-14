@@ -55,11 +55,20 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Explicit manual dispatch on `main` retains diagnostics for nonrelease main revisions using that revision's successful push-run host artifacts.
   Selection grants no publication readiness. Every release still requires all three fresh native clients against the exact canonical candidate.
 
-  The workflow qualifies Codex and
-  Claude Code from `@latest` and the currently supported Pi 0.84.4 standalone
-  profile. Codex uses free OpenRouter routing for uncapped Responses requests.
-  Claude and Pi use Mistral BYOK through their native API protocols. These are
-  qualification inputs, not product defaults.
+  The workflow qualifies Codex and Claude Code from `@latest` and the
+  supported Pi 0.84.4 standalone profile. Without additional protected
+  configuration, Codex uses OpenRouter's free Responses routing and Claude
+  and Pi use Mistral BYOK through their native protocols. OpenRouter limits
+  free requests, and non-Anthropic Claude Code gateway compatibility is
+  not guaranteed.
+
+  An operator may explicitly opt into first-party API qualification with a
+  protected provider key **and** model pair for Codex (OpenAI Responses) or
+  Claude (Anthropic Messages). A partial pair refuses execution. These are
+  potentially billed API calls and never inferred from an unrelated secret.
+  A qualifying native client sees only its selected credential and fixed
+  endpoint. No substitution changes the full three-client requirement or
+  counts unsupported provider responses as passing evidence.
 
   Codex failure diagnostics retain only the closed native category and an
   optional native-reported HTTP error status. Statuses are integers from 400
