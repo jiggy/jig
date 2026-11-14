@@ -55,7 +55,17 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
   const snapshot = record(value)
   if (snapshot.state === 'unreviewed' && snapshot.basis !== 'working-tree')
     return '# Configured topology\n\nNo locally approved revision. Use jig inspect --flow for current configuration.\n'
-  const { included, edges, focus, state, omitted } = selectFlowContext(value, options)
+  const {
+    included,
+    edges,
+    focus,
+    entrypoint,
+    shared,
+    boundaries,
+    state,
+    omitted,
+    omittedConnections,
+  } = selectFlowContext(value, options)
   if (
     included.length > PRIVATE_FLOW_CONTEXT_LIMITS.targets ||
     edges.length > PRIVATE_FLOW_CONTEXT_LIMITS.connections
@@ -67,7 +77,14 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
     '',
     `Basis: ${working ? 'captured working tree (unapproved)' : 'last locally approved configuration'}. Revision ${markdown(String(snapshot.revision))}.`,
     'Arrows identify available caller slots and selected targets. They do not establish order, conditions, caller reactions, or execution.',
-    ...(focus === undefined ? [] : [`Root: ${markdown(focus)}.`]),
+    ...(focus === undefined
+      ? []
+      : [`${options.target === undefined ? 'Root' : 'Focus'}: ${markdown(focus)}.`]),
+    ...(options.target !== undefined && entrypoint !== undefined
+      ? [
+          `Entrypoint: ${markdown(entrypoint)}${included.some((item) => item.target === entrypoint) ? '' : ' (outside this view)'}.`,
+        ]
+      : []),
     '',
   ]
   if (!working)
@@ -94,6 +111,11 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
     }
   }
   lines.push('```mermaid', ...graph, '```', '')
+  if (shared.length && focus !== undefined)
+    lines.push(
+      `Shared implementation with ${markdown(focus)}: ${shared.map(markdown).join(', ')}. These are separate configured uses, not calls between them.`,
+      '',
+    )
   for (const item of included) {
     const flow = record(item.flow)
     const settings = record(flow.settings)
@@ -114,7 +136,11 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
   }
   lines.push(
     '',
-    `Scope: ${included.length} targets included; ${omitted} other targets outside this view.`,
+    ...boundaries.map(
+      (boundary) =>
+        `${markdown(boundary.target)}: ${boundary.incoming} incoming and ${boundary.outgoing} outgoing configured connections outside this view.`,
+    ),
+    `Scope: ${included.length} targets included; ${omitted} other targets and ${omittedConnections} configured connections outside this view.`,
     '',
   )
   return lines.join('\n')
@@ -124,11 +150,12 @@ function selectFlowContext(value: JsonValue, options: FlowContextOptions) {
   const snapshot = record(value)
   const targets = list(snapshot.targets).map(record)
   const byTarget = new Map(targets.map((item) => [String(item.target), item]))
-  let focus = options.target
-  if (focus === undefined && typeof snapshot.entrypoint === 'string') {
+  let entrypoint: string | undefined
+  if (typeof snapshot.entrypoint === 'string') {
     const entry = parseProjectEntrypoint(snapshot.entrypoint).target
-    focus = entry.kind === 'binding' ? `binding:${entry.id}` : flowSelector(entry.path)
+    entrypoint = entry.kind === 'binding' ? `binding:${entry.id}` : flowSelector(entry.path)
   }
+  const focus = options.target ?? entrypoint
   if (focus !== undefined && !byTarget.has(focus)) throw new Error('Configured target is missing')
   const allEdges = targets.flatMap((item) =>
     list(record(item.flow).routes)
@@ -140,31 +167,83 @@ function selectFlowContext(value: JsonValue, options: FlowContextOptions) {
         resource: route.resource,
       })),
   )
-  const selected = new Set<string>(focus === undefined ? byTarget.keys() : [focus])
   const adjacency = new Map<string, string[]>()
+  const reverse = new Map<string, string[]>()
   for (const edge of allEdges)
     if (typeof edge.target === 'string') {
       const next = adjacency.get(edge.from) ?? []
       next.push(edge.target)
       adjacency.set(edge.from, next)
+      const callers = reverse.get(edge.target) ?? []
+      callers.push(edge.from)
+      reverse.set(edge.target, callers)
     }
-  const pending = [...selected]
-  for (let index = 0; index < pending.length; index++)
-    for (const next of adjacency.get(pending[index]!) ?? []) {
-      if (!selected.has(next)) {
-        selected.add(next)
-        pending.push(next)
+  const closure = (seeds: Iterable<string>, graph: Map<string, string[]>) => {
+    const found = new Set(seeds)
+    const pending = [...found]
+    for (const current of pending)
+      for (const next of graph.get(current) ?? []) {
+        if (!found.has(next)) {
+          found.add(next)
+          pending.push(next)
+        }
       }
+    return found
+  }
+  const packageId = focus === undefined ? undefined : byTarget.get(focus)?.package
+  const shared =
+    options.target === undefined || typeof packageId !== 'string'
+      ? []
+      : targets
+          .filter((item) => item.target !== focus && item.package === packageId)
+          .map((item) => String(item.target))
+          .sort()
+  const seeds = focus === undefined ? byTarget.keys() : [focus, ...shared]
+  const selected = closure(seeds, adjacency)
+  if (options.target !== undefined) {
+    const upstream = closure([options.target, ...shared], reverse)
+    for (const caller of upstream) {
+      selected.add(caller)
+      // Show the caller's other slots without recursively expanding every peer.
+      for (const peer of adjacency.get(caller) ?? []) selected.add(peer)
     }
+  }
   const included = targets.filter((item) => selected.has(String(item.target)))
-  const edges = allEdges.filter((edge) => selected.has(edge.from))
+  const edges = allEdges.filter(
+    (edge) =>
+      selected.has(edge.from) && (typeof edge.target !== 'string' || selected.has(edge.target)),
+  )
+  const crossing = new Map<string, { target: string; incoming: number; outgoing: number }>()
+  for (const edge of allEdges) {
+    if (typeof edge.target !== 'string') continue
+    const fromInside = selected.has(edge.from)
+    const toInside = selected.has(edge.target)
+    if (fromInside === toInside) continue
+    const target = fromInside ? edge.from : edge.target
+    const boundary = crossing.get(target) ?? { target, incoming: 0, outgoing: 0 }
+    if (fromInside) boundary.outgoing++
+    else boundary.incoming++
+    crossing.set(target, boundary)
+  }
+  const boundaries = included.flatMap((item) => crossing.get(String(item.target)) ?? [])
   const states = included.map((item) => item.state)
   const state = states.includes('review-required')
     ? 'review-required'
     : states.some((state) => state !== 'environment-matches')
       ? 'unchecked'
       : 'environment-matches'
-  return { snapshot, included, edges, focus, state, omitted: targets.length - included.length }
+  return {
+    snapshot,
+    included,
+    edges,
+    focus,
+    entrypoint,
+    shared,
+    boundaries,
+    state,
+    omitted: targets.length - included.length,
+    omittedConnections: allEdges.length - edges.length,
+  }
 }
 export function flowContextRecord(value: JsonValue, options: FlowContextOptions): JsonValue {
   if (record(value).state === 'unreviewed' && record(value).basis !== 'working-tree') return value
@@ -172,7 +251,14 @@ export function flowContextRecord(value: JsonValue, options: FlowContextOptions)
   return {
     ...selected.snapshot,
     state: selected.state,
-    scope: { target: selected.focus ?? null, omittedTargets: selected.omitted },
+    scope: {
+      target: selected.focus ?? null,
+      entrypoint: selected.entrypoint ?? null,
+      sharedImplementation: selected.shared,
+      boundaries: selected.boundaries,
+      omittedTargets: selected.omitted,
+      omittedConnections: selected.omittedConnections,
+    },
     targets: selected.included,
   }
 }

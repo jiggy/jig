@@ -914,8 +914,18 @@ Invalid declarations and missing dependencies fail without substituting approved
 `--approved` selects retained authorized configuration without declaration evaluation.
 The output identifies its basis and revision. Working-tree execution readiness remains unchecked.
 
-An exact target selects its downstream configured closure. Otherwise, the declared entrypoint selects the root.
-Without an entrypoint, the view includes the target inventory. The output counts targets outside its scope.
+An exact target selects contextual topology: its downstream closure, other configured uses of the same package, and their downstream closures.
+It also includes every upstream caller path and those callers' direct slot targets.
+Those additional targets are not recursively expanded unless they belong to one of the selected closures.
+Sharing a package identifies separate configured uses, not calls between them or equivalent behavior.
+Other slots of a caller do not establish mutually exclusive branches.
+The focus and declared entrypoint are identified separately.
+
+Without an explicit target, the declared entrypoint selects its downstream closure.
+Without an entrypoint, the view includes the target inventory.
+The output counts targets and configured connections outside its scope.
+For each included target, it identifies incoming and outgoing connections crossing the view boundary.
+JSON retains each selected target's complete routes, including references outside the graph, with the same scope counts and boundary notices.
 
 Mermaid uses readable identities derived from selectors and caller-local resource slots.
 Identities remain stable across inventory order and focused views. Name collisions receive exact distinguishing suffixes.

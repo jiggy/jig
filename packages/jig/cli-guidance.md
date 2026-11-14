@@ -217,6 +217,11 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Mermaid uses readable identities that remain stable across inventory order and focused views.
   Name collisions receive exact distinguishing suffixes without changing selector labels.
 
+  An explicit focus retains upstream caller paths and their direct slot targets.
+  Other uses of the focus package and their downstream closures remain visible.
+  Caller peers are not recursively expanded. Boundary notices count omitted incoming and outgoing connections.
+  The focus is distinct from the declared entrypoint. Shared package identity does not imply a call or equivalent behavior.
+
   Working-tree capture uses the shared contained evaluator and linker without admission or project-state writes.
   `--approved` selects retained authorized configuration without evaluating visible source.
   Installed npm dependencies remain required and their manifest/lock agreement stays unchecked.

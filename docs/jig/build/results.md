@@ -264,8 +264,19 @@ Use `jig inspect --flow` to see current configured connections without prior app
 The Markdown graph distinguishes Bindings, direct Flows, caller slots, and resources.
 It shows available calls, without establishing execution order, conditions, or caller reactions.
 
-An exact target selects its downstream configured connections. The entrypoint selects the default root when present.
-Without an entrypoint, the graph includes the captured target inventory. Excluded targets are counted.
+Focus on a target to retain its callers, their other slots, and other configured uses of its package.
+The target and its shared uses retain their downstream connections.
+Caller paths remain visible up to independent roots, so another entrypoint into a shared method is not lost.
+Other caller targets are shown without recursively expanding their entire subgraphs.
+Connections crossing the view boundary are counted beside each affected target.
+
+For example, focusing on the factory's checked-correction Binding also shows factory, router, and single-pass.
+This reveals the caller and other configured routes to investigate before redirecting work.
+The method source establishes which condition selects a route and what the caller does after it returns.
+Sharing a package does not establish equal behavior. Bindings retain their individual settings and routes.
+
+The entrypoint selects the default root when no target is supplied.
+Without an entrypoint, the graph includes the captured target inventory. Excluded targets and connections are counted.
 
 ```sh
 jig inspect --flow

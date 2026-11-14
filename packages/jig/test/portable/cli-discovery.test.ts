@@ -16,8 +16,11 @@ import {
 } from '../../src/cli-discovery.js'
 import { flowContextRecord, renderFlowContext } from '../../src/cli-flow-context.js'
 import type { JsonValue } from '../../src/json.js'
+
 import { checkPackageDirectory } from '../../src/package/inspect.js'
 import { createFlow, createProject } from '../../src/project-init.js'
+
+type TopologyView = { targets: { target: string }[]; scope: Record<string, JsonValue> }
 
 test('usage mistakes show one correction, not the entire manual', async () => {
   for (const [args, expected] of [
@@ -417,10 +420,108 @@ test('configured topology keeps identities stable and does not emit source inven
   expect(first).toContain('binding_one -->|"agent"| resource_binding_one_agent')
   expect(first).not.toContain('Source for behavioral reading')
   expect(first).not.toContain('Captured source:')
-  expect((flowContextRecord(snapshot, { target: 'binding:one' }) as any).scope).toEqual({
+  expect((flowContextRecord(snapshot, { target: 'binding:one' }) as TopologyView).scope).toEqual({
     target: 'binding:one',
-    omittedTargets: 2,
+    entrypoint: 'binding:root',
+    sharedImplementation: ['binding:two'],
+    boundaries: [],
+    omittedTargets: 0,
+    omittedConnections: 0,
   })
+})
+
+test('focused topology retains upstream paths, caller slots and other uses of the implementation', () => {
+  const target = (name: string, packageId: string, routes: JsonValue[] = []) => ({
+    target: `binding:${name}`,
+    package: packageId,
+    flow: { routes },
+  })
+  const snapshot: JsonValue = {
+    basis: 'working-tree',
+    revision: 'x',
+    entrypoint: 'binding:factory',
+    targets: [
+      target('factory', 'flows/factory', [
+        { slot: 'router', target: 'binding:router' },
+        { slot: 'checked', target: 'binding:checked' },
+        { slot: 'other', target: 'binding:other' },
+      ]),
+      target('router', 'flows/router'),
+      target('checked', 'flows/repair', [{ slot: 'agent', target: 'binding:agent' }]),
+      target('single', 'flows/repair'),
+      target('other-entry', 'flows/other-entry', [{ slot: 'single', target: 'binding:single' }]),
+      target('other', 'flows/other', [{ slot: 'hidden', target: 'binding:hidden' }]),
+      target('agent', 'npm:agent', [{ slot: 'native', resource: 'finite-acp' }]),
+      target('hidden', 'flows/hidden'),
+      target('unrelated', 'flows/unrelated', [{ slot: 'agent', target: 'binding:agent' }]),
+    ],
+  }
+  const selected = flowContextRecord(snapshot, { target: 'binding:checked' }) as TopologyView
+  expect(selected.targets.map((item) => item.target).sort()).toEqual([
+    'binding:agent',
+    'binding:checked',
+    'binding:factory',
+    'binding:other',
+    'binding:other-entry',
+    'binding:router',
+    'binding:single',
+  ])
+  expect(selected.scope).toEqual({
+    target: 'binding:checked',
+    entrypoint: 'binding:factory',
+    sharedImplementation: ['binding:single'],
+    boundaries: [
+      { target: 'binding:other', incoming: 0, outgoing: 1 },
+      { target: 'binding:agent', incoming: 1, outgoing: 0 },
+    ],
+    omittedTargets: 2,
+    omittedConnections: 2,
+  })
+  const graph = renderFlowContext(snapshot, { target: 'binding:checked' })
+  expect(graph).toContain('Focus: binding:checked.\nEntrypoint: binding:factory.')
+  expect(graph).toContain('binding_factory -->|"router"| binding_router')
+  expect(graph).toContain('binding_other_entry -->|"single"| binding_single')
+  expect(graph).toContain('Shared implementation with binding:checked: binding:single.')
+  expect(graph).toContain(
+    'binding:other: 0 incoming and 1 outgoing configured connections outside this view.',
+  )
+  expect(graph).toContain(
+    'binding:agent: 1 incoming and 0 outgoing configured connections outside this view.',
+  )
+  expect(graph).not.toContain('binding_hidden[')
+  expect(graph).not.toContain('binding_unrelated[')
+  expect(graph).not.toContain('undefined')
+  // The default application view does not expand into independent callers.
+  const application = flowContextRecord(snapshot, {}) as TopologyView
+  expect(application.targets.map((item) => item.target)).not.toContain('binding:other-entry')
+})
+
+test('focused topology terminates on cycles and distinguishes package identity from equal bytes', () => {
+  const snapshot: JsonValue = {
+    basis: 'working-tree',
+    revision: 'x',
+    targets: [
+      {
+        target: 'binding:a',
+        package: 'flows/a',
+        flow: { digest: 'same', routes: [{ slot: 'b', target: 'binding:b' }] },
+      },
+      {
+        target: 'binding:b',
+        package: 'flows/b',
+        flow: { routes: [{ slot: 'a', target: 'binding:a' }] },
+      },
+      { target: 'binding:copy', package: 'flows/copy', flow: { digest: 'same', routes: [] } },
+      { target: 'binding:other', flow: { routes: [] } },
+    ],
+  }
+  const selected = flowContextRecord(snapshot, { target: 'binding:a' }) as TopologyView
+  expect(selected.targets.map((item) => item.target)).toEqual(['binding:a', 'binding:b'])
+  expect(selected.scope.sharedImplementation).toEqual([])
+  expect(selected.scope.omittedTargets).toBe(2)
+  expect(() => flowContextRecord(snapshot, { target: 'binding:missing' })).toThrow(
+    'Configured target is missing',
+  )
 })
 
 test('readable topology names disambiguate punctuation and preserve identity in focused views', () => {
