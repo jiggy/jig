@@ -69,24 +69,19 @@ These links locate module rules. All selected domain requirements still apply.
   byte-comparison procedure. Installed consumers still require no compiler.
 
 - `patches/` owns version-pinned third-party dependency corrections, applied by
-  the root Bun `patchedDependencies` before the ordinary package build. Codex
-  ACP must not generate unrequested model-based titles outside the reviewed turn
-  and model policy. Its adapter preserves native failure and clears shutdown
-  timers on close. Forced native termination cannot become adapter success.
-  Register pending Codex turns before asynchronous prompt setup so immediate
-  interruption cannot disappear before the native turn ID exists. A turn-start
-  reply allocates an ID.
+  the root Bun `patchedDependencies` before the ordinary package build.
+  Codex ACP uses upstream native v2. Jig keeps only a private, one-use
+  subscription credential bootstrap and suppression of unreviewed model-based
+  title-generation turns. The upstream adapter owns ACP protocol negotiation,
+  prompt insertion, cancellation and process shutdown; retain the recorded
+  integration and hostile-host regressions instead of duplicating them in a
+  compatibility patch.
 
-  Only its matching native `turn/started` event makes that turn interruptible.
-  Preserve early completion and either event/reply ordering without retries or
-  synthetic settlement. Pi ACP invokes Jig’s private launcher through the
-  verified Bun interpreter, preserves RPC rejection and authoritative assistant
-  stop reasons, and disposes sessions cleanly on `session/close`. Never infer success or failure from answer length.
-  Update the notice and adapter regression when changing its patch. Each patch
-  has a same-basename `.md` note explaining the defect, verification, concrete
-  removal conditions, and known upstream issue or pull-request links.
-
-  Distinguish related reports from an exact fix.
+  Pi ACP remains a separately qualified native-client integration. Its
+  current protocol shim is not acceptable as a long-term native-v2 solution.
+  Never interpret a v1 adapter as v2 based on JSON-RPC's transport version.
+  Every patch has a same-basename `.md` note explaining purpose, behavioral
+  tests and removal conditions. A version bump alone proves none of them.
 
 ### scripts pack
 
