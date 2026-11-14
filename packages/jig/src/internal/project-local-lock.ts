@@ -10,7 +10,7 @@ import {
   type ProjectSlotTarget,
 } from '../project/attachment-routes.js'
 import { parseProjectEntrypoint } from '../project/entrypoint.js'
-import { type AcpGrant, grantName, normalizeGrant } from '../project/grants.js'
+import { type NativeAcpClient, grantName, normalizeGrant } from '../project/grants.js'
 import {
   type InvocationRequirement,
   normalizeInvocationRequirement,
@@ -52,7 +52,7 @@ export interface PrivateLockBinding {
 }
 
 export interface PrivateProjectLocalLock {
-  readonly agentOverride?: AcpGrant['client']
+  readonly agentOverride?: NativeAcpClient
   readonly entrypoint?: string
   readonly packages: Readonly<Record<string, PrivateLockPackage>>
   readonly bindings: Readonly<Record<string, PrivateLockBinding>>
@@ -61,7 +61,7 @@ export interface PrivateProjectLocalLock {
 /** Project-portable package and Binding choices, with no host activation data. */
 export function createPrivateProjectLocalLock(
   project: PackageProjectValue,
-  agentOverride?: AcpGrant['client'],
+  agentOverride?: NativeAcpClient,
 ): PrivateProjectLocalLock {
   const linked = requirePackageProjectValue(project)
   const packages: Record<string, PrivateLockPackage> = Object.create(null) as Record<
@@ -146,8 +146,10 @@ function normalizeLock(value: unknown): PrivateProjectLocalLock {
         route.kind === 'grant' && route.policy.kind === 'acp' ? [route.policy] : [],
       ),
     )
-    if (policies.length === 0 || policies.some((policy) => policy.client !== root.agentOverride))
-      throw new TypeError('lock Agent override must agree with every selected ACP policy')
+    // The review default applies only to unpinned source grants. Explicit client
+    // pins may coexist and remain independently effective in the admitted lock.
+    if (!policies.some((policy) => policy.client === root.agentOverride))
+      throw new TypeError('lock Agent choice must match at least one effective ACP policy')
   }
   const activationTargetCount =
     Object.keys(bindings).length +
@@ -168,7 +170,7 @@ function normalizeLock(value: unknown): PrivateProjectLocalLock {
   return Object.freeze({
     ...(root.agentOverride === undefined
       ? {}
-      : { agentOverride: root.agentOverride as AcpGrant['client'] }),
+      : { agentOverride: root.agentOverride as NativeAcpClient }),
     packages,
     bindings,
     ...(root.entrypoint === undefined ? {} : { entrypoint: root.entrypoint as string }),
@@ -377,6 +379,8 @@ function normalizeSlots(
         label,
       )
       const policy = normalizeGrant(target.policy)
+      if (policy.kind === 'acp' && policy.client === undefined)
+        throw new TypeError('lock cannot contain an unresolved Agent client')
       if (target.evaluation !== undefined && policy.kind !== 'evaluation')
         throw new TypeError('only evaluation grants retain evaluation operands')
       output[name] = Object.freeze({
