@@ -1362,6 +1362,7 @@ function isCandidateDiagnosticCode(code: string): boolean {
       'PROJECT_AGENT_OVERRIDE_PROFILE',
       'PROJECT_AGENT_OVERRIDE_RETENTION',
       'PROJECT_AGENT_OVERRIDE_UNUSED',
+      'PROJECT_AGENT_SELECTION_REQUIRED',
     ].includes(code)
   )
 }
