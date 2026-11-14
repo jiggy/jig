@@ -9,12 +9,13 @@ stays unchanged.
 
 Install Jig on a [supported host](https://jig.md/start/).
 
-The application declares pinned ordinary FLOW and ACP Agent packages; review
-prepares their execution dependencies. Download this directory and follow
+The application declares ordinary FLOW and ACP Agent package dependencies.
+Review prepares those dependencies. Download this directory and follow
 [Choose an Agent](https://jig.md/build/agents) for authentication and configuration.
-The inline native policy in `bindings/agent.ts` selects Pi as an example.
-Edit that Binding and review again for a lasting client preference. Inspect `issue.json`,
-`bindings/specialist.ts`, and `flows/read-project/logs-cases.json`.
+The inline ACP policy in `bindings/agent.ts` leaves `client` unspecified,
+so the operator chooses Codex, Claude Code or Pi during review.
+Inspect `issue.json`, `bindings/specialist.ts`, and
+`flows/read-project/logs-cases.json`.
 From this directory:
 
 ```sh
@@ -22,13 +23,13 @@ jig review --allow-resolution-network
 jig run
 ```
 
-To propose a different installed client for this review, use
-`jig review --agent CLIENT --allow-resolution-network`, where `CLIENT` is
-`codex`, `claude`, or `pi`. Review shows the effective client before approval;
-it leaves the Binding unchanged. Repeat `--agent CLIENT` on later reviews, or
-edit the Binding for a lasting choice. Without the argument, later review
-proposes the source client again. Normal `jig run` uses the approved client and
-code; failed review keeps the previous approval.
+Interactive review asks for the native Agent client. For an automated
+review, use `jig review --agent CLIENT --allow-resolution-network`,
+where `CLIENT` is `codex`, `claude`, or `pi`. Review shows the effective
+client before approval and leaves the Binding unchanged. Repeat the choice
+on later reviews. To require a specific client, explicitly pin it in the
+Binding and review that policy change. Normal `jig run` uses only the
+approved client and code. A failed review keeps the previous approval.
 
 The reviewed entrypoint supplies the issue, read-only fixture and five-minute deadline.
 Jig chooses a fresh packet directory in operating-system temporary storage for
