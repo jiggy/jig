@@ -4,14 +4,14 @@
   "type": "module",
   "devDependencies": {
     "@jigging/flow": "0.1.0-alpha.15",
-    "@jigging/reporting": "0.1.0-alpha.5",
-    "@jigging/agent-method": "0.1.0-alpha.12",
+    "@jigging/reporting": "0.1.0-alpha.6",
+    "@jigging/agent-method": "0.1.0-alpha.13",
     "pdf-lib": "1.17.1"
   },
   "dependencies": {
-    "@jigging/agent-acp": "0.1.0-alpha.14"
+    "@jigging/agent-acp": "0.1.0-alpha.15"
   },
   "engines": {
-    "jig": "0.1.0-alpha.53"
+    "jig": "0.1.0-alpha.54"
   }
 }
