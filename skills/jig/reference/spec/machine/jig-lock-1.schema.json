@@ -5,7 +5,7 @@
   "type": "object",
   "properties": {
     "agentOverride": {
-      "enum": ["codex", "claude", "pi"],
+      "enum": ["codex", "claude"],
       "description": "Operator-selected native client for unpinned source grants only. At least one effective ACP policy must use this client. Explicitly pinned clients may differ. The choice never becomes an implicit future-review default or Run-time overlay."
     },
     "packages": {
@@ -419,7 +419,7 @@
               "const": "acp"
             },
             "client": {
-              "enum": ["codex", "claude", "pi"]
+              "enum": ["codex", "claude"]
             },
             "model": {
               "type": "string",
