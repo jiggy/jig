@@ -32,7 +32,7 @@ const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 export function privateAgentSourceLocations(
   path: string,
   bytes: Uint8Array,
-  expectedAcpSlotClients: Readonly<Record<string, string>>,
+  expectedAcpSlotClients: Readonly<Record<string, string | undefined>>,
 ): Readonly<Record<string, PrivateAgentSourceLocation>> {
   const result: Record<string, PrivateAgentSourceLocation> = Object.create(null)
   for (const slot of Object.keys(expectedAcpSlotClients)) result[slot] = unlocated(path)
@@ -111,7 +111,7 @@ export function privateAgentSourceLocations(
 export function privateAgentGrantSourceLocation(
   path: string,
   bytes: Uint8Array,
-  expectedClient: string,
+  expectedClient: string | undefined,
 ): PrivateAgentSourceLocation {
   const source = scan(bytes, true)
   if (source === undefined) return unlocated(path)
