@@ -875,6 +875,7 @@ describe('private finite project session', () => {
       'PROJECT_AGENT_OVERRIDE_PROFILE',
       'PROJECT_AGENT_OVERRIDE_RETENTION',
       'PROJECT_AGENT_OVERRIDE_UNUSED',
+      'PROJECT_AGENT_SELECTION_REQUIRED',
     ]) {
       const failure = new CheckError(
         'invalid',
