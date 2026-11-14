@@ -82,8 +82,8 @@ test('omitted policy rows do not erase the primary refusal from rendering', () =
       details ? 'Any existing approval remains unchanged' : 'Previous approval unchanged',
     )
     if (!details) {
-      expect(text).toContain('$ jig review --agent codex')
-      expect(text).toContain('login and readiness not checked')
+      expect(text).not.toContain('$ jig review --agent codex')
+      expect(text).toContain('Install Pi')
     }
   }
 })
@@ -116,14 +116,14 @@ test('explicit selection rendering preserves authored and effective clients', ()
           binding: 'model',
           declaration: 'bindings/model.ts',
           slot: 'native',
-          sourceClient: 'pi',
+          sourceClient: 'default',
           effectiveClient: 'codex',
-          source: issue.location,
+          source: { path: 'bindings/model.ts', line: 5, kind: 'selection-context' },
         },
       ],
     },
     { agent: 'codex', details: false },
   )
-  expect(text).toContain('source "pi" -> effective "codex"')
-  expect(text).toContain('every selected ACP')
+  expect(text).toContain('source "default" -> effective "codex"')
+  expect(text).toContain('unpinned ACP policies')
 })
