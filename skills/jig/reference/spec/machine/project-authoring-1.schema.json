@@ -214,17 +214,20 @@
               "const": true
             }
           },
-          "required": ["kind", "client"],
-          "if": {
-            "required": ["retainSessions"]
-          },
-          "then": {
-            "properties": {
-              "client": {
-                "const": "codex"
+          "required": ["kind"],
+          "allOf": [
+            {
+              "if": { "required": ["model"] },
+              "then": { "required": ["client"] }
+            },
+            {
+              "if": { "required": ["retainSessions"] },
+              "then": {
+                "required": ["client"],
+                "properties": { "client": { "const": "codex" } }
               }
             }
-          },
+          ],
           "additionalProperties": false
         },
         {
