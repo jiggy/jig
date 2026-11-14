@@ -35,6 +35,18 @@ grant `model` overrides its model selection for this recipient. Review
 shows that selected runtime beside the exact recipient. The ordinary Agent
 package drives the dialogue and interprets the answer.
 
+For ordinary applications, `native: { kind: 'acp' }` is the portable
+default. It delegates the native-client choice to the operator during review
+instead of requiring a vendor in source. A common `maxTurns` bound is allowed.
+A model, `authProfile`, or native session retention requires an explicit client
+pin, because those are client-specific requirements.
+
+Interactive review asks for the chosen client. Noninteractive review requires
+`--agent codex|claude|pi`. A selected client is recorded in the admitted lock
+and is not switched at Run time. Explicit pins are advanced declarations and
+are not overridden by a review default. An unbound optional recovery slot
+never creates a client-selection request.
+
 A native ACP grant may also select `authProfile: 'personal-codex'`. This is a
 reviewed, non-secret LocalName, independent of the workload's optional `model`.
 The operator supplies a private, pre-project environment namespace:
@@ -113,18 +125,19 @@ managed policy responsibility. A simple ACP policy is inline by default; a
 grants directory is not mandatory. Edit the selected source policy to make a
 lasting client change. An edit never changes an admitted generation.
 
-The explicit `jig review --agent codex|claude|pi` argument constructs a proposed
-effective client for every selected normalized ACP policy before qualification.
-It changes only `client` and leaves inline, named/shared and computed source
-unchanged. The candidate, lock, review and inspection retain the effective policy
-and argument origin. Cross-client changes with a model pin or incompatible native
-retention refuse the complete request, and a request with no selected ACP policy
-is inapplicable. Same-client selection preserves all fields and still qualifies.
-A later review starts from captured source and its own arguments, without a
-remembered client preference. [Project policy](project-policy.md#review-client-selection)
-owns exact construction and retained identity; the
-[CLI contract](cli-experience.md#agent-setup-during-review) owns failure guidance.
-Review never rewrites a grant or silently substitutes a provider.
+The `jig review --agent codex|claude|pi` option selects one native client
+for all bound, unpinned ACP resources. Interactive review requests the same
+choice. Explicit client pins, their authentication profiles, model and
+retention requirements, optional unbound backup slots, HTTP grants and source
+declarations are unaffected. The effective choice is retained in the lock
+and the approved generation.
+
+A subsequent review requires a new choice, although an interactive prompt may
+suggest the previously approved client. A noninteractive review without a
+choice fails if any selected ACP resource is unpinned. Supplying `--agent`
+when no such resource exists is inapplicable.
+[Project policy](project-policy.md#review-client-selection) defines the exact
+construction and retained identity. Review never silently substitutes Agents.
 
 ## Review and admission
 
