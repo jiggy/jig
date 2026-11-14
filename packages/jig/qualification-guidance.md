@@ -73,9 +73,9 @@ These links locate module rules. All selected domain requirements still apply.
   Codex ACP uses upstream native v2. Jig keeps only a private, one-use
   subscription credential bootstrap and suppression of unreviewed model-based
   title-generation turns. The upstream adapter owns ACP protocol negotiation,
-  prompt insertion, cancellation and process shutdown; retain the recorded
-  integration and hostile-host regressions instead of duplicating them in a
-  compatibility patch.
+  prompt insertion, cancellation and process shutdown.
+  Keep recorded integration and hostile-host regressions.
+  Do not duplicate upstream protocol behavior in another compatibility patch.
 
   Pi ACP remains a separately qualified native-client integration. Its
   current protocol shim is not acceptable as a long-term native-v2 solution.
