@@ -2743,7 +2743,9 @@ export function renderFailure(error: unknown, runtime: Pick<CliRuntime, 'writeEr
       PROJECT_AGENT_OVERRIDE_RETENTION:
         'this ACP policy requires retained Codex sessions. Review the indicated Binding slot, following any grant:name selector to its JSON policy; --agent preserves session requirements',
       PROJECT_AGENT_OVERRIDE_UNUSED:
-        'this project selects no ACP resources. Omit --agent and review its source normally',
+        '--agent applies only to unpinned ACP grants. Omit --agent or remove the source client pin where appropriate',
+      PROJECT_AGENT_SELECTION_REQUIRED:
+        'an unpinned ACP grant needs an operator choice. Review interactively or specify --agent codex, --agent claude, or --agent pi',
       ...EVALUATOR_HINTS,
       AUTHORING_STALE:
         'run jig review --generate-contracts to refresh the authored contract before review',
