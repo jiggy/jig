@@ -6,8 +6,8 @@ import type {
 } from './internal/review-agent-setup.js'
 import type { NativeAcpClient } from './project/grants.js'
 
-const CLIENT_NAMES = { codex: 'Codex', claude: 'Claude Code', pi: 'Pi' } as const
-const CLIENT_PATHS = { codex: 'CODEX_PATH', claude: 'CLAUDE_PATH', pi: 'PI_PATH' } as const
+const CLIENT_NAMES = { codex: 'Codex', claude: 'Claude Code' } as const
+const CLIENT_PATHS = { codex: 'CODEX_PATH', claude: 'CLAUDE_PATH' } as const
 const RENDER_BYTES = 131_072
 
 interface SetupPresentation {
