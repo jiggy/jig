@@ -6,9 +6,11 @@ import {
 
 const options = {
   codexPath: process.env.JIG_CODEX_PROOF_PATH,
-  apiKey: process.env.OPENROUTER_API_KEY,
+  // The trusted qualification runner selects exactly one credential and
+  // endpoint. The native client cannot choose or switch provider accounts.
+  apiKey: process.env.JIG_NATIVE_API_KEY ?? process.env.OPENROUTER_API_KEY,
   model: process.env.JIG_CODEX_RESPONSES_MODEL,
-  baseURL: 'https://openrouter.ai/api/v1',
+  baseURL: process.env.JIG_NATIVE_API_BASE_URL ?? 'https://openrouter.ai/api/v1',
 }
 if (
   !(
