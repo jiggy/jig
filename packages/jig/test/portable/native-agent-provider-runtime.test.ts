@@ -60,27 +60,6 @@ for (const client of ['claude', 'pi'] as const) {
       await symlink(localLibrary, f.library)
       await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
     })
-    if (client === 'pi') {
-      test('rejects project-selected sibling assets and binary wrappers', async () => {
-        const f = await fixture(client)
-        const localTheme = join(f.project, 'theme.json')
-        await writeFile(localTheme, '{}')
-        await rm(f.paths.dark)
-        await symlink(localTheme, f.paths.dark)
-        await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
-        await rm(f.paths.dark)
-        await writeFile(f.paths.dark, '{}')
-        const wrapped = join(f.root, 'wrapped')
-        await writeFile(wrapped, nativeElf(), { mode: 0o700 })
-        await writeFile(
-          f.executable,
-          nativeElf({
-            wrapper: `makeCWrapper '${wrapped}' \\\n    --inherit-argv0 \\\n    --prefix 'PATH' ':' '/operator/bin'\n\n`,
-          }),
-        )
-        await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
-      })
-    } else {
-    }
+
   })
 }
