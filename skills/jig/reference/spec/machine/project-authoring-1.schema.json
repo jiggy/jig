@@ -221,6 +221,10 @@
               "then": { "required": ["client"] }
             },
             {
+              "if": { "required": ["authProfile"] },
+              "then": { "required": ["client"] }
+            },
+            {
               "if": { "required": ["retainSessions"] },
               "then": {
                 "required": ["client"],
