@@ -1,4 +1,4 @@
-import type { AcpGrant } from '../project/grants.js'
+import type { NativeAcpClient } from '../project/grants.js'
 import { DEPENDENCY_PREPARATION_LIMIT_POLICY } from '../project/limits.js'
 import type { PrivateInspectionEnvironmentCheck } from './activation-admission-store.js'
 import { inspectPrivateBunDirectIdentity } from './bun-direct-run.js'
@@ -98,7 +98,7 @@ export async function openPrivateInstalledBunHost(
       ),
     ),
     runTimeoutMs: PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
-    detectAgentAlternatives: (selected: readonly AcpGrant['client'][]) =>
+    detectAgentAlternatives: (selected: readonly NativeAcpClient[]) =>
       privateDetectedAgentAlternatives(operatorEnvironment, projectDirectory, selected),
     acpResources: openPrivateAcpResources(
       installedBunSupport,
