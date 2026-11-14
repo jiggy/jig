@@ -146,7 +146,6 @@ try {
     ['codex-acp.LICENSE', '@agentclientprotocol/codex-acp/LICENSE'],
     ['claude-agent-acp.LICENSE', '@agentclientprotocol/claude-agent-acp/LICENSE'],
     ['claude-agent-sdk.LICENSE', '@anthropic-ai/claude-agent-sdk/LICENSE.md'],
-    ['pi-acp.LICENSE', 'pi-acp/LICENSE'],
   ]) {
     assert.equal(
       await readFile(join(installed, 'libexec/agent', retained), 'utf8'),
@@ -160,7 +159,6 @@ try {
   assert.equal(Object.hasOwn(installedManifest, 'scripts'), false)
 
   const executable = join(installed, 'bin', 'jig')
-  const piLauncher = join(installed, 'libexec', 'agent', 'pi-agent-launcher.js')
   const command = join(consumer, 'node_modules', '.bin', 'jig')
   await checkInstalledDisplay({
     consumer,
@@ -435,8 +433,6 @@ using FLOW;
     'libexec/agent/codex-agent-launcher.js',
     'libexec/agent/claude-agent-acp.js',
     'libexec/agent/claude-agent-launcher.js',
-    'libexec/agent/pi-acp.js',
-    'libexec/agent/pi-agent-launcher.js',
     'libexec/preparation/bun-native-preparation-worker.js',
   ]) {
     const source = await readFile(join(installed, relative), 'utf8')
