@@ -11,10 +11,8 @@ import { fixture, temporary } from '.././native-agent-provider-runtime.fixture.j
 afterEach(async () => {
   await Promise.all(temporary.splice(0).map((path) => rm(path, { recursive: true, force: true })))
 })
-for (const client of ['claude', 'pi'] as const) {
+for (const client of ['claude'] as const) {
   describe(`${client} reviewed native installation`, () => {
-    if (client === 'pi') {
-    } else {
       test('retains and revalidates a declarative native wrapper target', async () => {
         const f = await fixture(client)
         const wrapped = join(f.root, '.claude-wrapped')
@@ -33,7 +31,6 @@ for (const client of ['claude', 'pi'] as const) {
         await writeFile(wrapped, nativeElf({ needed: ['changed.so'] }))
         await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow('support changed')
       })
-    }
   })
 }
 
