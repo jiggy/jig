@@ -140,6 +140,13 @@ These links locate module rules. All selected domain requirements still apply.
   reason is an attributed native report, never permission to retry or a
   diagnosis of sandbox policy, credentials, effects, or cleanup.
 
+An ACP grant without `client` is an unresolved default request.
+Linking requires either a review operand or an interactive operator choice
+after exact source capture. An explicit client pin is never overwritten.
+Recheck retained sources after prompting and before qualification.
+The admitted lock and native workers reject unresolved clients.
+Readiness records distinguish omitted source clients from explicit pins.
+
 ## Local Contracts
 
 - The finite resource enforces native protocol and prompt bounds before writes.
