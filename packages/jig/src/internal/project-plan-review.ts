@@ -242,7 +242,7 @@ export function renderPrivateProjectPlanReview(
 type ReviewedTarget = PrivateActivationReviewPlan['candidate']['candidate']['targets'][number]
 
 export function privateProjectReviewedAcpSelection(
-  grant: { readonly client: string; readonly authProfile?: string | undefined },
+  grant: { readonly client?: string; readonly authProfile?: string | undefined },
   providerValue: unknown,
 ): {
   client: string
@@ -251,6 +251,8 @@ export function privateProjectReviewedAcpSelection(
   authentication: string
   executable: string
 } {
+  if (grant.client === undefined)
+    throw new TypeError('ACP review cannot publish an unselected native client')
   const provider = requirePrivateAcpAgentProvider(providerValue)
   return {
     client: grant.client,
