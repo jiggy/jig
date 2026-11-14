@@ -46,6 +46,11 @@ for await (const line of createInterface({ input: process.stdin })) {
     case 'config/read':
       ok({ config: {}, origins: {}, layers: [] })
       break
+    case 'permissionProfile/list':
+      // Native codex-acp v2 lists supported permission profiles during
+      // session setup. The no-profile response retains classic sandbox modes.
+      ok({ data: [], nextCursor: null })
+      break
     case 'model/list':
       ok({
         data: [
@@ -73,6 +78,9 @@ for await (const line of createInterface({ input: process.stdin })) {
       break
     case 'thread/goal/get':
       ok({ goal: null })
+      break
+    case 'thread/backgroundTerminals/list':
+      ok({ data: [], nextCursor: null })
       break
     case 'thread/unsubscribe':
     case 'thread/name/set':
