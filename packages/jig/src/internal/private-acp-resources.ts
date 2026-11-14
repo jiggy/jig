@@ -129,19 +129,12 @@ export function privateAcpProfileEnvironment(
       ? (selected.CODEX_HOME !== undefined) !== (selected.OPENAI_API_KEY !== undefined) &&
         (selected.OPENAI_API_KEY !== undefined ||
           (selected.OPENAI_BASE_URL === undefined && selected.OPENAI_API === undefined))
-      : client === 'claude'
-        ? Number(selected.CLAUDE_CODE_OAUTH_TOKEN !== undefined) +
-            Number(selected.ANTHROPIC_API_KEY !== undefined) +
-            Number(selected.ANTHROPIC_AUTH_TOKEN !== undefined) ===
-            1 &&
-          (selected.CLAUDE_CODE_OAUTH_TOKEN === undefined ||
-            selected.ANTHROPIC_BASE_URL === undefined)
-        : Number(selected.CLAUDE_CODE_OAUTH_TOKEN !== undefined) +
-            Number(selected.ANTHROPIC_API_KEY !== undefined) +
-            Number(selected.ANTHROPIC_AUTH_TOKEN !== undefined) ===
-            1 &&
-          (selected.CLAUDE_CODE_OAUTH_TOKEN === undefined ||
-            selected.ANTHROPIC_BASE_URL === undefined)
+      : Number(selected.CLAUDE_CODE_OAUTH_TOKEN !== undefined) +
+          Number(selected.ANTHROPIC_API_KEY !== undefined) +
+          Number(selected.ANTHROPIC_AUTH_TOKEN !== undefined) ===
+          1 &&
+        (selected.CLAUDE_CODE_OAUTH_TOKEN === undefined ||
+          selected.ANTHROPIC_BASE_URL === undefined)
   if (!valid) throw new PrivateAcpSetupError('login')
   const isolated: Record<string, string | undefined> = { ...environment }
   for (const key of shared) delete isolated[key]
