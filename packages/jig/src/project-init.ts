@@ -34,7 +34,7 @@ const DEFAULT_FILE_SYSTEM: ProjectInitFileSystem = {
 
 // Pair the generated source with its tested SDK, not a moving registry tag.
 const GREETING_SDK_VERSION = '0.1.0-alpha.15'
-const AGENT_ACP_VERSION = '0.1.0-alpha.14'
+const AGENT_ACP_VERSION = '0.1.0-alpha.15'
 const AUTHORING_SKILLS_README = [
   '## Develop with an Agent',
   '',

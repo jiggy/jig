@@ -1,103 +1,55 @@
 {
   "schemaVersion": 1,
-  "baseRevision": "c57e5deb3a0efdf89a9a4b6b46c69e83035a2c9c",
-  "sourceDigest": "a3f3db41afbb9f8462ba031a3d15fcf6236efdf38e1e967a2b1d0dc6658836c5",
+  "baseRevision": "276b796be9e02e754bbba92eb04aa7873ed66fcb",
+  "sourceDigest": "1d98621195ed908a1f45ed34416d3c9c4272b7402e2e5a5e744befe03faba48c",
   "changesets": [
     {
-      "id": "acp-named-auth-profiles",
-      "sha256": "13ac0e64303a26b9c2fdb264f586ec5a41d330cc7ab7e150f8a2d290936cd1c3"
-    },
-    {
-      "id": "acp-v2-foreground",
-      "sha256": "32c638dcf38326c5ccf1ecde7fec96aec26c5a50985f1a68df2e61a945f4a9a6"
-    },
-    {
-      "id": "checkpoint-proof-integrity",
-      "sha256": "2d143104a908e390ccfb65136542f625f97af9d4828c68dd0b63558ab72d17fc"
-    },
-    {
-      "id": "claude-title-transport-build-inputs",
-      "sha256": "67bdc7a446450c2c8fc17459c7f675b2123b326156d708a9d1019c1ee03909c2"
-    },
-    {
-      "id": "exact-workbench-evidence-focus",
-      "sha256": "a2369ce66a0c7d27a22aeca2a8e566068f13068b0c3962e531e12949346a9aac"
-    },
-    {
-      "id": "exact-workbench-navigation",
-      "sha256": "348dba07c6dd5af909f90f872cf4e4040e5cd430cf94a3c7984b8b436e4dd10c"
-    },
-    {
-      "id": "legacy-package-name-case",
-      "sha256": "0b11b3481621894614da9658e5c4dbe59c7cca368b116fc6cc714b4f1c17cac7"
-    },
-    {
-      "id": "lexical-multiline-highlighting",
-      "sha256": "ddd2fca811ac43296ff80446afed1d7004e9872a62f027f07d4120549174779e"
-    },
-    {
-      "id": "portable-operator-agent",
-      "sha256": "944f97dee777ac09b9e9d6b4293c22d433b6a8199f9712a08145e0cceb5c8f35"
-    },
-    {
-      "id": "qualify-bun-1-4-4",
-      "sha256": "4e852568b574b53b0aa627e26bbe8b8b188e04895a46fdd29a75b4dd3ae8df9e"
-    },
-    {
-      "id": "readable-workbench-table-columns",
-      "sha256": "1521aa9b4428b78ee338f3aa6a29dcf2fd9f38a8171d95e527d7beebf2a4ab50"
-    },
-    {
-      "id": "responsive-workbench-reading",
-      "sha256": "50a16ddb13209bdc394ce1099dbbc8dd9ee5b734497b49e68747662e368a4e6b"
-    },
-    {
-      "id": "visible-web-inspection-state",
-      "sha256": "189cc2d59c9436c06c59a122f81dec74549409a16a348ffdb5ef0159e6b9520b"
+      "id": "claude-acp-direct-v2",
+      "sha256": "ec48eab1a303a88c6911c3b6061ee0897095f1d25fc79555181676067d1f31e9"
     }
   ],
   "releases": [
     {
       "name": "@jigging/agent-acp",
       "type": "patch",
-      "oldVersion": "0.1.0-alpha.13",
-      "newVersion": "0.1.0-alpha.14"
+      "oldVersion": "0.1.0-alpha.14",
+      "newVersion": "0.1.0-alpha.15"
     },
     {
       "name": "@jigging/agent-method",
       "type": "patch",
-      "oldVersion": "0.1.0-alpha.11",
-      "newVersion": "0.1.0-alpha.12"
+      "oldVersion": "0.1.0-alpha.12",
+      "newVersion": "0.1.0-alpha.13"
     },
     {
       "name": "@jigging/display-model",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.6",
-      "newVersion": "0.1.0-alpha.7"
-    },
-    {
-      "name": "@jigging/display-tui",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.6",
-      "newVersion": "0.1.0-alpha.7"
-    },
-    {
-      "name": "@jigging/display-web",
       "type": "patch",
       "oldVersion": "0.1.0-alpha.7",
       "newVersion": "0.1.0-alpha.8"
     },
     {
+      "name": "@jigging/display-tui",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.7",
+      "newVersion": "0.1.0-alpha.8"
+    },
+    {
+      "name": "@jigging/display-web",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.8",
+      "newVersion": "0.1.0-alpha.9"
+    },
+    {
       "name": "@jigging/jig",
-      "type": "minor",
-      "oldVersion": "0.1.0-alpha.52",
-      "newVersion": "0.1.0-alpha.53"
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.53",
+      "newVersion": "0.1.0-alpha.54"
     },
     {
       "name": "@jigging/reporting",
       "type": "patch",
-      "oldVersion": "0.1.0-alpha.4",
-      "newVersion": "0.1.0-alpha.5"
+      "oldVersion": "0.1.0-alpha.5",
+      "newVersion": "0.1.0-alpha.6"
     }
   ]
 }

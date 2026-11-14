@@ -1,5 +1,21 @@
 # @jigging/display-tui
 
+## 0.1.0-alpha.8
+
+### Patch Changes
+
+- bb06f97: Upgrade Jig's bundled Claude Agent ACP bridge to the direct ACP v2
+  implementation and align its Claude SDK with the supported upstream release.
+  Preserve finite task authority by reapplying unattended title-generation
+  suppression to the new adapter distribution.
+  
+  Requalify the canonical archives of the other published workspace packages,
+  which share the top-level patched dependency and therefore participate in the
+  same reproducible release-candidate construction.
+- Updated dependencies [bb06f97]
+  - @jigging/display-model@0.1.0-alpha.8
+  - @jigging/reporting@0.1.0-alpha.6
+
 ## 0.1.0-alpha.7
 
 ### Patch Changes
