@@ -1,5 +1,5 @@
 import type { PrivateAgentSourceLocation } from '../project/agent-source-location.js'
-import type { AcpGrant } from '../project/grants.js'
+import type { AcpGrant, NativeAcpClient } from '../project/grants.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 
 export type { PrivateAgentSourceLocation } from '../project/agent-source-location.js'
@@ -11,8 +11,8 @@ export interface PrivateAgentGrantRecipient {
 }
 
 export interface PrivateAgentReviewSelection extends PrivateAgentGrantRecipient {
-  readonly sourceClient: AcpGrant['client']
-  readonly effectiveClient: AcpGrant['client']
+  readonly sourceClient: NativeAcpClient | 'default'
+  readonly effectiveClient: NativeAcpClient
   readonly source: PrivateAgentSourceLocation
 }
 
@@ -21,16 +21,16 @@ export interface PrivateAgentReadinessIssue {
   readonly location: PrivateAgentSourceLocation
   readonly declaration: string
   readonly slot: string
-  readonly client: AcpGrant['client']
-  readonly sourceClient: AcpGrant['client']
-  readonly override?: AcpGrant['client']
+  readonly client: NativeAcpClient
+  readonly sourceClient: NativeAcpClient | 'default'
+  readonly override?: NativeAcpClient
   readonly policy: AcpGrant
   readonly code: string
   readonly rejectedOverride?: 'CODEX_PATH' | 'CLAUDE_PATH' | 'PI_PATH'
   readonly recipients: readonly PrivateAgentGrantRecipient[]
   readonly omittedRecipients: number
   readonly observedRefusals: number
-  readonly alternatives: readonly AcpGrant['client'][]
+  readonly alternatives: readonly NativeAcpClient[]
 }
 
 /** Private bounded observed facts, never a Plan result, source editor, or authority. */
