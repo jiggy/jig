@@ -995,7 +995,7 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
   expect(piInstall.run).toContain('pi_version=0.84.4')
   expect(piInstall.run).toContain('SHA256SUMS')
   expect(apiSteps.map((step: any) => step.name)).toEqual([
-    'Qualify native ${{ matrix.client }} API-key ACP through OpenRouter',
+    'Qualify native ${{ matrix.client }} API-key ACP with a reviewed provider profile',
   ])
   expect(
     apiSteps.every(
@@ -1006,7 +1006,7 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
     apiSteps.every((step: any) => step.env.JIG_NATIVE_API_MODEL === '${{ matrix.model }}'),
   ).toBeTrue()
   expect(secretScopes).toEqual([
-    'qualification:Qualify native ${{ matrix.client }} API-key ACP through OpenRouter',
+    'qualification:Qualify native ${{ matrix.client }} API-key ACP with a reviewed provider profile',
   ])
   const hostRun = qualification.steps.find((step: any) => step.id === 'host-run')
   expect(hostRun.env.GH_TOKEN).toBe('${{ github.token }}')
