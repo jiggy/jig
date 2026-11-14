@@ -1,6 +1,8 @@
 import { constants } from 'node:fs'
 import { access, lstat, realpath } from 'node:fs/promises'
 
+import type * as acpV2 from '@agentclientprotocol/sdk/experimental/v2'
+
 import type { JsonObject, JsonValue } from '../json.js'
 import { checkAcpSetup } from './acp-setup-diagnostics.js'
 import { privateDomainDigest } from './identity.js'
@@ -56,9 +58,9 @@ export interface PrivateAcpAgentProviderConfiguration {
   /** Recheck ephemeral startup authority immediately before each launch. */
   readonly revalidateStartupInput?: () => void
   readonly authentication?: {
-    /** Validated ACP v2 auth/login parameters; intentionally not an ACP v1 SDK type. */
-    readonly request: JsonObject & { readonly methodId: string }
-    readonly clientAuthCapabilities?: JsonObject
+    /** Authentication and capability types are owned by the native ACP v2 schema. */
+    readonly request: acpV2.LoginAuthRequest
+    readonly clientAuthCapabilities?: NonNullable<acpV2.ClientCapabilities['auth']>
     /** Non-secret endpoint and method facts which affect provider behavior. */
     readonly identity: JsonObject
   }
@@ -403,11 +405,13 @@ function normalizeAuthentication(
       ? undefined
       : requireJsonObject(snapshot(value.clientAuthCapabilities, 'ACP authentication capabilities'))
   return Object.freeze({
-    request: request as JsonObject & { readonly methodId: string },
+    request: request as acpV2.LoginAuthRequest,
     ...(clientAuthCapabilities === undefined
       ? {}
       : {
-          clientAuthCapabilities,
+          clientAuthCapabilities: clientAuthCapabilities as NonNullable<
+            acpV2.ClientCapabilities['auth']
+          >,
         }),
     identity,
   })
