@@ -291,6 +291,57 @@ async function review(
   }
 }
 
+test('interactive review asks for an unpinned Agent only when no explicit operand is given', async () => {
+  const project = await mkdtemp(join(tmpdir(), 'jig-review-agent-choice-'))
+  try {
+    for (const options of [
+      { args: ['review'], interactive: true, choice: 'pi', expected: 'pi' },
+      { args: ['review', '--agent', 'claude'], interactive: true, choice: 'pi', expected: undefined },
+      { args: ['review', '--yes'], interactive: true, choice: 'pi', expected: undefined },
+    ] as const) {
+      const prompts: string[] = []
+      const selected: string[] = []
+      let choose: (() => Promise<'codex' | 'claude' | 'pi' | undefined>) | undefined
+      const session: ProjectSession = {
+        async plan() {
+          if (choose !== undefined) {
+            const value = await choose()
+            if (value !== undefined) selected.push(value)
+          }
+          return { state: 'unchanged' }
+        },
+        async apply() { throw new Error('unchanged review must not apply') },
+        get rootAdministration(): never { throw new Error('review must not run') },
+        async close() {},
+      }
+      const exit = await main(options.args, {
+        currentDirectory: project,
+        interactive: options.interactive,
+        terminalOutput: false,
+        terminalError: false,
+        answer: async (prompt) => {
+          prompts.push(prompt)
+          return options.choice
+        },
+        writeOutput: () => {},
+        writeError: () => {},
+        host: {
+          async acquire(_project, configuration) {
+            choose = configuration?.onAgentSelection
+            return session
+          },
+        },
+      })
+      expect(exit).toBe(0)
+      expect(selected).toEqual(options.expected === undefined ? [] : [options.expected])
+      expect(prompts.length).toBe(options.expected === undefined ? 0 : 1)
+      expect(await readdir(project)).toEqual([])
+    }
+  } finally {
+    await rm(project, { recursive: true, force: true })
+  }
+})
+
 for (const operationFails of [false, true]) {
   for (const closeFails of [false, true]) {
     test(`review diagnostic phases with operation ${operationFails ? 'failed' : 'completed'} and close ${closeFails ? 'failed' : 'completed'}`, async () => {
