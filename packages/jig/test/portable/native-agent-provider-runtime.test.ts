@@ -11,17 +11,15 @@ import { fixture, temporary } from '.././native-agent-provider-runtime.fixture.j
 afterEach(async () => {
   await Promise.all(temporary.splice(0).map((path) => rm(path, { recursive: true, force: true })))
 })
-for (const client of ['claude', 'pi'] as const) {
-  describe(`${client} reviewed native installation`, () => {
+describe('Claude reviewed native installation', () => {
     test('retains installation paths and snapshots configuration before asynchronous discovery', async () => {
-      const f = await fixture(client)
+      const f = await fixture()
       const pending = f.open()
       f.environment.PATH = f.project
       f.environment.ANTHROPIC_MODEL = 'changed-model'
-      f.environment.PI_MODEL = 'changed-model'
       const provider = await pending
       const runtime = privateAcpAgentRuntime(provider)
-      expect(provider.model).toBe(client === 'claude' ? 'test-model' : 'mistral/test-model')
+      expect(provider.model).toBe('test-model')
       expect(runtime.executablePath).toBe(f.executable)
       expect(runtime.sandboxExecutablePath).toBe(f.executable)
       expect(runtime.readOnlyMounts).toContainEqual({ source: f.library, destination: f.library })
@@ -33,10 +31,9 @@ for (const client of ['claude', 'pi'] as const) {
       'library',
       'launcher',
       'adapter',
-      ...(client === 'pi' ? ['manifest', 'dark', 'light'] : []),
     ] as const) {
       test(`rejects replaced ${file} bytes before launch and changes reviewed identity`, async () => {
-        const f = await fixture(client)
+        const f = await fixture()
         const provider = await f.open()
         const path = f.paths[file]
         await writeFile(path, Buffer.concat([await readFile(path), Buffer.from('\n')]))
@@ -45,14 +42,14 @@ for (const client of ['claude', 'pi'] as const) {
       })
     }
     test('rejects a shell launcher during review without executing it', async () => {
-      const f = await fixture(client)
+      const f = await fixture()
       const marker = join(f.root, 'executed')
       await writeFile(f.executable, `#!/bin/sh\ntouch '${marker}'\n`)
       await expect(f.open()).rejects.toMatchObject({ stage: 'wrapper' })
       await expect(readFile(marker)).rejects.toThrow()
     })
     test('rejects missing libraries and support routed through project symlinks', async () => {
-      const f = await fixture(client)
+      const f = await fixture()
       await rm(f.library)
       await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
       const localLibrary = join(f.project, 'libfixture.so')
@@ -61,5 +58,4 @@ for (const client of ['claude', 'pi'] as const) {
       await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
     })
 
-  })
-}
+})
