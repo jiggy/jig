@@ -79,6 +79,9 @@ for await (const line of createInterface({ input: process.stdin })) {
     case 'thread/goal/get':
       ok({ goal: null })
       break
+    case 'thread/backgroundTerminals/list':
+      ok({ data: [], nextCursor: null })
+      break
     case 'thread/unsubscribe':
     case 'thread/name/set':
       ok({})
