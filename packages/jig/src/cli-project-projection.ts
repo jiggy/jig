@@ -66,7 +66,7 @@ export type PrivateProjectProjectionSource = Readonly<{
 export type PrivateProjectSelection = Readonly<{
   target: RunTargetIdentity
   approval: string
-  unboundRead: readonly string[]
+  unboundRead?: readonly string[]
 }>
 
 type ProjectIdentity = (kind: string, ...parts: string[]) => string
@@ -393,9 +393,13 @@ export class PrivateProjectProjection {
       selection: Object.freeze({
         target: chosen.request.target,
         approval,
-        unboundRead: snapshot.selected!.attachments
-          .filter((attachment) => attachment.mode === 'read' && !attachment.bound)
-          .map((attachment) => attachment.name),
+        ...(snapshot.selected!.attachments.some((attachment) => attachment.mode === 'read' && !attachment.bound)
+          ? {
+              unboundRead: snapshot.selected!.attachments
+                .filter((attachment) => attachment.mode === 'read' && !attachment.bound)
+                .map((attachment) => attachment.name),
+            }
+          : {}),
       }),
     }
   }
