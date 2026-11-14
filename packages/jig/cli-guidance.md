@@ -214,7 +214,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
 - `src/cli-flow-context.ts` renders current or approved configured topology as literal Markdown.
   It preserves exact Binding identities, caller slots, selected resources, and configured settings.
-  Mermaid identities do not depend on target inventory order.
+  Mermaid uses readable identities that remain stable across inventory order and focused views.
+  Name collisions receive exact distinguishing suffixes without changing selector labels.
 
   Working-tree capture uses the shared contained evaluator and linker without admission or project-state writes.
   `--approved` selects retained authorized configuration without evaluating visible source.

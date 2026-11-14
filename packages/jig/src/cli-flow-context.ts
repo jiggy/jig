@@ -4,7 +4,9 @@ import { parseProjectEntrypoint } from './project/entrypoint.js'
 import { flowSelector } from './project/package-selector.js'
 
 const record = (value: JsonValue | undefined): Record<string, JsonValue> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, JsonValue>) : {}
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, JsonValue>)
+    : {}
 const list = (value: JsonValue | undefined): JsonValue[] => (Array.isArray(value) ? value : [])
 const markdown = (value: string): string =>
   value.replace(/[\\`*_{}[\]<>()|#!]/g, '\\$&').replace(/[\p{Cc}\u2028\u2029]/gu, ' ')
@@ -15,8 +17,37 @@ const diagram = (value: string): string =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/[\p{Cc}\u2028\u2029]/gu, ' ')
-// Exact identities remain stable when unrelated targets are added or reordered.
-const nodeId = (value: string) => `n_${Buffer.from(value).toString('hex')}`
+const targetKey = (target: string) => `target:${target}`
+const resourceKey = (caller: string, slot: string) => `resource:${JSON.stringify([caller, slot])}`
+
+function diagramIds(snapshot: Record<string, JsonValue>) {
+  const names = new Map<string, string>()
+  const slug = (name: string) => {
+    const value = name.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'node'
+    return /^[A-Za-z]/.test(value) ? value : `node_${value}`
+  }
+  for (const item of list(snapshot.targets).map(record)) {
+    const caller = String(item.target)
+    names.set(targetKey(caller), slug(caller))
+    for (const route of list(record(item.flow).routes).map(record)) {
+      if (typeof route.target === 'string') names.set(targetKey(route.target), slug(route.target))
+      else if (typeof route.resource === 'string')
+        names.set(
+          resourceKey(caller, String(route.slot)),
+          slug(`resource_${caller}_${String(route.slot)}`),
+        )
+    }
+  }
+  const counts = new Map<string, number>()
+  for (const name of names.values()) counts.set(name, (counts.get(name) ?? 0) + 1)
+  // Slugs contain no double underscore, so exact collision suffixes cannot alias ordinary names.
+  return new Map(
+    [...names].map(([key, name]) => [
+      key,
+      counts.get(name) === 1 ? name : `${name}__${Buffer.from(key).toString('hex')}`,
+    ]),
+  )
+}
 export type FlowContextOptions = Readonly<{ target?: string }>
 
 /** Configured topology only. No method interpretation or invocation history. */
@@ -45,14 +76,17 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
       '',
     )
   const graph = ['flowchart LR']
+  const ids = diagramIds(snapshot)
   for (const item of included)
-    graph.push(`    ${nodeId(String(item.target))}["${diagram(String(item.target))}"]`)
+    graph.push(`    ${ids.get(targetKey(String(item.target)))}["${diagram(String(item.target))}"]`)
   for (const edge of edges) {
-    const from = nodeId(edge.from)
+    const from = ids.get(targetKey(edge.from))
     if (typeof edge.target === 'string')
-      graph.push(`    ${from} -->|"${diagram(String(edge.slot))}"| ${nodeId(edge.target)}`)
+      graph.push(
+        `    ${from} -->|"${diagram(String(edge.slot))}"| ${ids.get(targetKey(edge.target))}`,
+      )
     else if (typeof edge.resource === 'string') {
-      const id = nodeId(`${edge.from}\0${String(edge.slot)}`)
+      const id = ids.get(resourceKey(edge.from, String(edge.slot)))
       graph.push(
         `    ${id}["${diagram(edge.resource)}"]`,
         `    ${from} -->|"${diagram(String(edge.slot))}"| ${id}`,

@@ -918,7 +918,9 @@ The output identifies its basis and revision. Working-tree execution readiness r
 
 An exact target selects its downstream configured closure. Otherwise, the declared entrypoint selects the root.
 Without an entrypoint, the view includes the target inventory. The output counts targets outside its scope.
-Mermaid identities remain stable when unrelated targets are added or reordered.
+
+Mermaid uses readable identities derived from selectors and caller-local resource slots.
+Identities remain stable across inventory order and focused views. Name collisions receive exact distinguishing suffixes.
 
 Arrows describe available configured calls, never execution order, conditions, feasibility, or caller reactions.
 This projection supplies no behavioral interpretation, source bundle, invocation history, or behavioral impact claim.

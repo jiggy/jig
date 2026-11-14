@@ -413,12 +413,50 @@ test('configured topology keeps identities stable and does not emit source inven
   expect(first).toContain('binding:two')
   expect(first).toContain('finite-acp')
   expect(first).toContain('attempts')
+  expect(first).toContain('binding_root -->|"first"| binding_one')
+  expect(first).toContain('binding_one -->|"agent"| resource_binding_one_agent')
   expect(first).not.toContain('Source for behavioral reading')
   expect(first).not.toContain('Captured source:')
   expect((flowContextRecord(snapshot, { target: 'binding:one' }) as any).scope).toEqual({
     target: 'binding:one',
     omittedTargets: 2,
   })
+})
+
+test('readable topology names disambiguate punctuation and preserve identity in focused views', () => {
+  const targets = [
+    {
+      target: 'binding:a-b',
+      flow: {
+        routes: [
+          { slot: 'a-b', resource: 'project-command' },
+          { slot: 'a_b', resource: 'project-command' },
+        ],
+      },
+    },
+    { target: 'binding:a_b', flow: { routes: [] } },
+    { target: 'binding:a__b', flow: { routes: [] } },
+    { target: 'flow:a-b', flow: { routes: [] } },
+  ]
+  const snapshot: JsonValue = { basis: 'working-tree', revision: 'x', targets }
+  const graph = renderFlowContext(snapshot)
+  const definitions = (value: string) => [
+    ...value.matchAll(/^ {4}([A-Za-z][A-Za-z0-9_]*)\["([^"\n]*)"\]/gm),
+  ]
+  const nodes = definitions(graph)
+  expect(nodes).toHaveLength(6)
+  expect(new Set(nodes.map((node) => node[1])).size).toBe(6)
+  expect(graph).not.toContain('undefined')
+  expect(graph).toContain('flow_a_b["flow:a-b"]')
+  const focused = definitions(renderFlowContext(snapshot, { target: 'binding:a-b' }))
+  for (const node of focused)
+    expect(nodes.some((other) => other[1] === node[1] && other[2] === node[2])).toBe(true)
+  const reordered = definitions(
+    renderFlowContext({ ...(snapshot as object), targets: targets.toReversed() } as JsonValue),
+  )
+  expect(reordered.map((node) => node.slice(1)).sort()).toEqual(
+    nodes.map((node) => node.slice(1)).sort(),
+  )
 })
 
 test('configured topology retains literal framing and refuses oversized graphs without truncation', () => {
