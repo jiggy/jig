@@ -21,7 +21,6 @@ import {
 } from '../../src/internal/linux-host-paths.js'
 import { PrivateMacosBackend } from '../../src/internal/macos-native-backend.js'
 import { privateMacosKernelPlatform } from '../../src/internal/macos-process-controls.js'
-import { openPrivatePiAgentProvider } from '../../src/internal/pi-agent-provider.js'
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 
 async function qualifyMacosStartup(
@@ -150,7 +149,7 @@ async function qualifyMacosStartup(
   }
 }
 
-for (const client of ['codex', 'claude', 'pi'] as const) {
+for (const client of ['codex', 'claude'] as const) {
   test(client === 'codex'
     ? 'codex: native ACP startup or explicit unsupported Mac refusal without network'
     : `${client}: native ACP startup without network`, async () => {
@@ -161,9 +160,7 @@ for (const client of ['codex', 'claude', 'pi'] as const) {
       const factory =
         client === 'codex'
           ? openPrivateCodexAgentProvider
-          : client === 'claude'
-            ? openPrivateClaudeAgentProvider
-            : openPrivatePiAgentProvider
+          : openPrivateClaudeAgentProvider
       const open = () =>
         factory(
           installedBunLocation.releaseRoot,
@@ -171,16 +168,10 @@ for (const client of ['codex', 'claude', 'pi'] as const) {
             [`${client.toUpperCase()}_PATH`]: selected,
             ...(client === 'codex'
               ? { OPENAI_API_KEY: 'offline-placeholder', OPENAI_MODEL: 'gpt-5.3-codex' }
-              : client === 'claude'
-                ? {
-                    ANTHROPIC_API_KEY: 'offline-placeholder',
-                    ANTHROPIC_MODEL: 'claude-haiku-4-5',
-                  }
-                : {
-                    PI_API_KEY: 'offline-placeholder',
-                    PI_PROVIDER: 'mistral',
-                    PI_MODEL: 'ministral-8b-2512',
-                  }),
+              : {
+                  ANTHROPIC_API_KEY: 'offline-placeholder',
+                  ANTHROPIC_MODEL: 'claude-haiku-4-5',
+                }),
           },
           root,
         )
