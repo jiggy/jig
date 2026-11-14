@@ -20,11 +20,11 @@ import {
   FINITE_ACP_CONTRACT_ID,
   FINITE_ACP_CONTRACT_VERSION,
 } from '../../src/internal/private-finite-acp-contract.js'
-import type { AcpGrant } from '../../src/project/grants.js'
+import type { NativeAcpClient } from '../../src/project/grants.js'
 import type { InvocationSlots } from '../../src/project/invocation-slots.js'
 import { installedBunLocation } from '../fixtures/installed-bun-location.js'
 
-function slots(client: AcpGrant['client']): InvocationSlots {
+function slots(client: NativeAcpClient): InvocationSlots {
   return {
     session: {
       kind: 'native',
