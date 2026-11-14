@@ -395,6 +395,7 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
             return
           }
           const input = draft.input
+          const chosenFiles = new Map(required.map((name) => [name, draft.files.get(name)!]))
           const identity = project.revision + ':' + selected.targetId
           readingFiles = true
           redraw()
@@ -402,7 +403,7 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
             let total = 0
             const files: DisplayExplorerInputFile[] = []
             for (const attachment of required) {
-              const file = draft.files.get(attachment)!
+              const file = chosenFiles.get(attachment)!
               const bytes = new Uint8Array(await file.arrayBuffer())
               try {
                 total += bytes.length
@@ -421,6 +422,7 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
               disposed ||
               (client?.project?.revision + ':' + client?.project?.selected?.targetId) !== identity ||
               draft.input !== input ||
+              required.some((name) => draft.files.get(name) !== chosenFiles.get(name)) ||
               !client?.canLaunch
             ) {
               draftNotice = 'The selected workflow or input changed. Review the files and choose Run again.'
