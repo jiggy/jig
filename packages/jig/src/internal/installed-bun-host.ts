@@ -67,24 +67,8 @@ export async function openPrivateInstalledBunHost(
   onStage?: (stage: string) => void,
 ): Promise<PrivateProjectSessionHost> {
   const operatorEnvironment = Object.freeze({ ...environment })
-  await excludePrivateVerificationProject(projectDirectory)
-  const installedBunSupport = await openPrivateInstalledBunSupport(location)
-  let backend: PrivateExecutionBackend
-  if (installedBunSupport.platform === 'linux-x64-glibc') {
-    backend = new PrivateLinuxCgroupBackend({
-      bunPath: installedBunSupport.executablePath,
-      bunHostLibraryPath: installedBunSupport.hostLibraryDirectory,
-      supervisorPath: installedBunSupport.supervisorPath,
-    })
-  } else {
-    if (installedBunSupport.launcherPath === null)
-      throw new Error('installed macOS execution launcher is unavailable')
-    backend = new PrivateMacosBackend({
-      bunPath: installedBunSupport.executablePath,
-      supervisorPath: installedBunSupport.supervisorPath,
-      launcherPath: installedBunSupport.launcherPath,
-    })
-  }
+  const { backend, installedSupport: installedBunSupport } =
+    await openPrivateInstalledDeclarationEvaluator(location, projectDirectory)
   onStage?.('Preparing operator resource configuration')
   return Object.freeze({
     backend,
@@ -113,4 +97,30 @@ export async function openPrivateInstalledBunHost(
       }
     })(),
   })
+}
+
+/** Fixed contained evaluator only; no provider/client configuration or project state. */
+export async function openPrivateInstalledDeclarationEvaluator(
+  location: PrivateInstalledBunLocation,
+  projectDirectory: string,
+) {
+  await excludePrivateVerificationProject(projectDirectory)
+  const installedBunSupport = await openPrivateInstalledBunSupport(location)
+  let backend: PrivateExecutionBackend
+  if (installedBunSupport.platform === 'linux-x64-glibc') {
+    backend = new PrivateLinuxCgroupBackend({
+      bunPath: installedBunSupport.executablePath,
+      bunHostLibraryPath: installedBunSupport.hostLibraryDirectory,
+      supervisorPath: installedBunSupport.supervisorPath,
+    })
+  } else {
+    if (installedBunSupport.launcherPath === null)
+      throw new Error('installed macOS execution launcher is unavailable')
+    backend = new PrivateMacosBackend({
+      bunPath: installedBunSupport.executablePath,
+      supervisorPath: installedBunSupport.supervisorPath,
+      launcherPath: installedBunSupport.launcherPath,
+    })
+  }
+  return { backend, installedSupport: installedBunSupport }
 }

@@ -205,3 +205,26 @@ Judge the whole consumer task, including setup, configuration, invocation, and r
 Remove indirection that adds no useful capability or enforceable boundary.
 Keep boundaries that make the work understandable, replaceable, and accountable.
 When host or provider prerequisites are unavailable, report inspection separately from execution.
+
+### Change a conditional route
+
+For a request such as “call C instead of B when J holds,” locate the caller that owns that decision.
+Use `jig inspect --flow` to find configured targets, distinct Bindings, and available powers.
+Read the caller's guard, dispatch, and return handling to establish the behavior.
+Check other callers and entrypoints when changing a shared method.
+
+Keep a focused Mermaid flowchart in the task context or existing project documentation.
+Use actions and decisions as nodes, name callees at handoffs, and label edges with guards or outcomes established in source.
+Include the unchanged alternatives beside the changed route.
+Name any folded validation, error handling, cancellation, persistence, or concurrent join that affects the result.
+This is a source interpretation. Configured connections alone cannot supply those relationships.
+
+Follow the selected route into its evidence consumers: result records, saved reports, live views, and application guidance.
+A correct dispatch change can leave these consumers describing the previous behavior.
+Distinguish an application policy choice from an actual child's returned decision.
+Matching the child's result shape does not establish that the child was invoked.
+
+Review the edited source before running the affected inputs.
+Assert the selected configured instance and the meaning of its result, rather than command success alone.
+Exercise the changed condition and relevant preserved alternatives, including explicit choices, automatic selection, and affected failure or cancellation paths.
+Report which alternatives were executed, which were inspected in source, and which remain unknown.

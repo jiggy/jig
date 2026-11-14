@@ -180,7 +180,7 @@ export function completionScript(shell: string): string | undefined {
       run) opts='${runOptions}';;
       explore) opts='--help --timeout --verification';;
       review) opts='--help --allow-resolution-network --source-root --allow-authority-changes --generate-contracts --yes --details --verification --agent';;
-      inspect) opts='--help --json --verification --result --display';;
+      inspect) opts='--help --json --verification --result --display --flow --approved';;
       views) opts='list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision';;
       init) opts='--help --bare --agent';;
       import-contract) opts='--help --list';;
@@ -224,7 +224,7 @@ _jig() {
       run) choices=(${runOptions});;
       explore) choices=(--help --timeout --verification);;
       review) choices=(--help --allow-resolution-network --source-root --allow-authority-changes --generate-contracts --yes --details --verification --agent);;
-      inspect) choices=(--help --json --verification --result --display);;
+      inspect) choices=(--help --json --verification --result --display --flow --approved);;
       views) choices=(list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision);;
       init) choices=(--help --bare --agent);;
       import-contract) choices=(--help --list);;
@@ -251,6 +251,8 @@ complete -c jig -n '__fish_seen_subcommand_from run inspect explore' -a '(jig co
 complete -c jig -n '__fish_seen_subcommand_from run review inspect explore' -l verification -r -a 'cached strict fast'
 complete -c jig -n '__fish_seen_subcommand_from explore' -l timeout -r
 complete -c jig -n '__fish_seen_subcommand_from run inspect' -l json
+${['flow', 'approved', 'impact'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from inspect' -l ${flag}`).join('\n')}
+complete -c jig -n '__fish_seen_subcommand_from inspect' -l implementation
 complete -c jig -n '__fish_seen_subcommand_from inspect' -l result -r
 complete -c jig -n '__fish_seen_subcommand_from inspect' -l display -r -a 'plain tui web'
 complete -c jig -n '__fish_seen_subcommand_from run' -l display -r -a 'auto plain tui web'

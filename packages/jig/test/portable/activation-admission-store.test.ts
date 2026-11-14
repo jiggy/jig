@@ -2287,6 +2287,20 @@ describe.serial('direct alpha activation store', () => {
         slots: {},
         settings: {},
       })
+      const topology = await inspectPrivateApprovedProject(
+        fixture.root,
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        { target: 'flow:flows/run' },
+      )
+      expect((topology as any).targets[0].flow).toEqual({
+        digest: expect.any(String),
+        settings: {},
+        routes: [],
+      })
       const explorer = new PrivateProjectProjection(fixture.root)
       const project = await explorer.projectForTarget('flow:flows/run')
       expect(project.state).toBe('approved')

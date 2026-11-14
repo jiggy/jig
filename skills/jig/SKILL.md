@@ -24,6 +24,14 @@ Complete this step when the outcome, existing project state, and execution prere
 Read the [project design guide](reference/build/design.md) before choosing boundaries or reviewing an existing project.
 Apply its responsibility and configuration guidance to the actual application.
 Use FLOW's naming and decomposition principles for the methods themselves.
+
+Use `jig inspect --flow` for current configured connections, including distinct Bindings and selected resources.
+This topology does not establish execution order, conditions, or caller reactions.
+Use `--approved` when investigating retained authorized configuration.
+
+For conditional routing changes, follow [change a conditional route](reference/build/design.md#change-a-conditional-route).
+Keep the decision owner, changed handoff, preserved alternatives, and evidence consumers together in a focused behavioral Mermaid slice.
+Derive it from source and keep it in the task context or existing project documentation.
 Describe which choices belong to the application, each Flow, its local configuration, the operator, and Jig.
 Use a short outline or existing project documentation, without requiring another design artifact.
 

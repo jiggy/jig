@@ -59,8 +59,34 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
     const authoredBytes = await Promise.all(
       authoredPaths.map((path) => readFile(join(project, path))),
     )
+    const beforeApproval = await command(
+      [cli, 'inspect', '--flow', 'flow:flows/hello', '--json'],
+      project,
+    )
+    const originalTopology = JSON.parse(beforeApproval.stdout)
+    expect(originalTopology.basis).toBe('working-tree')
+    expect(originalTopology.targets[0].flow.routes).toEqual([])
+    expect(existsSync(join(project, '.jig'))).toBe(false)
+    expect(existsSync(join(project, 'jig.lock'))).toBe(false)
     await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
     const lock = await readFile(join(project, 'jig.lock'), 'utf8')
+    const graph = await command([cli, 'inspect', '--flow'], project)
+    expect(graph.stdout).toContain('# Configured topology')
+    expect(graph.stdout).toContain('flowchart LR')
+    const methodPath = join(project, 'flows/hello/FLOW.ts')
+    const originalMethod = await readFile(methodPath, 'utf8')
+    await writeFile(methodPath, originalMethod + '\n// changed source basis\n')
+    const current = JSON.parse(
+      (await command([cli, 'inspect', '--flow', '--json'], project)).stdout,
+    )
+    const approvedTopology = JSON.parse(
+      (await command([cli, 'inspect', '--flow', '--approved', '--json'], project)).stdout,
+    )
+    expect(current.targets[0].flow.digest).not.toBe(originalTopology.targets[0].flow.digest)
+    expect(approvedTopology.targets[0].flow.digest).toBe(originalTopology.targets[0].flow.digest)
+    expect(await readFile(join(project, 'jig.lock'), 'utf8')).toBe(lock)
+    await writeFile(methodPath, originalMethod)
+
     for (const display of [[], ['--display', 'plain'], ['--json']]) {
       const result = await command(
         [cli, 'run', 'flow:flows/hello', '--input', JSON.stringify('Ada'), ...display],
