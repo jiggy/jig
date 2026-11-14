@@ -120,8 +120,8 @@ export function linkPackageProject(
   maximumActivationTargets?: number,
   agentOverride?: NativeAcpClient,
 ): PackageProjectValue {
-  if (agentOverride !== undefined && !['codex', 'claude', 'pi'].includes(agentOverride))
-    throw new TypeError('review Agent selection must be codex, claude or pi')
+  if (agentOverride !== undefined && !['codex', 'claude'].includes(agentOverride))
+    throw new TypeError('review Agent selection must be codex or claude')
   if (
     maximumActivationTargets !== undefined &&
     (!Number.isSafeInteger(maximumActivationTargets) || maximumActivationTargets < 1)
@@ -310,7 +310,7 @@ export function linkPackageProject(
           continue
         invalid(
           'PROJECT_AGENT_SELECTION_REQUIRED',
-          'This ACP resource does not pin a native client. Review interactively or specify --agent codex, --agent claude, or --agent pi.',
+          'This ACP resource does not pin a native client. Review interactively or specify --agent codex or --agent claude.',
           binding.declarationPath,
           `/slots/${pointerToken(slot)}`,
         )
