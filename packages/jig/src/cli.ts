@@ -147,8 +147,10 @@ Without a target, the reviewed entrypoint's workflow is selected when present.
 Entrypoint input and file defaults are not applied: browser input is explicit.
 Review source changes with jig review before running them.
 
-Workflows needing unbound local input files or required channels remain
-inspectable and show their existing jig run or composed-Flow requirements.
+For each unbound read attachment, choose one local file through the browser.
+At most 8 such files may be selected (4 MiB each, 8 MiB total). File inputs
+are captured only when Run is explicitly chosen. Required channels and larger
+file interfaces remain inspectable and show their ordinary jig run requirements.
 Writable outputs use Jig's ordinary fresh temporary result packet.
 
   --timeout DURATION  Execution deadline for each Run (default: 30s; maximum: 24h)

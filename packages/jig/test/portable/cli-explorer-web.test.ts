@@ -98,6 +98,9 @@ test('strict JSON and route validation refuse ambiguous input before real select
     '{"requestId":"one","revision":"none","targetId":"none","input":1e999}',
     '{"requestId":"one","revision":"none","targetId":"none"}',
     '{"requestId":"one","revision":"none","targetId":"none","input":{},"argv":["run"]}',
+    '{"requestId":"one","revision":"none","targetId":"none","input":{},"files":[{"attachment":"source","filename":"../escape","base64":"YQ=="}]}',
+    '{"requestId":"one","revision":"none","targetId":"none","input":{},"files":[{"attachment":"source","filename":"source.csv","base64":"YR=="}]}',
+    '{"requestId":"one","revision":"none","targetId":"none","input":{},"files":[{"attachment":"source","filename":"a.csv","base64":"YQ=="},{"attachment":"source","filename":"b.csv","base64":"YQ=="}]}',
   ]) {
     const response = await owner.post('/api/run', body)
     expect(response.status).toBe(400)

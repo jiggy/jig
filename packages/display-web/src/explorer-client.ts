@@ -1,5 +1,6 @@
 import type {
   DisplayJsonValue,
+  DisplayExplorerInputFile,
   DisplayProjectRun,
   DisplayProjectSnapshot,
 } from '@jigging/display-model'
@@ -341,14 +342,15 @@ export class PrivateExplorerClient {
     }
   }
 
-  async launch(input: string, requestId: string): Promise<boolean> {
+  async launch(input: string, requestId: string, files: readonly DisplayExplorerInputFile[] = []): Promise<boolean> {
     const project = this.project
     const selected = project?.selected
     if (!this.canLaunch || !project || !selected || privateExplorerInput(input).state !== 'valid')
       return false
     const request = { requestId, revision: project.revision, targetId: selected.targetId }
     // Preserve the exact JSON text so the host can reject duplicate object members.
-    const body = JSON.stringify(request).slice(0, -1) + ',"input":' + input + '}'
+    const body = JSON.stringify(request).slice(0, -1) + ',"input":' + input +
+      (files.length ? ',"files":' + JSON.stringify(files) : '') + '}'
     if (new TextEncoder().encode(body).byteLength > DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT) {
       this.requestError =
         'Input and request metadata exceed the 16 MiB request limit. Reduce the input before running.'

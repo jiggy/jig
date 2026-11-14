@@ -134,6 +134,92 @@ test('explicit scenario files round-trip through the mounted pre-run explorer wi
   }
 })
 
+
+test('explorer file selection submits only explicit bounded bytes to the ordinary run intent', async () => {
+  const fixture = explorerFixture()
+  fixture.project.selected.attachments = [{ name: 'source', mode: 'read', bound: false }]
+  const host = await startBrowserFixture(fixture)
+  const context = await browser.newContext({ viewport: { width: 390, height: 900 } })
+  const page = await context.newPage()
+  page.setDefaultTimeout(5000)
+  try {
+    await page.goto(host.url)
+    await page.getByRole('heading', { name: 'Review changes', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Run with input' }).click()
+    await page.locator('#explorer-input').fill('{"case":"with-file"}')
+    const run = page.getByRole('button', { name: 'Run workflow' })
+    assert(await run.isDisabled(), 'an unbound read is required before launch')
+    assert.deepEqual(host.submissions, [])
+    await page.locator('input[aria-label="Choose file for source"]').setInputFiles({
+      name: 'sample.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from('a,b\\n1,2\\n', 'utf8'),
+    })
+    await page.getByText('sample.csv').waitFor()
+    await page.waitForFunction(() => {
+      const button = [...document.querySelectorAll('button')]
+        .find((item) => item.textContent?.includes('Run workflow'))
+      return button !== undefined && !button.disabled
+    })
+    assert(await run.isEnabled())
+    assert.deepEqual(host.submissions, [], 'choosing input files never starts a workflow')
+    await run.click()
+    await page.getByText('Fixture does not execute workflows.').waitFor()
+    assert.equal(host.submissions.length, 1)
+    const submitted = JSON.parse(host.submissions[0])
+    assert.equal(submitted.targetId, fixture.project.selected.targetId)
+    assert.equal(submitted.revision, fixture.project.revision)
+    assert.deepEqual(submitted.input, { case: 'with-file' })
+    assert.deepEqual(submitted.files, [{
+      attachment: 'source',
+      filename: 'sample.csv',
+      base64: Buffer.from('a,b\\n1,2\\n').toString('base64'),
+    }])
+    assert.equal('path' in submitted.files[0], false)
+    assert.equal('directory' in submitted.files[0], false)
+  } finally {
+    await context.close()
+    await host.close()
+  }
+})
+
+test('a changed file choice during asynchronous reading cannot launch stale bytes', async () => {
+  const fixture = explorerFixture()
+  fixture.project.selected.attachments = [{ name: 'source', mode: 'read', bound: false }]
+  const host = await startBrowserFixture(fixture)
+  const context = await browser.newContext({ viewport: { width: 1440, height: 950 } })
+  const page = await context.newPage()
+  page.setDefaultTimeout(5000)
+  try {
+    await page.goto(host.url)
+    await page.getByRole('heading', { name: 'Review changes', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Run with input' }).click()
+    await page.locator('#explorer-input').fill('{"case":"replace-file"}')
+    await page.locator('input[aria-label="Choose file for source"]').setInputFiles({
+      name: 'first.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from('original\\n'),
+    })
+    await page.evaluate(() => {
+      const read = File.prototype.arrayBuffer
+      File.prototype.arrayBuffer = async function () {
+        const bytes = await read.call(this)
+        await new Promise((release) => { window.__releaseSelectedRead = release })
+        return bytes
+      }
+    })
+    await page.getByRole('button', { name: 'Run workflow' }).click()
+    await page.waitForFunction(() => typeof window.__releaseSelectedRead === 'function')
+    await page.getByRole('button', { name: 'Remove file' }).click()
+    await page.evaluate(() => window.__releaseSelectedRead())
+    await page.getByText('The selected workflow or input changed. Review the files and choose Run again.').waitFor()
+    assert.deepEqual(host.submissions, [], 'removed file bytes cannot be dispatched after selection changes')
+  } finally {
+    await context.close()
+    await host.close()
+  }
+})
+
 async function noPageOverflow(page) {
   assert(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),

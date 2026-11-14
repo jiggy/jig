@@ -6,6 +6,9 @@ import {
   DISPLAY_INCOMPLETE_LIMIT,
   DISPLAY_PROJECT_BYTE_LIMIT,
   DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT,
+  DISPLAY_EXPLORER_FILE_BYTES,
+  DISPLAY_EXPLORER_TOTAL_BYTES,
+  DISPLAY_EXPLORER_FILE_COUNT,
   DISPLAY_PROJECT_SCHEMA_BYTE_LIMIT,
   DISPLAY_PROJECT_TARGET_LIMIT,
   DISPLAY_SNAPSHOT_LIMIT,
@@ -630,8 +633,6 @@ export function validateDisplayProjectSnapshot(value: unknown): DisplayProjectSn
       else {
         if (launch.reason !== undefined || target!.availability !== 'ready') fail()
         if ((selected.input as Data).schema === false) fail()
-        if (attachments.some((value) => (value as Data).mode === 'read' && !(value as Data).bound))
-          fail()
         if (receives.some((value) => (value as Data).required)) fail()
       }
     }
@@ -651,12 +652,39 @@ function requestId(value: unknown): string {
 export function validateDisplayProjectRunRequest(value: unknown): DisplayProjectRunRequest {
   try {
     const owned = copy(value, DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT, 130)
-    const data = record(owned.value, ['requestId', 'revision', 'targetId', 'input'])
+    const data = record(owned.value, ['requestId', 'revision', 'targetId', 'input', 'files'])
     requestId(data.requestId)
     identity(data.revision)
     identity(data.targetId)
     if (!Object.hasOwn(data, 'input')) fail()
     json(data.input)
+    if (data.files !== undefined) {
+      let total = 0
+      const names = new Set<string>()
+      for (const selected of list(data.files, DISPLAY_EXPLORER_FILE_COUNT)) {
+        const file = record(selected, ['attachment', 'filename', 'base64'])
+        const attachment = text(file.attachment, 64, 1)
+        if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(attachment) || names.has(attachment))
+          fail()
+        names.add(attachment)
+        const filename = text(file.filename, 128, 1)
+        if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(filename) || filename === '..')
+          fail()
+        const base64 = text(file.base64, Math.ceil(DISPLAY_EXPLORER_FILE_BYTES / 3) * 4 + 4)
+        if (base64.length % 4 !== 0) fail()
+        const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
+        const encoded = base64.slice(0, base64.length - padding)
+        if (/[^A-Za-z0-9+/]/.test(encoded)) fail()
+        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+        const tail = alphabet.indexOf(encoded.at(-1) ?? 'A')
+        if ((padding === 1 && (tail & 3) !== 0) || (padding === 2 && (tail & 15) !== 0))
+          fail()
+        const bytes = (base64.length / 4) * 3 - padding
+        if (bytes > DISPLAY_EXPLORER_FILE_BYTES) fail()
+        total += bytes
+        if (total > DISPLAY_EXPLORER_TOTAL_BYTES) fail()
+      }
+    }
     return owned.value as DisplayProjectRunRequest
   } catch {
     throw new TypeError('Project Run request is malformed or exceeds its allowance')

@@ -152,8 +152,19 @@ Choose a workflow to see its configured calls and declared input schema.
 The map shows approved configuration, with no observed calls until a Run starts.
 Use this view to inspect dependencies and decide which component or workflow to exercise.
 
-Enter JSON input, then select **Run workflow**.
-Jig validates the input and rechecks the approved revision before starting the ordinary Run.
+Enter JSON input and, for any unbound read attachment, choose a local file.
+Use the file picker beside its declared attachment name. One file is selected
+for each read attachment, with a 4 MiB per-file and 8 MiB total allowance.
+The file must have a simple filename without a directory component.
+Jig captures only those selected bytes after you choose **Run workflow**.
+It stages them privately, rechecks the approved target and file requirements,
+and supplies them through ordinary `--attach` input capture.
+
+Bound read attachments cannot be replaced. Required channels still need a
+composed Flow or an ordinary `jig run` invocation.
+
+Jig validates the JSON and selected files and rechecks the approved revision
+before starting the ordinary Run.
 Runs use the workflow's approved powers and can produce its normal effects.
 Select **Open run** to inspect live behavior, application views, calls, and delivered evidence in another tab.
 The explorer keeps your draft for the next explicit invocation.
@@ -174,6 +185,8 @@ Applying changes only the input.
 If the workflow name differs, the explorer explicitly warns you to review the target.
 
 Scenario files may contain private inputs, credentials or customer data. Review them before downloading, sharing or committing.
+Scenario files retain JSON input only. Rechoose any required local files
+before running a saved scenario.
 Jig does not save scenarios to project files, browser storage or a server automatically.
 The single loaded scenario remains in the current explorer tab until replaced or the tab closes.
 

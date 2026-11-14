@@ -215,6 +215,17 @@ export class PrivateExploreSession {
         request.targetId,
         request.input,
       )
+      const selectedFiles = request.files ?? []
+      const supplied = new Set(selectedFiles.map((file) => file.attachment))
+      if (
+        supplied.size !== selectedFiles.length ||
+        (selection.unboundRead?.length ?? 0) !== selectedFiles.length ||
+        (selection.unboundRead?.some((name) => !supplied.has(name)) ?? false)
+      )
+        throw new PrivateProjectProjectionError(
+          'INPUT_INVALID',
+          'Select one local file for each unbound read attachment of this reviewed workflow. No Run was started.',
+        )
       if (this.options.launch === undefined || this.#registerBridge === undefined)
         throw new Error('The installed explorer launcher is unavailable')
       if (this.#closing) throw new Error('The explorer is closing')
@@ -232,6 +243,7 @@ export class PrivateExploreSession {
         target: selection.target,
         approval: selection.approval,
         input: request.input,
+        files: selectedFiles,
         timeoutMs: this.options.timeoutMs,
         ...(this.options.verification === undefined
           ? {}

@@ -1,4 +1,9 @@
-import { DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT } from '@jigging/display-model'
+import {
+  DISPLAY_EXPLORER_FILE_BYTES,
+  DISPLAY_EXPLORER_TOTAL_BYTES,
+  DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT,
+  type DisplayExplorerInputFile,
+} from '@jigging/display-model'
 import { h, render } from 'preact'
 import { PrivateExplorerClient, privateExplorerInput } from './explorer-client.js'
 import { ExplorerPage } from './explorer-view.js'
@@ -13,12 +18,20 @@ type Draft = {
   input: string
   bytes: number
   touched: boolean
+  files: Map<string, File>
   nodeId?: string | undefined
   detailOpen: boolean
   scale: number
   scaleMode: 'automatic' | 'fit' | 'manual'
   left: number
   top: number
+}
+
+function encodeFile(bytes: Uint8Array): string {
+  let binary = ''
+  for (let offset = 0; offset < bytes.length; offset += 16384)
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 16384))
+  return btoa(binary)
 }
 
 /** The explorer owns project intent. Each launched Run keeps its ordinary readonly viewer. */
@@ -28,6 +41,7 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
   let activeKey = ''
   let filter = ''
   let inputOpen = false
+  let readingFiles = false
   let draftNotice = ''
   let scenarioName = ''
   let scenarioNotice = ''
@@ -47,6 +61,7 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
     input: '',
     bytes: 0,
     touched: false,
+    files: new Map(),
     detailOpen: false,
     scale: 1,
     scaleMode: 'automatic',
@@ -61,18 +76,19 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
     if (!key) return empty
     let draft = drafts.get(key)
     if (!draft) {
-      draft = { ...empty }
+      draft = { ...empty, files: new Map() }
       drafts.set(key, draft)
     } else {
       drafts.delete(key)
       drafts.set(key, draft)
     }
     let bytes = 0
-    for (const item of drafts.values()) bytes += item.bytes
+    for (const item of drafts.values())
+      bytes += item.bytes + [...item.files.values()].reduce((sum, file) => sum + file.size, 0)
     for (const [oldKey, oldDraft] of drafts) {
       if (drafts.size <= 16 && bytes <= DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT) break
       if (oldKey === key) continue
-      bytes -= oldDraft.bytes
+      bytes -= oldDraft.bytes + [...oldDraft.files.values()].reduce((sum, file) => sum + file.size, 0)
       drafts.delete(oldKey)
       draftNotice =
         'An older input draft was cleared. This tab retains up to 16 drafts within 16 MiB.'
@@ -194,14 +210,17 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
         runCurrent: client?.runCurrent ?? false,
         runError: client?.runError ?? '',
         requestError: client?.requestError ?? '',
-        sending: client?.sending ?? false,
+        sending: (client?.sending ?? false) || readingFiles,
         unresolved: !!client?.unresolvedRequest,
-        canLaunch: client?.canLaunch ?? false,
+        canLaunch: (client?.canLaunch ?? false) && !readingFiles,
         closing: client?.closing ?? false,
         filter,
         input: draft.input,
         inputOpen,
         inputTouched: draft.touched,
+        selectedFiles: [...draft.files].map(([attachment, file]) => ({
+          attachment, filename: file.name, bytes: file.size,
+        })),
         draftNotice,
         scenarioName,
         scenarioNotice,
@@ -236,6 +255,26 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
         },
         onInputTouched() {
           draft.touched = true
+          redraw()
+        },
+        onFileSelected(attachment: string, file?: File) {
+          const selected = client?.project?.selected
+          if (!selected?.attachments.some((item) =>
+            item.name === attachment && item.mode === 'read' && !item.bound))
+            return
+          if (file === undefined) {
+            draft.files.delete(attachment)
+            draftNotice = ''
+          } else if (
+            file.size > DISPLAY_EXPLORER_FILE_BYTES ||
+            !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(file.name)
+          ) {
+            draftNotice = 'Choose one local file of at most 4 MiB with a simple filename (letters, digits, dot, dash or underscore).'
+            draft.files.delete(attachment)
+          } else {
+            draft.files.set(attachment, file)
+            draftNotice = ''
+          }
           redraw()
         },
         onScenarioName(value: string) {
@@ -334,13 +373,69 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
             .querySelector<HTMLButtonElement>('.explorer-workflow-heading .explorer-primary')
             ?.focus()
         },
-        onRun() {
+        async onRun() {
+          if (readingFiles) return
           draft.touched = true
-          if (privateExplorerInput(draft.input).state !== 'valid') {
+          const selected = client?.project?.selected
+          const project = client?.project
+          const required = selected?.attachments
+            .filter((item) => item.mode === 'read' && !item.bound)
+            .map((item) => item.name) ?? []
+          if (
+            !client?.canLaunch ||
+            !project ||
+            !selected ||
+            privateExplorerInput(draft.input).state !== 'valid' ||
+            required.some((name) => !draft.files.has(name))
+          ) {
+            draftNotice = required.some((name) => !draft.files.has(name))
+              ? 'Choose one local file for each required read attachment.'
+              : ''
             redraw()
             return
           }
-          void client?.launch(draft.input, crypto.randomUUID())
+          const input = draft.input
+          const chosenFiles = new Map(required.map((name) => [name, draft.files.get(name)!]))
+          const identity = project.revision + ':' + selected.targetId
+          readingFiles = true
+          redraw()
+          try {
+            let total = 0
+            const files: DisplayExplorerInputFile[] = []
+            for (const attachment of required) {
+              const file = chosenFiles.get(attachment)!
+              const bytes = new Uint8Array(await file.arrayBuffer())
+              try {
+                total += bytes.length
+                if (
+                  file.size !== bytes.length ||
+                  bytes.length > DISPLAY_EXPLORER_FILE_BYTES ||
+                  total > DISPLAY_EXPLORER_TOTAL_BYTES
+                )
+                  throw new Error('Selected input file size changed or exceeds the 8 MiB total allowance.')
+                files.push({ attachment, filename: file.name, base64: encodeFile(bytes) })
+              } finally {
+                bytes.fill(0)
+              }
+            }
+            if (
+              disposed ||
+              (client?.project?.revision + ':' + client?.project?.selected?.targetId) !== identity ||
+              draft.input !== input ||
+              required.some((name) => draft.files.get(name) !== chosenFiles.get(name)) ||
+              !client?.canLaunch
+            ) {
+              draftNotice = 'The selected workflow or input changed. Review the files and choose Run again.'
+              return
+            }
+            draftNotice = ''
+            void client.launch(input, crypto.randomUUID(), files)
+          } catch {
+            draftNotice = 'A selected local input file could not be read. Choose it again before running.'
+          } finally {
+            readingFiles = false
+            redraw()
+          }
         },
         async onClose() {
           if (await client?.close()) {

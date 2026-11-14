@@ -225,6 +225,9 @@ Portable presentation and delivery inspection cases check pure rendering, stored
 bytes and actual elapsed completion limits. They do not prove authenticated
 capture, retirement acknowledgements or native cleanup.
 Saved-result cases use actual files, descriptors and subprocess output.
+Explorer selected-file staging cases use real temporary directories and written
+bytes, with hostile names, duplicate slots and canonical payload refusals.
+Portable capture is not native file-rights qualification.
 Hardware I/O failure windows require separate evidence.
 
 The file-command suite bundles its unchanged peer once in a separate Bun process

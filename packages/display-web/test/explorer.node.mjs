@@ -81,6 +81,7 @@ const props = () => ({
   input: '',
   inputOpen: false,
   inputTouched: false,
+  selectedFiles: [],
   draftNotice: '',
   scenarioName: '',
   scenarioNotice: '',
@@ -94,6 +95,7 @@ const props = () => ({
   onRefreshRun() {},
   onInput() {},
   onInputTouched() {},
+  onFileSelected() {},
   onScenarioName() {},
   onScenarioDownload() {},
   onScenarioFile() {},
@@ -178,9 +180,35 @@ test('unavailable file or channel requirements stay actionable beside Run input'
     canLaunch: false,
   })
   assert.match(text(page), /input files named source/)
-  assert.match(text(page), /Input files required/)
+  assert.match(text(page), /Choose one local file for this read attachment/)
   assert.match(text(page), /Declared output streams/)
   assert.equal(walk(page).find((node) => node.props.type === 'submit').props.disabled, true)
+})
+
+test('required local files must be explicitly selected before Run is enabled', () => {
+  const data = project()
+  data.selected.attachments = [{ name: 'source', mode: 'read', bound: false }]
+  const incomplete = ExplorerPage({
+    ...props(),
+    project: data,
+    input: '{"issue":"check"}',
+    inputOpen: true,
+    canLaunch: true,
+  })
+  assert.equal(walk(incomplete).find((node) => node.props.type === 'submit').props.disabled, true)
+  assert.match(text(incomplete), /No local file selected/)
+  assert.equal(walk(incomplete).filter((node) => node.type === 'input' && node.props.type === 'file').length, 2,
+    'scenario and declared input file pickers remain separate')
+  const complete = ExplorerPage({
+    ...props(),
+    project: data,
+    input: '{"issue":"check"}',
+    inputOpen: true,
+    selectedFiles: [{ attachment: 'source', filename: 'contacts.csv', bytes: 3 }],
+    canLaunch: true,
+  })
+  assert.equal(walk(complete).find((node) => node.props.type === 'submit').props.disabled, false)
+  assert.match(text(complete), /contacts.csv/)
 })
 
 test('settled Run is distinct from success and opens only its separate observer', () => {

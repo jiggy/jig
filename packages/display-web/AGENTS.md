@@ -37,6 +37,11 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   `/explore` uses a distinct host capability for explicit requests and project reads.
   Never transfer that capability to the separate Run observer.
 - Explorer submission sends exact input JSON and pins the selected project revision and target identity.
+  Browser file pickers retain chosen File objects only in draft memory, and read
+  their bounded bytes on the explicit Run action. One selected local file must
+  exist for each declared unbound read slot before enabling Run.
+  Scenario files store JSON only and cannot silently restore file selections.
+
   Never retry submission after a lost response. Read status until the host resolves that request.
   Read global Run state before any request-specific lookup under the same bounded poll owner.
   Request acknowledgments never replace global state for launch gating. Unknown lookup does not prove that execution never started.
@@ -46,7 +51,8 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
 - Project maps carry no synthetic Run snapshot, elapsed time or zero request counts.
   Approval labels do not establish current source freshness or launch readiness.
   Keep schema and unavailable launch reasons beside the input editor.
-  Retain at most sixteen drafts within sixteen MiB, evicting older drafts with visible feedback.
+  Retain at most sixteen drafts within sixteen MiB of JSON and selected-file
+  sizes, evicting older drafts with visible feedback.
   Preserve an oversized current edit until selection changes, without clipping it.
 - Retain one snapshot task, bounded SSE reader/retry owner and active preview.
   Equal revisions acknowledge freshness without replacing semantic data.
