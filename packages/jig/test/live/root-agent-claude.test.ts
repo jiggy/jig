@@ -24,12 +24,18 @@ const NATIVE_AGENT_TIMEOUT_MS = 120_000
 const NATIVE_AGENT_TEST_TIMEOUT_MS = 180_000
 const nativeClaudePath = process.env.JIG_CLAUDE_PROOF_PATH
 const nativeClaudeApiModel = process.env.JIG_CLAUDE_ANTHROPIC_MODEL
-const OPENROUTER_ANTHROPIC_TEST_BASE_URL = 'https://openrouter.ai/api'
+const nativeClaudeApiKey = process.env.JIG_NATIVE_API_KEY ?? process.env.OPENROUTER_API_KEY
+const nativeClaudeBaseURL = process.env.JIG_NATIVE_API_BASE_URL ?? 'https://openrouter.ai/api'
+const nativeClaudeAuth = process.env.JIG_NATIVE_CLAUDE_AUTH ?? 'auth-token'
 if (
   !HOSTILE ||
   nativeClaudePath === undefined ||
   nativeClaudeApiModel === undefined ||
-  process.env.OPENROUTER_API_KEY === undefined
+  nativeClaudeApiKey === undefined ||
+  !(
+    (nativeClaudeAuth === 'auth-token' && nativeClaudeBaseURL === 'https://openrouter.ai/api') ||
+    (nativeClaudeAuth === 'api-key' && nativeClaudeBaseURL === 'https://api.anthropic.com')
+  )
 )
   throw new Error(
     'Selected native Claude API proof requires its host, executable, model, and API key',
@@ -55,9 +61,11 @@ describe.serial('private contained Agent Run lifecycle', () => {
               installedBunLocation,
               {
                 CLAUDE_PATH: await realpath(nativeClaudePath!),
-                ANTHROPIC_API_KEY: '',
-                ANTHROPIC_AUTH_TOKEN: process.env.OPENROUTER_API_KEY,
-                ANTHROPIC_BASE_URL: OPENROUTER_ANTHROPIC_TEST_BASE_URL,
+                ANTHROPIC_API_KEY: nativeClaudeAuth === 'api-key' ? nativeClaudeApiKey : '',
+                ...(nativeClaudeAuth === 'auth-token'
+                  ? { ANTHROPIC_AUTH_TOKEN: nativeClaudeApiKey }
+                  : {}),
+                ANTHROPIC_BASE_URL: nativeClaudeBaseURL,
                 ANTHROPIC_MODEL: nativeClaudeApiModel,
               },
               root,
@@ -88,7 +96,7 @@ describe.serial('private contained Agent Run lifecycle', () => {
             },
           },
         })
-        expect(JSON.stringify(terminal)).not.toContain(process.env.OPENROUTER_API_KEY!)
+        expect(JSON.stringify(terminal)).not.toContain(nativeClaudeApiKey!)
         await expectNoAgentOwner(root)
         await session.close()
         session = undefined

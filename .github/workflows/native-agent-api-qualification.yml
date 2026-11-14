@@ -284,40 +284,92 @@ jobs:
           printf 'NATIVE_AGENT_PATH=%s\nNATIVE_AGENT_VERSION=%s\n' "$agent_path" "$identity" >> "$GITHUB_ENV"
           printf 'Installed supported Pi profile: `%s`\n' "$identity" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Qualify native ${{ matrix.client }} API-key ACP through OpenRouter
+      - name: Qualify native ${{ matrix.client }} API-key ACP with a reviewed provider profile
         id: native-api
         shell: bash
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          JIG_CODEX_FIRST_PARTY_API_KEY: ${{ matrix.client == 'codex' && secrets.JIG_NATIVE_CODEX_OPENAI_API_KEY || '' }}
+          JIG_CODEX_FIRST_PARTY_MODEL: ${{ matrix.client == 'codex' && vars.JIG_NATIVE_CODEX_OPENAI_MODEL || '' }}
+          JIG_CLAUDE_FIRST_PARTY_API_KEY: ${{ matrix.client == 'claude' && secrets.JIG_NATIVE_CLAUDE_ANTHROPIC_API_KEY || '' }}
+          JIG_CLAUDE_FIRST_PARTY_MODEL: ${{ matrix.client == 'claude' && vars.JIG_NATIVE_CLAUDE_ANTHROPIC_MODEL || '' }}
           JIG_NATIVE_API_CLIENT: ${{ matrix.client }}
           JIG_NATIVE_API_MODEL: ${{ matrix.model }}
           JIG_NATIVE_API_TEST_FILE: ${{ matrix.test-file }}
         run: |
           set -euo pipefail
-          if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
-            echo "Configure OPENROUTER_API_KEY in the protected native-agent-api environment." >&2
+          # A protected key AND exact model intentionally select first-party
+          # inference. Never infer consent to charged inference from one alone.
+          selected_api_key=${OPENROUTER_API_KEY:-}
+          selected_model=$JIG_NATIVE_API_MODEL
+          selected_base_url=
+          claude_auth=auth-token
+          provider_route=openrouter
+          case "$JIG_NATIVE_API_CLIENT" in
+            codex)
+              selected_base_url=https://openrouter.ai/api/v1
+              if [[ -n "$JIG_CODEX_FIRST_PARTY_API_KEY" || -n "$JIG_CODEX_FIRST_PARTY_MODEL" ]]; then
+                if [[ -z "$JIG_CODEX_FIRST_PARTY_API_KEY" || -z "$JIG_CODEX_FIRST_PARTY_MODEL" ]]; then
+                  echo "Codex first-party qualification requires both protected key and model." >&2
+                  exit 1
+                fi
+                selected_api_key=$JIG_CODEX_FIRST_PARTY_API_KEY
+                selected_model=$JIG_CODEX_FIRST_PARTY_MODEL
+                selected_base_url=https://api.openai.com/v1
+                provider_route=openai
+              fi
+              ;;
+            claude)
+              selected_base_url=https://openrouter.ai/api
+              if [[ -n "$JIG_CLAUDE_FIRST_PARTY_API_KEY" || -n "$JIG_CLAUDE_FIRST_PARTY_MODEL" ]]; then
+                if [[ -z "$JIG_CLAUDE_FIRST_PARTY_API_KEY" || -z "$JIG_CLAUDE_FIRST_PARTY_MODEL" ]]; then
+                  echo "Claude first-party qualification requires both protected key and model." >&2
+                  exit 1
+                fi
+                selected_api_key=$JIG_CLAUDE_FIRST_PARTY_API_KEY
+                selected_model=$JIG_CLAUDE_FIRST_PARTY_MODEL
+                selected_base_url=https://api.anthropic.com
+                claude_auth=api-key
+                provider_route=anthropic
+              fi
+              ;;
+          esac
+          if [[ -z "$selected_api_key" ]]; then
+            echo "Configure the selected provider API key in the protected native-agent-api environment." >&2
             exit 1
           fi
+          if [[ ! "$selected_model" =~ ^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}$ ]]; then
+            echo "Native qualification model identifier is invalid." >&2
+            exit 1
+          fi
+          printf 'NATIVE_QUALIFICATION_MODEL=%s\n' "$selected_model" >> "$GITHUB_ENV"
+          printf 'Selected native API provider: `%s`.\n\n' "$provider_route" >> "$GITHUB_STEP_SUMMARY"
           test_arguments=()
           case "$JIG_NATIVE_API_CLIENT" in
             codex)
               test_arguments=(--bail=1)
               client_environment=(
                 "JIG_CODEX_PROOF_PATH=$NATIVE_AGENT_PATH"
-                "JIG_CODEX_RESPONSES_MODEL=$JIG_NATIVE_API_MODEL"
+                "JIG_CODEX_RESPONSES_MODEL=$selected_model"
+                "JIG_NATIVE_API_KEY=$selected_api_key"
+                "JIG_NATIVE_API_BASE_URL=$selected_base_url"
               )
               ;;
             claude)
               client_environment=(
                 "JIG_CLAUDE_PROOF_PATH=$NATIVE_AGENT_PATH"
-                "JIG_CLAUDE_ANTHROPIC_MODEL=$JIG_NATIVE_API_MODEL"
+                "JIG_CLAUDE_ANTHROPIC_MODEL=$selected_model"
+                "JIG_NATIVE_API_KEY=$selected_api_key"
+                "JIG_NATIVE_API_BASE_URL=$selected_base_url"
+                "JIG_NATIVE_CLAUDE_AUTH=$claude_auth"
               )
               ;;
             pi)
               client_environment=(
                 "JIG_PI_PROOF_PATH=$NATIVE_AGENT_PATH"
                 "JIG_PI_API_PROVIDER=openrouter"
-                "JIG_PI_API_MODEL=$JIG_NATIVE_API_MODEL"
+                "JIG_PI_API_MODEL=$selected_model"
+                "OPENROUTER_API_KEY=$selected_api_key"
               )
               ;;
             *)
@@ -326,7 +378,10 @@ jobs:
               ;;
           esac
           set +e
-          scripts/ci/provision-github-rootless-host.sh run-delegated \
+          # Do not ambiently expose alternate provider credentials to the
+          # delegated test. The chosen credential is passed to just that client.
+          OPENROUTER_API_KEY='' JIG_CODEX_FIRST_PARTY_API_KEY='' JIG_CLAUDE_FIRST_PARTY_API_KEY='' \
+            scripts/ci/provision-github-rootless-host.sh run-delegated \
             env JIG_LINUX_ROOTLESS_HOSTILE=1 \
             "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" \
             "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" \
@@ -336,8 +391,7 @@ jobs:
             "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" \
             "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" \
             "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" \
-            "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" \
-            "JIG_NATIVE_API_MODEL=$JIG_NATIVE_API_MODEL" \
+            "JIG_NATIVE_API_MODEL=$selected_model" \
             "JIG_NATIVE_API_CLIENT=$JIG_NATIVE_API_CLIENT" \
             "${client_environment[@]}" \
             "$JIG_CI_BUN" test "$JIG_NATIVE_API_TEST_FILE" \
@@ -345,7 +399,9 @@ jobs:
           qualification_status=("${PIPESTATUS[@]}")
           set -e
           if (( qualification_status[0] != 0 )); then
-            if [[ "$JIG_NATIVE_API_CLIENT" == codex ]]; then
+            # The fixed, additional probe is free-route-only. Do not send
+            # unapproved extra model calls to a first-party paid provider.
+            if [[ "$JIG_NATIVE_API_CLIENT" == codex && "$provider_route" == openrouter ]]; then
               timeout --kill-after=2s 30s node scripts/ci/native-responses-probe.mjs || true
             fi
             exit "${qualification_status[0]}"
@@ -386,17 +442,18 @@ jobs:
         if: always()
         env:
           NATIVE_CLIENT: ${{ matrix.client }}
-          NATIVE_MODEL: ${{ matrix.model }}
           QUALIFICATION_OUTCOME: ${{ job.status }}
         run: |
           printf '## Native %s qualification: %s\n\n' "$NATIVE_CLIENT" "$QUALIFICATION_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
-          printf 'Selected qualification model: `%s`.\n\n' "$NATIVE_MODEL" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Selected qualification model: `%s`.\n\n' "${NATIVE_QUALIFICATION_MODEL:-not-selected}" >> "$GITHUB_STEP_SUMMARY"
           if [ "$QUALIFICATION_OUTCOME" != success ]; then
             printf '%s\n' \
               'Publication requires every native client to pass against the same candidate.' '' \
               'Inspect the failed step and its bounded conversation diagnostics.' \
               'A native-session **limit** category does not identify the underlying provider cause.' \
-              'Check provider availability and quota without exposing credentials or private responses.' '' \
+              'Check provider availability and quota without exposing credentials or private responses.' \
+              'The protected operator may explicitly configure a first-party key and model for Codex or Claude.' \
+              'Those paths may be billed; incomplete pairs are rejected before Agent execution.' '' \
               'Fix the cause, then choose **Re-run all jobs** in this workflow.' \
               'Partial qualification reruns cannot reuse earlier proof.' >> "$GITHUB_STEP_SUMMARY"
           fi

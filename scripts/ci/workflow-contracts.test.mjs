@@ -1187,6 +1187,106 @@ test('native live jobs require release scope while manual main diagnostics remai
   }
 })
 
+test('native provider proof selects first-party credentials only with a protected key and model', async () => {
+  const workflow = parse(
+    await readFile(new URL('native-agent-api-qualification.yml', workflows), 'utf8'),
+  )
+  const job = workflow.jobs.qualification
+  const step = job.steps.find((entry) => entry.id === 'native-api')
+  assert.ok(step)
+  assert.equal(job.environment, 'native-agent-api')
+  for (const [key, fragment] of [
+    ['JIG_CODEX_FIRST_PARTY_API_KEY', 'secrets.JIG_NATIVE_CODEX_OPENAI_API_KEY'],
+    ['JIG_CODEX_FIRST_PARTY_MODEL', 'vars.JIG_NATIVE_CODEX_OPENAI_MODEL'],
+    ['JIG_CLAUDE_FIRST_PARTY_API_KEY', 'secrets.JIG_NATIVE_CLAUDE_ANTHROPIC_API_KEY'],
+    ['JIG_CLAUDE_FIRST_PARTY_MODEL', 'vars.JIG_NATIVE_CLAUDE_ANTHROPIC_MODEL'],
+  ]) {
+    assert.ok(step.env[key].includes(fragment))
+  }
+  assert.match(step.run, /OPENROUTER_API_KEY='' JIG_CODEX_FIRST_PARTY_API_KEY='' JIG_CLAUDE_FIRST_PARTY_API_KEY=''/)
+  assert.match(step.run, /provider_route" == openrouter/)
+  const selection = step.run.slice(0, step.run.indexOf('test_arguments=()'))
+  assert.ok(selection.includes('selected_api_key='))
+  const cases = [
+    {
+      client: 'codex', key: '', model: '', selectedKey: 'test-router-key',
+      selectedModel: 'openrouter/free', selectedRoute: 'openrouter',
+      selectedBase: 'https://openrouter.ai/api/v1', status: 0,
+    },
+    {
+      client: 'codex', key: 'test-codex-key', model: 'gpt-test-model',
+      selectedKey: 'test-codex-key', selectedModel: 'gpt-test-model',
+      selectedRoute: 'openai', selectedBase: 'https://api.openai.com/v1', status: 0,
+    },
+    {
+      client: 'claude', key: '', model: '', selectedKey: 'test-router-key',
+      selectedModel: 'mistralai/ministral-8b-2512', selectedRoute: 'openrouter',
+      selectedBase: 'https://openrouter.ai/api', status: 0,
+    },
+    {
+      client: 'claude', key: 'test-claude-key', model: 'claude-test-model',
+      selectedKey: 'test-claude-key', selectedModel: 'claude-test-model',
+      selectedRoute: 'anthropic', selectedBase: 'https://api.anthropic.com', status: 0,
+    },
+    {
+      client: 'pi', key: '', model: '', selectedKey: 'test-router-key',
+      selectedModel: 'mistralai/ministral-8b-2512', selectedRoute: 'openrouter',
+      selectedBase: '', status: 0,
+    },
+    { client: 'codex', key: 'test-codex-key', model: '', status: 1 },
+    { client: 'claude', key: '', model: 'claude-test-model', status: 1 },
+    { client: 'codex', key: 'test-codex-key', model: 'bad\nmodel', status: 1 },
+  ]
+  const directory = await mkdtemp(join(tmpdir(), 'jig-native-route-selection-'))
+  try {
+    for (const selected of cases) {
+      const code = selection + `
+if [[ -n "\${EXPECTED_KEY:-}" ]]; then
+  test "$selected_api_key" = "$EXPECTED_KEY"
+  test "$selected_model" = "$EXPECTED_MODEL"
+  test "$provider_route" = "$EXPECTED_ROUTE"
+  test "$selected_base_url" = "$EXPECTED_BASE"
+fi
+`
+      const output = join(directory, 'output')
+      const summary = join(directory, 'summary')
+      const isCodex = selected.client === 'codex'
+      const isClaude = selected.client === 'claude'
+      const result = spawnSync('/bin/bash', ['-e', '-o', 'pipefail', '-c', code], {
+        cwd: directory,
+        env: {
+          PATH: process.env.PATH,
+          GITHUB_ENV: output,
+          GITHUB_STEP_SUMMARY: summary,
+          OPENROUTER_API_KEY: 'test-router-key',
+          JIG_NATIVE_API_CLIENT: selected.client,
+          JIG_NATIVE_API_MODEL: isCodex ? 'openrouter/free' : 'mistralai/ministral-8b-2512',
+          JIG_CODEX_FIRST_PARTY_API_KEY: isCodex ? selected.key : '',
+          JIG_CODEX_FIRST_PARTY_MODEL: isCodex ? selected.model : '',
+          JIG_CLAUDE_FIRST_PARTY_API_KEY: isClaude ? selected.key : '',
+          JIG_CLAUDE_FIRST_PARTY_MODEL: isClaude ? selected.model : '',
+          EXPECTED_KEY: selected.selectedKey ?? '',
+          EXPECTED_MODEL: selected.selectedModel ?? '',
+          EXPECTED_ROUTE: selected.selectedRoute ?? '',
+          EXPECTED_BASE: selected.selectedBase ?? '',
+        },
+        encoding: 'utf8',
+        timeout: 5_000,
+      })
+      assert.ifError(result.error)
+      assert.equal(result.status, selected.status, result.stderr)
+      if (selected.status === 0) {
+        assert.equal(await readFile(output, 'utf8'), `NATIVE_QUALIFICATION_MODEL=${selected.selectedModel}\n`)
+        assert.ok((await readFile(summary, 'utf8')).includes(selected.selectedRoute))
+      }
+      await rm(output, { force: true })
+      await rm(summary, { force: true })
+    }
+  } finally {
+    await rm(directory, { force: true, recursive: true })
+  }
+})
+
 test('native recovery summary preserves failures without exposing credentials', async () => {
   const workflow = parse(
     await readFile(new URL('native-agent-api-qualification.yml', workflows), 'utf8'),
@@ -1199,7 +1299,7 @@ test('native recovery summary preserves failures without exposing credentials', 
   for (const outcome of ['success', 'failure', 'cancelled']) {
     const result = await runWriterStep(step, {
       NATIVE_CLIENT: 'codex',
-      NATIVE_MODEL: 'openrouter/free',
+      NATIVE_QUALIFICATION_MODEL: 'openrouter/free',
       QUALIFICATION_OUTCOME: outcome,
     })
     assert.equal(result.status, 0)

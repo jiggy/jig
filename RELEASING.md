@@ -14,7 +14,25 @@ Changesets then generate package versions and maintain one release PR.
 3. Configure npm trusted publishing for `@jigging/agent-method`, `@jigging/agent-acp`, and `@jigging/jig`.
    Use repository `jiggy/jig`, workflow `npm-publish.yml`, and protected environment `npm`.
    No npm token is required.
-4. Keep `OPENROUTER_API_KEY` in the protected `native-agent-api` environment for native Agent qualification.
+4. Keep `OPENROUTER_API_KEY` in the protected `native-agent-api` environment for Pi
+   and for the existing Codex/Claude OpenRouter qualification routes.
+
+   For reliable first-party qualification, the environment may explicitly
+   configure either or both key/model pairs below. These are **opt-in paid
+   inference paths**; adding the credentials and model constitutes the operator's
+   decision to incur provider API usage. No first-party request is sent unless
+   both values for that client are present.
+
+   | Protected environment secret | Protected environment variable | Provider |
+   | --- | --- | --- |
+   | `JIG_NATIVE_CODEX_OPENAI_API_KEY` | `JIG_NATIVE_CODEX_OPENAI_MODEL` | OpenAI Responses API |
+   | `JIG_NATIVE_CLAUDE_ANTHROPIC_API_KEY` | `JIG_NATIVE_CLAUDE_ANTHROPIC_MODEL` | Anthropic Messages API |
+
+   A missing half of either pair fails qualification before executing an
+   Agent. Each native client receives only the selected key, model and
+   fixed HTTPS endpoint. Pi continues using the existing OpenRouter credential.
+   Release readiness still requires **all three** live native clients, the
+   full Mac/Linux host gates, and the exact candidate archives.
 
 ### Optional: automatic PR checks and merge
 
@@ -145,9 +163,18 @@ Completion events check readiness again when qualification finishes.
 **Ready for publication** permits a publication attempt and does not establish registry success.
 The publication summary reports newly published, byte-verified or superseded versions separately.
 
-For native Agent failures, inspect the failed client and selected qualification model.
-A native-session `limit` diagnostic does not identify the underlying provider cause.
-Check provider availability and quota without exposing credentials or private responses.
+For native Agent failures, inspect the failed client and selected qualification
+model. A native-session `limit` diagnostic does not identify the underlying
+provider cause. Inspect provider availability and quota without exposing secrets.
+OpenRouter's free routing has account-wide request limits. Claude Code gateway
+compatibility is guaranteed by OpenRouter only for Anthropic first-party models;
+non-Anthropic BYOK models can fail even when Pi succeeds with the same endpoint.
+Use the opt-in protected first-party key/model pairs above to qualify those
+clients on their native APIs. The operator owns any resulting API charges.
+
+Provider readiness never substitutes for a successful complete native
+qualification. Do not downgrade ACP, omit a client, reuse partial passes or
+publish an artifact that failed its original source-bound checks.
 
 - **Release versions fails:** Read its run summary and failed step.
   An opaque GitHub GraphQL error from the version action may be a GitHub
