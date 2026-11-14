@@ -945,8 +945,8 @@ or receive `PROJECT_AGENT_SELECTION_REQUIRED` at the Binding slot.
 The choice binds only existing unpinned ACP grant routes. Optional recovery
 slots without a binding remain unbound and gain no authority. Explicitly
 pinned candidates and backups are preserved, including their models,
-authentication profiles, and retention settings. A review operand with no
-unpinned recipient is refused as inapplicable.
+authentication profiles, and retention settings. A review operand with no unpinned recipient may affirm existing identical
+client pins without changing them. Mismatched pins are not overridden.
 
 The choice participates in retained capture identity, effective grant
 policies, lock, qualification and admission. The optional top-level
