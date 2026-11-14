@@ -172,19 +172,29 @@ import { defineBinding } from '@jigging/jig'
 
 export default defineBinding({
   package: 'npm:@jigging/agent-acp',
-  slots: { native: { kind: 'acp', client: 'codex' } },
+  slots: { native: { kind: 'acp' } },
 })
 ```
+
+Omitting `client` is the portable default. Interactive `jig review` asks
+which native Agent to use. Noninteractive review supplies the choice:
+
+```sh
+jig review --agent codex --yes
+```
+
+Replace `codex` with `claude` or `pi`. The chosen default is recorded
+with the approved generation, not written to application source. An author
+can explicitly pin `client: 'codex'`, `client: 'claude'` or `client: 'pi'`
+when the method depends on a specific implementation. Explicit pins can also
+specify a compatible model or native session retention.
 
 A simple native policy belongs directly in its Binding. Use a
 [named grant](../spec/grants.md#reuse-a-named-policy-when-useful) when several
 Bindings intentionally share one policy or it has a separate management owner.
 No grants directory is required for inline policy.
 
-Use the same project default shown above. `client` is required. Codex is only
-the concrete choice in this example, not a product default or recommendation.
-The same grant shape accepts `claude` or `pi`. Choose your installed client and
-consult its
+Choose your installed client during review and consult its
 [configuration profile](../spec/finite-acp.md#native-client-profiles). The
 package has no second client selector.
 
@@ -366,64 +376,28 @@ prompts. One-shot calls require neither change.
 
 ## Switching
 
-For a lasting project choice, edit the ordinary Binding source. The diagnostic
-identifies the captured Binding and its `native` slot, or the named JSON policy
-selected by a slot such as `native: 'grant:agent'`. Simple policies are inline:
-
-```ts
-slots: { native: { kind: 'acp', client: 'codex' } },
-```
-
-Choose `codex`, `claude`, or `pi`, keep the turn limits and required
-conversation features, and configure the client's authentication. A model pin
-belongs to the chosen client. Replace it deliberately or omit it to use that
-client's default. Codex-only `retainSessions` must remain with Codex or be
-deliberately removed when the application no longer needs native retention. Then
-review and approve the changed selection before running:
+With an unpinned ACP grant, choose your preferred Agent when reviewing the
+application. A terminal prompt lets you choose without editing source:
 
 ```sh
 jig review
 jig run
 ```
 
-You can also propose one client for the current review without editing source:
+For repeatable noninteractive review:
 
 ```sh
-jig review --agent codex
-jig run
+jig review --agent claude --yes
 ```
 
-`review --agent` requires one value: `codex`, `claude`, or `pi`. It changes only
-`client` in every selected ACP policy, including inline, named/shared and
-computed policies. Review shows the source client, effective client, argument
-origin and affected recipients before normal approval. The approved lock and
-`jig inspect` retain the effective choice. Run uses that exact approval without
-another flag. HTTP Agents and ordinary package/provider routes are unaffected.
+Only unpinned native ACP resources use that choice. The approved lock
+retains each exact client and `jig inspect` reports the effective selection.
+Runs cannot replace Agents. To switch after approval, review again and
+approve the changed resources. A later review may suggest the previous
+choice, but never reuses it without operator input.
 
-Turn limits and other policy fields remain intact. An actual cross-client change
-with a pinned model or incompatible native retention refuses the whole request.
-Jig does not clear or translate either field. The argument also refuses when no
-ACP resources are selected. A same-client choice still undergoes the normal
-prerequisite checks.
-
-New or changed resource authority requires the same explicit approval as a source edit.
-`--yes` alone does not grant it.
-
-The argument is not remembered for the next review. Repeat it when reviewing
-later code edits, or edit the Binding for persistence. A later bare `jig review`
-uses its newly captured source client again and explains that proposed change.
-If that review fails, the earlier approved code and client remain together.
-Newly edited code is not authorized with the old client.
-
-If the selected client fails review, follow
-[client-check recovery](../reference/troubleshooting.md#agent-client-check-fails). The failed review does not
-approve newly edited code or replace the earlier approved client.
-
-Choose a different ordinary Agent package in its Binding when switching between
-native ACP and HTTP access. Client, endpoint, model and executable changes
-affect admitted execution identity. Rotating only a credential does not require
-another review.
-
-To use API access, select the ordinary Agent Binding in project defaults. A
-missing or incompatible selection fails. Jig does not silently choose another
-provider. Exporting an API key alone does not configure an Agent.
+A method needing a specific native Agent explicitly pins its `client`
+in the Binding or a named grant. Those pins are not changed by `--agent`.
+Keep compatible model and native session requirements with the pin.
+HTTP-backed Agents remain separate replaceable Flow implementations.
+This feature does not yet route between HTTP and ACP implementations.
