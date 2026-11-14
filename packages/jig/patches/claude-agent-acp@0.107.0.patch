@@ -1,0 +1,10 @@
+diff --git a/dist/session-titles.js b/dist/session-titles.js
+--- a/dist/session-titles.js
++++ b/dist/session-titles.js
+@@ -92,3 +92,5 @@
+ function supportsTitleGeneration(query) {
+-    return typeof query.generateSessionTitle === "function";
++    // The finite Jig ACP grant never authorizes separate title inference.
++    // Suppress it independently of the native CLI's own traffic policy.
++    return process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC !== "1" && typeof query.generateSessionTitle === "function";
+ }
