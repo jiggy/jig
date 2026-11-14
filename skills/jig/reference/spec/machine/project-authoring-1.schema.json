@@ -193,7 +193,7 @@
               "const": "acp"
             },
             "client": {
-              "enum": ["codex", "claude", "pi"]
+              "enum": ["codex", "claude"]
             },
             "model": {
               "type": "string",

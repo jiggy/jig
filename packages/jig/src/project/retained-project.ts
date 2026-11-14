@@ -369,7 +369,7 @@ export async function retainOpenedPackageProject(
       const chosen = await options.onAgentSelection()
       signal?.throwIfAborted()
       if (chosen === undefined) throw error
-      if (!['codex', 'claude', 'pi'].includes(chosen))
+      if (!['codex', 'claude'].includes(chosen))
         throw new TypeError('operator Agent selection must be a supported native client')
       await bindingSource.verify()
       await grantSource.verify()

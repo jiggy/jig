@@ -145,7 +145,7 @@ files:
 jig init my-project --agent codex
 ```
 
-Replace `codex` with `claude` or `pi`, or use `--agent` without a value for an
+Replace `codex` with `claude`, or use `--agent` without a value for an
 interactive choice. Open the generated README for authentication prerequisites,
 review and the first Run. Initialization writes the dependency and Binding shown
 below. It does not install a client or approve its grant. The generated
@@ -185,7 +185,7 @@ jig review --agent codex --yes
 
 Replace `codex` with `claude` or `pi`. The chosen default is recorded
 with the approved generation, not written to application source. An author
-can explicitly pin `client: 'codex'`, `client: 'claude'` or `client: 'pi'`
+can explicitly pin `client: 'codex'`, `client: 'claude'`
 when the method depends on a specific implementation. Explicit pins can also
 specify a compatible model or native session retention.
 
@@ -286,7 +286,7 @@ control or establish that the answer is correct.
 
 Jig finds the selected native client on your exported `PATH`, including an
 operator-managed profile or `nix-shell`. You can select a particular executable
-with an absolute `CODEX_PATH`, `CLAUDE_PATH`, or `PI_PATH`. An invalid override
+with an absolute `CODEX_PATH` or `CLAUDE_PATH`. An invalid override
 must be corrected or unset. It does not fall back to PATH discovery. Review
 shows the resolved executable so you can check which installation you selected.
 
@@ -310,7 +310,6 @@ executable. See the
 [selection rules](../spec/finite-acp.md#native-client-profiles) for the
 supported metadata and project exclusions.
 
-Pi requires its standalone 0.84.4 distribution, including `package.json` and the theme directory beside its executable.
 
 ### Codex
 

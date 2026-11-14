@@ -89,7 +89,7 @@ export function validateNativeArtifacts(snapshot, run, artifacts) {
     throw Error('A newer manual native qualification superseded authorization')
   for (const artifact of artifacts) {
     const match =
-      /^native-(?:inputs|qualification)-(?:codex|claude|pi)-([0-9a-f]{40})-r([1-9][0-9]*)-a[1-9][0-9]*$/.exec(
+      /^native-(?:inputs|qualification)-(?:codex|claude)-([0-9a-f]{40})-r([1-9][0-9]*)-a[1-9][0-9]*$/.exec(
         artifact.name ?? '',
       )
     if (match && match[1] === snapshot.sourceRevision && match[2] === String(run.id))

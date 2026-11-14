@@ -28,7 +28,7 @@ The call selects the slot, not another resource name inside its input.
 Flow and Binding selectors remain available in the same `slots` map.
 
 The finite native grant is `native: { kind: 'acp', client: 'codex' }`, with
-`claude` and `pi` as the other qualified client choices. It grants one bounded
+`claude` as the other qualified client choice. It grants one bounded
 ACP conversation, not arbitrary process I/O. The operator's captured native
 configuration supplies the executable and private authentication; an optional
 grant `model` overrides its model selection for this recipient. Review
@@ -42,7 +42,7 @@ A model, `authProfile`, or native session retention requires an explicit client
 pin, because those are client-specific requirements.
 
 Interactive review asks for the chosen client. Noninteractive review requires
-`--agent codex|claude|pi`. A selected client is recorded in the admitted lock
+`--agent codex|claude`. A selected client is recorded in the admitted lock
 and is not switched at Run time. Explicit pins are advanced declarations and
 are not overridden by a review default. An unbound optional recovery slot
 never creates a client-selection request.
@@ -60,8 +60,6 @@ Only supported client-specific authentication fields are accepted: Codex
 `CODEX_HOME`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API`.
 Claude `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`,
 `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`.
-Pi
-`PI_CODING_AGENT_DIR`, `PI_PROVIDER`, `PI_API_KEY`.
 
 The selected profile must define one unambiguous authentication mode. Mixed
 subscription/API sources, foreign fields and missing entries fail closed.
@@ -125,7 +123,7 @@ managed policy responsibility. A simple ACP policy is inline by default; a
 grants directory is not mandatory. Edit the selected source policy to make a
 lasting client change. An edit never changes an admitted generation.
 
-The `jig review --agent codex|claude|pi` option selects one native client
+The `jig review --agent codex|claude` option selects one native client
 for all bound, unpinned ACP resources. Interactive review requests the same
 choice. Explicit client pins, their authentication profiles, model and
 retention requirements, optional unbound backup slots, HTTP grants and source

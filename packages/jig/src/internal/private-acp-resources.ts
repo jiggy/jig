@@ -25,7 +25,6 @@ import {
 } from './installed-bun-support.js'
 import { privateLinuxProtectedDestination } from './linux-rootless-backend.js'
 import { PrivateNativeAgentExecutableUnavailableError } from './native-agent-executable.js'
-import { openPrivatePiAgentProvider } from './pi-agent-provider.js'
 
 /** Private operator authority, not a provider registry or a Flow-visible resource. */
 export interface PrivateAcpResources {
@@ -88,7 +87,7 @@ const owners = new WeakMap<PrivateAcpResources, ResourceOwner>()
 /** Select a single operator-owned native authentication source; no credential bytes enter a grant. */
 export function privateAcpProfileEnvironment(
   environment: Readonly<Record<string, string | undefined>>,
-  client: 'codex' | 'claude' | 'pi',
+  client: 'codex' | 'claude',
   profile: string,
 ): Readonly<Record<string, string | undefined>> {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(profile) || profile.length > 64)
@@ -120,7 +119,6 @@ export function privateAcpProfileEnvironment(
       'ANTHROPIC_AUTH_TOKEN',
       'ANTHROPIC_BASE_URL',
     ],
-    pi: ['PI_CODING_AGENT_DIR', 'PI_PROVIDER', 'PI_API_KEY'],
   }
   const selected: Record<string, string> = Object.create(null)
   for (const [key, value] of Object.entries(environment)) {
@@ -156,7 +154,6 @@ export function privateAcpProfileEnvironment(
 const CLIENT_IDENTITIES = {
   codex: 'openai-codex',
   claude: 'anthropic-claude-code',
-  pi: 'pi',
 } as const
 
 /** Capture operator settings before project loading; do not discover any client yet. */
@@ -197,7 +194,7 @@ export async function selectPrivateAcpResources(
       state.support !== requirePrivateInstalledBunSupport(installedSupport) ||
       route.grant?.kind !== 'acp' ||
       route.grant.client === undefined ||
-      !['codex', 'claude', 'pi'].includes(route.grant.client)
+      !['codex', 'claude'].includes(route.grant.client)
     )
       throw new TypeError('the selected ACP resource has no matching private operator owner')
     const client = route.grant.client
@@ -247,11 +244,6 @@ async function openQualifiedClient(
   model?: string,
   authProfile?: string,
 ): Promise<PrivateAcpAgentProvider> {
-  const open =
-    client === 'codex'
-      ? openPrivateCodexAgentProvider
-      : client === 'claude'
-        ? openPrivateClaudeAgentProvider
-        : openPrivatePiAgentProvider
+  const open = client === 'codex' ? openPrivateCodexAgentProvider : openPrivateClaudeAgentProvider
   return await open(support.releaseRoot, environment, projectDirectory, model, authProfile)
 }

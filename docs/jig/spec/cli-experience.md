@@ -569,7 +569,7 @@ selection and submission refuses the invocation with `RUN_APPROVAL_CHANGED`.
 `jig completion targets [prefix]` lookup reads only approved selectors, without
 environment checks, source evaluation, state writes, or provider requests.
 It emits one ready selector per line; unavailable targets yield no suggestions.
-Static completion offers `--agent` values `codex`, `claude` and `pi` for review
+Static completion offers `--agent` values `codex` and `claude` for review
 and init; review requires one value, and Run has no client option.
 
 Target inspection includes `boundReadAttachments`, the names of reads already
@@ -702,7 +702,7 @@ These diagnostics do not add a review JSON envelope or change existing machine f
 
 ### Agent project initialization
 
-`jig init <directory> --agent codex|claude|pi` optionally authors a declared
+`jig init <directory> --agent codex|claude` optionally authors a declared
 Agent dependency, `bindings/agent.ts` with an inline ACP grant, and a
 contract-keyed default in `jig.ts`. Bare `--agent` asks for an explicit choice
 on a terminal; empty input cancels. Noninteractive use requires the client
@@ -714,12 +714,12 @@ Agent configuration. Existing destinations are never overwritten.
 ### Review client selection
 
 The ordinary ACP source policy omits `client`. During interactive `jig review`,
-Jig asks the operator to choose `codex`, `claude` or `pi` when at least
+Jig asks the operator to choose `codex` or `claude` when at least
 one selected ACP resource has no pinned client. A previous approved choice
 may be displayed as a suggested answer. It must be explicitly accepted.
 Declining or interrupting the prompt records no new approval.
 
-`jig review --agent codex|claude|pi` supplies that choice without prompting.
+`jig review --agent codex|claude` supplies that choice without prompting.
 Noninteractive reviews and `--yes` must supply the operand if an unpinned
 ACP resource is selected. Otherwise review refuses with
 `PROJECT_AGENT_SELECTION_REQUIRED` and the affected Binding slot.

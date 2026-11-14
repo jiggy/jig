@@ -31,9 +31,9 @@ defineBinding({
 
 Omitting `client` is the default and delegates the choice to the operator.
 Interactive review asks for an Agent when a selected ACP slot is unpinned.
-Noninteractive review requires `--agent codex|claude|pi`. A common
+Noninteractive review requires `--agent codex|claude`. A common
 `maxTurns` bound is allowed, but unpinned grants cannot carry a vendor model
-or native retention requirement. Explicit `client: 'codex' | 'claude' | 'pi'`
+or native retention requirement. Explicit `client: 'codex' | 'claude'`
 pins an Agent for a specialized method and is never overridden by `--agent`.
 The admitted lock contains only concrete clients and Run never substitutes one.
 
@@ -437,16 +437,12 @@ adapter:
 | --- | --- | --- | --- |
 | Codex | `{ kind: 'acp', client: 'codex' }`; optional absolute `CODEX_PATH` | Operator-owned, file-backed `$CODEX_HOME/auth.json` (default `~/.codex/auth.json`), created by `codex login`; optional `CODEX_MODEL`, with omission retaining the client default | `OPENAI_API_KEY` and a grant `model` or `OPENAI_MODEL`; optional `OPENAI_BASE_URL`; `OPENAI_API` must be omitted or `responses` |
 | Claude Code | `{ kind: 'acp', client: 'claude' }`; optional absolute `CLAUDE_PATH` | `CLAUDE_CODE_OAUTH_TOKEN`; optional `CLAUDE_MODEL` | Exactly one of `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, plus a grant `model` or `ANTHROPIC_MODEL`; optional `ANTHROPIC_BASE_URL` |
-| Pi | `{ kind: 'acp', client: 'pi' }`; optional absolute `PI_PATH` | `PI_PROVIDER` and a grant `model` or `PI_MODEL`; authentication from `PI_CODING_AGENT_DIR/auth.json` or `~/.pi/agent/auth.json` | `PI_PROVIDER`, a grant `model` or `PI_MODEL`, and `PI_API_KEY`, using a provider implemented by Pi |
 
-The current Pi profile accepts the official self-contained Linux x64 Pi
-0.84.4 release layout. It does not interpret the multi-file npm installation
-or make Node part of Jig's runtime closure.
 
 Jig snapshots the operator environment before loading project code. An explicit
-`CODEX_PATH`, `CLAUDE_PATH`, or `PI_PATH` selects that client's executable and
+`CODEX_PATH` or `CLAUDE_PATH` selects that client's executable and
 must be an absolute path; an invalid override fails without fallback. Otherwise,
-Jig searches the operator's `PATH` in order for `codex`, `claude`, or `pi`.
+Jig searches the operator's `PATH` in order for `codex` or `claude`.
 Empty and relative entries are ignored. Implicit discovery excludes the project
 tree and ancestor `node_modules` directories, including symlink routes through
 those locations. Operator-managed symlinks are supported. Shell aliases are not
@@ -472,7 +468,7 @@ Jig never executes these dispatchers or npm launchers, interprets their program
 contents or extra flags/environment, or retains their Node runtime. It resolves
 the native file before ordinary runtime inspection and review. Unsupported
 layouts retain the wrapper refusal; a direct native executable remains an
-explicit selection option. This does not add npm or Volta support for Claude/Pi.
+explicit selection option. This does not add npm or Volta support for Claude.
 
 The selected regular executable and client-specific support files receive the
 same validation and identity checks with either selection method. Invalid client
@@ -482,9 +478,9 @@ resolved executable checked against admitted provider identity, without repeatin
 host PATH discovery. A changed selection cannot silently replace reviewed
 executable or support bytes.
 
-On Linux, all three native adapters inspect x86-64 ELF executables. Codex and
+On Linux, both native adapters inspect x86-64 ELF executables. Codex and
 Claude Code also accept the declarative `makeBinaryWrapper` form which preserves
-arguments and prefixes PATH; Pi requires its unwrapped standalone executable.
+arguments and prefixes PATH.
 Arbitrary shell/JavaScript wrappers, wrapper flags or environment changes, and nested
 wrappers are unsupported. The static Codex npm selection above does not execute
 a wrapper. Jig reads installation metadata without executing the
@@ -495,8 +491,7 @@ interpreter’s directory (including its canonical location), and supported Linu
 loader locations; it does not import ambient loader variables or whole runtime
 directories. Missing, malformed, project-selected, or unsupported dependencies
 fail closed. Each executable's runtime dependency walk is bounded to 128 file
-destinations. Pi's matching manifest and themes remain beside its native
-executable and cannot be selected through the project tree. Bun's private loader
+destinations. Bun's private loader
 settings are removed before each native client starts, so its libraries use
 the reviewed installation's ABI.
 
@@ -537,11 +532,7 @@ Native Codex's API-key path is Responses-compatible only; selecting
 path. `ANTHROPIC_API_KEY` selects API-key authentication;
 `ANTHROPIC_AUTH_TOKEN` selects bearer-token authentication, with the API-key
 channel explicitly blanked inside the client process. Supplying both nonempty
-credentials is ambiguous and fails closed. Pi delegates an API-key selection
-to the exact built-in provider named by `PI_PROVIDER`; Jig does not add an
-endpoint or provider registry. Pi
-subscription support is currently bounded to its `anthropic` and
-`openai-codex` providers. No native profile hard-codes a production model.
+credentials is ambiguous and fails closed. No native profile hard-codes a production model.
 
 Jig reads native credentials in trusted host code and gives the contained
 client only the bounded credential projection needed for one provider
@@ -555,7 +546,7 @@ The Flow remains in its ordinary network-isolated, keyless sandbox. Native ACP
 clients run in separate bounded scopes with inherited
 network access. Each native client starts in an empty work directory. The finite ACP
 peer advertises no filesystem, terminal, or MCP client capability, supplies no
-MCP servers, and denies permission requests. Claude and Pi additionally disable
+MCP servers, and denies permission requests. Claude additionally disables
 native tools and ambient extensions/skills through their fixed profiles. Codex
 retains its constrained native tool environment: its pinned read-only ACP mode
 selects a no-network workspace policy and Jig refuses permission requests.

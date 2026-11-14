@@ -272,7 +272,7 @@ Examples:
   jig inspect --result ./result-packet --display web
 
 ${VERIFICATION_HELP}`,
-  init: `Usage: jig init [--bare] <directory> [--agent [codex|claude|pi]]
+  init: `Usage: jig init [--bare] <directory> [--agent [codex|claude]]
 
 Create a new editable project and greeting Flow. No installation, network
 requests, approval, or execution happens during initialization.
@@ -288,7 +288,7 @@ Use --agent without a client for an interactive choice. It writes a visible
 dependency, Binding and default selection; client installation and authority
 approval remain separate. Without --agent the greeting needs no Agent.
 The destination must not exist; existing files are never replaced.`,
-  review: `Usage: jig review [project] [--source-root DIRECTORY]... [--agent codex|claude|pi] [--generate-contracts] [--allow-resolution-network] [--yes] [--allow-authority-changes] [--details]
+  review: `Usage: jig review [project] [--source-root DIRECTORY]... [--agent codex|claude] [--generate-contracts] [--allow-resolution-network] [--yes] [--allow-authority-changes] [--details]
 
 Capture source, prepare dependencies, show changes, then ask for approval.
 The project defaults to the current directory. This command has side effects:
@@ -300,7 +300,7 @@ it retains private snapshots and, after approval, updates jig.lock.
   --yes                      Approve the displayed revision without a prompt
   --allow-authority-changes   Also approve new or changed resource grants
   --details                  Show complete policy and retained setup details
-  --agent CLIENT             Select codex, claude or pi for unpinned ACP grants
+  --agent CLIENT             Select codex or claude for unpinned ACP grants
   --generate-contracts                 Generate contracts with Jig's bundled TypeSpec tool
                              Writes managed companions before Run approval
 
@@ -1147,7 +1147,7 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
     if (value === '--bare' && !bare) bare = true
     else if (value === '--agent' && agent === undefined) {
       const next = arguments_[index + 1]
-      if (next !== undefined && ['codex', 'claude', 'pi'].includes(next)) {
+      if (next !== undefined && ['codex', 'claude'].includes(next)) {
         agent = next as ProjectInitAgent
         index++
       } else agent = 'choose'
@@ -1159,21 +1159,21 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
     if (!runtime.interactive)
       usage(
         'init',
-        'Choose explicitly: --agent codex, --agent claude or --agent pi. Interactive selection requires a terminal.',
+        'Choose explicitly: --agent codex, --agent claude. Interactive selection requires a terminal.',
       )
     runtime.writeNotice(
       'Choose your native Agent client. This writes ordinary project files only; installation, authentication and grant approval remain separate.\n',
     )
     const answer = (
-      await runtime.answer('Client [codex / claude / pi; empty cancels]: ', runtime.signal)
+      await runtime.answer('Client [codex / claude; empty cancels]: ', runtime.signal)
     ).trim()
     runtime.signal?.throwIfAborted()
     if (answer === '') {
       runtime.writeOutput('Initialization cancelled. No files were created.\n')
       return 0
     }
-    if (!['codex', 'claude', 'pi'].includes(answer))
-      usage('init', 'Choose codex, claude or pi; no files were created.')
+    if (!['codex', 'claude'].includes(answer))
+      usage('init', 'Choose codex or claude; no files were created.')
     agent = answer as ProjectInitAgent
   }
   try {
@@ -1221,7 +1221,7 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
     )
     if (approved !== null && typeof approved === 'object' && !Array.isArray(approved)) {
       const origin = (approved as Readonly<Record<string, JsonValue>>).agentOverride
-      if (typeof origin === 'string' && ['codex', 'claude', 'pi'].includes(origin))
+      if (typeof origin === 'string' && ['codex', 'claude'].includes(origin))
         previousAgent = origin as NativeAcpClient
     }
   } catch {
@@ -1250,7 +1250,6 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
     agentRetryCommands: {
       codex: reviewCommand('codex'),
       claude: reviewCommand('claude'),
-      pi: reviewCommand('pi'),
     },
   }
   const result = await withProjectSession(
@@ -1324,8 +1323,8 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
               const answer = (
                 await runtime.answer(
                   previousAgent === undefined
-                    ? 'Agent [codex / claude / pi; Enter cancels]: '
-                    : `Agent [codex / claude / pi; Enter selects ${previousAgent}]: `,
+                    ? 'Agent [codex / claude; Enter cancels]: '
+                    : `Agent [codex / claude; Enter selects ${previousAgent}]: `,
                   runtime.signal,
                 )
               ).trim()
@@ -1335,8 +1334,8 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
                 return undefined
               }
               const chosen = answer === '' ? previousAgent : answer
-              if (!['codex', 'claude', 'pi'].includes(chosen as string)) {
-                runtime.writeNotice('Choose codex, claude, or pi. No approval was recorded.\n')
+              if (!['codex', 'claude'].includes(chosen as string)) {
+                runtime.writeNotice('Choose codex or claude. No approval was recorded.\n')
                 return undefined
               }
               selectedReviewAgent = chosen as NativeAcpClient
@@ -2293,8 +2292,8 @@ function parseReview(
     if (argument === '--agent') {
       if (agent !== undefined) usage('review', '--agent may only be supplied once.')
       const value = arguments_[++index]
-      if (value === undefined || !['codex', 'claude', 'pi'].includes(value))
-        usage('review', '--agent requires codex, claude or pi.')
+      if (value === undefined || !['codex', 'claude'].includes(value))
+        usage('review', '--agent requires codex or claude.')
       agent = value as NativeAcpClient
       continue
     }
@@ -2745,7 +2744,7 @@ export function renderFailure(error: unknown, runtime: Pick<CliRuntime, 'writeEr
       PROJECT_AGENT_OVERRIDE_UNUSED:
         '--agent selects unpinned ACP grants, or affirms a matching pinned client without changing it. Use the pinned client or omit --agent',
       PROJECT_AGENT_SELECTION_REQUIRED:
-        'an unpinned ACP grant needs an operator choice. Review interactively or specify --agent codex, --agent claude, or --agent pi',
+        'an unpinned ACP grant needs an operator choice. Review interactively or specify --agent codex, --agent claude,',
       ...EVALUATOR_HINTS,
       AUTHORING_STALE:
         'run jig review --generate-contracts to refresh the authored contract before review',
@@ -3348,7 +3347,7 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
       ? '\n  Agent selection: the resource grant at this Binding slot.'
       : ''
   const alternative = selection
-    ? '\n\n  Use another installed client\n    Edit client in the ACP grant selected by this slot (its inline Binding value or named JSON file), choosing codex, claude, or pi. Check model and client-specific policy, then review the change:\n\n  $ jig review'
+    ? '\n\n  Use another installed client\n    Edit client in the ACP grant selected by this slot (its inline Binding value or named JSON file), choosing codex or claude. Check model and client-specific policy, then review the change:\n\n  $ jig review'
     : ''
   return `Review could not finish\n\n${cause === undefined ? '' : `  Cause: ${cause}\n\n`}  Location: ${asciiJsonString(diagnostic.path)}${pointer}${lock}${limit}${selection}${mismatch === undefined ? '' : `\n  ${mismatch}`}\n\n  Next step\n    ${message}${alternative}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
 }

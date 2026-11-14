@@ -360,7 +360,7 @@ export async function privateDetectedAgentAlternatives(
   selected: readonly NativeAcpClient[],
 ): Promise<readonly NativeAcpClient[]> {
   const detected: NativeAcpClient[] = []
-  for (const client of ['claude', 'codex', 'pi'] as const) {
+  for (const client of ['claude', 'codex'] as const) {
     if (selected.includes(client)) continue
     try {
       await resolvePrivateNativeAgentExecutable(client, environment, project)
