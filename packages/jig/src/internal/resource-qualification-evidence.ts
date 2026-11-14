@@ -10,7 +10,7 @@ export type PrivateRuntimeReadinessCause =
   | {
       readonly kind: 'acp'
       readonly slot: string
-      readonly client: 'codex' | 'claude' | 'pi'
+      readonly client: 'codex' | 'claude'
       readonly diagnostic: string
     }
   | { readonly kind: 'dependency'; readonly slot: string; readonly target: RunTargetIdentity }
@@ -38,12 +38,12 @@ export function normalizePrivateRuntimeReadinessCause(
   if (v.kind === 'acp') {
     exact(v, ['kind', 'slot', 'client', 'diagnostic'])
     if (
-      !['codex', 'claude', 'pi'].includes(v.client as string) ||
+      !['codex', 'claude'].includes(v.client as string) ||
       typeof v.diagnostic !== 'string' ||
       !Object.hasOwn(ACP_SETUP_CAUSES, v.diagnostic) ||
       !['executable', 'model'].some(
         (stage) =>
-          acpSetupCode(v.client as 'codex' | 'claude' | 'pi', stage as 'executable' | 'model') ===
+          acpSetupCode(v.client as 'codex' | 'claude', stage as 'executable' | 'model') ===
           v.diagnostic,
       )
     )
@@ -51,7 +51,7 @@ export function normalizePrivateRuntimeReadinessCause(
     return Object.freeze({
       kind: 'acp',
       slot: v.slot,
-      client: v.client as 'codex' | 'claude' | 'pi',
+      client: v.client as 'codex' | 'claude',
       diagnostic: v.diagnostic,
     })
   }
