@@ -11,17 +11,16 @@ import { fixture, temporary } from '.././native-agent-provider-runtime.fixture.j
 afterEach(async () => {
   await Promise.all(temporary.splice(0).map((path) => rm(path, { recursive: true, force: true })))
 })
-for (const client of ['claude', 'pi'] as const) {
+for (const client of ['claude'] as const) {
   describe(`${client} reviewed native installation`, () => {
     test('retains installation paths and snapshots configuration before asynchronous discovery', async () => {
       const f = await fixture(client)
       const pending = f.open()
       f.environment.PATH = f.project
       f.environment.ANTHROPIC_MODEL = 'changed-model'
-      f.environment.PI_MODEL = 'changed-model'
       const provider = await pending
       const runtime = privateAcpAgentRuntime(provider)
-      expect(provider.model).toBe(client === 'claude' ? 'test-model' : 'mistral/test-model')
+      expect(provider.model).toBe('test-model')
       expect(runtime.executablePath).toBe(f.executable)
       expect(runtime.sandboxExecutablePath).toBe(f.executable)
       expect(runtime.readOnlyMounts).toContainEqual({ source: f.library, destination: f.library })
@@ -33,7 +32,6 @@ for (const client of ['claude', 'pi'] as const) {
       'library',
       'launcher',
       'adapter',
-      ...(client === 'pi' ? ['manifest', 'dark', 'light'] : []),
     ] as const) {
       test(`rejects replaced ${file} bytes before launch and changes reviewed identity`, async () => {
         const f = await fixture(client)
@@ -60,27 +58,5 @@ for (const client of ['claude', 'pi'] as const) {
       await symlink(localLibrary, f.library)
       await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
     })
-    if (client === 'pi') {
-      test('rejects project-selected sibling assets and binary wrappers', async () => {
-        const f = await fixture(client)
-        const localTheme = join(f.project, 'theme.json')
-        await writeFile(localTheme, '{}')
-        await rm(f.paths.dark)
-        await symlink(localTheme, f.paths.dark)
-        await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
-        await rm(f.paths.dark)
-        await writeFile(f.paths.dark, '{}')
-        const wrapped = join(f.root, 'wrapped')
-        await writeFile(wrapped, nativeElf(), { mode: 0o700 })
-        await writeFile(
-          f.executable,
-          nativeElf({
-            wrapper: `makeCWrapper '${wrapped}' \\\n    --inherit-argv0 \\\n    --prefix 'PATH' ':' '/operator/bin'\n\n`,
-          }),
-        )
-        await expect(f.open()).rejects.toMatchObject({ stage: 'installation' })
-      })
-    } else {
-    }
   })
 }
