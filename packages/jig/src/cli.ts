@@ -86,7 +86,7 @@ import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue }
 import type { RunTargetRef } from './project/author.js'
 import { resolveProjectEntrypoint } from './project/entrypoint.js'
 import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
-import type { AcpGrant } from './project/grants.js'
+import type { NativeAcpClient } from './project/grants.js'
 import { checkProjectJigRequirement } from './project/jig-version.js'
 import { DEPENDENCY_PREPARATION_LIMIT_POLICY } from './project/limits.js'
 import { flowSelector } from './project/package-selector.js'
@@ -300,7 +300,7 @@ it retains private snapshots and, after approval, updates jig.lock.
   --yes                      Approve the displayed revision without a prompt
   --allow-authority-changes   Also approve new or changed resource grants
   --details                  Show complete policy and retained setup details
-  --agent CLIENT             Propose codex, claude or pi for every selected ACP grant
+  --agent CLIENT             Select codex, claude or pi for unpinned ACP grants
   --generate-contracts                 Generate contracts with Jig's bundled TypeSpec tool
                              Writes managed companions before Run approval
 
@@ -315,9 +315,10 @@ before graph validation. Requests cannot be undone by declining approval.
 --yes alone does not approve new resource authority or resolution networking.
 Unavailable selected ACP prerequisites stop review before new approval.
 Diagnostics identify the captured source setting and detected executable options.
---agent CLIENT proposes that client for all selected ACP grants, leaving source
-unchanged. Model pins and incompatible retention can block a cross-client choice.
-Repeat the flag on later reviews; a bare review derives choices from source again.
+Omit client in an ACP grant to select an Agent during interactive review.
+--agent CLIENT selects only unpinned ACP grants, leaving source
+unchanged. Explicit client pins and their model or retention requirements stay intact.
+Later reviews require another choice; they may suggest the previously approved client.
 Run uses the approved client and code together; review never rewrites grants.
 Supplied locks stay frozen; stale locks must be updated explicitly.
 
@@ -402,7 +403,8 @@ export interface PrivateCliCommandHost {
       readonly onNotice?: (text: string) => void
       readonly onStage?: (stage: string) => void
       readonly onAgentReadiness?: (report: PrivateAgentReadinessReport) => void
-      readonly agentOverride?: AcpGrant['client']
+      readonly agentOverride?: NativeAcpClient
+      readonly onAgentSelection?: () => Promise<NativeAcpClient | undefined>
       readonly generateContracts?: boolean
       readonly onGeneration?: (packagePath: string, files: readonly string[]) => void
     },
@@ -1211,7 +1213,8 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
     `Reviewing ${asciiJsonString(basename(resolve(runtime.currentDirectory, parsed.project)))}`,
   )
   let readiness: PrivateAgentReadinessReport | undefined
-  let previousAgent: AcpGrant['client'] | undefined
+  let previousAgent: NativeAcpClient | undefined
+  let selectedReviewAgent = parsed.agent
   try {
     const approved = await inspectPrivateApprovedProject(
       resolve(runtime.currentDirectory, parsed.project),
@@ -1219,7 +1222,7 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
     if (approved !== null && typeof approved === 'object' && !Array.isArray(approved)) {
       const origin = (approved as Readonly<Record<string, JsonValue>>).agentOverride
       if (typeof origin === 'string' && ['codex', 'claude', 'pi'].includes(origin))
-        previousAgent = origin as AcpGrant['client']
+        previousAgent = origin as NativeAcpClient
     }
   } catch {
     // Ordinary project acquisition reports unsafe/unreadable state. A missing
@@ -1311,6 +1314,36 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
     },
     {
       ...(parsed.agent === undefined ? {} : { agentOverride: parsed.agent }),
+      ...(runtime.interactive && !parsed.yes && parsed.agent === undefined
+        ? {
+            onAgentSelection: async (): Promise<NativeAcpClient | undefined> => {
+              runtime.progress.complete(true)
+              runtime.writeNotice(
+                'This project uses the default Agent selection. Choose the native client for this review. Installation and credentials will be checked before approval.\n',
+              )
+              const answer = (
+                await runtime.answer(
+                  previousAgent === undefined
+                    ? 'Agent [codex / claude / pi; Enter cancels]: '
+                    : `Agent [codex / claude / pi; Enter selects ${previousAgent}]: `,
+                  runtime.signal,
+                )
+              ).trim()
+              runtime.signal?.throwIfAborted()
+              if (answer === '' && previousAgent === undefined) {
+                runtime.writeNotice('Agent selection cancelled. No approval was recorded.\n')
+                return undefined
+              }
+              const chosen = answer === '' ? previousAgent : answer
+              if (!['codex', 'claude', 'pi'].includes(chosen as string)) {
+                runtime.writeNotice('Choose codex, claude, or pi. No approval was recorded.\n')
+                return undefined
+              }
+              selectedReviewAgent = chosen as NativeAcpClient
+              return selectedReviewAgent
+            },
+          }
+        : {}),
       ...(parsed.sourceRoots.length === 0
         ? {}
         : {
@@ -1324,11 +1357,11 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
           runtime.writeError(
             'The retry below is a template: replace PROJECT_DIRECTORY with your safely quoted project path.\n\n',
           )
-        if (parsed.agent !== undefined || previousAgent !== undefined) {
+        if (selectedReviewAgent !== undefined || previousAgent !== undefined) {
           runtime.progress.complete(true)
           runtime.writeError(
             renderReviewAgentSelections(report, {
-              ...(parsed.agent === undefined ? {} : { agent: parsed.agent }),
+              ...(selectedReviewAgent === undefined ? {} : { agent: selectedReviewAgent }),
               ...(previousAgent === undefined ? {} : { previousAgent }),
               details: parsed.details,
             }),
@@ -2217,10 +2250,10 @@ function parseReview(
   readonly allowResolutionNetwork: boolean
   readonly verification: string | undefined
   readonly generate: boolean
-  readonly agent: AcpGrant['client'] | undefined
+  readonly agent: NativeAcpClient | undefined
   readonly sourceRoots: readonly string[]
 } {
-  let agent: AcpGrant['client'] | undefined
+  let agent: NativeAcpClient | undefined
   const sourceRoots: string[] = []
   let project: string | undefined
   let yes = false
@@ -2262,7 +2295,7 @@ function parseReview(
       const value = arguments_[++index]
       if (value === undefined || !['codex', 'claude', 'pi'].includes(value))
         usage('review', '--agent requires codex, claude or pi.')
-      agent = value as AcpGrant['client']
+      agent = value as NativeAcpClient
       continue
     }
     if (argument === '--verification') {
