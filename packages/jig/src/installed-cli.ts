@@ -343,6 +343,9 @@ async function runWithEnvironment(
                 ...(options?.agentOverride === undefined
                   ? {}
                   : { agentOverride: options.agentOverride }),
+                ...(options?.onAgentSelection === undefined
+                  ? {}
+                  : { onAgentSelection: options.onAgentSelection }),
                 ...(options?.generateContracts ? { generateContracts: true } : {}),
                 ...(options?.onGeneration ? { onGeneration: options.onGeneration } : {}),
                 ...(options?.runTimeoutMs === undefined
