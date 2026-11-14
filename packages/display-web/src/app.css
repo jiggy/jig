@@ -305,6 +305,64 @@
   gap: 3px;
   padding: 7px 0;
 }
+.explorer-scenarios {
+  margin: 12px 0 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.explorer-scenarios > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 4px 0;
+}
+.explorer-scenarios > p {
+  margin: 8px 0;
+  line-height: 1.55;
+}
+.explorer-scenario-controls {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+.explorer-scenario-controls label {
+  font-weight: 600;
+}
+.explorer-scenario-controls input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--text);
+  padding: 8px;
+  font: inherit;
+}
+.explorer-scenario-controls input[type="file"] {
+  padding: 7px;
+  overflow-wrap: anywhere;
+}
+.explorer-scenario-controls button,
+.explorer-scenario-loaded button {
+  min-height: 38px;
+  text-align: left;
+  white-space: normal;
+}
+.explorer-scenario-loaded {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.explorer-scenario-loaded > p {
+  margin: 5px 0 10px;
+  line-height: 1.5;
+}
+.explorer-scenario-notice {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.explorer-scenario-privacy {
+  color: var(--secondary);
+}
 .explorer-input-panel form > .explorer-primary {
   width: 100%;
   margin-top: 10px;
