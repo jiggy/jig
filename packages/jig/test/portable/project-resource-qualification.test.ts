@@ -302,7 +302,7 @@ test('private readiness report uses captured named policy location and groups sh
   expect(JSON.stringify(report)).not.toContain('projectIdentity')
 })
 
-test('report keeps same-client inline policies separate and records override source honestly', async () => {
+test('report keeps same-client inline policies separate and records unpinned source honestly', async () => {
   const requests = ['one', 'two'].map((id) => request(id, native))
   const cause = {
     kind: 'acp',
@@ -320,7 +320,7 @@ test('report keeps same-client inline policies separate and records override sou
     bindings: ['one', 'two'].map((id) => ({
       id,
       sourcePath: `bindings/${id}.ts`,
-      evaluation: { value: { slots: { native: { kind: 'acp', client: 'codex' } } } },
+      evaluation: { value: { slots: { native: { kind: 'acp' } } } },
     })),
     grants: {},
     grantFiles: {},
@@ -342,12 +342,12 @@ test('report keeps same-client inline policies separate and records override sou
   ])
   expect(report.issues[0]).toMatchObject({
     client: 'pi',
-    sourceClient: 'codex',
+    sourceClient: 'default',
     override: 'pi',
     alternatives: [],
   })
   expect(report.issues[0]?.location.kind).toBe('unlocated')
-  expect(report.selections[1]).toMatchObject({ sourceClient: 'codex', effectiveClient: 'pi' })
+  expect(report.selections[1]).toMatchObject({ sourceClient: 'default', effectiveClient: 'pi' })
 })
 
 test('report discloses first-slot and feature-skipped checks without treating feature refusal as an ACP blocker', async () => {
