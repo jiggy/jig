@@ -149,6 +149,9 @@ test('the actual failure hook probes Codex once and preserves native and transcr
     for (const scenario of [
       { client: 'codex', native: 7, probeFails: false, teeFails: false, exit: 7, observed: true },
       { client: 'codex', native: 7, probeFails: true, teeFails: false, exit: 7, observed: false },
+      // An explicitly selected first-party route must not make an extra,
+      // potentially billed diagnostic inference after native failure.
+      { client: 'codex', route: 'openai', native: 7, probeFails: false, teeFails: false, exit: 7, observed: false },
       { client: 'claude', native: 9, probeFails: false, teeFails: false, exit: 9, observed: false },
       { client: 'codex', native: 0, probeFails: false, teeFails: true, exit: 1, observed: false },
       { client: 'codex', native: 0, probeFails: false, teeFails: false, exit: 0, observed: false },
@@ -156,6 +159,7 @@ test('the actual failure hook probes Codex once and preserves native and transcr
       const env = {
         ...process.env,
         JIG_NATIVE_API_CLIENT: scenario.client,
+        provider_route: scenario.route ?? 'openrouter',
         PATH: scenario.probeFails
           ? join(temporary, 'bin') + ':' + process.env.PATH
           : dirname(process.execPath) + ':' + process.env.PATH,
