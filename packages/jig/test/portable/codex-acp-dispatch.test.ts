@@ -135,6 +135,7 @@ for (const scenario of [
         const initialized = await request(1, 'initialize', {
           protocolVersion: 2,
           capabilities: {},
+          info: { name: 'jig-codex-recording', version: '2' },
         })
         expect(initialized.error).toBeDefined()
         await child.stdin.end()
@@ -145,6 +146,7 @@ for (const scenario of [
         (
           await request(1, 'initialize', {
             protocolVersion: 2,
+            info: { name: 'jig-codex-recording', version: '2' },
             capabilities: scenario.startsWith('http-status-')
               ? { _meta: { jetbrains: { air: { version: 1, capabilities: ['sessionFailure'] } } } }
               : {},
