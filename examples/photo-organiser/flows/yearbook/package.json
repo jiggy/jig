@@ -4,7 +4,7 @@
   "type": "module",
   "dependencies": {
     "@jigging/flow": "0.1.0-alpha.15",
-    "@jigging/reporting": "0.1.0-alpha.4",
+    "@jigging/reporting": "0.1.0-alpha.5",
     "pdf-lib": "1.17.1"
   }
 }

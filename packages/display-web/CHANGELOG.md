@@ -1,5 +1,25 @@
 # @jigging/display-web
 
+## 0.1.0-alpha.8
+
+### Patch Changes
+
+- 624cd30: Requalify shared workspace build inputs after the root dependency patch policy
+  now pins Claude Agent ACP 0.101.0 with Jig's nonessential-title-inference
+  safeguard. No unrelated application behavior was intentionally changed. The
+  root patched-dependency policy participates in each package's reviewed build.
+- cdb3b0d: Keep collection search focused through publisher layout updates, preserve the original evidence control when details close, and disclose disappearing selected files instead of substituting another file. Make retained failed and uncertain requests directly inspectable from the Run map, including unplaced observations.
+- 6a85189: Keep every view instance reachable on narrow screens, distinguish repeated publishers and collections, and preserve panel focus during responsive navigation changes. Give unpaired reading sections comfortable width and keep long desktop inspectors scrollable within their workspace.
+- 90f684e: Qualify Linux and macOS runtimes to Bun 1.4.4 revision 38afee6c84fcf48c0edb2466aa4b27d287a59c30 and enforce pure evaluation in shell.nix.
+- a3dfa89: Preserve readable table columns on narrow screens with local horizontal scrolling.
+- 4a4c8d3: Improve shared workbench reading, mobile view navigation and access to wide table columns.
+- 17ea27e: Keep stopped-view and filtered-search status visible and preserve inspection focus at responsive breakpoints.
+- Updated dependencies [624cd30]
+- Updated dependencies [cebde11]
+- Updated dependencies [90f684e]
+  - @jigging/display-model@0.1.0-alpha.7
+  - @jigging/reporting@0.1.0-alpha.5
+
 ## 0.1.0-alpha.7
 
 ### Minor Changes
