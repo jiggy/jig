@@ -9,7 +9,7 @@ export function isExpectedAcpRefusal(error: unknown): boolean {
   return error instanceof Error && expectedRefusals.has(error)
 }
 
-type Client = 'codex' | 'claude' | 'pi'
+type Client = 'codex' | 'claude'
 export type AcpSetupStage =
   | 'executable'
   | 'installation'
@@ -78,20 +78,6 @@ const clients = {
     api: 'Set exactly one of ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN and a model in the ACP grant or ANTHROPIC_MODEL. Check ANTHROPIC_BASE_URL if overridden.',
     model:
       'Set a valid model in the ACP grant, or ANTHROPIC_MODEL for API access / CLAUDE_MODEL for subscription access.',
-  },
-  pi: {
-    name: 'Pi',
-    path: 'PI_PATH',
-    installation: {
-      linux:
-        'Use the supported standalone Linux x86-64 Pi 0.84.4 distribution with its package.json and theme directory; a Node/npm launcher is not supported.',
-      darwin:
-        "Use the supported standalone macOS Pi 0.84.4 distribution for this Mac's architecture, with its package.json and theme directory; a Node/npm launcher is not supported.",
-    },
-    login:
-      'Use valid Pi subscription authentication for PI_PROVIDER in the operator auth.json; check PI_CODING_AGENT_DIR if overridden.',
-    api: 'Configure PI_PROVIDER, a model in the ACP grant or PI_MODEL, and a valid PI_API_KEY for the selected Pi API provider.',
-    model: 'Configure PI_PROVIDER and a valid model in the ACP grant or PI_MODEL.',
   },
 } as const
 
