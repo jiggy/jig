@@ -152,7 +152,7 @@ Copyright 2025 JetBrains s.r.o.
 Licensed under the Apache License, Version 2.0. The complete adapter license is
 shipped as `libexec/agent/codex-acp.LICENSE`.
 
-@agentclientprotocol/claude-agent-acp 0.101.0
+@agentclientprotocol/claude-agent-acp 0.107.0
 -------------------------------------------------
 
 Jig bundles the official ACP adapter for native Claude Code as optional inert
@@ -192,7 +192,7 @@ The prebundled Codex ACP adapter and Anthropic Claude Agent SDK also contain
 Zod 4.4.3. The Pi adapter bundles Zod from package 3.25.76. These copies use
 the same complete MIT license reproduced in the Zod 4.3.6 section above.
 
-@agentclientprotocol/sdk 1.4.0 and 0.26.0
+@agentclientprotocol/sdk 1.4.0, 0.26.0 and 2.6.0
 -----------------------------------------
 
 Jig bundles ACP SDK 1.4.0 in its CLI and Claude adapter; the prebundled Codex
@@ -289,7 +289,7 @@ mime-types bundled in Claude Agent SDK
 --------------------------------------
 
 The Claude ACP bundle contains mime-types through Anthropic Claude Agent SDK
-0.3.257. Its copyright banner is retained in the JavaScript; the complete
+0.3.323. Its copyright banner is retained in the JavaScript; the complete
 license follows. The embedded mime-types version is not identified.
 
 (The MIT License)
@@ -320,7 +320,7 @@ mime-db 1.52.0 bundled in Claude Agent SDK
 ------------------------------------------
 
 The Claude ACP bundle contains this MIME database through Anthropic Claude
-Agent SDK 0.3.257.
+Agent SDK 0.3.323.
 
 (The MIT License)
 
