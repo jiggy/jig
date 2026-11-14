@@ -177,6 +177,7 @@ function renderCompactIssue(
         '    This policy requests Codex session retention. Edit it before switching clients.',
       )
     const canSwitch =
+      issue.sourceClient === 'default' &&
       issue.policy.authProfile === undefined &&
       issue.policy.model === undefined &&
       issue.policy.retainSessions !== true
@@ -187,7 +188,7 @@ function renderCompactIssue(
           `  Or use ${CLIENT_NAMES[client]}`,
           '    Executable found; login and readiness not checked.',
           `    $ ${options.agentRetryCommands[client]}`,
-          `    All native Agent policies; source unchanged. Repeat --agent ${client} next review.`,
+          `    Only unpinned Agent grants use this choice. Explicit pins remain unchanged.`,
         )
       }
     }
@@ -339,18 +340,19 @@ function renderIssue(
           ? `change the source client value from ${asciiJsonString(issue.sourceClient)} to ${asciiJsonString(client)}`
           : `inspect the selected ${issue.source === 'named' ? 'JSON policy' : 'Binding slot expression'} and change its ACP client to ${asciiJsonString(client)}`
       lines.push(
-        `  To use ${CLIENT_NAMES[client]}, ${action}${issue.override === undefined ? '.' : '; replace or omit the current --agent option too.'}`,
+        `  To use ${CLIENT_NAMES[client]}, ${issue.sourceClient === 'default' ? `select --agent ${client} during review` : action}${issue.override === undefined ? '.' : '; replace or omit the current --agent option too.'}`
       )
     }
     if (
       alternatives.length > 0 &&
+      issue.sourceClient === 'default' &&
       issue.policy.authProfile === undefined &&
       issue.policy.model === undefined &&
       issue.policy.retainSessions !== true
     )
       lines.push(
         `  To try another client without editing source, ${issue.override === undefined ? 'add' : 'replace the current option with'} ${alternatives.map((client) => `--agent ${client}`).join(' or ')} on the retry below.`,
-        '  This proposes that client for every selected ACP policy; other model pins, authentication profiles, or session requirements can refuse it. Repeat the option on later reviews.',
+        '  Only unpinned ACP grants follow this selection. Explicit clients, profiles, models and session retention remain fixed.',
       )
     if (issue.policy.authProfile !== undefined)
       lines.push(
