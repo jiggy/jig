@@ -1,6 +1,6 @@
 import { unavailable } from '../diagnostics.js'
 import { parseProjectEntrypoint } from '../project/entrypoint.js'
-import type { AcpGrant } from '../project/grants.js'
+import type { AcpGrant, NativeAcpClient } from '../project/grants.js'
 import type { PrivateActivationRequest } from '../project/package-resolution.js'
 import type { PrivateRetainedPackageProject } from '../project/retained-project.js'
 import { privateActivationTargetKey } from './activation-planning.js'
@@ -60,7 +60,12 @@ export async function qualifyPrivateProjectAcpResources(input: {
           `/slots/${error.slot.replaceAll('~', '~0').replaceAll('/', '~1')}`,
         )
       const route = request.slots[error.slot]
-      if (route?.kind !== 'native' || route.native !== 'finite-acp' || route.grant?.kind !== 'acp')
+      if (
+        route?.kind !== 'native' ||
+        route.native !== 'finite-acp' ||
+        route.grant?.kind !== 'acp' ||
+        route.grant.client === undefined
+      )
         throw error
       const cause = Object.freeze({
         kind: 'acp' as const,
@@ -126,7 +131,7 @@ export async function privateAgentReadinessReport(input: {
   readonly requests: readonly PrivateActivationRequest[]
   readonly failures: ReadonlyMap<string, PrivateRuntimeReadinessFailure>
   readonly featureFailures: ReadonlyMap<string, string>
-  readonly alternatives?: readonly AcpGrant['client'][]
+  readonly alternatives?: readonly NativeAcpClient[]
 }): Promise<PrivateAgentReadinessReport> {
   const { aggregate } = input
   const bindings = new Map(aggregate.bindings.map((binding) => [binding.id, binding]))
@@ -148,7 +153,7 @@ export async function privateAgentReadinessReport(input: {
     { issue: PrivateAgentReadinessIssue; recipients: readonly PrivateAgentGrantRecipient[] }
   >()
   const selections: PrivateAgentReviewSelection[] = []
-  function sourceFor(request: PrivateActivationRequest, slot: string, client: AcpGrant['client']) {
+  function sourceFor(request: PrivateActivationRequest, slot: string, client: NativeAcpClient) {
     const bindingId = request.target.kind === 'binding' ? request.target.id : undefined
     const binding = bindingId === undefined ? undefined : bindings.get(bindingId)
     const declaration = binding?.sourcePath ?? `${request.packagePath}/${request.entrypoint.path}`
@@ -158,12 +163,12 @@ export async function privateAgentReadinessReport(input: {
         ? selection.slice(6)
         : undefined
     const authored = name === undefined ? selection : aggregate.grants[name]
-    const sourceClient =
+    const sourceClient: NativeAcpClient | 'default' =
       authored !== null &&
       typeof authored === 'object' &&
       'kind' in authored &&
       authored.kind === 'acp'
-        ? authored.client
+        ? (authored.client ?? 'default')
         : client
     const path =
       name === undefined ? declaration : (aggregate.grantFiles[name]?.path ?? declaration)
@@ -192,6 +197,8 @@ export async function privateAgentReadinessReport(input: {
       const route = request.slots[slot]!
       if (route.kind !== 'native' || route.grant?.kind !== 'acp')
         throw new TypeError('selected ACP resource has no policy')
+      if (route.grant.client === undefined)
+        throw new TypeError('readiness cannot inspect an unresolved Agent client')
       const source = sourceFor(request, slot, route.grant.client)
       if (source.bindingId === undefined) continue
       selections.push(
@@ -246,7 +253,9 @@ export async function privateAgentReadinessReport(input: {
         slot: cause.slot,
         client: cause.client,
         sourceClient,
-        ...(aggregate.agentOverride === undefined ? {} : { override: aggregate.agentOverride }),
+        ...(sourceClient !== 'default' || aggregate.agentOverride === undefined
+          ? {}
+          : { override: aggregate.agentOverride }),
         policy: Object.freeze({ ...route.grant }),
         code: cause.diagnostic,
         ...(rejectedExecutableOverrides.has(input.failures.get(key)!)
@@ -348,9 +357,9 @@ export async function privateAgentReadinessReport(input: {
 export async function privateDetectedAgentAlternatives(
   environment: Readonly<Record<string, string | undefined>>,
   project: string,
-  selected: readonly AcpGrant['client'][],
-): Promise<readonly AcpGrant['client'][]> {
-  const detected: AcpGrant['client'][] = []
+  selected: readonly NativeAcpClient[],
+): Promise<readonly NativeAcpClient[]> {
+  const detected: NativeAcpClient[] = []
   for (const client of ['claude', 'codex', 'pi'] as const) {
     if (selected.includes(client)) continue
     try {
