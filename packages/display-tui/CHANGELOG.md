@@ -1,5 +1,20 @@
 # @jigging/display-tui
 
+## 0.1.0-alpha.7
+
+### Patch Changes
+
+- 624cd30: Requalify shared workspace build inputs after the root dependency patch policy
+  now pins Claude Agent ACP 0.101.0 with Jig's nonessential-title-inference
+  safeguard. No unrelated application behavior was intentionally changed. The
+  root patched-dependency policy participates in each package's reviewed build.
+- 90f684e: Qualify Linux and macOS runtimes to Bun 1.4.4 revision 38afee6c84fcf48c0edb2466aa4b27d287a59c30 and enforce pure evaluation in shell.nix.
+- Updated dependencies [624cd30]
+- Updated dependencies [cebde11]
+- Updated dependencies [90f684e]
+  - @jigging/display-model@0.1.0-alpha.7
+  - @jigging/reporting@0.1.0-alpha.5
+
 ## 0.1.0-alpha.6
 
 ### Patch Changes

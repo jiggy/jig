@@ -5,12 +5,12 @@
   "devDependencies": {
     "@jigging/flow": "0.1.0-alpha.15",
     "csv-parse": "6.1.0",
-    "@jigging/reporting": "0.1.0-alpha.4"
+    "@jigging/reporting": "0.1.0-alpha.5"
   },
   "dependencies": {
-    "@jigging/agent-acp": "0.1.0-alpha.13"
+    "@jigging/agent-acp": "0.1.0-alpha.14"
   },
   "engines": {
-    "jig": "0.1.0-alpha.52"
+    "jig": "0.1.0-alpha.53"
   }
 }

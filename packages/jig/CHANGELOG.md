@@ -1,5 +1,22 @@
 # @jigging/jig
 
+## 0.1.0-alpha.53
+
+### Minor Changes
+
+- 8b9b731: Make native ACP client selection an operator choice by default when a Binding omits `client`. Interactive review asks for a qualified client, noninteractive review accepts `--agent`, and explicitly pinned clients are preserved alongside the operator default.
+
+### Patch Changes
+
+- 624cd30: Permit ACP grants to select a separately reviewed named operator authentication profile without embedding credentials in project source.
+  Keep workload model choice separate from the authentication profile, reject missing or ambiguous client-specific credentials, and isolate selected profile bytes from ambient and sibling accounts.
+  Bind the named profile to native provider identity and refuse a cross-client review override that would reinterpret its authentication scope.
+- 624cd30: Upgrade the ACP agent transport and Jig finite ACP host to ACP v2 only, removing v1 protocol compatibility. Support insertion acknowledgement, agent-owned message identifiers, content upsert handling, terminal foreground state, required session close, and updated Codex, Claude, and Pi ACP adapters.
+  Deliver native candidate recovery across optional `backup1`–`backup3` slots with `uses.<slot>.optional`, host-attested `not-forwarded` and `rejected-without-output` failure boundaries, confirmed pre-dispatch failure metadata, and confirmed cleanup. Preserve Codex session continuity across compatible same-client authentication profiles with atomic pre-acceptance release.
+- c49427f: Reject available attempt artifacts without manifest digests and keep checkpoint-associated file identities root-relative.
+- e8cc33f: Accept legacy uppercase package names in Bun lock policy and package selector.
+- 90f684e: Qualify Linux and macOS runtimes to Bun 1.4.4 revision 38afee6c84fcf48c0edb2466aa4b27d287a59c30 and enforce pure evaluation in shell.nix.
+
 ## 0.1.0-alpha.52
 
 ### Patch Changes
