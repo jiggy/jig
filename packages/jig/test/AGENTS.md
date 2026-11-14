@@ -6,7 +6,11 @@
 `portable/activation-admission-store.test.ts` verifies retained topology without mutable-source reads or state writes.
 `host/installed-cli-lifecycle.test.ts` checks pre-approval topology and current versus approved source identity through the installed CLI.
 `host/project-author-evaluator.test.ts` checks current Bindings, invalid declarations, and absent project-state writes through contained evaluation.
+It also checks exact Jig requirements before evaluating working-tree declarations.
+The installed lifecycle case verifies relative Flow selectors in current and approved inspection.
+
 `portable/package-project.test.ts` checks source-only linking and refusal to create activation requests.
+Unpinned Agent resources remain unselected for inspection and still require an operator choice for review.
 
 `portable/jig-version.test.ts` checks exact requirement values, captured metadata and contributor identification.
 `portable/built-authoring.test.ts` checks the actual public and evaluator authoring bundles after building Jig.

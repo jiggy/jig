@@ -1031,11 +1031,11 @@ function parseInspect(arguments_: readonly string[]) {
     else if (!value.startsWith('-') && selector === undefined) {
       // Reuse the exact selector grammar without resolving or executing it.
       try {
-        parseTarget(value)
+        const target = parseTarget(value)
+        selector = target.kind === 'flow' ? flowSelector(target.path) : `binding:${target.id}`
       } catch {
         usage('inspect', 'Use an exact flow:path or binding:id target.')
       }
-      selector = value
     } else usage('inspect', 'Specify at most one target and one --json option.')
   }
   if (resultDirectory !== undefined && (selector !== undefined || verification !== undefined))
@@ -1167,6 +1167,11 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
     }
   } catch (error) {
     if (error instanceof CliDiagnostic) throw error
+    if (
+      error instanceof CheckError &&
+      ['PROJECT_JIG_VERSION_MISMATCH', 'PROJECT_JIG_REQUIREMENT_INVALID'].includes(error.code)
+    )
+      throw error
     if (parsed.flow && !parsed.approved && error instanceof CheckError)
       throw new CliDiagnostic(
         'JIG_SOURCE_INSPECTION_FAILED',

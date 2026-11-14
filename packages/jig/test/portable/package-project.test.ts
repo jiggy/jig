@@ -16,8 +16,8 @@ import { defineJig } from '../../src/project/author.js'
 import { captureFlowSource } from '../../src/project/flow-source.js'
 import {
   type InjectedBindingDeclaration,
-  linkPackageProject,
   inspectPackageProject,
+  linkPackageProject,
 } from '../../src/project/package-project.js'
 import { buildPrivateActivationRequests } from '../../src/project/package-resolution.js'
 import {
@@ -213,6 +213,12 @@ describe('private package-project linker', () => {
         'PROJECT_AGENT_SELECTION_REQUIRED',
         '/slots/native',
       )
+      const inspected = inspectPackageProject(input)
+      expect(inspected.bindings.map((binding) => binding.slots.native)).toEqual([
+        { kind: 'grant', policy: { kind: 'acp', maxTurns: 3 } },
+        { kind: 'grant', name: 'shared', policy: { kind: 'acp', maxTurns: 2 } },
+      ])
+      expect(() => buildPrivateActivationRequests(inspected)).toThrow('package-project linker')
       for (const client of ['codex', 'claude', 'pi'] as const) {
         const selected = linkPackageProject(input, undefined, client)
         expect(selected.bindings.map((binding) => binding.slots.native)).toEqual([
@@ -233,7 +239,9 @@ describe('private package-project linker', () => {
         }
       }
       expect(input.grants.shared).toEqual({ kind: 'acp', maxTurns: 2 })
-      expect((input.bindings[0]!.definition as { slots: { native: object } }).slots.native).toEqual({ kind: 'acp', maxTurns: 3 })
+      expect((input.bindings[0]!.definition as { slots: { native: object } }).slots.native).toEqual(
+        { kind: 'acp', maxTurns: 3 },
+      )
     })
   })
 
@@ -367,8 +375,14 @@ describe('private package-project linker', () => {
   })
   test('pinned model and session requirements cannot be overwritten by a review default', async () => {
     await withFlows(nativeAgentTrees(), (flows) => {
-      const pinned = { kind: 'acp' as const, client: 'codex' as const,
-        model: 'pinned-model', authProfile: 'codex-subscription', maxTurns: 4, retainSessions: true as const }
+      const pinned = {
+        kind: 'acp' as const,
+        client: 'codex' as const,
+        model: 'pinned-model',
+        authProfile: 'codex-subscription',
+        maxTurns: 4,
+        retainSessions: true as const,
+      }
       const input = {
         flows,
         grants: { pinned },
@@ -384,12 +398,19 @@ describe('private package-project linker', () => {
         ],
       }
       const selected = linkPackageProject(input, undefined, 'pi')
-      expect(selected.bindings.find((value) => value.id === 'pinned')!.slots.native)
-        .toEqual({ kind: 'grant', name: 'pinned', policy: pinned })
-      expect(selected.bindings.find((value) => value.id === 'default')!.slots.native)
-        .toEqual({ kind: 'grant', policy: { kind: 'acp', client: 'pi', maxTurns: 2 } })
-      expectCode(() => linkPackageProject({ ...input, bindings: [input.bindings[0]!] },
-        undefined, 'pi'), 'PROJECT_AGENT_OVERRIDE_UNUSED')
+      expect(selected.bindings.find((value) => value.id === 'pinned')!.slots.native).toEqual({
+        kind: 'grant',
+        name: 'pinned',
+        policy: pinned,
+      })
+      expect(selected.bindings.find((value) => value.id === 'default')!.slots.native).toEqual({
+        kind: 'grant',
+        policy: { kind: 'acp', client: 'pi', maxTurns: 2 },
+      })
+      expectCode(
+        () => linkPackageProject({ ...input, bindings: [input.bindings[0]!] }, undefined, 'pi'),
+        'PROJECT_AGENT_OVERRIDE_UNUSED',
+      )
       expect(input.grants.pinned).toEqual(pinned)
     })
   })
@@ -421,7 +442,10 @@ describe('private package-project linker', () => {
           backup1: { kind: 'acp', client: 'codex', authProfile: 'secondary', maxTurns: 2 },
         },
       })
-      expectCode(() => linkPackageProject({ flows, bindings: [recoveryBinding] }), 'PROJECT_AGENT_SELECTION_REQUIRED')
+      expectCode(
+        () => linkPackageProject({ flows, bindings: [recoveryBinding] }),
+        'PROJECT_AGENT_SELECTION_REQUIRED',
+      )
       const selected = linkPackageProject({ flows, bindings: [recoveryBinding] }, undefined, 'pi')
       const slots = selected.bindings[0]!.slots
       expect(slots.native).toMatchObject({ policy: { client: 'pi', maxTurns: 2 } })
@@ -431,9 +455,14 @@ describe('private package-project linker', () => {
         slots: { native: { kind: 'acp', client: 'codex', authProfile: 'primary' } },
       })
       const pinned = linkPackageProject({ flows, bindings: [onlyPinned] })
-      expect(linkPackageProject({ flows, bindings: [onlyPinned] }, undefined, 'codex')).toEqual(pinned)
+      expect(linkPackageProject({ flows, bindings: [onlyPinned] }, undefined, 'codex')).toEqual(
+        pinned,
+      )
       expect(pinned.bindings[0]!.slots).not.toHaveProperty('backup1')
-      expectCode(() => linkPackageProject({ flows, bindings: [onlyPinned] }, undefined, 'pi'), 'PROJECT_AGENT_OVERRIDE_UNUSED')
+      expectCode(
+        () => linkPackageProject({ flows, bindings: [onlyPinned] }, undefined, 'pi'),
+        'PROJECT_AGENT_OVERRIDE_UNUSED',
+      )
     })
   })
   test('mapped child interfaces retain the exact reviewed map and refuse incompatible authority', async () => {

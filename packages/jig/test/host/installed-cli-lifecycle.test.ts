@@ -60,11 +60,12 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
       authoredPaths.map((path) => readFile(join(project, path))),
     )
     const beforeApproval = await command(
-      [cli, 'inspect', '--flow', 'flow:flows/hello', '--json'],
+      [cli, 'inspect', '--flow', 'flow:./flows/hello', '--json'],
       project,
     )
     const originalTopology = JSON.parse(beforeApproval.stdout)
     expect(originalTopology.basis).toBe('working-tree')
+    expect(originalTopology.scope.target).toBe('flow:flows/hello')
     expect(originalTopology.targets[0].flow.routes).toEqual([])
     expect(existsSync(join(project, '.jig'))).toBe(false)
     expect(existsSync(join(project, 'jig.lock'))).toBe(false)
@@ -80,10 +81,16 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
       (await command([cli, 'inspect', '--flow', '--json'], project)).stdout,
     )
     const approvedTopology = JSON.parse(
-      (await command([cli, 'inspect', '--flow', '--approved', '--json'], project)).stdout,
+      (
+        await command(
+          [cli, 'inspect', '--flow', 'flow:./flows/hello', '--approved', '--json'],
+          project,
+        )
+      ).stdout,
     )
     expect(current.targets[0].flow.digest).not.toBe(originalTopology.targets[0].flow.digest)
     expect(approvedTopology.targets[0].flow.digest).toBe(originalTopology.targets[0].flow.digest)
+    expect(approvedTopology.scope.target).toBe('flow:flows/hello')
     expect(await readFile(join(project, 'jig.lock'), 'utf8')).toBe(lock)
     await writeFile(methodPath, originalMethod)
 

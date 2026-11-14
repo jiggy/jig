@@ -251,8 +251,7 @@ complete -c jig -n '__fish_seen_subcommand_from run inspect explore' -a '(jig co
 complete -c jig -n '__fish_seen_subcommand_from run review inspect explore' -l verification -r -a 'cached strict fast'
 complete -c jig -n '__fish_seen_subcommand_from explore' -l timeout -r
 complete -c jig -n '__fish_seen_subcommand_from run inspect' -l json
-${['flow', 'approved', 'impact'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from inspect' -l ${flag}`).join('\n')}
-complete -c jig -n '__fish_seen_subcommand_from inspect' -l implementation
+${['flow', 'approved'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from inspect' -l ${flag}`).join('\n')}
 complete -c jig -n '__fish_seen_subcommand_from inspect' -l result -r
 complete -c jig -n '__fish_seen_subcommand_from inspect' -l display -r -a 'plain tui web'
 complete -c jig -n '__fish_seen_subcommand_from run' -l display -r -a 'auto plain tui web'

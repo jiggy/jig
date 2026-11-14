@@ -180,6 +180,10 @@ test('completion scripts contain only static shell code and read-only target loo
     expect(script).toContain(shell === 'fish' ? '-l source-root' : '--source-root')
     for (const flag of ['flow', 'approved'])
       expect(script).toContain(shell === 'fish' ? '-l ' + flag : '--' + flag)
+    for (const removed of ['impact', 'implementation']) {
+      expect(script).not.toContain(`--${removed}`)
+      expect(script).not.toContain(`-l ${removed}`)
+    }
   }
   expect(completionScript('sh')).toBeUndefined()
   const bash =
@@ -416,6 +420,7 @@ test('configured topology keeps identities stable and does not emit source inven
   expect(first).toContain('binding:two')
   expect(first).toContain('finite-acp')
   expect(first).toContain('attempts')
+  expect(first).toContain('binding:root uses flows/root.')
   expect(first).toContain('binding_root -->|"first"| binding_one')
   expect(first).toContain('binding_one -->|"agent"| resource_binding_one_agent')
   expect(first).not.toContain('Source for behavioral reading')
@@ -564,18 +569,38 @@ test('configured topology retains literal framing and refuses oversized graphs w
   const hostile = renderFlowContext({
     basis: 'working-tree',
     revision: 'x',
-    targets: [{ target: 'flow:a"<script>\u001b', flow: { routes: [] } }],
+    targets: [
+      {
+        target: 'flow:a"<script>\u001b\u202e',
+        flow: { settings: { label: 'a\u202eb' }, routes: [] },
+      },
+    ],
   })
   expect(hostile).not.toContain(String.fromCharCode(27))
   expect(hostile).not.toContain('<script>')
-  expect(
-    renderFlowContext({
-      targets: Array.from({ length: 257 }, (_, i) => ({
-        target: `flow:${i}`,
-        flow: { routes: [] },
-      })),
-    }),
-  ).toContain('No graph was truncated')
+  expect(hostile).not.toContain('\u202e')
+  expect(hostile).toContain('U+202E')
+  const oversized = {
+    targets: Array.from({ length: 257 }, (_, i) => ({ target: `flow:${i}`, flow: { routes: [] } })),
+  }
+  expect(renderFlowContext(oversized)).toContain('No graph was truncated')
+  // Presentation limits do not remove exact configured records from explicit JSON inspection.
+  expect((flowContextRecord(oversized, {}) as TopologyView).targets).toHaveLength(257)
+})
+
+test('working-tree topology remains unreviewed even when the project has no targets', () => {
+  for (const targets of [
+    [],
+    [{ target: 'binding:work', state: 'unreviewed', flow: { routes: [] } }],
+  ]) {
+    expect(
+      (
+        flowContextRecord({ basis: 'working-tree', state: 'unreviewed', targets }, {}) as {
+          state: string
+        }
+      ).state,
+    ).toBe('unreviewed')
+  }
 })
 
 test('approved configured Markdown uses awaited literal output without creating approval state', async () => {

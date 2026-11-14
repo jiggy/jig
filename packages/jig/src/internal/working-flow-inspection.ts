@@ -16,6 +16,7 @@ import { parseProjectEntrypoint } from '../project/entrypoint.js'
 import { type CapturedFlowMember, captureOpenedFlowSource } from '../project/flow-source.js'
 import { captureGrantSource } from '../project/grant-source.js'
 import { resolveInvocationSlots } from '../project/invocation-slots.js'
+import { captureProjectJigRequirement } from '../project/jig-version.js'
 import { inspectPackageProject } from '../project/package-project.js'
 import { flowSelector, npmPackageName } from '../project/package-selector.js'
 import { isProtectedProjectPath } from '../project/paths.js'
@@ -39,6 +40,7 @@ export async function inspectWorkingFlow(
   let operationFailure: unknown
   try {
     signal?.throwIfAborted()
+    const jigRequirement = await captureProjectJigRequirement(root)
     authoring = await captureProjectAuthoring(root, evaluator, signal)
     temporary = await mkdtemp(join(tmpdir(), 'jig-flow-inspection-'))
     temporary = await realpath(temporary)
@@ -176,6 +178,7 @@ export async function inspectWorkingFlow(
     }
     await bindingSource.verify()
     await grants.verify()
+    await jigRequirement.verify()
     await root.verify()
     signal?.throwIfAborted()
     return {

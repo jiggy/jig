@@ -8,10 +8,17 @@ const record = (value: JsonValue | undefined): Record<string, JsonValue> =>
     ? (value as Record<string, JsonValue>)
     : {}
 const list = (value: JsonValue | undefined): JsonValue[] => (Array.isArray(value) ? value : [])
+const visibleDirections = (value: string): string =>
+  value.replace(
+    /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu,
+    (character) => `[U+${character.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}]`,
+  )
 const markdown = (value: string): string =>
-  value.replace(/[\\`*_{}[\]<>()|#!]/g, '\\$&').replace(/[\p{Cc}\u2028\u2029]/gu, ' ')
+  visibleDirections(value)
+    .replace(/[\\`*_{}[\]<>()|#!]/g, '\\$&')
+    .replace(/[\p{Cc}\u2028\u2029]/gu, ' ')
 const diagram = (value: string): string =>
-  value
+  visibleDirections(value)
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
@@ -119,12 +126,16 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
   for (const item of included) {
     const flow = record(item.flow)
     const settings = record(flow.settings)
+    const implementation =
+      typeof item.package === 'string' && String(item.target).startsWith('binding:')
+        ? `${markdown(String(item.target))} uses ${markdown(item.package)}.`
+        : undefined
     if (Object.keys(settings).length) {
       const text = JSON.stringify(settings)
       lines.push(
-        `${markdown(String(item.target))} uses ${markdown(String(item.package))}. Settings: ${Buffer.byteLength(text) > PRIVATE_FLOW_CONTEXT_LIMITS.inlineValueBytes ? '[omitted; use --json]' : markdown(text)}.`,
+        `${implementation ?? markdown(String(item.target)) + '.'} Settings: ${Buffer.byteLength(text) > PRIVATE_FLOW_CONTEXT_LIMITS.inlineValueBytes ? '[omitted; use --json]' : markdown(text)}.`,
       )
-    }
+    } else if (implementation !== undefined) lines.push(implementation)
     const dependency = record(flow.installedDependency)
     if (dependency.version !== undefined)
       lines.push(
@@ -227,11 +238,14 @@ function selectFlowContext(value: JsonValue, options: FlowContextOptions) {
   }
   const boundaries = included.flatMap((item) => crossing.get(String(item.target)) ?? [])
   const states = included.map((item) => item.state)
-  const state = states.includes('review-required')
-    ? 'review-required'
-    : states.some((state) => state !== 'environment-matches')
-      ? 'unchecked'
-      : 'environment-matches'
+  const state =
+    snapshot.basis === 'working-tree'
+      ? 'unreviewed'
+      : states.includes('review-required')
+        ? 'review-required'
+        : states.some((state) => state !== 'environment-matches')
+          ? 'unchecked'
+          : 'environment-matches'
   return {
     snapshot,
     included,
