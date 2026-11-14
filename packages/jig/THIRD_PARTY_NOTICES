@@ -126,7 +126,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-@agentclientprotocol/codex-acp 1.8.0
+@agentclientprotocol/codex-acp 2.6.0
 ------------------------------------
 
 Jig ships the official ACP adapter for native OpenAI Codex as an inert support
@@ -144,7 +144,7 @@ exposing the turn as interruptible; a start reply alone does not establish it.
 It also accepts Jig’s one-use in-memory ChatGPT token bootstrap so subscription
 credentials need no sandbox-readable file. Typed native session failures retain
 an optional validated HTTP error status without raw provider data.
-See `packages/jig/patches/codex-acp@1.8.0.patch` and its companion
+See `packages/jig/patches/codex-acp@2.6.0.patch` and its companion
 note for the correction and removal condition.
 
 Copyright 2025 JetBrains s.r.o.
