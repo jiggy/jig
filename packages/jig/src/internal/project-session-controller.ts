@@ -13,7 +13,7 @@ import { RootAdministrationError, type RootRunTerminal } from '../administration
 import { CheckError } from '../diagnostics.js'
 import { validateJson1 } from '../json.js'
 import { EVALUATOR_HINTS } from '../project/evaluator-diagnostics.js'
-import type { AcpGrant } from '../project/grants.js'
+import type { NativeAcpClient } from '../project/grants.js'
 import {
   buildPrivateActivationRequests,
   resolveRetainedPackageProjectObservation,
@@ -123,10 +123,11 @@ export interface PrivateProjectSessionHost {
   readonly sourceRoots?: readonly string[]
   readonly allowResolutionNetwork?: boolean
   readonly onAgentReadiness?: (report: PrivateAgentReadinessReport) => void
-  readonly agentOverride?: AcpGrant['client']
+  readonly agentOverride?: NativeAcpClient
+  readonly onAgentSelection?: () => Promise<NativeAcpClient | undefined>
   readonly detectAgentAlternatives?: (
-    selected: readonly AcpGrant['client'][],
-  ) => Promise<readonly AcpGrant['client'][]>
+    selected: readonly NativeAcpClient[],
+  ) => Promise<readonly NativeAcpClient[]>
   readonly onStage?: (stage: string) => void
   readonly onResolution?: (packagePath: string) => void
   readonly generateContracts?: boolean
@@ -463,6 +464,7 @@ function createSession(
               }
             },
             ...(host.agentOverride === undefined ? {} : { agentOverride: host.agentOverride }),
+            ...(host.onAgentSelection === undefined ? {} : { onAgentSelection: host.onAgentSelection }),
             reviewEvaluation: async (grant, captured) => {
               budget.reserve(
                 captured.digest,
