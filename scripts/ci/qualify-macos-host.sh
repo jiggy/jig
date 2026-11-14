@@ -49,7 +49,7 @@ if [[ "$mode" == shard && "$shard" -ge "$shard_count" ]]; then
   exit 2
 fi
 if [[ "$mode" == full || "$mode" == preflight || ( "$mode" == shard && "$shard" == "$installed_shard" ) ]]; then
-  for name in JIG_CODEX_STARTUP_PATH JIG_CLAUDE_STARTUP_PATH JIG_PI_STARTUP_PATH; do
+  for name in JIG_CODEX_STARTUP_PATH JIG_CLAUDE_STARTUP_PATH; do
     value="${!name:-}"
     if [[ "$value" != /* || ! -x "$value" ]]; then
       echo "Configure $name with an executable native client before qualification." >&2
@@ -69,8 +69,8 @@ if [[ -n "${JIG_CI_CANDIDATE_DIRECTORY:-}" ]]; then
 fi
 if [[ "$mode" == preflight ]]; then exit 0; fi
 # Host qualification has no live API phase.
-unset OPENAI_API_KEY ANTHROPIC_API_KEY OPENROUTER_API_KEY PI_API_KEY
-unset JIG_CODEX_PROOF_PATH JIG_CLAUDE_PROOF_PATH JIG_PI_PROOF_PATH
+unset OPENAI_API_KEY ANTHROPIC_API_KEY OPENROUTER_API_KEY
+unset JIG_CODEX_PROOF_PATH JIG_CLAUDE_PROOF_PATH
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/jig-macos-conformance.XXXXXX")
 scratch=$(bun -e 'console.log(require("node:fs").realpathSync(process.argv[1]))' "$scratch")
 snapshot() {
