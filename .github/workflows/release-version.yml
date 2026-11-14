@@ -174,7 +174,11 @@ jobs:
           commit-message: "chore: version Jig packages"
           pr-title: "Release Jig packages"
           pr-base-branch: main
-          push-with-git-cli: false
+          # GitHub's GraphQL commit-on-branch mutation can fail with an opaque
+          # server error even when the exact prepared release validated.
+          # The pinned action scopes its git push credentials to github-token,
+          # so use that path without relaxing branch or PR authorization.
+          push-with-git-cli: true
       - name: Explain release PR failure and recovery
         if: failure() && (steps.app-token.outcome == 'failure' || steps.version.outcome == 'failure')
         run: |
