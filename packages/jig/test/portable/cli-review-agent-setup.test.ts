@@ -56,13 +56,13 @@ describe('concise review Agent recovery', () => {
 
   test('one missing client has a short cause, location and complete recovery commands', () => {
     const text = renderReviewAgentSetup(
-      report([issue({ alternatives: ['codex'] })]),
+      report([issue({ sourceClient: 'default', location: { path: 'bindings/model.ts', line: 5, column: 33, kind: 'selection-context' }, alternatives: ['codex'] })]),
       compactOptions,
     )
     expect(text).toBe(`Review could not finish
 
   Agent unavailable: Pi executable not found.
-  Selection: "bindings/model.ts":5:33; slot "native".
+  Selection context: "bindings/model.ts":5:33; slot "native".
 
   Next step
     Install Pi, add it to PATH, or set PI_PATH to its absolute executable path.
@@ -71,7 +71,7 @@ describe('concise review Agent recovery', () => {
   Or use Codex
     Executable found; login and readiness not checked.
     $ ${options.agentRetryCommands.codex}
-    All native Agent policies; source unchanged. Repeat --agent codex next review.
+    Only unpinned Agent policies are affected. Explicit client pins remain unchanged.
 
   Diagnostic code: PROJECT_ACP_PI_EXECUTABLE
 
@@ -88,7 +88,7 @@ describe('concise review Agent recovery', () => {
 
   test('colour highlights the blocker and actions without changing plain or narrow output', () => {
     const text = renderReviewAgentSetup(
-      report([issue({ alternatives: ['codex'] })]),
+      report([issue({ sourceClient: 'default', location: { path: 'bindings/model.ts', line: 5, column: 33, kind: 'selection-context' }, alternatives: ['codex'] })]),
       compactOptions,
     )
     for (const columns of [undefined, 80, 32]) {
@@ -100,7 +100,7 @@ describe('concise review Agent recovery', () => {
       expect(colored).toContain('\u001b[1;33m  Agent unavailable:')
       expect(colored).toContain('\u001b[1m  Next step')
       expect(colored).toContain('\u001b[1m  Or use Codex')
-      expect(colored).toContain('\u001b[90m  Selection:')
+      expect(colored).toContain('\u001b[90m  Selection context:')
       expect(colored).toContain('\u001b[90m  Diagnostic code:')
       expect(plain).toContain(`$ ${options.agentRetryCommands.codex}`)
       expect(plain).not.toContain('\u001b')
@@ -139,7 +139,7 @@ describe('concise review Agent recovery', () => {
           source: 'named',
           location: { path: 'custom-policy/agent.json', kind: 'unlocated' },
           client: 'codex',
-          sourceClient: 'pi',
+          sourceClient: 'default',
           override: 'codex',
           code: 'PROJECT_ACP_CODEX_EXECUTABLE',
           alternatives: [],
@@ -148,7 +148,7 @@ describe('concise review Agent recovery', () => {
       compactOptions,
     )
     expect(text).toContain('Named policy (exact client line unknown): "custom-policy/agent.json"')
-    expect(text).toContain('Client: "codex" from --agent codex; source: "pi"')
+    expect(text).toContain('Client: "codex" from --agent codex; source: "default"')
     expect(text).toContain('Affects: "binding:model"; slot "native"')
     const computed = renderReviewAgentSetup(
       report([
@@ -181,9 +181,8 @@ describe('read-only review Agent setup diagnostics', () => {
     expect(text).not.toContain('--yes')
     expect(text).not.toContain('--allow-authority-changes')
     expect(text).toContain('including code-only entrypoints')
-    expect(text).toContain('add --agent claude or --agent codex on the retry below')
-    expect(text).toContain('every selected ACP policy')
-    expect(text).toContain('Repeat the option on later reviews')
+    expect(text).not.toContain('add --agent claude or --agent codex on the retry below')
+    expect(text).toContain('change the source client value from')
     expect(text).toContain('All observed source policy facts')
     expect(text).toContain('No new approval was recorded. Any existing approval remains unchanged.')
     expect(text).toContain('No Flow or model call started.')
@@ -261,19 +260,20 @@ describe('read-only review Agent setup diagnostics', () => {
     expect(text).not.toContain('Detected alternatives')
   })
 
-  test('source literal is never attributed to the effective override client', () => {
+  test('default selection never invents a client literal and offers an operator retry', () => {
     const value = issue({
       client: 'codex',
-      sourceClient: 'pi',
+      sourceClient: 'default',
       override: 'codex',
+      location: { path: 'bindings/model.ts', kind: 'selection-context' },
       policy: { kind: 'acp', client: 'codex' },
       code: 'PROJECT_ACP_CODEX_EXECUTABLE',
       alternatives: ['claude'],
     })
     const text = renderReviewAgentSetup(report([value]), options)
-    expect(text).toContain('Source client: "pi"; effective client: "codex" from --agent codex')
-    expect(text).toContain('from "pi" to "claude"; replace or omit the current --agent option too')
-    expect(text).not.toContain('from "codex" to "claude"')
+    expect(text).toContain('Source client: "default"; effective client: "codex" from --agent codex')
+    expect(text).not.toContain('captured source client literal')
+    expect(text).toContain('select --agent claude during review')
     expect(text).toContain('replace the current option with --agent claude on the retry below')
   })
 
@@ -355,21 +355,21 @@ describe('review-only client selection disclosure', () => {
         binding: `model-${i}`,
         declaration: 'bindings/model.ts',
         slot: 'native',
-        sourceClient: 'pi',
+        sourceClient: 'default',
         effectiveClient: 'codex',
-        source: { path: 'bindings/model.ts', line: 5, kind: 'client-literal' },
+        source: { path: 'bindings/model.ts', line: 5, kind: 'selection-context' },
       })),
     }
   }
-  test('explains global scope, source/effective clients, repeat review and persistent source preference', () => {
+  test('explains unpinned scope, effective clients and explicit future review selection', () => {
     const text = renderReviewAgentSelections(selected(), { agent: 'codex', details: false })
-    expect(text).toContain('every selected ACP policy')
-    expect(text).toContain('source "pi" -> effective "codex"')
-    expect(text).toContain('"bindings/model.ts":5 (captured client literal)')
-    expect(text).toContain('leaves source files unchanged')
+    expect(text).toContain('unpinned ACP policies')
+    expect(text).toContain('source "default" -> effective "codex"')
+    expect(text).toContain('"bindings/model.ts":5 (selection context, not a client literal)')
+    expect(text).toContain('leaves source unchanged')
     expect(text).toContain('HTTP-backed Agents and Flow routes are unaffected')
-    expect(text).toContain('Repeat --agent codex')
-    expect(text).toContain('edit the Binding or named ACP policy, then review without --agent')
+    expect(text).toContain('Supply --agent codex or select interactively')
+    expect(text).toContain('Explicit pins remain unchanged')
     expect(text).toContain('normal exact approval still applies')
   })
   test('a known previous flag is explained on bare review without inventing current-source provenance', () => {
@@ -388,7 +388,7 @@ describe('review-only client selection disclosure', () => {
     const details = renderReviewAgentSelections(value, { agent: 'codex', details: true })
     expect(Buffer.byteLength(details)).toBeLessThan(131_072)
     expect(details).toContain('known selected ACP recipients are omitted')
-    expect(details).toContain('Repeat --agent codex')
+    expect(details).toContain('Supply --agent codex or select interactively')
   })
 })
 
