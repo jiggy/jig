@@ -134,7 +134,11 @@ test('saved comparison reads two packets without a project, reports exact values
       ['same.txt', 'unchanged-verified'],
     ])
     expect(result.files).toMatchObject({ unchanged: 1, changed: 3, unverified: 0 })
-    // Redirected stdout deliberately stays machine JSON. Check the human presenter directly.
+    // Redirected stdout deliberately stays machine JSON even without --json.
+    const redirected = await compare(before, after)
+    expect(redirected.code, redirected.stderr).toBe(0)
+    expect(JSON.parse(redirected.stdout)).toEqual(result)
+    // Check the human presenter directly without pretending a pipe is an interactive terminal.
     const first = await privateCaptureSavedResult(before)
     const second = await privateCaptureSavedResult(after)
     try {
