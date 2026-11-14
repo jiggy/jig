@@ -513,8 +513,8 @@ authoritative refusal despite report omission.
 
 CLI checks refusal before avoidable target execution preparation, unchanged
 success and apply, with prior approval/source preserved. Linking/capture and
-lock tests cover the explicit review operand, all-selected-ACP rules, exact
-identity and retained origin. Ordinary authority, generation and cleanup checks
+lock tests cover the explicit review operand, unpinned-only selection, mixed
+pinned clients, exact identity and retained origin. Ordinary authority, generation and cleanup checks
 remain independent. `inspect --result` bypasses project/environment acquisition
 and reads only the selected descriptor-confined packet. Its fixed views label
 all evidence recorded, never reconstruct live views or authority, and preserve
