@@ -106,10 +106,6 @@ export function privateAcpProfileEnvironment(
     'ANTHROPIC_AUTH_TOKEN',
     'ANTHROPIC_MODEL',
     'ANTHROPIC_BASE_URL',
-    'PI_CODING_AGENT_DIR',
-    'PI_PROVIDER',
-    'PI_MODEL',
-    'PI_API_KEY',
   ] as const
   const permitted: Readonly<Record<typeof client, readonly string[]>> = {
     codex: ['CODEX_HOME', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_API'],
@@ -140,8 +136,7 @@ export function privateAcpProfileEnvironment(
             1 &&
           (selected.CLAUDE_CODE_OAUTH_TOKEN === undefined ||
             selected.ANTHROPIC_BASE_URL === undefined)
-        : selected.PI_PROVIDER !== undefined &&
-          (selected.PI_CODING_AGENT_DIR !== undefined) !== (selected.PI_API_KEY !== undefined)
+        : false
   if (!valid) throw new PrivateAcpSetupError('login')
   const isolated: Record<string, string | undefined> = { ...environment }
   for (const key of shared) delete isolated[key]
