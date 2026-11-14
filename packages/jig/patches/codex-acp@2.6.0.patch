@@ -1,0 +1,28 @@
+diff --git a/dist/index.js b/dist/index.js
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1,4 +1,19 @@
+     this.configPath = response?.codexHome ?? null;
++    // Jig's trusted launcher supplies a one-time, in-memory credential
++    // projection. Never inherit a reusable token from environment or disk.
++    const bootstrap = globalThis["__JIG_CODEX_AUTH_BOOTSTRAP__"];
++    if (bootstrap !== void 0) {
++      delete globalThis["__JIG_CODEX_AUTH_BOOTSTRAP__"];
++      if (typeof bootstrap !== "function") throw new Error("Codex startup authentication is invalid");
++      const credential = bootstrap();
++      if (credential === null || typeof credential !== "object" || typeof credential.accessToken !== "string" || credential.accessToken.length === 0 || typeof credential.chatgptAccountId !== "string" || credential.chatgptAccountId.length === 0) {
++        throw new Error("Codex startup authentication is invalid");
++      }
++      const login = await this.codexClient.accountLogin({
++        type: "chatgptAuthTokens", accessToken: credential.accessToken,
++        chatgptAccountId: credential.chatgptAccountId, chatgptPlanType: null
++      });
++      if (login.type !== "chatgptAuthTokens") throw new Error("Codex startup authentication failed");
++    }
+     this.isInitialized = true;
+@@ -1,4 +1,5 @@
+   onTurnCompleted(userPromptText) {
+-    if (this.generated) return;
++    // A review-approved Jig prompt never authorizes a separate title model turn.
++    return;
+     const src = this.getSessionTitleSource();
