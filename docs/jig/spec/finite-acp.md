@@ -25,18 +25,26 @@ Binding selects the native client through an ordinary resource grant:
 ```ts
 defineBinding({
   package: 'flows/agent',
-  slots: { native: { kind: 'acp', client: 'codex' } },
+  slots: { native: { kind: 'acp' } },
 })
 ```
+
+Omitting `client` is the default and delegates the choice to the operator.
+Interactive review asks for an Agent when a selected ACP slot is unpinned.
+Noninteractive review requires `--agent codex|claude|pi`. A common
+`maxTurns` bound is allowed, but unpinned grants cannot carry a vendor model
+or native retention requirement. Explicit `client: 'codex' | 'claude' | 'pi'`
+pins an Agent for a specialized method and is never overridden by `--agent`.
+The admitted lock contains only concrete clients and Run never substitutes one.
 
 The host qualifies that exact client using operator configuration captured
 before project loading. Review identifies the recipient, client, model,
 authentication mode and executable. The explicit review-only `--agent` operand
-may construct an effective client for every selected ACP policy under
+constructs an effective client only for unpinned ACP policies under
 [project policy](project-policy.md#review-client-selection), with source and
 argument origin visible. No ambient global Agent selection, guessed slot name
 or Flow-authored environment creates this authority. Changed runtime
-identity requires renewed review; the launch still revalidates its artifacts.
+identity requires renewed review. Launch still revalidates its artifacts.
 
 An optional grant `model` selects the model for this recipient, overriding the
 matching operator model variable without changing authentication mode, endpoint,
