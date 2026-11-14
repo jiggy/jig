@@ -15,6 +15,16 @@ These links locate module rules. All selected domain requirements still apply.
 - [src run channels](#src-run-channels)
 - [src package capture 2](#src-package-capture-2)
 
+## Portable native Agent selection
+
+The default ACP grant omits `client` to delegate the choice to the operator
+at review. It is source policy data, not an executable client. Interactive
+review prompts after source capture and before qualification, while
+noninteractive review requires `--agent codex|claude|pi`. The effective
+client is recorded in the lock and never selected again at Run time.
+Unpinned grants cannot specify a model or native retention. Explicit pins
+remain supported and are not rewritten by a review default.
+
 ## Ownership
 
 ### src index
@@ -252,24 +262,20 @@ These links locate module rules. All selected domain requirements still apply.
   output discloses omissions and unchecked resources when present. Complete
   report accounting belongs under `--details`.
 
-  Executable recovery can suggest adding or replacing `--agent` for a detected
-  client, with global scope and repeated review explained. Never promise that
-  other policies or authentication qualify. Explicit
-  `review --agent codex|claude|pi` requires a value and changes only the client
-  of every selected normalized ACP policy before qualification. Retain the
-  operand in capture identity and ordinary lock `agentOverride`. The strict
-  decoder requires nonzero selected ACP policies agreeing with it. Source stays
-  unchanged.
+  Executable recovery can suggest `--agent` for an unpinned client,
+  without treating PATH discovery as authorization. The option applies only
+  to selected unpinned ACP grants. Explicit pins, models and native retention
+  stay intact. A review with no unpinned client rejects an inapplicable option.
+  The chosen default is retained in capture identity and the lock, alongside
+  the effective concrete slot clients. The strict lock decoder requires at least
+  one matching policy and allows independent pinned clients.
 
-  Run uses approved meaning and a later bare review uses source again.
-  Cross-client model pins, incompatible retention and no selected ACP policy
-  refuse the whole request. Same-client selection still qualifies. Keep other
-  fields, authority opt-ins and previous approved code/client together on
-  failure. An ACP grant may pin a recipient-specific model. This changes
-  approval and runtime identity without changing operator authentication or
-  client selection. `docs/jig/spec/grants.md`
+  Failed selection preserves any previous approval. An ACP grant may pin a
+  recipient-specific model. This changes approval and runtime identity without
+  changing operator authentication or client selection.
+  `docs/jig/spec/grants.md` owns capture, reuse and recipient-scoped approval.
 
-  owns capture, reuse and recipient-scoped approval. New or changed delegations
+  New or changed delegations
   require explicit authority approval in the same retained plan. Source edits
   cannot mutate active generations. Secrets remain private operator environment
   snapshots. Use ordinary `run.call`.
