@@ -112,6 +112,7 @@
     "commonmark": "0.31.2",
     "@agentclientprotocol/claude-agent-acp": "0.107.0",
     "@agentclientprotocol/codex-acp": "2.6.0",
+    "@agentclientprotocol/sdk": "2.6.0",
     "@anthropic-ai/claude-agent-sdk": "0.3.323",
     "@types/node": "24.13.3",
     "pi-acp": "0.0.33",
