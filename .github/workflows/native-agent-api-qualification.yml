@@ -391,7 +391,6 @@ jobs:
             "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" \
             "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" \
             "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" \
-            "OPENROUTER_API_KEY=" \
             "JIG_NATIVE_API_MODEL=$selected_model" \
             "JIG_NATIVE_API_CLIENT=$JIG_NATIVE_API_CLIENT" \
             "${client_environment[@]}" \
