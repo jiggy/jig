@@ -136,7 +136,7 @@ A subsequent review requires a new choice, although an interactive prompt may
 suggest the previously approved client. A noninteractive review without a
 choice fails if any selected ACP resource is unpinned. Supplying `--agent`
 when no such resource exists is inapplicable.
-[Project policy](https://jig.md/spec/project-policy.md#review-client-selection) defines the exact
+[Project policy](project-policy.md#review-client-selection) defines the exact
 construction and retained identity. Review never silently substitutes Agents.
 
 ## Review and admission
