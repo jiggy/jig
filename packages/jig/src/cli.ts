@@ -2743,7 +2743,7 @@ export function renderFailure(error: unknown, runtime: Pick<CliRuntime, 'writeEr
       PROJECT_AGENT_OVERRIDE_RETENTION:
         'this ACP policy requires retained Codex sessions. Review the indicated Binding slot, following any grant:name selector to its JSON policy; --agent preserves session requirements',
       PROJECT_AGENT_OVERRIDE_UNUSED:
-        '--agent applies only to unpinned ACP grants. Omit --agent or remove the source client pin where appropriate',
+        '--agent selects unpinned ACP grants, or affirms a matching pinned client without changing it. Use the pinned client or omit --agent',
       PROJECT_AGENT_SELECTION_REQUIRED:
         'an unpinned ACP grant needs an operator choice. Review interactively or specify --agent codex, --agent claude, or --agent pi',
       ...EVALUATOR_HINTS,
