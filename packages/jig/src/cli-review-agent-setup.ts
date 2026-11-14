@@ -4,7 +4,7 @@ import type {
   PrivateAgentReadinessIssue,
   PrivateAgentReadinessReport,
 } from './internal/review-agent-setup.js'
-import type { AcpGrant } from './project/grants.js'
+import type { NativeAcpClient } from './project/grants.js'
 
 const CLIENT_NAMES = { codex: 'Codex', claude: 'Claude Code', pi: 'Pi' } as const
 const CLIENT_PATHS = { codex: 'CODEX_PATH', claude: 'CLAUDE_PATH', pi: 'PI_PATH' } as const
@@ -13,7 +13,7 @@ const RENDER_BYTES = 131_072
 interface SetupPresentation {
   readonly details: boolean
   readonly retryCommand: string
-  readonly agentRetryCommands: Readonly<Record<AcpGrant['client'], string>>
+  readonly agentRetryCommands: Readonly<Record<NativeAcpClient, string>>
 }
 
 /** Read-only human facts; the CLI supplies an already shell-quoted manual retry command. */
@@ -196,7 +196,7 @@ function renderCompactIssue(
   return `${lines.join('\n')}\n`
 }
 
-function executableAlternatives(issue: PrivateAgentReadinessIssue): AcpGrant['client'][] {
+function executableAlternatives(issue: PrivateAgentReadinessIssue): NativeAcpClient[] {
   return [...new Set(issue.alternatives)]
     .filter((client) => client !== issue.client && Object.hasOwn(CLIENT_NAMES, client))
     .sort()
@@ -206,8 +206,8 @@ function executableAlternatives(issue: PrivateAgentReadinessIssue): AcpGrant['cl
 export function renderReviewAgentSelections(
   report: PrivateAgentReadinessReport | undefined,
   options: {
-    readonly agent?: AcpGrant['client']
-    readonly previousAgent?: AcpGrant['client']
+    readonly agent?: NativeAcpClient
+    readonly previousAgent?: NativeAcpClient
     readonly details: boolean
   },
 ): string {
@@ -221,8 +221,8 @@ export function renderReviewAgentSelections(
           `  The previous approval used --agent ${options.previousAgent}. This review uses the clients in captured source; the earlier flag is not reused.`,
         ]
       : [
-          `  --agent ${options.agent} proposes ${CLIENT_NAMES[options.agent]} for every selected ACP policy in this review.`,
-          '  This client selection leaves source files unchanged. HTTP-backed Agents and Flow routes are unaffected.',
+          `  ${CLIENT_NAMES[options.agent]} is selected for unpinned ACP policies in this review. Explicit client pins are unchanged.`,
+          '  This selection leaves source unchanged. HTTP-backed Agents and Flow routes are unaffected.',
         ]),
     '  Captured source and effective clients:',
   ]
@@ -259,8 +259,8 @@ export function renderReviewAgentSelections(
           '  Approving this review approves its complete captured code and source-derived client policy together. A failed or declined review retains the earlier approved code and client.',
         ]
       : [
-          `  A later review starts from its captured source again. Repeat --agent ${options.agent} to propose this client again.`,
-          '  For a durable project preference, edit the Binding or named ACP policy, then review without --agent.',
+          `  A later review requires a new Agent choice. Supply --agent ${options.agent} or select interactively.`,
+          '  Only unpinned ACP clients use the review choice. Explicit pins remain unchanged.',
         ]),
     '  Client selection does not grant execution or dependency-network permission; normal exact approval still applies.',
     '',
