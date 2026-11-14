@@ -71,7 +71,7 @@ describe('concise review Agent recovery', () => {
   Or use Codex
     Executable found; login and readiness not checked.
     $ ${options.agentRetryCommands.codex}
-    Only unpinned Agent policies are affected. Explicit client pins remain unchanged.
+    Only unpinned Agent grants use this choice. Explicit pins remain unchanged.
 
   Diagnostic code: PROJECT_ACP_PI_EXECUTABLE
 
