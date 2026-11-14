@@ -1276,7 +1276,7 @@ fi
       assert.ifError(result.error)
       assert.equal(result.status, selected.status, result.stderr)
       if (selected.status === 0) {
-        assert.equal(await readFile(output, 'utf8'), `NATIVE_QUALIFICATION_MODEL=\${selected.selectedModel}\n`)
+        assert.equal(await readFile(output, 'utf8'), `NATIVE_QUALIFICATION_MODEL=${selected.selectedModel}\n`)
         assert.ok((await readFile(summary, 'utf8')).includes(selected.selectedRoute))
       }
       await rm(output, { force: true })
