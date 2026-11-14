@@ -219,8 +219,8 @@ export class PrivateExploreSession {
       const supplied = new Set(selectedFiles.map((file) => file.attachment))
       if (
         supplied.size !== selectedFiles.length ||
-        selection.unboundRead.length !== selectedFiles.length ||
-        selection.unboundRead.some((name) => !supplied.has(name))
+        (selection.unboundRead?.length ?? 0) !== selectedFiles.length ||
+        (selection.unboundRead?.some((name) => !supplied.has(name)) ?? false)
       )
         throw new PrivateProjectProjectionError(
           'INPUT_INVALID',
