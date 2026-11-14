@@ -166,37 +166,18 @@ Claude Agent SDK, whose use is governed by Anthropic's legal agreements. The
 applicable texts are shipped as `libexec/agent/claude-agent-acp.LICENSE` and
 `libexec/agent/claude-agent-sdk.LICENSE`.
 
-pi-acp 0.0.33
--------------
-
-Jig bundles the ACP adapter for native Pi as optional inert support. The
-adapter is selected only when the operator explicitly enables Pi; Jig does not
-include credentials or the operator-supplied native Pi executable and sibling
-runtime-support files.
-
-Jig carries a version-pinned dependency patch preserving failed RPC prompts,
-assistant errors, cancellation, and token limits as distinct ACP results.
-It also invokes Jig's private launcher with the verified Bun interpreter.
-The patch is maintained at `packages/jig/patches/pi-acp@0.0.33.patch` in source;
-the installed bundle includes that correction.
-
-Copyright (c) 2026 Sergii Kozak
-
-Licensed under MIT. The complete license is shipped as
-`libexec/agent/pi-acp.LICENSE`.
-
 Additional bundled Zod versions
 -------------------------------
 
 The prebundled Codex ACP adapter and Anthropic Claude Agent SDK also contain
-Zod 4.4.3. The Pi adapter bundles Zod from package 3.25.76. These copies use
+Zod 4.4.3. These copies use
 the same complete MIT license reproduced in the Zod 4.3.6 section above.
 
 @agentclientprotocol/sdk 1.4.0, 0.26.0 and 2.6.0
 -----------------------------------------
 
 Jig bundles ACP SDK 1.4.0 in its CLI and Claude adapter; the prebundled Codex
-adapter also contains 1.4.0. The Pi adapter bundles 0.26.0. Both are licensed
+adapter also contains 1.4.0. Both are licensed
 under Apache-2.0, retained in `LICENSES/Apache-2.0.txt`.
 
    Copyright 2025 Zed Industries, Inc. and contributors
