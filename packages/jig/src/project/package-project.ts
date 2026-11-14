@@ -27,7 +27,7 @@ import {
   validateEntrypointInterface,
 } from './entrypoint.js'
 import { isDirectRunEligible } from './flow-source.js'
-import { type AcpGrant, type GrantPolicy, grantName, normalizeGrant } from './grants.js'
+import { type GrantPolicy, type NativeAcpClient, grantName, normalizeGrant } from './grants.js'
 import {
   type InvocationIdentity,
   type InvocationRequirement,
@@ -118,7 +118,7 @@ interface PreparedFlow {
 export function linkPackageProject(
   input: PackageProjectInput,
   maximumActivationTargets?: number,
-  agentOverride?: AcpGrant['client'],
+  agentOverride?: NativeAcpClient,
 ): PackageProjectValue {
   if (agentOverride !== undefined && !['codex', 'claude', 'pi'].includes(agentOverride))
     throw new TypeError('review Agent selection must be codex, claude or pi')
@@ -301,44 +301,37 @@ export function linkPackageProject(
     ),
     (units) => budget.consume(units),
   )
-  // Authored policy and the complete graph have passed ordinary validation.
-  // Construct one effective reviewed policy; Run never applies an overlay.
+  // Inert, unpinned ACP requests require one operator choice during review.
+  // Unbound optional recovery slots do not create an Agent selection request.
+  if (agentOverride === undefined) {
+    for (const binding of value.bindings) {
+      for (const [slot, route] of Object.entries(binding.slots)) {
+        if (route.kind !== 'grant' || route.policy.kind !== 'acp' || route.policy.client !== undefined)
+          continue
+        invalid(
+          'PROJECT_AGENT_SELECTION_REQUIRED',
+          'This ACP resource does not pin a native client. Review interactively or specify --agent codex, --agent claude, or --agent pi.',
+          binding.declarationPath,
+          `/slots/${pointerToken(slot)}`,
+        )
+      }
+    }
+  }
+  // Resolve only source grants with no client. A pinned client (including its
+  // model, authProfile, or retention) stays untouched and separately qualified.
   if (agentOverride !== undefined) {
     let selected = 0
     const bindings = value.bindings.map((binding) => {
       const slots = Object.fromEntries(
         Object.entries(binding.slots).map(([slot, route]) => {
-          if (route.kind !== 'grant' || route.policy.kind !== 'acp') return [slot, route]
+          if (route.kind !== 'grant' || route.policy.kind !== 'acp' || route.policy.client !== undefined)
+            return [slot, route]
           selected++
-          const policy = route.policy
-          if (policy.client !== agentOverride) {
-            if (policy.authProfile !== undefined)
-              invalid(
-                'PROJECT_AGENT_OVERRIDE_PROFILE',
-                'This ACP policy selects an operator authentication profile. A client-only override cannot move that profile to another client. Edit the ACP grant and review the new selection.',
-                binding.declarationPath,
-                `/slots/${pointerToken(slot)}`,
-              )
-            if (policy.model !== undefined)
-              invalid(
-                'PROJECT_AGENT_OVERRIDE_MODEL',
-                'A client-only override cannot carry an explicit model pin to another client. Edit this ACP policy before reviewing with --agent.',
-                binding.declarationPath,
-                `/slots/${pointerToken(slot)}`,
-              )
-            if (policy.retainSessions === true && agentOverride !== 'codex')
-              invalid(
-                'PROJECT_AGENT_OVERRIDE_RETENTION',
-                'This ACP policy retains Codex sessions. A client-only override cannot change its retention policy. Edit this policy before selecting another client.',
-                binding.declarationPath,
-                `/slots/${pointerToken(slot)}`,
-              )
-          }
           return [
             slot,
             Object.freeze({
               ...route,
-              policy: normalizeGrant({ ...policy, client: agentOverride }),
+              policy: normalizeGrant({ ...route.policy, client: agentOverride }),
             }),
           ]
         }),
@@ -348,7 +341,7 @@ export function linkPackageProject(
     if (selected === 0)
       invalid(
         'PROJECT_AGENT_OVERRIDE_UNUSED',
-        '--agent requires at least one selected ACP resource. This project selects none.',
+        '--agent requires at least one selected unpinned ACP resource. Explicit pins and absent optional backups are not overridden.',
         'jig.ts',
       )
     value = Object.freeze({ ...value, bindings: Object.freeze(bindings) })
