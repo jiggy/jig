@@ -156,6 +156,11 @@ test('explorer file selection submits only explicit bounded bytes to the ordinar
       buffer: Buffer.from('a,b\\n1,2\\n', 'utf8'),
     })
     await page.getByText('sample.csv').waitFor()
+    await page.waitForFunction(() => {
+      const button = [...document.querySelectorAll('button')]
+        .find((item) => item.textContent?.includes('Run workflow'))
+      return button !== undefined && !button.disabled
+    })
     assert(await run.isEnabled())
     assert.deepEqual(host.submissions, [], 'choosing input files never starts a workflow')
     await run.click()
