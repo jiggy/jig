@@ -4957,6 +4957,7 @@ function inspectionState(states: readonly PrivateInspectionState[]): PrivateInsp
 /** Read the last approved snapshot, not visible source or a pending review.
  * No coordinator, runtime, recovery, resolution, or write transaction is acquired.
  */
+
 export async function inspectPrivateApprovedProject(
   projectRoot: string,
   selector?: string,
@@ -4964,6 +4965,7 @@ export async function inspectPrivateApprovedProject(
   describeTargets = false,
   onAdmission?: (digest: string, writableTargets: readonly string[]) => void,
   onCandidate?: (candidate: PrivateActivationCandidateArtifactV5) => void,
+  flowContext?: Readonly<{ target?: string }>,
 ): Promise<JsonValue> {
   let owner: StateOwner
   try {
@@ -5085,9 +5087,30 @@ export async function inspectPrivateApprovedProject(
           await captured.dispose()
         }
       }
+      let flow: JsonValue | undefined
+      if (flowContext !== undefined) {
+        if (flowContext.target !== undefined && !targetIndexes.has(flowContext.target))
+          invalid('INSPECTION_TARGET_MISSING', 'target is not in the approved revision')
+        flow = {
+          digest: request.package.digest,
+          settings: request.settings,
+          routes: Object.entries(request.slots).map(([slot, route]) =>
+            route.kind === 'flow'
+              ? {
+                  slot,
+                  target:
+                    route.target.kind === 'binding'
+                      ? 'binding:' + route.target.id
+                      : flowSelector(route.target.path),
+                }
+              : { slot, resource: route.native },
+          ),
+        }
+      }
       listed.push({
         ...targets[index]!,
         state,
+        ...(flow === undefined ? {} : { flow }),
         ...(describeTargets ? { description: descriptions.get(request.packagePath)! } : {}),
       })
     }

@@ -52,3 +52,13 @@ read with `git show commit:path`.
   distribution. Reconsider embedding Bun only if a reviewed, reproducible
   source-and-relinking solution satisfies every applicable license obligation
   and remains simpler than consuming one exact release-owned runtime package.
+
+## Agent source-context screening
+
+Recovery: `64cf88459c11223bb0dd96a0d2b073289cbcb178:scripts/experiments/visual-flows/agent-context/`.
+The adjacent `agent-context.test.mjs` and `behavior-study.test.mjs` retain harness checks.
+The experiment compared representations and source bundles across three public applications.
+It did not establish reliable workflow editing or a winning representation.
+Anchored interpretations still misstated caller reactions, timer scopes, and effects.
+Reconsider only through executed route-change tasks that preserve alternate paths and include map construction and maintenance costs.
+Do not restore the former source-bundle commands or treat matching hashes as behavioral verification.
