@@ -776,7 +776,12 @@ test('release generation is serialized, scoped to main, and has no registry auth
   assert.ok(version)
   assert.match(version.if, /steps\.current\.outputs\.current == 'true'/)
   assert.equal(version.with['pr-base-branch'], 'main')
-  assert.equal(version.with['push-with-git-cli'], false)
+  // Use the pinned action's credential-scoped git push rather than GraphQL
+  // createCommitOnBranch, which has returned opaque GitHub server errors.
+  assert.equal(version.with['push-with-git-cli'], true)
+  assert.match(version.uses, /^changesets\/action\/version@[a-f0-9]{40}$/)
+  assert.equal(writer.permissions.contents, 'write')
+  assert.equal(writer.permissions['pull-requests'], 'write')
   for (const job of Object.values(workflow.jobs)) {
     assert.equal(job.environment, undefined)
     const checkout = job.steps.find((step) => step.uses?.startsWith('actions/checkout@'))
