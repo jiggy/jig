@@ -15,6 +15,7 @@ Authored behavioral maps remain distinct from host-computed configured topology.
 `results.md` explains live application maps alongside observed calls, without implying sequence, branch evaluation, or saved invocation history.
 It also owns configured-topology inspection of current source or retained approval.
 This structural guide supplies no behavioral overview or change-impact claim.
+Focused topology preserves callers, other configured routes and shared package uses, with explicit boundary omissions.
 It owns the pre-run explorer guide, explicit input and launch steps, supported interfaces, and separate Close meanings.
 `../reference/troubleshooting.md` owns operational diagnosis and recovery procedures.
 

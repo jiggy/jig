@@ -260,6 +260,7 @@ Launch readiness and remote provider availability remain unchecked.
 
   --json     Emit JSON even in a terminal (redirected output is JSON unless --flow is selected)
   --flow     Emit configured topology as Markdown, including when piped
+             A target retains callers, their other slots and shared package uses
   --approved With --flow: use the last approved snapshot instead of the working tree
   --result DIRECTORY  Inspect a saved packet without approval or new execution
   --display MODE      For saved results: plain (default), tui or web
