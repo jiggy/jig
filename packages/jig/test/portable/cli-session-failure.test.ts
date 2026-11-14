@@ -502,7 +502,8 @@ for (const closeFails of [false, true]) {
       expect(result.text).not.toContain('Pi executable not found')
     } else {
       expect(result.text).toContain('Pi executable not found')
-      expect(result.text).toContain('$ jig review --agent codex')
+      expect(result.text).not.toContain('$ jig review --agent codex')
+      expect(result.text).toContain('$ jig review')
       expect(result.text).not.toContain('JIG_CLEANUP_FAILED')
     }
   })
