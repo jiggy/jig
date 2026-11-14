@@ -7,7 +7,8 @@ import { link, mkdir, mkdtemp, realpath, rename, rm, symlink, writeFile } from '
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { validateReportingMessage } from '@jigging/reporting'
-import { privateCliRequiresHost, privateCliSavedResultInspection } from '../../src/cli.js'
+import { privateCliRequiresHost, privateCliRecordedResultComparison, privateCliSavedResultInspection } from '../../src/cli.js'
+import { privateCompareSavedResults, privateSavedComparisonPlain } from '../../src/cli-saved-result-comparison.js'
 import { PrivateCliProgress } from '../../src/cli-progress.js'
 import { PrivateRunModel } from '../../src/cli-run-model.js'
 import {
@@ -77,6 +78,147 @@ async function inspect(root: string, args: string[] = []) {
     timeoutMs: 15_000,
   })
 }
+
+async function compare(before: string, after: string, options: readonly string[] = []) {
+  const child = Bun.spawn(
+    [process.execPath, join(suiteTestRoot, '../src/cli.ts'), 'compare', before, after, ...options],
+    { cwd: before, stdout: 'pipe', stderr: 'pipe' },
+  )
+  return settleTestCommand(child, {
+    evidence: join(await mkdtemp(join(before, 'comparison-evidence-')), 'command'),
+    timeoutMs: 15_000,
+  })
+}
+
+test('saved comparison reads two packets without a project, reports exact values and verified file differences', async () =>
+  fixture(async (root) => {
+    const before = join(root, 'before')
+    const after = join(root, 'after')
+    await mkdir(before)
+    await mkdir(after)
+    await packet(before, {
+      'same.txt': Buffer.from('same'),
+      'changed.txt': Buffer.from('old'),
+      'removed.txt': Buffer.from('removed'),
+    }, {
+      method: 'flow:review',
+      input: { digest: 'sha256:before' },
+      output: { rows: [{ state: 'accepted', score: 1 }, { state: 'same' }] },
+    })
+    await packet(after, {
+      'same.txt': Buffer.from('same'),
+      'changed.txt': Buffer.from('new'),
+      'added.txt': Buffer.from('added'),
+    }, {
+      method: 'flow:review',
+      input: { digest: 'sha256:after' },
+      output: { rows: [{ state: 'accepted', score: 2 }, { state: 'same' }] },
+    })
+    expect(privateCliRequiresHost(['compare', before, after])).toBeFalse()
+    expect(privateCliRecordedResultComparison(['compare', before, after])).toBeTrue()
+    const machine = await compare(before, after, ['--json'])
+    expect(machine.code, machine.stderr).toBe(0)
+    expect(machine.stderr).toBe('')
+    const result = JSON.parse(machine.stdout)
+    expect(result.kind).toBe('recorded-result-comparison/v1')
+    expect(result.before.complete).toBeTrue()
+    expect(result.after.complete).toBeTrue()
+    expect(result.fields.changes.map((item: {pointer: string}) => item.pointer)).toEqual([
+      '/input/digest',
+      '/output/rows/0/score',
+    ])
+    expect(result.files.entries.map((item: {path: string; state: string}) => [item.path, item.state])).toEqual([
+      ['added.txt', 'added-recorded'],
+      ['changed.txt', 'changed-recorded'],
+      ['removed.txt', 'removed-recorded'],
+      ['same.txt', 'unchanged-verified'],
+    ])
+    expect(result.files).toMatchObject({ unchanged: 1, changed: 3, unverified: 0 })
+    // Redirected stdout deliberately stays machine JSON even without --json.
+    const redirected = await compare(before, after)
+    expect(redirected.code, redirected.stderr).toBe(0)
+    expect(JSON.parse(redirected.stdout)).toEqual(result)
+    // Check the human presenter directly without pretending a pipe is an interactive terminal.
+    const first = await privateCaptureSavedResult(before)
+    const second = await privateCaptureSavedResult(after)
+    try {
+      const human = privateSavedComparisonPlain(privateCompareSavedResults(first, second))
+      expect(human).toContain('Recorded result comparison')
+      expect(human).toContain('changed "/output/rows/0/score"')
+      expect(human).toContain('unchanged-verified "same.txt"')
+      expect(human).not.toContain('runId')
+    } finally {
+      second.close()
+      first.close()
+    }
+  }))
+
+test('saved comparison never calls unverified recorded file digests unchanged', async () =>
+  fixture(async (root) => {
+    const before = join(root, 'before')
+    const after = join(root, 'after')
+    await mkdir(before)
+    await mkdir(after)
+    await packet(before, { 'source.txt': Buffer.from('same') })
+    await packet(after, { 'source.txt': Buffer.from('same') })
+    await rm(join(after, 'files', 'source.txt'))
+    const observed = await compare(before, after, ['--json'])
+    expect(observed.code).toBe(1)
+    expect(observed.stderr).toContain('JIG_RESULT_FILES_INCOMPLETE')
+    const result = JSON.parse(observed.stdout)
+    expect(result.before.complete).toBeTrue()
+    expect(result.after.complete).toBeFalse()
+    expect(result.files.entries).toMatchObject([{ path: 'source.txt', state: 'unverified' }])
+    expect(result.files).toMatchObject({ unchanged: 0, unverified: 1 })
+  }))
+
+test('saved comparison refuses unsafe packets and malformed invocation without printing rejected values', async () =>
+  fixture(async (root) => {
+    const before = join(root, 'before')
+    const after = join(root, 'after')
+    await mkdir(before)
+    await mkdir(after)
+    await packet(before)
+    await packet(after)
+    expect((await compare(before, after, ['--json', '--json'])).code).toBe(2)
+    await writeFile(join(after, 'result.json'), '{"status":"succeeded","status":"malicious"}')
+    const failed = await compare(before, after, ['--json'])
+    expect(failed.code).toBe(1)
+    expect(failed.stdout).toBe('')
+    expect(failed.stderr).toContain('JIG_RESULT_UNAVAILABLE')
+    expect(failed.stderr).not.toContain('malicious')
+  }))
+
+test('comparing recorded results is order-independent, capped and separate from application verdicts', async () =>
+  fixture(async (root) => {
+    const before = join(root, 'before')
+    const after = join(root, 'after')
+    await mkdir(before)
+    await mkdir(after)
+    await packet(before, {}, { outcome: 'accepted', output: { b: 2, a: 1 } })
+    await packet(after, {}, { outcome: 'accepted', output: { a: 1, b: 2 } })
+    const a = await privateCaptureSavedResult(before)
+    const b = await privateCaptureSavedResult(after)
+    try {
+      const same = privateCompareSavedResults(a, b)
+      expect(same.fields.changes).toEqual([])
+    } finally {
+      a.close()
+      b.close()
+    }
+    await packet(after, {}, {
+      outcome: 'accepted',
+      output: { rows: Array.from({ length: 170 }, (_, index) => ({ value: index })) },
+    })
+    await packet(before, {}, {
+      outcome: 'accepted',
+      output: { rows: Array.from({ length: 170 }, (_, index) => ({ value: index + 1 })) },
+    })
+    const limited = JSON.parse((await compare(before, after, ['--json'])).stdout)
+    expect(limited.fields.changes).toHaveLength(128)
+    expect(limited.fields.truncated).toBeTrue()
+    expect(limited.fields.changes.every((item: {pointer: string}) => item.pointer.startsWith('/output/rows/'))).toBeTrue()
+  }))
 
 test('actual descriptors refuse missing and oversized files and preserve preexisting interruption', async () =>
   fixture(async (root) => {

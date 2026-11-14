@@ -9,6 +9,7 @@ import {
   privateCliPrepareArguments,
   privateCliRequiresHost,
   privateCliSavedResultInspection,
+  privateCliRecordedResultComparison,
   privateCliVerification,
   publicTerminal,
 } from './cli.js'
@@ -109,7 +110,7 @@ async function runPrivateInstalledCli(
   })
   if ('exitCode' in prepared) return exit(prepared.exitCode)
   arguments_ = prepared.arguments
-  if (privateCliSavedResultInspection(arguments_)) return runWithEnvironment(arguments_, {}, signal)
+  if (privateCliSavedResultInspection(arguments_) || privateCliRecordedResultComparison(arguments_)) return runWithEnvironment(arguments_, {}, signal)
   if (arguments_[0] === 'run') process.env.JIG_PRIVATE_RUN_PREPARED = '1'
   if (selectedAdmission === undefined && prepared.admissionDigest !== undefined)
     process.env.JIG_PRIVATE_RUN_ADMISSION = prepared.admissionDigest
@@ -151,7 +152,7 @@ async function runWithEnvironment(
   operatorEnvironment: Readonly<Record<string, string | undefined>>,
   signal?: AbortSignal,
 ): Promise<InstalledCliOutcome> {
-  if (privateCliSavedResultInspection(arguments_)) {
+  if (privateCliSavedResultInspection(arguments_) || privateCliRecordedResultComparison(arguments_)) {
     const outputStop = new AbortController()
     const stdout = new PrivateCliOutput(process.stdout, outputStop)
     const stderr = new PrivateCliOutput(process.stderr, outputStop)

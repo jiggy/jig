@@ -952,6 +952,44 @@ hierarchy even when the application cannot start. Review policy is generated
 from the same captured records that are approved, and human Run summaries
 come from the same terminal observations as machine results.
 
+### Compare recorded results
+
+`jig compare BEFORE AFTER [--json]` reads exactly two operator-selected saved packet
+directories through the same descriptor-confined immutable capture used by
+`jig inspect --result`. It does not open a project, inspect credentials or
+approval, evaluate source, acquire execution authority, execute or replay a Run,
+or contact a provider. Neither packet's recorded destination can choose the
+other packet or another file.
+
+The comparison reports differences in recorded method/input identities,
+execution status and application output/details, not historical execution
+paths or causality. Objects compare by member identity regardless of source
+member order. Array order remains significant. The machine output is one
+`recorded-result-comparison/v1` JSON value, not a Run terminal. Human output
+is escaped as untrusted recorded text.
+
+Report at most 128 field differences with
+512-byte JSON-pointer locations and 192-byte excerpts, and disclose truncation.
+All reported excerpts include exact-byte digests. Excerpts are never claimed
+complete when clipped.
+
+The file comparison lists only paths in the selected packet manifests. Matching
+recorded digests establish verified unchanged bytes only when both files were
+successfully captured and verified. Missing, changed, or inaccessible files
+retain explicit unverified evidence. Capture never rereads a path after the
+initial verified capture. Empty manifests and valid recorded execution failures
+remain comparable.
+
+Exit 0 means both selected packets and their file captures are complete, even
+when their recorded Run outcomes differ. Exit 1 means invalid/unavailable packet,
+incomplete files, or output failure. Exit 2 means interruption or invalid command
+syntax. No result packet is rewritten.
+
+`--json` or redirected stdout selects
+machine output. Missing or malformed packets emit no invented comparison
+record. Separate recorded claims from authenticated provenance and never infer
+application success or required follow-up from field names.
+
 ### Retained application view commands
 
 The experimental `jig views` command inspects explicitly retained application projections without evaluating source or acquiring execution authority.
