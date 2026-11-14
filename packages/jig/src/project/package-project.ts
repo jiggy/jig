@@ -321,11 +321,17 @@ export function linkPackageProject(
   // model, authProfile, or retention) stays untouched and separately qualified.
   if (agentOverride !== undefined) {
     let selected = 0
+    let pinned = 0
+    let allPinnedMatch = true
     const bindings = value.bindings.map((binding) => {
       const slots = Object.fromEntries(
         Object.entries(binding.slots).map(([slot, route]) => {
-          if (route.kind !== 'grant' || route.policy.kind !== 'acp' || route.policy.client !== undefined)
+          if (route.kind !== 'grant' || route.policy.kind !== 'acp') return [slot, route]
+          if (route.policy.client !== undefined) {
+            pinned++
+            if (route.policy.client !== agentOverride) allPinnedMatch = false
             return [slot, route]
+          }
           selected++
           return [
             slot,
@@ -338,10 +344,12 @@ export function linkPackageProject(
       )
       return Object.freeze({ ...binding, slots: Object.freeze(slots) })
     })
-    if (selected === 0)
+    // Explicit same-client --agent is an inert operator affirmation. It keeps
+    // existing noninteractive workflows working without overriding any pin.
+    if (selected === 0 && (pinned === 0 || !allPinnedMatch))
       invalid(
         'PROJECT_AGENT_OVERRIDE_UNUSED',
-        '--agent requires at least one selected unpinned ACP resource. Explicit pins and absent optional backups are not overridden.',
+        '--agent must select an unpinned ACP resource or match every explicitly pinned ACP client. Explicit pins and absent optional backups are not overridden.',
         'jig.ts',
       )
     value = Object.freeze({ ...value, bindings: Object.freeze(bindings) })
