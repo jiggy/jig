@@ -105,9 +105,12 @@ export type GrantPolicy =
   | ({ readonly kind: 'command' } & ProjectCommand)
   | ({ readonly kind: 'evaluation' } & ProjectEvaluation)
   | AcpGrant
+export type NativeAcpClient = 'codex' | 'claude' | 'pi'
+
+/** An omitted client delegates native-client choice to review. */
 export interface AcpGrant {
   readonly kind: 'acp'
-  readonly client: 'codex' | 'claude' | 'pi'
+  readonly client?: NativeAcpClient
   readonly model?: string
   readonly authProfile?: string
   readonly maxTurns?: number
@@ -136,21 +139,24 @@ export function normalizeGrant(value: unknown): GrantPolicy {
       ('retainSessions' in policy &&
         (policy.retainSessions !== true || policy.client !== 'codex')) ||
       ('maxTurns' in policy && !isPrivateNativeTurnAllowance(policy.maxTurns)) ||
+      (policy.client === undefined &&
+        ('model' in policy || 'authProfile' in policy || 'retainSessions' in policy)) ||
       ('authProfile' in policy &&
         (typeof policy.authProfile !== 'string' ||
           policy.authProfile.length > 64 ||
           !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(policy.authProfile))) ||
-      !['codex', 'claude', 'pi'].includes(policy.client as string) ||
+      (policy.client !== undefined &&
+        !['codex', 'claude', 'pi'].includes(policy.client as string)) ||
       ('model' in policy &&
         (typeof policy.model !== 'string' ||
           !/^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}(?![\s\S])/.test(policy.model)))
     )
       throw new TypeError(
-        `ACP grant requires a supported native client, optional model and authProfile, maxTurns from ${PRIVATE_NATIVE_TURN_POLICY.minimum} to ${PRIVATE_NATIVE_TURN_POLICY.maximum}, and optional retainSessions: true for Codex`,
+        `ACP grant allows omitted client for operator selection, with model, authProfile and retention requiring an explicitly pinned client, maxTurns from ${PRIVATE_NATIVE_TURN_POLICY.minimum} to ${PRIVATE_NATIVE_TURN_POLICY.maximum}, and optional retainSessions: true for Codex`,
       )
     return Object.freeze({
       kind,
-      client: policy.client as AcpGrant['client'],
+      ...('client' in policy ? { client: policy.client as NativeAcpClient } : {}),
       ...('model' in policy ? { model: policy.model as string } : {}),
       ...('authProfile' in policy ? { authProfile: policy.authProfile as string } : {}),
       ...('maxTurns' in policy ? { maxTurns: policy.maxTurns as number } : {}),
