@@ -363,7 +363,7 @@ test(
     }
     try {
       expect(
-        (await request(1, 'initialize', { protocolVersion: 2, capabilities: {} })).error,
+        (await request(1, 'initialize', { protocolVersion: 2, capabilities: {}, info: { name: 'jig-codex-recording', version: '2' } })).error,
       ).toBeUndefined()
       await child.stdin.end()
       expect(await child.exited, await diagnostics).toBe(0)
