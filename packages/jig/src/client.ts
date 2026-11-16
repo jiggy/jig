@@ -372,6 +372,8 @@ export function createAttemptClient(options: AttemptClientOptions) {
       unary('lookup', request, call),
     cancel: (request: AttemptRequests['cancel'], call?: AttemptCallOptions) =>
       unary('cancel', request, call),
+    reconcile: (request: AttemptRequests['reconcile'], call?: AttemptCallOptions) =>
+      unary('reconcile', request, call),
     result: (request: AttemptRequests['result'], call?: AttemptCallOptions) =>
       unary('result', request, call),
     export: (request: AttemptRequests['export'], call?: AttemptCallOptions) =>
