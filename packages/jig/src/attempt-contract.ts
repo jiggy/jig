@@ -420,7 +420,11 @@ const results: Record<keyof AttemptResults, Check> = {
   }),
   lookup: observation,
   cancel: record({ acknowledged: boolean, observation }),
-  reconcile: observation,
+  reconcile: (value) => {
+    observation(value)
+    const reconciled = value as AttemptObservation
+    if (reconciled.identity === 'accepted' && reconciled.cleanup !== 'confirmed') fail()
+  },
   result: (value) => {
     record(
       {

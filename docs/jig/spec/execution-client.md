@@ -196,12 +196,14 @@ completion may win the cancellation race. An accepted terminal remains immutable
 
 When an accepted ticket remains cleanup-pending after its foreground owner is lost,
 `reconcile` makes one explicit trusted project-session acquisition. The exclusive
-coordinator refuses an active owner; after verified takeover, it recovers only
+coordinator refuses an active owner. After verified takeover, it recovers only
 older durable execution, fencing and releasing descendants without launching a
 replacement Run. Acquisition can also reconcile other pending older Runs in the
-same project. A failed or incomplete fence/cleanup refuses the command and leaves
-protected evidence intact; the caller must preserve the ticket. For prepared or
-already settled identities, the command only returns their current observation.
+same project.
+
+A failed or incomplete fence/cleanup refuses the command and leaves protected evidence intact.
+The caller must preserve the ticket.
+For prepared or already settled identities, the command only returns their current observation.
 Reconciliation does not reissue cancellation, renew deadlines, re-run a Flow,
 recover remote effects, or turn retained checkpoints into final output.
 

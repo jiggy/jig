@@ -190,7 +190,7 @@ Read observations until the original owner settles.
 If the original owner is gone and cleanup remains pending, you may **explicitly**
 call `client.reconcile({ ticket: prepared.ticket })` to acquire trusted recovery
 of the saved attempt. It does not prepare, submit, resume, or retry the Flow.
-An active owner or unconfirmed fence/cleanup refuses; preserve the saved task
+An active owner or unconfirmed fence/cleanup refuses. Preserve the saved task
 and inspect its original observation rather than retrying the execution.
 Connection loss revokes owned execution but cannot undo remote effects already accepted by a provider.
 
