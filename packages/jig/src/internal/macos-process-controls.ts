@@ -410,7 +410,7 @@ export function privateMacosPlatformFor(
   kernel: string,
   build: string,
 ): PrivateMacosPlatform | undefined {
-  const version = /^(\\d+)\\.\\d+\\.\\d+$/.exec(kernel)
+  const version = /^(\d+)\.\d+\.\d+$/.exec(kernel)
   if (
     architecture !== 'arm64' ||
     !version || Number(version[1]) < 23 ||
