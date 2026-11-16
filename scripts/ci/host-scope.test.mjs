@@ -91,13 +91,7 @@ test('always-present host gates require successful scope and exactly complete or
     const jobs =
       scope === 'linux'
         ? ['host-artifacts', 'host-suite', 'rootless-linux']
-        : [
-            'host-artifacts',
-            'cohort-allocator',
-            'pr-deadline-guard',
-            'prerequisites',
-            'qualified-architecture',
-          ]
+        : ['pr-smoke', 'host-artifacts', 'prerequisites', 'qualified-architecture']
     for (const event of ['pull_request', 'push', 'workflow_dispatch']) {
       for (const required of [true, false]) {
         const report = { required }
@@ -106,7 +100,7 @@ test('always-present host gates require successful scope and exactly complete or
           ...Object.fromEntries(
             jobs.map((job) => [
               job,
-              required && (job !== 'pr-deadline-guard' || event === 'pull_request')
+              required && (scope !== 'macos' || (event === 'pull_request' ? job === 'pr-smoke' : job !== 'pr-smoke'))
                 ? 'success'
                 : 'skipped',
             ]),
