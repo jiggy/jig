@@ -49,6 +49,30 @@ export function requireMacHostPrerequisites(evidence, architecture) {
   return evidence
 }
 
+// Current ARM hosts are admitted by observed kernel mechanisms, not a build allowlist.
+// This is prerequisite evidence only: native lifecycle and containment tests
+// establish qualification on the executing host.
+export function requireCurrentMacHostPrerequisites(evidence, architecture) {
+  const major = typeof evidence?.kernel === 'string' && /^(\\d+)\\.\\d+\\.\\d+$/.exec(evidence.kernel)
+  if (
+    architecture !== 'arm64' ||
+    evidence?.kind !== 'macos-host-prerequisites/1' ||
+    evidence.arch !== 'arm64' ||
+    !major || Number(major[1]) < 23 ||
+    !/^[0-9]{2}[A-Z][0-9A-Za-z]{2,15}$/.test(evidence.build ?? '') ||
+    evidence.bun !== QUALIFIED_BUN.version ||
+    evidence.revision !== QUALIFIED_BUN.revision ||
+    evidence.processIdentityBytes !== 56 ||
+    evidence.coalitionIdentityBytes !== 40 ||
+    evidence.coalitionUsageBytes !== 296 ||
+    !Number.isSafeInteger(evidence.pidVersion) ||
+    evidence.pidVersion < 0 ||
+    evidence.backendQualified !== false
+  )
+    throw new Error('Mac host lacks the required native ARM process accounting prerequisites')
+  return evidence
+}
+
 export function readMacHostPrerequisites(path, architecture) {
   if (!constants.O_NOFOLLOW || !constants.O_NONBLOCK)
     throw new Error('Mac prerequisite reads require no-follow and nonblocking support')
@@ -68,7 +92,7 @@ export function readMacHostPrerequisites(path, architecture) {
       length += count
     }
     if (length > 8192) throw new Error('Mac prerequisites require a bounded regular file')
-    return requireMacHostPrerequisites(
+    return requireCurrentMacHostPrerequisites(
       JSON.parse(bytes.subarray(0, length).toString('utf8')),
       architecture,
     )
