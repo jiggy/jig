@@ -44,12 +44,15 @@ test('attempt grammar classifies execution requirements without acquiring author
     'submit',
     'lookup',
     'cancel',
+    'reconcile',
     'result',
     'export',
   ] as const) {
     const args = ['attempt', operation, '--json']
     expect(privateCliAttemptOperation(args)).toBe(operation)
-    expect(privateCliRequiresHost(args)).toBe(operation === 'submit')
+    expect(privateCliRequiresHost(args)).toBe(
+      operation === 'submit' || operation === 'reconcile',
+    )
     for (const invalid of [
       ['attempt', operation],
       ['attempt', operation, '--json', 'ticket-must-not-be-an-argument'],
@@ -66,4 +69,7 @@ test('attempt grammar classifies execution requirements without acquiring author
     privateCliCommandLifetimeMs(['run', 'flow:flows/example', '--timeout', '24h']),
   )
   expect(privateCliCommandLifetimeMs(['attempt', 'lookup', '--json'])).toBe(300_000)
+  expect(privateCliCommandLifetimeMs(['attempt', 'reconcile', '--json'])).toBe(
+    privateCliCommandLifetimeMs(['run', 'flow:flows/example', '--timeout', '5m']),
+  )
 })
