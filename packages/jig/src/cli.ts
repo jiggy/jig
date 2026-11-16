@@ -176,7 +176,7 @@ ${VERIFICATION_HELP}`,
 Context creates presentation storage and returns opaque publication metadata.
 Receipt recovery returns the original acceptance without reinstalling removed material.
 Reset invalidates older contexts. Close inspection leaves retained material intact.`,
-  attempt: `Usage: jig attempt <inspect|prepare|submit|lookup|cancel|result|export> --json
+  attempt: `Usage: jig attempt <inspect|prepare|submit|lookup|cancel|reconcile|result|export> --json
 
 Read one bounded JSON request envelope from stdin and write machine records to
 stdout. The application client uses this same installed boundary.
@@ -189,8 +189,9 @@ foreground connection; keep stdin open until its terminal record. Closing the
 owning connection requests cancellation, not detached execution. A duplicate
 observer cannot cancel the original owner merely by disconnecting.
 
-lookup and result only read retained facts. cancel requests settlement; it does
-not undo remote effects or acknowledge cleanup. export publishes retained bytes
+lookup and result only read retained facts. cancel requests revocation; it does
+not undo remote effects or acknowledge cleanup. reconcile tries to recover the
+original older owner without submitting work. export publishes retained bytes
 without executing the Flow. Expired or unavailable history is not permission
 to retry. Use @jigging/jig/client for typed application integration.
 
@@ -825,7 +826,8 @@ async function executeNew(arguments_: readonly string[], runtime: CliRuntime): P
 /** Whether the installed command needs to acquire the private execution host. */
 export function privateCliRequiresHost(arguments_: readonly string[]): boolean {
   if (isHelpRequest(arguments_)) return false
-  if (arguments_[0] === 'attempt') return privateCliAttemptOperation(arguments_) === 'submit'
+  if (arguments_[0] === 'attempt')
+    return ['submit', 'reconcile'].includes(privateCliAttemptOperation(arguments_) ?? '')
   try {
     if (arguments_[0] === 'inspect') {
       const parsed = parseInspect(arguments_)
@@ -873,6 +875,7 @@ const ATTEMPT_OPERATIONS: readonly AttemptVerb[] = [
   'submit',
   'lookup',
   'cancel',
+  'reconcile',
   'result',
   'export',
 ]
@@ -2446,6 +2449,8 @@ export function privateCliCommandLifetimeMs(
 ): number | null {
   if (privateCliAttemptOperation(arguments_) === 'submit')
     return privateRootlessCommandLifetime(24 * 60 * 60 * 1000)
+  if (privateCliAttemptOperation(arguments_) === 'reconcile')
+    return privateRootlessCommandLifetime(5 * 60 * 1000)
   if (arguments_[0] !== 'run') return PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS
   try {
     const parsed = parseRun(arguments_)
