@@ -138,7 +138,7 @@ export const executePrivateCliAttempt: NonNullable<PrivateCliOptions['executeAtt
           // An active owner refuses acquisition; never seize its work.
           let session: ProjectSession
           try {
-            session = await host.acquire(projectRoot)
+            session = await invocation.host.acquire(projectRoot)
           } catch (error) {
             if (error instanceof ProjectAdministrationError && error.code === 'PROJECT_BUSY')
               throw new PrivateAttemptError('PROJECT_BUSY', 'The original owner is still active.')
