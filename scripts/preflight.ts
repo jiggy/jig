@@ -17,7 +17,7 @@ export function requireMacHost(host: {
   bunVersion: string
   bunRevision: string
 }) {
-  const major = /^(\\d+)\\.\\d+\\.\\d+$/.exec(host.kernel)
+  const major = /^(\d+)\.\d+\.\d+$/.exec(host.kernel)
   const selected =
     host.arch === 'arm64' &&
     major !== null &&
