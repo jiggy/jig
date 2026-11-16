@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import { setTimeout as delay, setImmediate as yieldTurn } from 'node:timers/promises'
-import type { ProjectSession } from './administration/project.js'
+import { ProjectAdministrationError, type ProjectSession } from './administration/project.js'
 import { RootAdministrationError } from './administration/root.js'
 import type {
   AttemptErrorCode,
@@ -127,6 +127,42 @@ export const executePrivateCliAttempt: NonNullable<PrivateCliOptions['executeAtt
         const { ticket } = invocation.request as AttemptRequests['cancel']
         const value = await cancelPrivateAttempt({ projectRoot, ticket })
         await write({ protocolVersion: 1, operation, event: 'result', value })
+        return 0
+      }
+      case 'reconcile': {
+        const { ticket } = invocation.request as AttemptRequests['reconcile']
+        const before = await inspectPrivateAttempt({ projectRoot, ticket })
+        if (before.observation.identity === 'accepted' && before.observation.cleanup === 'pending') {
+          // A new exclusive coordinator may recover older durable Runs. It
+          // cannot submit the original Run again or invent execution results.
+          // An active owner refuses acquisition; never seize its work.
+          let session: ProjectSession
+          try {
+            session = await host.acquire(projectRoot)
+          } catch (error) {
+            if (error instanceof ProjectAdministrationError && error.code === 'PROJECT_BUSY')
+              throw new PrivateAttemptError('PROJECT_BUSY', 'The original owner is still active.')
+            throw new PrivateAttemptError(
+              'CLEANUP_UNRESOLVED',
+              'The original Run could not be safely recovered.',
+            )
+          }
+          try {
+            await session.close()
+          } catch {
+            throw new PrivateAttemptError(
+              'CLEANUP_UNRESOLVED',
+              'The recovered project owner did not finish cleanup.',
+            )
+          }
+        }
+        const { observation } = await inspectPrivateAttempt({ projectRoot, ticket })
+        if (observation.identity === 'accepted' && observation.cleanup !== 'confirmed')
+          throw new PrivateAttemptError(
+            'CLEANUP_UNRESOLVED',
+            'The original Run has no confirmed cleanup.',
+          )
+        await write({ protocolVersion: 1, operation, event: 'result', value: observation })
         return 0
       }
       case 'result': {
