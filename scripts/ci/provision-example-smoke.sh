@@ -26,7 +26,7 @@ mkdir "$client"
 # Digest is the rust-v0.166.0 release asset identity, not a floating installer.
 archive=$fixture/codex-package.tar.gz
 curl --fail --location --proto '=https' --tlsv1.2 \
-  --connect-timeout 15 --max-time 120 --retry 2 --retry-max-time 240 \
+  --connect-timeout 15 --max-time 120 --retry 2 --retry-all-errors --retry-max-time 240 \
   --output "$archive" \
   https://github.com/openai/codex/releases/download/rust-v0.166.0/codex-package-x86_64-unknown-linux-musl.tar.gz
 printf '%s  %s\n' \

@@ -272,7 +272,10 @@ They consume frozen package exports with tracked test helpers and installed
   assertions for that runner.
 - `provision-example-smoke.sh` prepares the dedicated Linux example shard.
   It installs the exact official Codex 0.166.0 package after digest verification,
-  preserving its executable/resource layout. It creates one private local HTTPS
+  preserving its executable/resource layout. Its fixed public asset download retries transport failures within the existing attempt and time limits.
+  TLS and digest checks remain mandatory before extraction.
+
+  It creates one private local HTTPS
   certificate and installs its CA through ordinary disposable-host trust.
   The runner receives only executable, certificate and key paths.
   Delete the signing key after certificate creation. Never retain TLS keys in
