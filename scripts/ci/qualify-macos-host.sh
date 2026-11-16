@@ -18,12 +18,19 @@ case "$#" in
     ;;
   *) echo 'Unexpected qualification arguments' >&2; exit 2 ;;
 esac
-case "$(uname -s):$(uname -m):$(uname -r):$(sw_vers -buildVersion)" in
-  Darwin:x86_64:23.4.0:23E224) codex_startup_expectation=startup; inventory_profile=macos-23E224 ;;
-  Darwin:x86_64:24.6.0:24G830|Darwin:arm64:24.6.0:24G830) codex_startup_expectation=unsupported; inventory_profile=macos-24G830 ;;
-  Darwin:arm64:24.6.0:24H232) codex_startup_expectation=unsupported; inventory_profile=macos-24H232 ;;
-  *) echo 'Qualification requires an exact selected native Mac candidate.' >&2; exit 2 ;;
-esac
+if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 ]]; then
+  echo 'Native Mac qualification requires Apple Silicon.' >&2
+  exit 2
+fi
+kernel_major="${$(uname -r)%%.*}"
+if [[ ! "$kernel_major" =~ ^[0-9]+$ || "$kernel_major" -lt 23 ]]; then
+  echo 'The Mac kernel lacks the required modern process-control APIs.' >&2
+  exit 2
+fi
+# Codex preference observer is not qualified on generic ARM hosts; require its
+# explicit safe refusal while Claude and Pi complete native offline startup.
+codex_startup_expectation=unsupported
+inventory_profile=macos-24H232
 if [[ "$mode" == shard ]]; then
   bun scripts/ci/probe-macos-host.ts --hosted > /dev/null
 fi
