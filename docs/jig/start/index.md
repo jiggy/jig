@@ -146,7 +146,7 @@ See [How Jig works](../understand/index.md) for the responsibilities behind revi
 
 ## Supported host
 
-Jig qualifies Linux x86_64 and selected native Macs. It checks the exact host
+Jig qualifies Linux x86_64 and capable Apple Silicon Macs. It checks the exact host
 mechanism before execution and refuses unqualified kernels or missing support.
 
 On Linux, Jig is developed primarily on NixOS and qualified in automated CI on
@@ -158,8 +158,10 @@ provisioned Ubuntu 24.04 x86_64. This host needs:
 - A systemd user manager supporting transient scopes with `Delegate=yes`.
 - Unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
 
-On Mac, Jig selects Intel Darwin 23.4.0 build 23E224, Intel/Apple Silicon Darwin 24.6.0 build 24G830, and Apple Silicon Darwin 24.6.0 build 24H232.
-Each released profile requires complete native qualification. Other kernel builds are unsupported.
+On Mac, Jig supports modern Apple Silicon (arm64) hosts with the required
+native process and sandbox mechanisms. It checks those mechanisms at runtime,
+rather than admitting a fixed macOS build number. Missing capabilities fail
+closed, and full native qualification is required for release.
 
 Install through the same npm command above. npm selects the matching pinned Bun runtime. No privileged
 helper, managed execution account, separate Bun installation, or `sudo` is
@@ -169,11 +171,10 @@ CPU, memory, and process use can briefly exceed the requested ceiling before
 Jig terminates the scope. See the [security boundary](https://github.com/jiggy/jig/blob/main/SECURITY.md)
 when deciding whether this tradeoff fits your workload.
 
-Linux and Apple Silicon checks must pass before a release is published. Intel
-Mac support has complete nightly compatibility checks, so a new release can
-contain an Intel regression before the next check. See the
-[Intel compatibility policy](https://github.com/jiggy/jig/blob/main/RELEASING.md#intel-mac-compatibility)
-for the tested versions, results and manual checks.
+Linux and Apple Silicon qualification must pass before publication.
+Only Apple Silicon is a supported Mac target; Intel Mac testing is retired.
+PRs run a faster native smoke, while release candidates require full host
+qualification. See [macOS native qualification](https://github.com/jiggy/jig/blob/main/RELEASING.md#macos-native-qualification).
 
 Jig's host-tool lookup currently uses `/usr/bin`, `/bin`, and
 `/run/current-system/sw/bin`, not your shell's `PATH`.
