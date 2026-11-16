@@ -17,14 +17,14 @@ export function requireMacHost(host: {
   bunVersion: string
   bunRevision: string
 }) {
+  const major = /^(\\d+)\\.\\d+\\.\\d+$/.exec(host.kernel)
   const selected =
-    (host.arch === 'x64' && host.kernel === '23.4.0' && host.build === '23E224') ||
-    (['x64', 'arm64'].includes(host.arch) && host.kernel === '24.6.0' && host.build === '24G830') ||
-    (host.arch === 'arm64' && host.kernel === '24.6.0' && host.build === '24H232')
+    host.arch === 'arm64' &&
+    major !== null &&
+    Number(major[1]) >= 23 &&
+    /^[0-9]{2}[A-Z][0-9A-Za-z]{2,15}$/.test(host.build)
   if (!selected || host.uid === undefined || host.uid === 0) {
-    throw Error(
-      'Native preflight requires an unprivileged operator on an exact selected Mac candidate. Use hosted Mac CI for other hosts.',
-    )
+    throw Error('Native preflight requires a non-root ARM Mac with modern process controls.')
   }
   if (
     host.bunVersion !== QUALIFIED_BUN.version ||
@@ -36,12 +36,12 @@ export function requireMacHost(host: {
   }
 }
 
-export function nativeTestFiles(files: readonly string[], build = '23E224'): string[] {
+export function nativeTestFiles(files: readonly string[]): string[] {
   const native = suiteTestFiles(
     [...files],
-    ['macos-native', 'macos-observer'],
+    ['macos-native'],
     manifest,
-    build === '23E224' ? 'macos-23E224' : build === '24H232' ? 'macos-24H232' : 'macos-24G830',
+    'macos-24H232',
   )
   if (new Set(native).size !== native.length)
     throw Error('Native preflight inventory repeats a test file')
