@@ -862,11 +862,12 @@ function requireProfileEnvironment() {
           timeout: 5000,
         }).stdout?.trim()
       : undefined
+  const macMajor = /^(\\d+)\\.\\d+\\.\\d+$/.exec(release())
   const macHost =
     platform() === 'darwin' &&
-    ((arch() === 'x64' && release() === '23.4.0' && macBuild === '23E224') ||
-      (['x64', 'arm64'].includes(arch()) && release() === '24.6.0' && macBuild === '24G830') ||
-      (arch() === 'arm64' && release() === '24.6.0' && macBuild === '24H232')) &&
+    arch() === 'arm64' &&
+    macMajor !== null && Number(macMajor[1]) >= 23 &&
+    /^[0-9]{2}[A-Z][0-9A-Za-z]{2,15}$/.test(macBuild ?? '') &&
     Bun.version === '1.4.4' &&
     Bun.revision === '38afee6c84fcf48c0edb2466aa4b27d287a59c30'
   if (
