@@ -760,6 +760,18 @@ Existing per-invocation input/output and aggregate
 execution limits still apply. Failed collection, cleanup or reference
 validation cannot manufacture a usable artifact.
 
+After result admission, a cleaned child artifact failure retains `EXECUTION_FAILED` and identifies the failed step in its message.
+Steps distinguish artifact selection, capture, output retirement, owner release and reference grants.
+Known reasons distinguish unsupported output material, output capacity, retained artifact capacity and artifact permission refusal.
+Unclassified exceptions report an unknown cause. Messages contain fixed host descriptions, without raw exceptions, file names or private paths.
+Message wording is diagnostic text, not a machine discriminator.
+
+Result schema refusals keep their existing result-admission diagnostics.
+Cancellation, deadline and fatal cleanup uncertainty keep precedence over artifact diagnostics.
+A failure grants no child artifacts and does not remove previously accepted checkpoints.
+Use [checkpoint inspection](execution-client.md) to inspect retained progress under the original ticket.
+An older generic failure cannot establish its underlying cause retrospectively.
+
 Cancellation and uncertainty
 retain their ordinary fencing and no-replay rules. Recovery fences interrupted
 work. It does not resume the caller's program.
