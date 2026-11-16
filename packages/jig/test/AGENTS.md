@@ -224,10 +224,12 @@ Primitive fixtures copy the complete built public SDK runtime, not a source-file
 The nested checkpoint loss case prepares and persists an ordinary public ticket,
 then runs the genuine submit adapter in `fixtures/checkpoint-coordinator.ts`.
 Await the descendant's save acknowledgement and independently read its accepted
-scope before killing the actual coordinator. A new real project owner performs
-recovery. Result and selected-scope export use the original ticket after confirmed
-cleanup. Preserve the lost terminal, original root start count and all existing
-root checkpoint cases. Never manufacture submission, checkpoint or recovery records.
+scope before killing the actual coordinator. Read-only lookup retains
+cleanup-pending; the public ticket-bound reconciliation acquires the replacement
+owner, recovers without another submission, and confirms cleanup. Result and
+selected-scope export use the original ticket after confirmed cleanup. Preserve
+the lost terminal, original root start count and all existing root checkpoint
+cases. Never manufacture submission, checkpoint or recovery records.
 
 The submit adapter has no live command presentation.
 Its fixture adds only a diagnostic observer for actual stderr bytes.
