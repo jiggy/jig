@@ -14,7 +14,6 @@ import {
   markExpectedAcpRefusal,
   PrivateAcpSetupError,
 } from './acp-setup-diagnostics.js'
-import { privateMacosKernelPlatform } from './macos-process-controls.js'
 import {
   PrivateNativeAgentExecutableUnavailableError,
   resolvePrivateNativeAgentExecutable,
@@ -143,7 +142,7 @@ export async function openPrivateCodexAgentProvider(
   }
   // Preserve executable/installation discovery diagnostics before refusing an
   // unqualified notification-page layout. The observer also excludes Rosetta.
-  if (process.platform === 'darwin' && privateMacosKernelPlatform() !== 'darwin-x64-23.4.0-23E224')
+  if (process.platform === 'darwin')
     throw new PrivateAcpSetupError('preferences')
   const nativeBubblewrap =
     process.platform === 'darwin'
