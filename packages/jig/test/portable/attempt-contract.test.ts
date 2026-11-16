@@ -71,6 +71,37 @@ function observe(operation: 'lookup' | 'cancel' | 'result', observation: unknown
 }
 
 describe('attempt machine contract consistency', () => {
+  test('reconciliation requires an exact ticket and reports only validated lifecycle facts', () => {
+    expect(() => parseAttemptRequest('reconcile', { ticket: 't' })).not.toThrow()
+    for (const value of [{}, { ticket: '' }, { ticket: 't', replay: true }])
+      expect(() => parseAttemptRequest('reconcile', value)).toThrow(AttemptContractError)
+    const pending: AttemptObservation = {
+      identity: 'accepted',
+      receipt,
+      execution: 'accepted',
+      dispatch: 'possible',
+      cleanup: 'pending',
+      retained: 'unavailable',
+    }
+    for (const value of [pending, success(null)])
+      expect(() =>
+        parseAttemptFrame('reconcile', {
+          protocolVersion: 1,
+          operation: 'reconcile',
+          event: 'result',
+          value,
+        }),
+      ).not.toThrow()
+    expect(() =>
+      parseAttemptFrame('reconcile', {
+        protocolVersion: 1,
+        operation: 'reconcile',
+        event: 'result',
+        value: { ...pending, cleanup: 'confirmed', terminal: { status: 'succeeded' } },
+      }),
+    ).toThrow(AttemptContractError)
+  })
+
   test('checkpoint selectors use exact scopes and only checkpoint export accepts them', () => {
     for (const checkpointScope of ['root', digest]) {
       expect(() => parseAttemptRequest('result', { ticket: 't', checkpointScope })).not.toThrow()
