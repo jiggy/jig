@@ -11,7 +11,7 @@ FLOW still governs finite method invocation. Tasks, Kanban, Git, scheduling,
 cumulative application budgets, acceptance policy and merge authority remain
 application responsibilities.
 
-## Seven operations
+## Eight operations
 
 | Verb | Request and result |
 | --- | --- |
@@ -20,6 +20,7 @@ application responsibilities.
 | `submit` | `ticket` plus the exact `canonicalRequest` as `request`. Returns owner/observer acceptance and its receipt. Only the owner connection carries execution completion. |
 | `lookup` | `ticket`. Reads identity, dispatch, execution, terminal, cleanup and retention observations without advancing execution. |
 | `cancel` | `ticket`. Requests scoped revocation and returns `acknowledged` plus an observation. Acknowledgement is not confirmed cleanup. |
+| `reconcile` | `ticket`. Explicitly reacquires trusted recovery authority for an accepted, cleanup-pending attempt after owner loss. Returns the resulting observation only after cleanup confirms, otherwise refuses. It never prepares, submits or resumes execution. |
 | `result` | `ticket`, optional `checkpointScope`. Reads the observation, retained `output`, final `artifactResults`, checkpoint inventory, and selected checkpoint detail. |
 | `export` | `ticket`, new `destination`, optional `source: 'final' \| 'checkpoint'`, optional final `artifactResult`, or checkpoint `checkpointScope`. Returns destination, manifest digest, actual source, and selected checkpoint scope when applicable. |
 
@@ -193,6 +194,17 @@ Cancellation requests revocation of the original owned invocation. Request
 acknowledgement, local fencing and complete cleanup are separate facts. Natural
 completion may win the cancellation race. An accepted terminal remains immutable.
 
+When an accepted ticket remains cleanup-pending after its foreground owner is lost,
+`reconcile` makes one explicit trusted project-session acquisition. The exclusive
+coordinator refuses an active owner; after verified takeover, it recovers only
+older durable execution, fencing and releasing descendants without launching a
+replacement Run. Acquisition can also reconcile other pending older Runs in the
+same project. A failed or incomplete fence/cleanup refuses the command and leaves
+protected evidence intact; the caller must preserve the ticket. For prepared or
+already settled identities, the command only returns their current observation.
+Reconciliation does not reissue cancellation, renew deadlines, re-run a Flow,
+recover remote effects, or turn retained checkpoints into final output.
+
 The original safety owner must enforce deadlines and settle ownership without
 lookup polling. Losing the execution owner fences and settles work. It does not
 resume its Flow. Ordinary client/coordinator loss and independent-owner loss have
@@ -363,7 +375,7 @@ history never establishes non-execution or grants replay permission.
 ## Machine command boundary
 
 `jig attempt <operation> --json` is the installed machine boundary. Operations
-are `inspect`, `prepare`, `submit`, `lookup`, `cancel`, `result` and `export`.
+are `inspect`, `prepare`, `submit`, `lookup`, `cancel`, `reconcile`, `result` and `export`.
 Requests and replies are closed, versioned, bounded JSON records.
 Unsupported framing and unknown fields refuse without a fallback.
 
@@ -399,7 +411,7 @@ Qualify the following:
 - Identical and conflicting concurrent submissions.
 - Approval races.
 - Process loss around acceptance/dispatch/terminal/retention/export.
-- Observational lookup.
+- Observational lookup and explicit recovery-only reconciliation of an older accepted Run.
 - Retirement-before-GC.
 - Clock anomalies.
 - Storage exhaustion.
