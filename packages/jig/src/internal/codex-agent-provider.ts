@@ -102,6 +102,13 @@ export interface PrivateCodexOpenAIApiAgentConfiguration extends PrivateCodexAge
   readonly baseURL?: string
 }
 
+// The legacy Intel preference observer has no qualified ARM successor yet.
+// Keep discovery diagnostics, but fail closed without narrowing platform
+// control flow for the other native runtime branches.
+function requireQualifiedMacCodexPreferences(): void {
+  if (process.platform === 'darwin') throw new PrivateAcpSetupError('preferences')
+}
+
 /**
  * Open the one native Codex flavor selected by trusted host configuration.
  * A complete OpenAI Responses-compatible API configuration selects API-key
@@ -142,8 +149,7 @@ export async function openPrivateCodexAgentProvider(
   }
   // Preserve executable/installation discovery diagnostics before refusing an
   // unqualified notification-page layout. The observer also excludes Rosetta.
-  if (process.platform === 'darwin')
-    throw new PrivateAcpSetupError('preferences')
+  requireQualifiedMacCodexPreferences()
   const nativeBubblewrap =
     process.platform === 'darwin'
       ? { path: '/usr/bin/sandbox-exec', source: 'path' as const }
