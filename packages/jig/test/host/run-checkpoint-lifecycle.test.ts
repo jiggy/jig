@@ -693,12 +693,20 @@ describe.serial('child retained progress', () => {
       coordinator.kill('SIGKILL')
       await coordinator.exited
       expect(coordinator.signalCode).toBe('SIGKILL')
-      // A real replacement owner fences the original native tree; it never submits work.
-      const session = await openPrivateProjectSession({
-        directory: root,
-        host: await openPrivateInstalledBunHost(installedBunLocation, {}),
+      // Read-only observation never pumps recovery after the coordinator was killed.
+      expect(await client.lookup({ ticket: prepared.ticket })).toMatchObject({
+        receipt: { runId },
+        execution: 'accepted',
+        cleanup: 'pending',
       })
-      await session.close()
+      // The public recovery-only command acquires the real replacement owner
+      // and fences the original native tree without submitting another Run.
+      const reconciled = await client.reconcile({ ticket: prepared.ticket })
+      expect(reconciled).toMatchObject({
+        receipt: { runId },
+        terminal: { status: 'lost', code: 'COORDINATOR_LOST' },
+        cleanup: 'confirmed',
+      })
       recovered = true
       const selected = await client.result({ ticket: prepared.ticket, checkpointScope: scope })
       expect(selected.observation).toMatchObject({
