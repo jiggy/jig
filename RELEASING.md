@@ -59,9 +59,8 @@ The merged release must pass CI, complete Linux and Apple Silicon qualification,
 and native Agent qualification. Automatic native qualification runs only for exact eligible generated release sources after successful Linux qualification.
 Explicit manual dispatch on main retains diagnostics for other sources. Omitted automatic calls create no qualification evidence.
 
-Intel Mac compatibility runs nightly and on
-manual request. An Intel regression can reach a release before the next nightly
-check. It does not block publication.
+Native Apple Silicon diagnostics also run nightly. Release publication still
+requires complete same-revision Mac qualification; PR smoke alone is insufficient.
 
 The publisher then publishes the exact tested archives, followed by source tags and GitHub prereleases.
 Current releases use `alpha`. Installation uses `@alpha`, not `@latest`.
@@ -105,31 +104,14 @@ The existing npm workflow and environment perform package-specific OIDC exchange
 Results contain only acceptance and HTTP status. Returned tokens are never written or displayed.
 This check publishes nothing and does not establish provenance or release readiness.
 
-## Intel Mac compatibility
+## macOS native qualification
 
-**Intel Mac compatibility** runs daily at 02:23 UTC from `main`. It selects the
-current public Jig `alpha` version first, then the workflow's exact
-`main` source if different. Each source retains all four Intel shards, native
-containment and recovery, installed consumers, genuine offline clients and
-zero-residue checks. At most two Intel runners execute concurrently.
-
-Published checks require the exact public npm archive, verified against its
-registry integrity, and its source-bound canonical bundle. The workflow retains
-verified input mirrors for 14 days and refreshes them after acquisition. It never
-rebuilds a release to claim published-byte compatibility. A release without
-retained canonical evidence, including a version from before this qualification
-pipeline, reports incomplete compatibility until
-exact retained inputs become available or a newer release is published.
-
-The run summary separates each tested version and source from the last recorded
-passing published version. Failures make this workflow red but cannot qualify or
-block a release. Missing evidence is a failure, not an Intel pass. Use the
-workflow's manual `pull_request` input to check an open PR's exact merge source.
-Leave it empty to check the published version and `main`.
-
-The self-hosted Intel 23E224 workflow remains manual and protected. Hosted Intel
-results do not qualify that distinct native profile. Performance profiling stays
-manual and outside release readiness.
+Applicable PRs run a short native Apple Silicon smoke on the current GitHub-hosted
+`macos-26` image. This quick test does not produce release qualification
+evidence. Eligible main releases and manual main runs execute complete native
+and installed qualification on one current ARM Mac, retaining source-bound
+candidate archives and zero-residue proof. Scheduled diagnostics run the same
+full suite. Intel Macs are not a supported CI target.
 
 ## If a release stops
 
