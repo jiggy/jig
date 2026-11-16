@@ -52,7 +52,13 @@ All selected domain requirements still apply.
   typed `ADMISSION_STATE_BUSY` and completed disposal. Use one existing command
   allowance and preserve caller cancellation, without renewing either deadline.
   Corruption, unrelated I/O and aggregate cleanup failures remain fatal.
-  Never apply this waiting policy to prepare, submit, cancel or export.
+  Never apply this waiting policy to prepare, submit, cancel, reconcile or export.
+
+  Explicit `reconcile` uses the original authenticated ticket to acquire one
+  trusted exclusive project session. It may recover older durable Runs but
+  never prepares, submits, relaunches or retries their effects. An active
+  owner remains exclusive; missing confirmed cleanup is a refusal. Do not
+  call reconciliation from observational lookup or cancellation implicitly.
 
 ### src cli-discovery
 
