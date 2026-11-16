@@ -172,7 +172,7 @@ Jig terminates the scope. See the [security boundary](https://github.com/jiggy/j
 when deciding whether this tradeoff fits your workload.
 
 Linux and Apple Silicon qualification must pass before publication.
-Only Apple Silicon is a supported Mac target; Intel Mac testing is retired.
+Only Apple Silicon is a supported Mac target. Intel Mac testing is retired.
 PRs run a faster native smoke, while release candidates require full host
 qualification. See [macOS native qualification](https://github.com/jiggy/jig/blob/main/RELEASING.md#macos-native-qualification).
 
