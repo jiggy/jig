@@ -1476,7 +1476,7 @@ than Linux cgroup hard quotas, so short overshoot is possible.
 
 macOS execution targets Apple Silicon hosts with proven native process
 identity, sandbox and coalition mechanisms. An exact Darwin build number is not
-an admission requirement; any unavailable mechanism fails closed. Complete native
+an admission requirement. Any unavailable mechanism fails closed. Complete native
 and installed qualification remains mandatory before release. Intel Macs are
 not a supported target.
 
