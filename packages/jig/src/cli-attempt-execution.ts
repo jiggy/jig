@@ -132,7 +132,10 @@ export const executePrivateCliAttempt: NonNullable<PrivateCliOptions['executeAtt
       case 'reconcile': {
         const { ticket } = invocation.request as AttemptRequests['reconcile']
         const before = await inspectPrivateAttempt({ projectRoot, ticket })
-        if (before.observation.identity === 'accepted' && before.observation.cleanup === 'pending') {
+        if (
+          before.observation.identity === 'accepted' &&
+          before.observation.cleanup === 'pending'
+        ) {
           // A new exclusive coordinator may recover older durable Runs. It
           // cannot submit the original Run again or invent execution results.
           // An active owner refuses acquisition; never seize its work.

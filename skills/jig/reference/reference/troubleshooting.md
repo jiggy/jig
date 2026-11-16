@@ -392,6 +392,7 @@ Use the original prepared ticket through `@jigging/jig/client` or `jig attempt`:
 | --- | --- |
 | `lookup` | Read the attempt's execution and cleanup observations without advancing work. |
 | `cancel` | Request cancellation, then observe cleanup separately. |
+| `reconcile` | Explicitly attempt trusted recovery of a cleanup-pending original Run after owner loss, without preparing or submitting new work. An active owner or unconfirmed cleanup refuses. Keep the original ticket and evidence. |
 | `result` | Read retained output and artifact availability when present. |
 | `export` | Publish available retained bytes without executing the method again. |
 

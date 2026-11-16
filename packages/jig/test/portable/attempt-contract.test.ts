@@ -83,7 +83,16 @@ describe('attempt machine contract consistency', () => {
       cleanup: 'pending',
       retained: 'unavailable',
     }
-    for (const value of [pending, success(null)])
+    for (const value of [
+      { identity: 'prepared', dispatch: 'not-dispatched' },
+      { identity: 'unavailable', dispatch: 'possible' },
+      success(null),
+      {
+        ...success(null),
+        terminal: { status: 'lost', code: 'COORDINATOR_LOST', message: 'lost' },
+        dispatch: 'possible',
+      },
+    ])
       expect(() =>
         parseAttemptFrame('reconcile', {
           protocolVersion: 1,
@@ -92,14 +101,20 @@ describe('attempt machine contract consistency', () => {
           value,
         }),
       ).not.toThrow()
-    expect(() =>
-      parseAttemptFrame('reconcile', {
-        protocolVersion: 1,
-        operation: 'reconcile',
-        event: 'result',
-        value: { ...pending, cleanup: 'confirmed', terminal: { status: 'succeeded' } },
-      }),
-    ).toThrow(AttemptContractError)
+    for (const value of [
+      pending,
+      { ...pending, cleanup: 'unresolved' },
+      { ...success(null), cleanup: 'pending' },
+      { ...pending, cleanup: 'confirmed', terminal: { status: 'succeeded' } },
+    ])
+      expect(() =>
+        parseAttemptFrame('reconcile', {
+          protocolVersion: 1,
+          operation: 'reconcile',
+          event: 'result',
+          value,
+        }),
+      ).toThrow(AttemptContractError)
   })
 
   test('checkpoint selectors use exact scopes and only checkpoint export accepts them', () => {

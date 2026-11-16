@@ -690,6 +690,26 @@ describe.serial('child retained progress', () => {
       expect(Number(await readFile(join(root, 'coordinator.started'), 'utf8'))).toBe(
         coordinator.pid,
       )
+      // A valid ticket cannot seize a live coordinator's exclusive ownership.
+      const refused = await client.reconcile({ ticket: prepared.ticket }).then(
+        () => {
+          throw new Error('reconciliation seized the live owner')
+        },
+        (error: unknown) => error,
+      )
+      expect(refused).toMatchObject({
+        name: 'AttemptClientError',
+        operation: 'reconcile',
+        code: 'PROJECT_BUSY',
+      })
+      expect(coordinator.exitCode).toBeNull()
+      const active = await client.lookup({ ticket: prepared.ticket })
+      expect(active).toMatchObject({
+        receipt: { runId },
+        execution: 'accepted',
+        cleanup: 'pending',
+      })
+      expect(active.terminal).toBeUndefined()
       coordinator.kill('SIGKILL')
       await coordinator.exited
       expect(coordinator.signalCode).toBe('SIGKILL')
@@ -708,6 +728,7 @@ describe.serial('child retained progress', () => {
         cleanup: 'confirmed',
       })
       recovered = true
+      expect(await client.reconcile({ ticket: prepared.ticket })).toEqual(reconciled)
       const selected = await client.result({ ticket: prepared.ticket, checkpointScope: scope })
       expect(selected.observation).toMatchObject({
         receipt: { runId },

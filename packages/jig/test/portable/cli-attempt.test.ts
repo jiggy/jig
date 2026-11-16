@@ -50,9 +50,7 @@ test('attempt grammar classifies execution requirements without acquiring author
   ] as const) {
     const args = ['attempt', operation, '--json']
     expect(privateCliAttemptOperation(args)).toBe(operation)
-    expect(privateCliRequiresHost(args)).toBe(
-      operation === 'submit' || operation === 'reconcile',
-    )
+    expect(privateCliRequiresHost(args)).toBe(operation === 'submit' || operation === 'reconcile')
     for (const invalid of [
       ['attempt', operation],
       ['attempt', operation, '--json', 'ticket-must-not-be-an-argument'],
