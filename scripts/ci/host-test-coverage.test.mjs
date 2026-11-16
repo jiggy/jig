@@ -491,239 +491,41 @@ test('installed startup reporting works with and without a timing directory on s
   }
 })
 
-test('Mac qualification requires genuine Codex startup or explicit refusal by exact profile', async () => {
-  const qualification = await readFile(
-    resolve(import.meta.dirname, 'qualify-macos-host.sh'),
-    'utf8',
-  )
-  const gate = qualification.match(
-    /case "\$\(uname -s\):\$\(uname -m\):\$\(uname -r\):\$\(sw_vers -buildVersion\)" in\n[\s\S]*?\nesac/,
-  )
-  assert.ok(gate, 'qualification must select the expectation from the actual Mac tuple')
-  const shell = `
-uname() {
-  case "$1" in
-    -s) printf '%s\\n' "$TEST_KERNEL" ;;
-    -m) printf '%s\\n' "$TEST_ARCH" ;;
-    -r) printf '%s\\n' "$TEST_RELEASE" ;;
-    *) return 1 ;;
-  esac
-}
-sw_vers() { printf '%s\\n' "$TEST_BUILD"; }
-${gate[0]}
-printf '%s\\n' "$codex_startup_expectation"
-`
-  const run = (kernel, arch, release, build) =>
-    spawnSync('/bin/bash', ['-c', shell], {
-      env: {
-        ...process.env,
-        TEST_KERNEL: kernel,
-        TEST_ARCH: arch,
-        TEST_RELEASE: release,
-        TEST_BUILD: build,
-      },
-      encoding: 'utf8',
-    })
-  for (const [arch, release, build, expectation] of [
-    ['x86_64', '23.4.0', '23E224', 'startup'],
-    ['x86_64', '24.6.0', '24G830', 'unsupported'],
-    ['arm64', '24.6.0', '24G830', 'unsupported'],
-    ['arm64', '24.6.0', '24H232', 'unsupported'],
-  ]) {
-    const result = run('Darwin', arch, release, build)
-    assert.equal(result.status, 0, result.stderr)
-    assert.equal(result.stdout.trim(), expectation)
-  }
-  for (const tuple of [
-    ['Darwin', 'arm64', '23.4.0', '23E224'],
-    ['Darwin', 'x86_64', '24.6.0', '24G831'],
-    ['Darwin', 'x86_64', '24.6.0', '24H232'],
-    ['Darwin', 'arm64', '24.6.0', '24H233'],
-    ['Linux', 'x86_64', '23.4.0', '23E224'],
-  ]) {
-    assert.equal(run(...tuple).status, 2, `unqualified tuple ${tuple} must refuse`)
-  }
-  assert.match(
-    qualification,
-    /JIG_NATIVE_AGENT_STARTUP=1 JIG_CODEX_MACOS_STARTUP_EXPECTATION="\$codex_startup_expectation" \\\n\s*bun test packages\/jig\/test\/startup\/native-agent-startup\.test\.ts/,
-  )
-  assert.ok(qualification.includes('macos-codex-preferences'))
-  assert.match(qualification, /--profile "\$inventory_profile"/)
-  assert.match(
-    qualification,
-    /if \[\[ "\$mode" == shard \]\]; then\n\s*bun scripts\/ci\/probe-macos-host\.ts --hosted > \/dev\/null\nfi/,
-  )
+test('Mac qualification selects ARM by architecture and kernel capability, not build ID', async () => {
+  const qualification = await readFile(resolve(import.meta.dirname, 'qualify-macos-host.sh'), 'utf8')
+  assert.match(qualification, /uname -m/)
+  assert.match(qualification, /kernel_major/)
+  assert.match(qualification, /codex_startup_expectation=unsupported/)
+  assert.doesNotMatch(qualification, /Darwin:arm64:24\\.6\\.0:24H232/)
+  assert.match(qualification, /probe-macos-host\\.ts --hosted/)
 })
 
-test('every required and nightly hosted Mac shard checks its exact target before compilation and builds', async () => {
-  const workflow = parse(
-    await readFile(
-      resolve(import.meta.dirname, '../../.github/workflows/macos-hosted-candidates.yml'),
-      'utf8',
-    ),
-  )
-  assert.equal(workflow.jobs.prerequisites['runs-on'], 'macos-15')
-  const nightly = parse(
-    await readFile(
-      resolve(import.meta.dirname, '../../.github/workflows/macos-intel-nightly.yml'),
-      'utf8',
-    ),
-  )
-  assert.equal(nightly.jobs.prerequisites['runs-on'], 'macos-15-intel')
-  for (const job of [workflow.jobs.prerequisites, nightly.jobs.prerequisites]) {
-    const probes = job.steps.filter((step) =>
-      /bun scripts\/ci\/probe-macos-host\.ts --hosted/.test(step.run ?? ''),
-    )
-    assert.equal(probes.length, 1)
-    const probe = probes[0]
-    assert.equal(probe.if, undefined)
-    assert.match(probe.env.EXPECTED_ARCH, /^\$\{\{ matrix\.arch \}\}$/)
-    assert.match(probe.run, /set -o pipefail/)
-    assert.match(probe.run, /tee "\$RUNNER_TEMP\/mac-evidence\/prerequisites\.json"/)
-    const setup = job.steps.filter((step) => /clang |just --justfile/.test(step.run ?? ''))
-    assert.ok(setup.length >= 2)
-    assert.ok(setup.every((step) => job.steps.indexOf(probe) < job.steps.indexOf(step)))
-  }
+test('PR Mac smoke and release qualification run on the same current ARM image', async () => {
+  const workflow = parse(await readFile(
+    resolve(import.meta.dirname, '../../.github/workflows/macos-hosted-candidates.yml'), 'utf8',
+  ))
+  assert.equal(workflow.jobs['pr-smoke']['runs-on'], 'macos-26')
+  assert.equal(workflow.jobs.prerequisites['runs-on'], 'macos-26')
+  assert.equal(workflow.jobs['cohort-allocator'], undefined)
+  assert.equal(workflow.jobs['pr-deadline-guard'], undefined)
+  const probe = workflow.jobs.prerequisites.steps.find((step) => step.run?.includes('probe-macos-host.ts'))
+  assert.ok(probe)
+  const native = workflow.jobs.prerequisites.steps.find((step) => step.run?.includes('macos-process-controls.test.ts'))
+  assert.ok(native)
 })
 
-test('PR roles retain native and installed ownership while complete hosts keep their allowance', async () => {
-  const workflow = parse(
-    await readFile(
-      resolve(import.meta.dirname, '../../.github/workflows/macos-hosted-candidates.yml'),
-      'utf8',
-    ),
-  )
-  const job = workflow.jobs.prerequisites
-  const nightly = parse(
-    await readFile(
-      resolve(import.meta.dirname, '../../.github/workflows/macos-intel-nightly.yml'),
-      'utf8',
-    ),
-  )
-  const intel = Array.from({ length: MAC_HOST_SHARDS.x64 }, (_, shard) => ({
-    arch: 'x64',
-    shard,
-    installed: shard === MAC_HOST_SHARDS.x64 - 1,
-  }))
-  const evaluate = (expression, context) =>
-    runInNewContext(
-      expression
-        .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
-        .replace(/\.([A-Za-z_][A-Za-z0-9_]*-[A-Za-z0-9_-]+)/g, "['$1']"),
-      {
-        fromJSON: JSON.parse,
-        always: () => true,
-        ...context,
-      },
-    )
-  const native = job.steps.find((step) =>
-    /bun test packages\/jig\/test\/macos\/macos-process-controls/.test(step.run ?? ''),
-  )
-  const clients = job.steps.find((step) =>
-    /scripts\/ci\/install-macos-test-clients/.test(step.run ?? ''),
-  )
-  const qualifier = job.steps.find((step) => /qualify-macos-host\.sh --shard/.test(step.run ?? ''))
-  assert.match(qualifier.run, /--shard "\$MAC_HOST_ROLE"/)
-  assert.equal(qualifier.env.MAC_HOST_ROLE, '${{ steps.role.outputs.role }}')
-  const coordinatorInstalls = job.steps.filter((step) =>
-    step.run
-      ?.split('\n')
-      .some(
-        (line) =>
-          line.trim() ===
-          'node scripts/ci/pr-time-budget.mjs run -- bun install --cwd "$RUNNER_TEMP/mac-cohort-client" --frozen-lockfile --ignore-scripts',
-      ),
-  )
-  assert.equal(coordinatorInstalls.length, 1)
-  const coordinator = coordinatorInstalls[0]
-  assert.ok(job.steps.indexOf(coordinator) < job.steps.findIndex((step) => step.id === 'role'))
-  const context = (event, role, count, profile = false) => ({
-    github: { event_name: event },
-    inputs: { include_startup_profile: profile },
-    steps: {
-      role: {
-        outputs: {
-          execute: String(role !== null),
-          role: role === null ? 'surplus' : String(role),
-          installed: String(role === count - 1),
-        },
-      },
-      'native-budget': { outputs: { work_minutes: '11', step_timeout_minutes: '12' } },
-      'qualify-budget': { outputs: { work_minutes: '9', step_timeout_minutes: '10' } },
-    },
-  })
-  for (const profile of [false, true]) {
-    for (const event of ['push', 'workflow_dispatch', 'pull_request']) {
-      const count = event === 'pull_request' ? 3 : 1
-      for (let role = 0; role < count; role++) {
-        const selected = context(event, role, count, profile)
-        assert.equal(evaluate(native.if, selected), role === 0)
-        assert.equal(evaluate(clients.if, selected), role === count - 1)
-        assert.equal(evaluate(qualifier.if, selected), true)
-        assert.equal(evaluate(coordinator.if, selected), event === 'pull_request')
-        assert.equal(
-          evaluate(job['timeout-minutes'], selected),
-          event === 'pull_request' ? 25 : profile ? 90 : 60,
-        )
-        assert.equal(
-          evaluate(native['timeout-minutes'], selected),
-          event === 'pull_request' ? 12 : 60,
-        )
-        assert.equal(
-          evaluate(qualifier['timeout-minutes'], selected),
-          event === 'pull_request' ? 10 : profile ? 90 : 60,
-        )
-      }
-    }
-    for (const role of intel)
-      assert.equal(
-        evaluate(nightly.jobs.prerequisites['timeout-minutes'], {
-          matrix: role,
-          inputs: { include_startup_profile: profile },
-        }),
-        profile && role.installed ? 65 : 35,
-      )
-    const total =
-      (profile ? 90 : 60) +
-      intel.reduce(
-        (sum, role) =>
-          sum +
-          evaluate(nightly.jobs.prerequisites['timeout-minutes'], {
-            matrix: role,
-            inputs: { include_startup_profile: profile },
-          }),
-        0,
-      )
-    assert.ok(total < (profile ? 270 : 210))
-  }
-  const surplus = context('pull_request', null, 3)
-  assert.equal(evaluate(coordinator.if, surplus), true)
-  assert.equal(evaluate(coordinator.if, { ...surplus, steps: {} }), true)
-  const executed = job.steps.filter(
-    (step) =>
-      step !== coordinator &&
-      (/clang |bun install |just --justfile|candidate-provenance\.mjs verify|shard-\$MAC_HOST_ROLE\.complete/.test(
-        step.run ?? '',
-      ) ||
-        step.uses?.startsWith('actions/download-artifact@')),
-  )
-  assert.ok(executed.length >= 6)
-  for (const step of [...executed, native, clients, qualifier])
-    assert.equal(evaluate(step.if, surplus), false, step.name ?? step.uses)
-  const guard = workflow.jobs['pr-deadline-guard']
-  assert.equal(guard['runs-on'], 'ubuntu-24.04')
-  assert.equal(guard.strategy, undefined)
-  assert.equal(guard.steps.filter((step) => /guard-matrix/.test(step.run ?? '')).length, 1)
-  assert.ok(
-    guard.steps.every((step) => !/clang |bun install |qualify-macos-host/.test(step.run ?? '')),
-  )
-  const receipt = workflow.jobs['qualified-architecture'].steps.find((step) =>
-    /candidate-provenance\.mjs qualification/.test(step.run ?? ''),
-  )
-  assert.match(
-    receipt.run,
-    /cp "\$RUNNER_TEMP\/mac-summary\.json" "\$RUNNER_TEMP\/macos-qualification\/mac-summary\.json"/,
-  )
+test('release Mac evidence is complete while PRs use independent native smoke', async () => {
+  const workflow = parse(await readFile(
+    resolve(import.meta.dirname, '../../.github/workflows/macos-hosted-candidates.yml'), 'utf8',
+  ))
+  assert.deepEqual(workflow.jobs['pr-smoke'].needs, ['scope'])
+  assert.equal(workflow.jobs['qualified-architecture'].strategy.matrix.include[0].count, 1)
+  assert.ok(workflow.jobs['qualified-architecture'].steps.some(
+    (step) => step.run?.includes('job-evidence.mjs --id'),
+  ))
+  assert.ok(workflow.jobs['qualified-architecture'].steps.some(
+    (step) => step.run?.includes('candidate-provenance.mjs qualification'),
+  ))
 })
 
 test('Linux whole-file roles own all hostile and display work while startup remains a separate Mac obligation', async () => {
