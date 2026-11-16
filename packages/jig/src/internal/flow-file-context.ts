@@ -298,7 +298,7 @@ export async function capturePrivateFlowArtifact(
     held.root.artifacts.size + held.root.pendingCaptures >= 16 ||
     held.root.bytes + (held.root.pendingCaptures + 1) * 16 * 1024 * 1024 > 256 * 1024 * 1024
   )
-    throw new TypeError('root artifact retention limit exceeded')
+    throw new ChannelOperationError('RESOURCE_EXHAUSTED', 'root artifact retention limit exceeded')
   held.root.pendingCaptures++
   try {
     const snapshot =

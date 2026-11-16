@@ -69,6 +69,9 @@ execution evidence.
 - Child file routes distinguish fixed reads, supplied held artifacts, and fresh
   operation-created outputs. Forwarded artifact results are separate from domain
   results. The original protected attempt owns each invocation's latest accepted checkpoint.
+
+- Child artifact diagnostics identify fixed failure steps and known typed reasons without exposing private exceptions or paths.
+
   Native retrieval identifies a settled direct child through its caller-local operation ID.
   It grants a new artifact through a successful retrieval, never through the child's failure result.
   Application ticket access can select retained scopes without creating child Runs or extending retention.

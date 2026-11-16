@@ -22,6 +22,8 @@ import {
   requirePrivateCapturedInput,
 } from '../../src/internal/input-capture.js'
 
+import { privateChildArtifactFailureMessage } from '../../src/internal/root-flow-call-controller.js'
+
 async function fixture(work: (root: string, fd: number) => Promise<void>) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-output-capture-')))
   const fd = privateOpenFileRoot(root)
@@ -248,3 +250,46 @@ test('output capture refuses links, protected names, excess entries and cancella
     cancellation.abort()
     expect(() => capturePrivateOutput(fd, cancellation.signal)).toThrow()
   }))
+
+test('real output refusals distinguish unsupported material from capacity without source paths', async () =>
+  fixture(async (root, fd) => {
+    const failure = () => {
+      try {
+        capturePrivateOutput(fd).close()
+        throw new Error('expected capture refusal')
+      } catch (error) {
+        expect(error).toBeInstanceOf(PrivateOutputProfileError)
+        return privateChildArtifactFailureMessage('capture', error)
+      }
+    }
+    await writeFile(join(root, 'secret-source'), 'synthetic credential canary')
+    await symlink('secret-source', join(root, 'private-alias'))
+    const unsupported = failure()
+    expect(unsupported).toContain('capture failed: unsupported output material')
+    expect(unsupported).not.toContain(root)
+    expect(unsupported).not.toContain('secret-source')
+    expect(unsupported).not.toContain('private-alias')
+    await rm(join(root, 'private-alias'))
+    await writeFile(join(root, 'large'), Buffer.alloc(16 * 1024 * 1024))
+    expect(failure()).toContain('output capacity exceeded')
+    await rm(join(root, 'large'))
+    for (let index = 0; index < 65; index++) await writeFile(join(root, `f-${index}`), '')
+    expect(failure()).toContain('output capacity exceeded')
+  }))
+
+test('artifact diagnostics identify the step and keep unclassified exceptions private', () => {
+  const error = new Error('/private/host-path credential-canary')
+  for (const phase of [
+    'selection',
+    'capture',
+    'output retirement',
+    'owner release',
+    'grant',
+  ] as const) {
+    const message = privateChildArtifactFailureMessage(phase, error)
+    expect(message).toContain(`child artifact ${phase} failed: cause unknown`)
+    expect(message).not.toContain('host-path')
+    expect(message).not.toContain('credential-canary')
+    expect(message.length).toBeLessThan(1024)
+  }
+})

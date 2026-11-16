@@ -6,6 +6,7 @@ import {
   readPrivateCapturedOutput,
   requirePrivateCapturedOutput,
 } from '../../src/internal/captured-output.js'
+import { sha256 } from '../../src/internal/file-input.js'
 import {
   capturePrivateFlowArtifact,
   capturePrivateRetainedFlowArtifact,
@@ -18,8 +19,8 @@ import {
   resolvePrivateFlowArtifact,
   selectedPrivateFlowArtifacts,
 } from '../../src/internal/flow-file-context.js'
-import { sha256 } from '../../src/internal/file-input.js'
 import { readPrivateCapturedInput } from '../../src/internal/input-capture.js'
+import { privateChildArtifactFailureMessage } from '../../src/internal/root-flow-call-controller.js'
 import { PrivateRootRunFiles } from '../../src/internal/root-run-files.js'
 
 test('fresh operation outputs seal distinct immutable trees and explicitly delegate read-only views', async () => {
@@ -111,7 +112,7 @@ test('artifact snapshot count is bounded for the whole root, including ungranted
       await capturePrivateFlowArtifact(root, { kind: 'linux-directory', directory: source })
     await expect(
       capturePrivateFlowArtifact(root, { kind: 'linux-directory', directory: source }),
-    ).rejects.toThrow('limit')
+    ).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' })
   } finally {
     root.close()
     await source.close()
@@ -187,6 +188,40 @@ test('cancelled retained handoff retires the unissued snapshot before returning 
         new AbortController().signal,
       ),
     ).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' })
+  } finally {
+    root.close()
+  }
+})
+
+test('real artifact permission and retention failures have safe reasons', async () => {
+  const root = createPrivateRootFlowFileContext({ declarations: {}, captured: [] })
+  try {
+    try {
+      resolvePrivateFlowArtifact(root, 'unheld-private-reference')
+      throw new Error('expected permission refusal')
+    } catch (error) {
+      expect(privateChildArtifactFailureMessage('selection', error)).toContain(
+        'artifact permission refused',
+      )
+    }
+    for (let index = 0; index < 16; index++)
+      await capturePrivateRetainedFlowArtifact(
+        root,
+        { files: [], directories: [] },
+        new AbortController().signal,
+      )
+    try {
+      await capturePrivateRetainedFlowArtifact(
+        root,
+        { files: [], directories: [] },
+        new AbortController().signal,
+      )
+      throw new Error('expected capacity refusal')
+    } catch (error) {
+      expect(privateChildArtifactFailureMessage('capture', error)).toContain(
+        'artifact capacity exhausted',
+      )
+    }
   } finally {
     root.close()
   }
