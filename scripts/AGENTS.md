@@ -65,8 +65,8 @@ operational baselines, and public-site assembly.
   pages. Site assembly copies canonical bytes. It never regenerates contracts.
 - `preflight.ts` owns local pre-push regression checks. `just preflight` builds
   Jig and its dependencies. It runs quick tooling and portable source checks. On
-  an exact selected unprivileged Mac candidate with qualified Bun, it then runs every
-  applicable `test/macos/` and exact observer suite sequentially. It uses the
+  an unprivileged Apple Silicon Mac with modern process prerequisites and
+  qualified Bun, it runs the applicable common `test/macos/` files sequentially. It uses the
   hosted prerequisite order, excludes ambient credentials and live-client
   opt-ins, checks ownership residue, and stops at the first failure. Other hosts
   report portable-only coverage.
@@ -82,8 +82,8 @@ operational baselines, and public-site assembly.
   availability before building. Before local tests, resolve the selected real
   Node 22+ executable.
 
-  Apple Silicon Darwin 24.6.0 build 24H232 is an exact qualification candidate.
-  Full native, installed and residue checks must pass before release.
+  Exact Darwin build numbers are not admission gates. Full native, installed
+  and residue checks must still pass before release.
 
   Verify it. Supply compiler paths even when PATH uses a version-manager shim.
   Preserve distinct operator compiler overrides and exclude ambient credentials.
@@ -209,7 +209,7 @@ operational baselines, and public-site assembly.
   `finishOperationalBaseline` removes only successful fixtures. It retains
   failed private state and the bounded memory command transcript.
 - `profile-installed-startup.ts` is an opt-in diagnostic on selected Ubuntu
-  24.04 x86-64 and exact Intel/Apple Silicon Mac hosts. It uses the exact frozen
+  24.04 x86-64 and capability-verified Apple Silicon Mac hosts. It uses the exact frozen
   Jig and FLOW SDK archives and a deterministic three-Flow conversation. It
   excludes package/fixture setup, records one warmup plus five fresh-project
   trials, and preserves bounded failure evidence. It makes no provider calls and
