@@ -33,7 +33,7 @@ use-case and orchestration hypotheses.
   with installation prerequisites centralized in `start/index.md`. Describe
   current behavior, not comparisons with superseded alpha releases.
   Its platform guidance distinguishes required Linux/Apple Silicon release
-  checks from complete nightly Intel compatibility and its regression window.
+  checks from fast PR Mac smoke. Only Apple Silicon is supported by the Mac lane.
 - `build/agents.md` owns API and native setup, operator selection, resource
   configuration, review checks, and current adapter
   limits. Setup instructions belong here. Other guides link to the relevant
