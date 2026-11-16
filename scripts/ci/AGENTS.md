@@ -22,35 +22,14 @@ preparation never becomes a consumer requirement.
 
   Production image decoding uses a disposable process. The portable suite owns
   its lifetime and fallback cases. Those checks do not qualify the thread experiment.
-- `host-scope.mjs` selects complete Linux and Apple Silicon qualification.
-  A verified two-parent PR merge can omit native jobs for an entirely independent delta. That delta must contain only site
-  files, non-specification documentation, Python SDK/reporting files, or
-  reviewed root/agent guidance. The shared Reporting descriptor remains a native
-  input. Source, build, workflow, specification, mixed, unknown or unverifiable
-  inputs require complete Linux and Apple Silicon. Manual execution is always full.
-
-  Linux main pushes remain complete, preserving native diagnostics' upstream lineage.
-  Verified feature, pending and stale main sources omit Mac jobs.
-  Eligible generated releases and unknown eligibility require complete qualification.
-  The selector verifies the main ref, repository and exact push SHA before reading source-pinned release metadata.
-  Final `affected-linux` and `affected-macos` checks
-  independently reconstruct this decision and require either every native job's
-  success or every job's explicit omission.
-
-  An omitted PR or nonrelease Mac main source creates no host qualification receipt. No native selection
-  modes, native result reuse or compact witnesses exist. Intel has separate nightly
-  compatibility coverage.
-- `intel-nightly.mjs` selects published Jig and distinct main sources, or an
-  explicitly requested open PR merge. It acquires canonical inputs with their
-  original producer identities and immutable transport checks. Only scheduled
-  main runs may supply verified mirrors. Manual PR runs cannot seed trusted
-  inputs. Published archive bytes
-  additionally match exact-version npm integrity.
-
-  Intel retains its full whole-file inventory under the `macos-intel` evidence
-  scope. The required `macos` scope owns Apple Silicon only. Nightly health
-  names the tested version/source and last recorded passing published version.
-  Missing, stale or foreign proof fails. Health never grants release readiness.
+- `host-scope.mjs` selects Linux and Apple Silicon execution for the
+  current exact source. Verified independent site/docs/Python-only changes may
+  omit native jobs. Applicable PRs require one fast macOS ARM smoke; eligible
+  main releases, manual runs and nightly diagnostics require one full native
+  ARM qualification. `affected-macos` validates the selected job set and
+  release evidence; smoke cannot substitute for full release qualification.
+  Linux main and manual qualification rules are unchanged. No Intel CI lane
+  or five-worker Mac allocator is required.
 
 - `skill-reference-changes.mjs` transfers generated references as inert data between read-only generation and a fresh trusted writer.
   Bind every transfer to its exact PR source and originating workflow run and attempt.
@@ -292,251 +271,20 @@ They consume frozen package exports with tracked test helpers and installed
   policy. This shard uses real acquisition, native execution and cleanup, with ordinary
   source and candidate verification. The aggregate and release readiness require
   its current-attempt proof alongside the other Linux shards.
-- `qualify-macos-host.sh` owns the exact selected Intel 23E224, Intel/Apple
-  Silicon 24G830, and Apple Silicon 24H232 profiles. The hosted pool admits Intel
-  24G830 and either exact Apple Silicon 24G830 or 24H232 tuple.
+- `qualify-macos-host.sh` executes full rootless native qualification on
+  Apple Silicon using modern kernel process capabilities and pinned Bun/Node
+  toolchains. It retains whole-file test coverage, actual native process
+  enforcement, installed clients, canonical candidate digests, and zero-residue
+  checks. A specific Darwin build is recorded, not required.
+- `macos-host-test-shards.mjs` maintains whole-file coverage for the full
+  one-host ARM plan; legacy role-planning helpers do not schedule CI workers.
+- `macos-host-profiles.mjs` validates actual ARM process identity, coalition
+  accounting, kernel family, Bun version and revision without a fixed build
+  allowlist. Descriptor-bound records remain no-follow, nonblocking and bounded.
+  Prerequisite success alone never establishes secure containment.
+- `probe-macos-host.ts` verifies native mechanisms before work begins. Missing
+  APIs fail closed, including on new or virtual macOS versions.
 
-  It owns Bun 1.4.4 and real Node 22+
-  preflight, and frozen same-revision host/model/renderer archives with digest
-  rechecks. It owns ordinary native npm installation through the same fresh full
-  Jig package-smoke consumer. That consumer verifies the matching optional
-  runtime and CLI. The script also owns sequential native tests, standalone
-  display consumers, and comparison of owned host residue before and after
-  qualification. Mount evidence includes explicit lowercase `jig-` paths and
-  automatic `/Volumes/Jig-` native volumes, including duplicate-name suffixes.
-
-  Observed paths never authorize cleanup or detachment. Its full mode remains
-  the self-hosted entrypoint. Hosted `--shard` runs one isolated portion of the
-  same complete suite. Intel uses four shards. Apple Silicon uses one complete
-  main/manual host or three PR roles selected from five workers.
-
-  Shard zero runs native prerequisites and the final shard runs installed
-  consumer and genuine-client checks on each architecture. Both roles run once
-  on the single main/manual Apple Silicon host.
-
-  The full Jig package smoke receives `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY`
-  from the existing Mac evidence directory or Linux's installed-evidence command directory.
-  Linux selects its canonical same-user, mode-0700 `linux-command-evidence` directory.
-  The command-scoped selection does not reach later commands or Flow input.
-  Exclusive mode-0600 JSON retains closed failed-command metadata.
-  Fixed mapped-files leaf and composed profiles retain bounded phases, timings, outcomes, and allowlisted causes.
-
-  Existing Mac upload patterns and Linux's seven-day host evidence artifact retain these bounded files.
-  Raw private command transcripts and consumer trees stay outside hosted artifacts.
-  Diagnostics establish neither cleanup nor qualification. Hosted qualification consumes
-  `JIG_CI_CANDIDATE_DIRECTORY` after verifying provenance and copies its exact
-  archives. Ordinary platform source builds remain separate. Full self-hosted
-  local mode uses the owning local packers.
-
-  An existing `JIG_MACOS_TEST_TIMINGS_DIRECTORY` selection enables
-  `JIG_HOST_TEST_TIMING=1` for checkpoint, workspace and foundation fixture
-  diagnostics. Their closed wall intervals and bounded profile projections appear
-  in the existing job log. Timing changes no deadlines, inventories or outcomes.
-
-  Per-test and product deadlines stay unchanged. Each assigned PR worker has its own execution allowance.
-  Queue, preparation, coordination, and evidence limits remain separate. Main/manual runs retain their complete-host allowance.
-  Exact allocations belong to `.github/AGENTS.md` and the workflow.
-- `macos-host-test-shards.mjs` obtains full Mac membership from the shared suite
-  catalog, retaining portable files until a separate audit proves host
-  neutrality. Eight native prerequisite files run once on shard zero and genuine
-  installed startup runs separately on the final shard. Every other selected
-  file runs once in a fresh sequential process, without name filters.
-  `.node.mjs` files use verified Node. Other files use Bun. Both runtimes retain
-  exact file identities in their JUnit reports.
-
-  `host-test-durations.json` retains source-bound successful whole-file timing
-  observations and their source, run, attempt and job identities. Split incident
-  scenarios retain complete case observations and an explicit per-file startup
-  allowance until fresh whole-file observations replace those estimates.
-
-  `host-test-scheduling.mjs` balances complete files on Linux and Mac, including
-  native and installed tail costs. Timings affect placement, never membership,
-  limits or qualification. Unknown lifecycle files reserve
-  sixty seconds. Other unknown files reserve two seconds.
-
-  After balancing, each shard runs its
-  `macos-native` whole files before long application scenarios, preserving order
-  within both partitions.
-
-  This exposes primitive failures early without moving files between runners or
-  changing weights, commands, limits or qualification obligations.
-- `macos-host-cohort.mjs` owns the PR assignment protocol. One running Ubuntu
-  allocator assigns three roles independently within exactly two admitted ARM
-  profiles. Five workers publish unique announcements and await their own
-  assignments. One preparation gate starts workers only after canonical acquisition, Quick success, and allocator readiness.
-  Workers never wait for an unscheduled Mac peer. Artifact names are not locks.
-
-  Dispatch each profile's roles in the source-owned order 2, 0, 1 and replay that order when validating assignments.
-  The installed role starts on the earliest matching worker. Native prerequisites remain on role zero, and whole-file ownership is unchanged.
-
-  Readiness waits for queued allocator execution within the existing preparation work deadline.
-  Once the exact allocator is observed active, its readiness record has a three-minute visibility allowance.
-  That allowance is clipped to preparation time and never restarts after a changed or missing observation.
-  Replaced, foreign, failed, or completed allocators cannot release Mac workers.
-
-  Workers queue after preparation succeeds.
-  Each executing worker downloads the immutable prepared artifact and verifies canonical provenance before native qualification.
-
-  Records bind the tested merge, run, attempt, allocator, worker job and complete
-  host tuple. Reconcile the final ledger with every announcement, assignment and
-  worker receipt. Require preparation, the allocator, deadline guard, and every worker job to succeed in the current attempt.
-  Failed uploads, duplicate records, ambiguous responses and
-  deadlines fail closed. Assignment alone grants no execution credit.
-
-  After a verified claim, log each worker's logical role and exact host profile.
-  Surplus summaries explain that no test role was assigned.
-  Assignment summaries make no completion claim.
-
-  Downloads verify immutable IDs, byte counts and SHA-256 before bounded ZIP
-  parsing. Parse one regular JSON member without filesystem extraction.
-
-  Run artifact listings paginate retained earlier-attempt artifacts before selecting current-attempt records.
-  Read at most ten 100-item pages within 30 seconds, clipped to the caller's phase deadline.
-  All pages share a 4 MiB response-body allowance.
-  A changing total count or incomplete page may restart the complete read twice, for at most three passes with bounded pauses.
-  Never return a partial inventory. Persistently incomplete, malformed and duplicate-ID pages fail.
-
-  Current-attempt name, identity and digest validation remains mandatory.
-  The current-attempt jobs inventory remains a strict single page.
-  One-page artifact listings keep one request per poll.
-
-  Immutable coordination downloads allow four attempts within 30 seconds, clipped to the caller's phase deadline.
-  Retry transport failures, HTTP 408, 429, 5xx, explicit throttling responses, and recent already-listed artifact 404s.
-  Honor rate-limit waits only when they fit. Validate unchanged IDs, sizes, and digests after every successful transfer.
-
-  Send credentials only to the API origin, never storage redirects. Diagnostics retain bounded status and identity fields without response bodies or credentials.
-  Ownership uploads and whole claims are never replayed.
-
-  Before publishing readiness, wait at most 60 seconds for the allocator's unique current-attempt job to become active.
-  Missing and queued records may wait. Duplicate, replaced, terminal, invalid, and foreign records fail immediately.
-  Idle artifact polling and job metadata refresh use 60-second intervals.
-  New worker announcements restore five-second polling for one minute. Refresh job observations before issuing assignments.
-
-  `macos-host-cohort-run.mjs` validates every executing worker's exact source
-  reports and canonical metadata, including minority profiles. Only then does it
-  normalize one complete matching role set for the existing full report reader.
-  Retained timing data includes only validated current worker identities and UTC intervals.
-  Surplus workers cannot retain execution proof. Main/manual runs use role zero
-  directly and do not participate in allocation. Their allocator succeeds without publishing records, while preparation still acquires canonical inputs.
-
-  Keep artifact runtime credentials inside the pinned JavaScript action and child.
-  Copy the isolated `mac-cohort-client/` manifest and generated Bun lock into runner scratch.
-  Install the exact official client and locked dependency digests with `--frozen-lockfile --ignore-scripts`.
-  Regenerate the tool lock with the workflow's pinned Bun version when updating dependencies.
-  Never export artifact runtime credentials into later steps.
-- `pr-time-budget.mjs` owns each assigned PR worker's 1,500-second execution allowance, including a 120-second cleanup and evidence reserve.
-  Verify repository, run, attempt, PR head, job identity, runner assignment, and executed steps before retaining the job's start time.
-  Queued placeholder timestamps grant no execution allowance. Test evidence remains bound to the separate tested merge SHA.
-
-  Fresh full native attempts receive fresh job allowances and require all execution and cleanup evidence from that attempt.
-  Reject copied prior-attempt jobs and partial native recovery. Previous failed attempts remain failed.
-  Bound child process groups by remaining work time and reject completion after the assigned job's final deadline.
-  PR command ownership settles remaining descendants even after a successful leader exit.
-
-  Preparation, coordination, and evidence jobs have separate 45-minute, 90-minute, and five-minute allowances.
-  Unassigned workers have a 60-minute queue ceiling. The earlier applicable phase limit still wins.
-  Record original creation and current-attempt start times for turnaround reporting, never as native execution anchors.
-
-  Metadata reads allow three requests within 60 seconds, clipped to the caller's absolute deadline.
-  Retry transient request or response-body transport failures and server failures within that bound.
-  Rate-limited HTTP 403 and 429 responses honor `Retry-After` and exhausted-limit reset times.
-  Other HTTP 403 responses, oversized bodies, malformed JSON and expired deadlines remain terminal.
-  Retries never restart a workflow phase or replace its assigned-job identity.
-
-  Floor work minutes for admission, but round the GitHub step backstop up from raw remaining milliseconds plus bounded termination grace.
-  The exact Node deadline remains authoritative. Integer-minute rounding must not interrupt its process-group cleanup early.
-
-  Its independent Ubuntu guard waits for all five exact current-attempt Mac workers using read-only Actions metadata.
-  Failed, ambiguous, copied, or overdue workers fail the guard and refuse qualification.
-  The allocator observes guard failure. Both final gates require guard success on PRs.
-  Main and manual runs require its explicit omission.
-
-  The read-only guard cannot cancel workers.
-  Missing job registration and unassigned jobs may wait only within the infrastructure queue allowance.
-  Poll once per minute. The worker's exact process deadline and GitHub timeout enforce its execution limit between observations.
-  The guard runs outside the two-slot native matrix and grants no native execution credit.
-
-  CLI logs show original creation, attempt start, assigned job start, queue delay, work cutoff, and final job deadline.
-  Summaries report original-run and current-attempt turnaround and explicitly identify totals above the 25-minute target.
-  Successful monitor summaries identify the independent Ubuntu job without claiming native execution.
-  Summary output never delays a guard failure or grants qualification.
-
-  Main/manual commands retain their existing allowances. Missing metadata or
-  invalid retained values fail closed. GitHub still owns guard allocation and cancellation settlement.
-- `merge-attempts.mjs` selects the newest authoritative execution of each named
-  job without falling back from failures. `merge-retry.mjs` owns PR CI input
-  acquisition and per-job evidence across attempts within one original run.
-  It downloads immutable artifact IDs and verifies ZIP transport hashes before
-  extraction.
-
-  Native PR acquisition may retain that run's original successful canonical
-  producer. Each native shard still executes and reports freshly. Main/manual
-  candidate acquisition and release readiness remain current-attempt.
-
-  Hosted runner family and architecture must match the job's fixed label.
-  Exact image build versions are retained observations of that execution.
-
-  GitHub may copy successful checks into later attempts with new IDs after
-  their original execution ended. Such copies require one earlier successful
-  execution with identical timestamps, runner identity, labels and complete step
-  observations. Receipts retain that original job ID and attempt. Missing or
-  ambiguous origins refuse reuse. Later actual failures remain authoritative.
-
-  After verifying merge identity, runtime profiles, target coverage and immutable
-  inputs, the collector summarizes current and retained job executions.
-  It records their attempts, job IDs and evidence artifact IDs.
-  Summary output is diagnostic. Its absence cannot alter the retained receipt
-  or grant execution credit. No saved-duration estimate is inferred.
-- `test-reports.mjs` owns the shared JUnit case reader for source/job evidence
-  and Mac reports. It rejects empty, failed, skipped, incomplete or
-  duplicate-case reports. Each consumer enforces its owning file inventory. The
-  Mac validator reconstructs the complete source-pinned shard plan and reads
-  every owning report and completion marker once.
-
-  `readMacRoleReport` validates one complete role without granting qualification.
-  `readMacReports` requires every role for the explicitly selected plan.
-  The default plan retains ARM1 and Intel4. The PR plan requires ARM3.
-
-  Every shard's retained prerequisites must match an exact admitted architecture,
-  kernel, build and Bun tuple. A complete architecture plan must use one observed
-  tuple. Its summary and retained qualification artifact name that tuple, without
-  extending qualification to another admitted build.
-
-  Linux Bun commands retain their stdout parser. Linux Node commands retain
-  exact single-file JUnit reports
-  beside their transcripts. Installed scripts retain completion markers.
-  `macos-host-summary.py` projects validated file and case counts, complete planned coverage, and optional job timing.
-  PR summaries map each selected role to its exact current worker job through the normalized receipt.
-  Missing or malformed mappings leave job links and timing unavailable.
-
-  It does not implement another XML or plan validator. Timing cannot grant or
-  remove qualification. The evidence writer consumes that owning summary without
-  reparsing Mac reports.
-- The matching Linux and Mac host-conformance workflows own runner selection.
-- `npm-candidate-preflight.mjs` checks a frozen candidate's source revision,
-  digest and manifest, then compares any existing exact public npm version's
-  whole archive bytes. A verified canonical pending changeset may defer this
-  comparison only for its covered Jig-owned package. The required release-impact
-  check independently verifies the PR's new coverage. FLOW and final generated
-  versions retain the complete registry check. Only an explicit registry E404
-  means unpublished. It executes no package code, publishes nothing, and cannot
-  replace the protected publisher's later group and channel reconciliation.
-- `macos-host-profiles.mjs` declares each architecture's finite pool of exact
-  hosted kernel, build and Bun tuples. The suite catalog retains each target's
-  complete file inventory. The Apple Silicon pool includes both builds observed
-  during GitHub's image rollout. One complete host executes its full plan, so a
-  mixed pool cannot combine partial results from different builds.
-
-  The Apple Silicon execution profile names its architecture and pinned Bun,
-  rather than one configured build. Its canonical G/H inventory is identical.
-  Complete evidence establishes only the observed build's qualification.
-  Prerequisite files are opened once with no-follow and nonblocking flags.
-  The descriptor must name a regular file, and reads stop at 8,193 bytes to
-  enforce the 8,192-byte limit even if the file grows.
-- `probe-macos-host.ts` observes native process identity and coalition
-  accounting prerequisites. Hosted mode rejects target drift before native
-  compilation and source builds. Failed target checks retain the observed tuple.
-  Prerequisites start no package work and never establish backend qualification.
 - `install-macos-test-clients.ts` extracts digest-pinned native Codex, Claude
   and Pi archives into a fresh runner-owned directory for offline startup
   qualification. It neither executes clients nor provisions consumer machines.
@@ -593,7 +341,7 @@ They consume frozen package exports with tracked test helpers and installed
 - Mac qualification runs unprivileged without host provisioning. Require all
   three genuine native client paths for full qualification and the installed
   consumer shard. Missing prerequisites fail explicitly. Claude and Pi must
-  complete offline startup. Codex must complete offline startup on Intel 23E224
+  complete offline startup. Codex must complete offline startup on unsupported Intel 23E224
   and return the explicit unsupported-preferences refusal on 24G830 and 24H232
   profiles. The selected path remains genuine and the case never skips.
 
