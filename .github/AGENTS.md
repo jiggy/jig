@@ -383,7 +383,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   qualification. Only these full runs may publish candidate-bound Mac
   qualification evidence. Exact candidate archives and runtime binaries remain
   pinned. The host build number is observed provenance, not a fixed allowlist.
-  The `affected-macos` gate requires the correct PR or full job set for the
+
+- The `affected-macos` gate requires the correct PR or full job set for the
   verified source. Required releases still fail closed when native evidence is
   absent, regardless of infrastructure availability. No Intel Mac lane is
   maintained.
