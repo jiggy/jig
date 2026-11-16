@@ -26,7 +26,9 @@ preparation never becomes a consumer requirement.
   current exact source. Verified independent site/docs/Python-only changes may
   omit native jobs. Applicable PRs require one fast macOS ARM smoke. Eligible
   main releases, manual runs and nightly diagnostics require one full native
-  ARM qualification. `affected-macos` validates the selected job set and
+  ARM qualification.
+
+- `affected-macos` validates the selected job set and
   release evidence. Smoke cannot substitute for full release qualification.
   Linux main and manual qualification rules are unchanged. No Intel CI lane
   or five-worker Mac allocator is required.
