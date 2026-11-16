@@ -14,6 +14,7 @@ export type AttemptVerb =
   | 'submit'
   | 'lookup'
   | 'cancel'
+  | 'reconcile'
   | 'result'
   | 'export'
 export interface AttemptConstraints {
@@ -135,6 +136,7 @@ export interface AttemptRequests {
   submit: { ticket: string; request: CanonicalRequest }
   lookup: { ticket: string }
   cancel: { ticket: string }
+  reconcile: { ticket: string }
   result: { ticket: string; checkpointScope?: CheckpointScope }
   export: {
     ticket: string
@@ -149,6 +151,7 @@ export interface AttemptResults {
   prepare: Prepared
   lookup: AttemptObservation
   cancel: { acknowledged: boolean; observation: AttemptObservation }
+  reconcile: AttemptObservation
   result: {
     observation: AttemptObservation
     output?: JsonValue
@@ -390,6 +393,7 @@ const requests: Record<AttemptVerb, Check> = {
   submit: record({ ticket, request: canonical }),
   lookup: record({ ticket }),
   cancel: record({ ticket }),
+  reconcile: record({ ticket }),
   result: record({ ticket }, { checkpointScope }),
   export: (value) => {
     record(
@@ -416,6 +420,7 @@ const results: Record<keyof AttemptResults, Check> = {
   }),
   lookup: observation,
   cancel: record({ acknowledged: boolean, observation }),
+  reconcile: observation,
   result: (value) => {
     record(
       {
