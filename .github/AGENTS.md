@@ -209,7 +209,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   Keep these checks and `test` in merge policy. There are no test-name selection
   modes, temporary benchmark predicates or
-  compact witnesses. Native macOS smoke is PR-scoped; full ARM qualification remains a release gate.
+  compact witnesses. Native macOS smoke is PR-scoped. Full ARM qualification remains a release gate.
 
 - Model and web/TUI display packages enter dependency ownership, source and host
   test inventories, and frozen standalone artifact gates. Their
@@ -382,7 +382,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   `macos-26` ARM host for complete native, installed-consumer and cleanup
   qualification. Only these full runs may publish candidate-bound Mac
   qualification evidence. Exact candidate archives and runtime binaries remain
-  pinned; the host build number is observed provenance, not a fixed allowlist.
+  pinned. The host build number is observed provenance, not a fixed allowlist.
   The `affected-macos` gate requires the correct PR or full job set for the
   verified source. Required releases still fail closed when native evidence is
   absent, regardless of infrastructure availability. No Intel Mac lane is
