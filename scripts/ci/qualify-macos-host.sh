@@ -22,7 +22,8 @@ if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 ]]; then
   echo 'Native Mac qualification requires Apple Silicon.' >&2
   exit 2
 fi
-kernel_major="${$(uname -r)%%.*}"
+kernel_release=$(uname -r)
+kernel_major=${kernel_release%%.*}
 if [[ ! "$kernel_major" =~ ^[0-9]+$ || "$kernel_major" -lt 23 ]]; then
   echo 'The Mac kernel lacks the required modern process-control APIs.' >&2
   exit 2
