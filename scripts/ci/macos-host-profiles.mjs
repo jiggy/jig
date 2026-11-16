@@ -53,7 +53,7 @@ export function requireMacHostPrerequisites(evidence, architecture) {
 // This is prerequisite evidence only: native lifecycle and containment tests
 // establish qualification on the executing host.
 export function requireCurrentMacHostPrerequisites(evidence, architecture) {
-  const major = typeof evidence?.kernel === 'string' && /^(\\d+)\\.\\d+\\.\\d+$/.exec(evidence.kernel)
+  const major = typeof evidence?.kernel === 'string' && /^(\d+)\.\d+\.\d+$/.exec(evidence.kernel)
   if (
     architecture !== 'arm64' ||
     evidence?.kind !== 'macos-host-prerequisites/1' ||
