@@ -862,7 +862,7 @@ function requireProfileEnvironment() {
           timeout: 5000,
         }).stdout?.trim()
       : undefined
-  const macMajor = /^(\\d+)\\.\\d+\\.\\d+$/.exec(release())
+  const macMajor = /^(\d+)\.\d+\.\d+$/.exec(release())
   const macHost =
     platform() === 'darwin' &&
     arch() === 'arm64' &&
