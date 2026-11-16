@@ -1038,7 +1038,7 @@ The original acceptance operation and cleanup remain joined after deadline expir
 
 ### Installed application execution
 
-`jig attempt <prepare|submit|lookup|cancel|result|export> --json` is the
+`jig attempt <prepare|submit|lookup|cancel|reconcile|result|export> --json` is the
 machine-only application boundary specified by
 [the execution client contract](execution-client.md). Its help remains ordinary
 human output and acquires no execution host or stdin lifetime.
