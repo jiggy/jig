@@ -186,6 +186,12 @@ Missing history does not establish that execution never started.
 For explicit cancellation, call `client.cancel({ ticket: prepared.ticket })`.
 Acknowledgement confirms the request, rather than complete cleanup.
 Read observations until the original owner settles.
+
+If the original owner is gone and cleanup remains pending, you may **explicitly**
+call `client.reconcile({ ticket: prepared.ticket })` to acquire trusted recovery
+of the saved attempt. It does not prepare, submit, resume, or retry the Flow.
+An active owner or unconfirmed fence/cleanup refuses; preserve the saved task
+and inspect its original observation rather than retrying the execution.
 Connection loss revokes owned execution but cannot undo remote effects already accepted by a provider.
 
 Use [Troubleshooting](../reference/troubleshooting.md) for approval errors, existing task records, uncertain execution, or unavailable output.
