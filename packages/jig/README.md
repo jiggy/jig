@@ -115,8 +115,8 @@ or `{ supplied: 'read' }` held-artifact inputs. Each call owns fresh output;
 separately from ordinary domain results.
 
 Applications can execute through `@jigging/jig/client`, separately from the
-inert authoring import. Its seven installed-host operations are `inspect`,
-`prepare`, `submit`, `lookup`, `cancel`, `result` and `export`. Prepare captures
+inert authoring import. Its eight installed-host operations are `inspect`,
+`prepare`, `submit`, `lookup`, `cancel`, `reconcile`, `result` and `export`. Prepare captures
 immutable input without dispatch; durable applications persist the returned
 ticket and canonical request in their own task transaction before submit.
 `run(request)` is a one-shot helper; `run(request, { persist })` awaits that
