@@ -54,6 +54,66 @@ export default defineBinding(${JSON.stringify({
 export default defineBinding(${JSON.stringify({ package: 'flows/nested', slots: { inner: route('flow:flows/copy') } })})
 `,
   )
+  // Ordinary public composition also exercises a conclusively cleaned capture refusal.
+  await put(
+    'bindings/diagnostic.ts',
+    `import {defineBinding} from '@jigging/jig'
+export default defineBinding({package:'flows/diagnostic',slots:{child:{target:'flow:flows/diagnostic-child',attachments:{files:{create:true}}}}})
+`,
+  )
+  for (const name of ['diagnostic', 'diagnostic-child']) {
+    await put(`flows/${name}/package.json`, {
+      name: `mapped-files-${name}`,
+      private: true,
+      type: 'module',
+      dependencies: { '@jigging/flow': input.flowVersion },
+    })
+    await put(`flows/${name}/FLOW.meta.json`, {
+      name,
+      description: 'Exercise public child artifact diagnostics without providers.',
+      uses: name === 'diagnostic' ? { child: {} } : {},
+    })
+    await put(`flows/${name}/FLOW.contract.json`, {
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+      input: { enum: ['regular', 'symlink', 'files'] },
+      ...(name === 'diagnostic-child' ? { attachments: { files: 'read-write' } } : {}),
+      result: {
+        type: 'object',
+        required: ['outcome', 'output'],
+        properties: {
+          outcome: { const: 'done' },
+          output: { type: 'object' },
+        },
+      },
+    })
+  }
+  await put(
+    'flows/diagnostic-child/FLOW.ts',
+    `import {handle} from '@jigging/flow'
+import {writeFile,symlink} from 'node:fs/promises'
+await handle(async run=>{
+  const directory=run.attachments.files.path
+  await writeFile(directory+'/source.txt','synthetic local source')
+  if(run.input==='symlink') await symlink('source.txt',directory+'/private-alias')
+  if(run.input==='files') for(let i=0;i<65;i++) await writeFile(directory+'/f-'+i,'')
+  return {outcome:'done',output:{accepted:true}}
+})
+`,
+  )
+  await put(
+    'flows/diagnostic/FLOW.ts',
+    `import {handle} from '@jigging/flow'
+await handle(async run=>{
+  try {
+    const child=await run.call({operationId:'capture',slot:'child',input:run.input,attachments:{files:{create:true}}})
+    if(!child.artifacts?.files) throw new Error('Missing successful child artifact')
+    return {outcome:'done',output:{accepted:true}}
+  } catch(error) {
+    return {outcome:'done',output:{code:error.code,message:error.message}}
+  }
+})
+`,
+  )
   const output = {
     type: 'object',
     properties: {

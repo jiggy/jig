@@ -40,7 +40,7 @@ import {
   savePrivateAttemptRunCheckpoint,
 } from './activation-admission-store.js'
 import { privateBunExecutionMaterialization } from './bun-execution-layout.js'
-import type { PrivateCapturedOutput } from './captured-output.js'
+import { type PrivateCapturedOutput, PrivateOutputProfileError } from './captured-output.js'
 import type { PrivateFileLocation } from './descriptor-files.js'
 import {
   type PrivateDirectRunInstalledSupport,
@@ -72,8 +72,8 @@ import {
   closePrivateExecutionOutput,
   PrivateOutputRetirementUnconfirmedError,
 } from './execution-output.js'
+import { PrivateFileInputError, sha256 } from './file-input.js'
 import { privateFlowExecutionIntent } from './flow-execution-intent.js'
-import { sha256 } from './file-input.js'
 import {
   capturePrivateFlowArtifact,
   commitPrivateFlowArtifacts,
@@ -93,9 +93,9 @@ import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js
 import { PrivateInvocationCheckpoints } from './invocation-checkpoints.js'
 import {
   normalizeParentFlow,
+  type PrivateParentFlow,
   privateChildOperationId,
   privateInvocationOperationPath,
-  type PrivateParentFlow,
   requireParentFlowOwner,
   requireParentTarget,
 } from './invocation-context.js'
@@ -457,6 +457,7 @@ async function executePreparedChild(
   let component: PrivateExecutionComponentProcess | undefined
   let childCleanupConfirmed = false
   let knownResult = false
+  let artifactPhase: PrivateChildArtifactPhase = 'selection'
   try {
     if (filePlan !== undefined) {
       childContext = createPrivateChildFlowFileContext(filePlan)
@@ -571,18 +572,22 @@ async function executePreparedChild(
       admitted.status === 'succeeded' &&
       Object.values(selected.request.attachments).includes('read-write')
     ) {
+      artifactPhase = 'capture'
       if (component.output === undefined) throw new Error('child output source is unavailable')
       snapshot = await capturePrivateFlowArtifact(input.files!, component.output, input.signal)
     }
+    artifactPhase = 'output retirement'
     // Native snapshots transfer their retirement to the root artifact owner.
     if (snapshot === undefined || component.output?.kind !== 'snapshot')
       await closePrivateExecutionOutput(component.output)
+    artifactPhase = 'owner release'
     await releaseKnownChild(input, lifecycle, lease, fence)
     childCleanupConfirmed = true
     if (admitted.status === 'succeeded') {
       if (input.signal.aborted) return failed('CANCELLED', 'the child Flow call was cancelled')
       if (privateBootRemaining(effectiveBootDeadline) <= 0)
         return failed('DEADLINE_EXCEEDED', 'the child Flow deadline elapsed')
+      artifactPhase = 'grant'
       const snapshots: Record<string, PrivateCapturedOutput> = { ...forwarded }
       if (snapshot !== undefined) {
         const name = Object.entries(selected.request.attachments).find(
@@ -643,7 +648,8 @@ async function executePreparedChild(
     }
     if (!attemptedDispatch && error instanceof ChannelOperationError)
       return failed(error.code, error.message, error.details)
-    if (knownResult) return failed('EXECUTION_FAILED', 'child artifacts could not be retained')
+    if (knownResult)
+      return failed('EXECUTION_FAILED', privateChildArtifactFailureMessage(artifactPhase, error))
     return attemptedDispatch
       ? failed('UNCERTAIN', 'child dispatch may have occurred but no result was proved')
       : failed('EXECUTION_FAILED', 'child Flow execution failed before dispatch')
@@ -1298,4 +1304,46 @@ function hasCode(error: unknown, code: string): boolean {
   return (
     error !== null && typeof error === 'object' && (error as NodeJS.ErrnoException).code === code
   )
+}
+
+/** Fixed host vocabulary only. Never project exception messages or filesystem paths. */
+export type PrivateChildArtifactPhase =
+  | 'selection'
+  | 'capture'
+  | 'output retirement'
+  | 'owner release'
+  | 'grant'
+
+export function privateChildArtifactFailureMessage(
+  phase: PrivateChildArtifactPhase,
+  error: unknown,
+): string {
+  const step = {
+    selection: 'selection',
+    capture: 'capture',
+    'output retirement': 'output retirement',
+    'owner release': 'owner release',
+    grant: 'grant',
+  }[phase]
+  let reason = 'cause unknown; inspect retained checkpoints before deciding the next action'
+  if (error instanceof PrivateOutputProfileError) {
+    const cause = error.cause
+    if (
+      cause instanceof PrivateFileInputError &&
+      ['path', 'symlink', 'linked', 'regular'].includes(cause.reason)
+    )
+      reason =
+        'unsupported output material; emit regular files without links and use supported relative paths'
+    else if (
+      cause === undefined ||
+      (cause instanceof PrivateFileInputError &&
+        ['bytes', 'files', 'entries'].includes(cause.reason))
+    )
+      reason = 'output capacity exceeded; reduce output bytes, files or tree entries'
+  } else if (error instanceof ChannelOperationError && error.code === 'RESOURCE_EXHAUSTED') {
+    reason = 'artifact capacity exhausted; reduce retained artifacts or release unused references'
+  } else if (error instanceof PrivateArtifactPermissionError) {
+    reason = 'artifact permission refused; forward only references held by this invocation'
+  }
+  return `child artifact ${step} failed: ${reason}`
 }

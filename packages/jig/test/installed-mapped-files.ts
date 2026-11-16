@@ -91,6 +91,30 @@ export async function checkInstalledMappedFiles(options: {
   await mkdir(library, { recursive: true })
   await command(['tar', '-xzf', options.sdkArchive, '--strip-components=1', '-C', library])
   await command([options.cli, 'review', '--yes', '--allow-resolution-network'])
+  for (const mode of ['regular', 'symlink', 'files']) {
+    const result = await command([
+      options.cli,
+      'run',
+      'binding:diagnostic',
+      '--input',
+      JSON.stringify(mode),
+      '--timeout',
+      '90s',
+    ])
+    const terminal = JSON.parse(result.stdout)
+    assert.equal(terminal.status, 'succeeded')
+    const output = terminal.output
+    if (mode === 'regular') assert.equal(output.accepted, true)
+    else {
+      assert.equal(output.code, 'EXECUTION_FAILED')
+      assert.match(output.message, /child artifact capture failed:/)
+      assert.match(
+        output.message,
+        mode === 'symlink' ? /unsupported output material/ : /output capacity exceeded/,
+      )
+      assert.doesNotMatch(output.message, /private-alias|source\.txt|jig-output/)
+    }
+  }
   const directory = await realpath(options.directory)
   const source = join(directory, 'source')
   const independent = join(directory, 'leaf-packet')

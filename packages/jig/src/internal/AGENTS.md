@@ -41,6 +41,10 @@ tests use genuine host capture through their own fixture entry.
   catches its operation error. A conclusively cleaned child failure remains
   recoverable with ordinary language handling. No result-acknowledgement ledger.
 
+- Settled child artifact failures report fixed step and typed reason descriptions.
+  Never project raw exceptions or paths. Preserve cancellation, deadlines and fatal cleanup precedence.
+  Unknown causes remain unknown. Accepted checkpoints survive artifact refusal.
+
 - Strictly parse, bound, snapshot, and authenticate values crossing a trust
   boundary. Decoding inert bytes must not mint authority.
 
