@@ -24,10 +24,10 @@ preparation never becomes a consumer requirement.
   its lifetime and fallback cases. Those checks do not qualify the thread experiment.
 - `host-scope.mjs` selects Linux and Apple Silicon execution for the
   current exact source. Verified independent site/docs/Python-only changes may
-  omit native jobs. Applicable PRs require one fast macOS ARM smoke; eligible
+  omit native jobs. Applicable PRs require one fast macOS ARM smoke. Eligible
   main releases, manual runs and nightly diagnostics require one full native
   ARM qualification. `affected-macos` validates the selected job set and
-  release evidence; smoke cannot substitute for full release qualification.
+  release evidence. Smoke cannot substitute for full release qualification.
   Linux main and manual qualification rules are unchanged. No Intel CI lane
   or five-worker Mac allocator is required.
 
@@ -277,7 +277,7 @@ They consume frozen package exports with tracked test helpers and installed
   enforcement, installed clients, canonical candidate digests, and zero-residue
   checks. A specific Darwin build is recorded, not required.
 - `macos-host-test-shards.mjs` maintains whole-file coverage for the full
-  one-host ARM plan; legacy role-planning helpers do not schedule CI workers.
+  one-host ARM plan. Legacy role-planning helpers do not schedule CI workers.
 - `macos-host-profiles.mjs` validates actual ARM process identity, coalition
   accounting, kernel family, Bun version and revision without a fixed build
   allowlist. Descriptor-bound records remain no-follow, nonblocking and bounded.
