@@ -96,6 +96,19 @@ export class PrivateAcpV2Foreground {
     this.terminal = undefined
   }
 
+  cancelBeforeInsertion(): void {
+    if (
+      !this.pending ||
+      this.accepted !== undefined ||
+      this.reported.size !== 0 ||
+      this.hasOutput ||
+      this.state !== 'idle' ||
+      (this.sawRunning && this.terminal !== 'cancelled')
+    )
+      this.protocol('ACP v2 cancellation lacks pre-insertion settlement')
+    this.pending = false
+  }
+
   /** Caller has already checked the notification's owned session ID. */
   update(candidate: unknown): void {
     const value = record(candidate)

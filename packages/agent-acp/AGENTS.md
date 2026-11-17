@@ -82,6 +82,9 @@ host retains credential, process, and dispatch authority.
 
   The report does not diagnose sandbox policy, authentication, remote dispatch,
   cleanup or permission to retry.
+- A correlated `session/prompt` error with code `-32800` and the host-projected
+  `cancelled-before-insertion` reason settles the turn as cancelled.
+  Started native work still requires host-verified cancelled idle settlement.
 - Optional conversational mode owns bounded direct commands/replies and per-turn
   results in `src/conversation.ts`. Native maxTurns, serial dispatch and
   interruption settlement remain host-enforced. One-shot calls retain their

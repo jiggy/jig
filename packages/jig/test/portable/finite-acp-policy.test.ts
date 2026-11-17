@@ -103,6 +103,52 @@ function deniesAndCloses(policy: PrivateFiniteAcpPolicy, action: () => unknown):
 }
 
 describe('finite ACP authority policy', () => {
+  test('settles an interrupted follow-up with native cancellation before insertion', () => {
+    const policy = session({ maxTurns: 2 })
+    prompt(policy)
+    settleTurn(policy)
+    policy.fromAdapter(
+      request(11, 'session/prompt', {
+        sessionId: 'owned-session',
+        prompt: [{ type: 'text', text: 'Follow up.' }],
+      }),
+    )
+    policy.fromAdapter(notification('session/cancel', { sessionId: 'owned-session' }))
+    policy.fromClient(update({ sessionUpdate: 'state_update', state: 'running' }))
+    policy.fromClient(
+      update({ sessionUpdate: 'state_update', state: 'idle', stopReason: 'cancelled' }),
+    )
+    expect(
+      policy.fromClient(
+        bytes({ jsonrpc: '2.0', id: 11, error: { code: -32800, message: 'Private text' } }),
+      ).toAdapter,
+    ).toEqual({
+      jsonrpc: '2.0',
+      id: 11,
+      error: {
+        code: -32800,
+        message: 'Native ACP prompt cancelled before insertion',
+        data: { reason: 'cancelled-before-insertion' },
+      },
+    })
+    expect(policy.turnActive).toBe(false)
+    policy.fromAdapter(request(12, 'session/close', { sessionId: 'owned-session' }))
+    policy.fromClient(reply(12, {}))
+    policy.assertSettled()
+  })
+
+  test('refuses a cancellation response while uninserted native work is still running', () => {
+    const policy = session()
+    prompt(policy)
+    policy.fromAdapter(notification('session/cancel', { sessionId: 'owned-session' }))
+    policy.fromClient(update({ sessionUpdate: 'state_update', state: 'running' }))
+    deniesAndCloses(policy, () =>
+      policy.fromClient(
+        bytes({ jsonrpc: '2.0', id: 10, error: { code: -32800, message: 'Cancelled' } }),
+      ),
+    )
+  })
+
   test('configuration replies require v2 configId on every native client', () => {
     for (const client of ['openai-codex', 'claude']) {
       const policy = new PrivateFiniteAcpPolicy(

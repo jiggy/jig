@@ -179,12 +179,19 @@ the same setting. Only then may a prompt be sent.
 After each prompt is dispatched, at most one `session/cancel` notification may
 name that owned session. It cannot settle pending work by itself. A cancellation
 that races completed settlement is consumed without forwarding to the idle
-client. An active interruption must settle within five seconds; otherwise the
-host fences the resource and reports unsuccessful/uncertain execution. New
-session IDs come from the correlated `session/new` response, never from a
-notification. A restored session uses only the already-claimed identifier in
-ready; its correlated resume result is projected as exactly `{}`. Current
-reviewed configuration and mode must be reapplied before the first prompt.
+client. An active interruption must settle within five seconds. Otherwise the
+host fences the resource and reports unsuccessful or uncertain execution.
+
+New session IDs come from the correlated `session/new` response.
+A restored session uses only the already claimed identifier in ready.
+The host projects its correlated resume result as exactly `{}`.
+Reapply reviewed configuration and mode before the first prompt.
+
+An interrupted prompt may return ACP cancellation before it acknowledges insertion.
+Jig accepts this cancellation only for its own interrupt and without insertion or output evidence.
+If native work reported running, it must first report cancelled idle settlement.
+The adapter receives a fixed cancellation reason in the correlated request error.
+
 Excess prompts, overlapping prompts, extra sessions, provider selection, authentication, tools, filesystem
 requests, unreviewed mode changes, unclaimed session replacement and metadata are rejected. Native
 permission requests receive the host's fixed cancelled answer, not a choice
