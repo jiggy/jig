@@ -48,9 +48,18 @@ jobs:
           path: ${{ runner.temp }}/claim-outcome/OUTCOME.json
           if-no-files-found: error
           retention-days: 1
+  ignored-command-failure:
+    name: Job-level tolerated command failure (control)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    continue-on-error: true
+    steps:
+      - name: Deliberate failed command retains raw failure
+        run: exit 17
   verify:
     name: Verify finalized claim and fail-closed refusal
-    needs: candidates
+    needs: [candidates, ignored-command-failure]
+    if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -63,6 +72,7 @@ jobs:
       - name: Verify actual immutable winner and all candidate executions
         env:
           GH_TOKEN: ${{ github.token }}
+          IGNORED_JOB_NEEDS_RESULT: ${{ needs.ignored-command-failure.result }}
         run: node scripts/ci/artifact-claim-service-control.mjs verify
       - name: Retain platform-only control report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

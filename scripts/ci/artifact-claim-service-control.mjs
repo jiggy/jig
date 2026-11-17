@@ -132,6 +132,24 @@ if (mode === 'prepare') {
 } else if (mode === 'verify') {
   const artifacts = await paginated(client, `${prefix}/artifacts`, 'artifacts')
   const observedJobs = await jobs()
+  const failedJobs = observedJobs.filter(
+    (job) => job.name === 'Job-level tolerated command failure (control)',
+  )
+  assert.equal(failedJobs.length, 1)
+  const failedJob = failedJobs[0]
+  assert.equal(failedJob.run_id, runId)
+  assert.equal(failedJob.run_attempt, attempt)
+  assert.equal(failedJob.head_sha, source)
+  assert.equal(failedJob.status, 'completed')
+  const failedSteps = failedJob.steps.filter(
+    (step) => step.name === 'Deliberate failed command retains raw failure',
+  )
+  assert.equal(failedSteps.length, 1)
+  assert.equal(
+    failedSteps[0].conclusion,
+    'failure',
+    'Job-level tolerance must preserve raw failed steps',
+  )
   const artifact = selectArtifact(artifacts, artifactName)
   const claim = verifyClaim(await jsonArtifact(artifact, 'CLAIM.json'), observedJobs)
   const outcomes = []
@@ -175,6 +193,12 @@ if (mode === 'prepare') {
       claimAt: row.claimAt,
     })),
     absentAmbiguousExpiredAndWrongJobRefused: true,
+    ignoredCommandFailure: {
+      jobId: failedJob.id,
+      conclusion: failedJob.conclusion,
+      stepConclusion: failedSteps[0].conclusion,
+      needsResult: env.IGNORED_JOB_NEEDS_RESULT,
+    },
     qualification: false,
   }
   await mkdir(join(env.RUNNER_TEMP, 'claim-control-report'))
