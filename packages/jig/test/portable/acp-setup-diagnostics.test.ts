@@ -27,8 +27,6 @@ describe('native-client setup recovery', () => {
             expect(hint).not.toContain(platform === 'darwin' ? 'Linux' : 'macOS')
             if (platform === 'darwin') expect(hint).toContain("this Mac's architecture")
           }
-            'a Node/npm launcher is not supported',
-          )
           const helper = hints.PROJECT_ACP_CODEX_SANDBOX
           expect(helper).toContain(
             platform === 'darwin' ? '/usr/bin/sandbox-exec' : 'unprivileged Bubblewrap',
