@@ -1,29 +1,20 @@
-# Codex ACP 2.6.0 — Jig authority patches
+# Codex ACP 2.6.0 Jig authority patch
 
-The pinned upstream adapter is a native ACP v2 implementation. Jig does not
-modify protocol negotiation, method schemas, or v1 compatibility.
+The pinned upstream adapter implements ACP v2 negotiation and prompt insertion.
+Jig applies the following restrictions to its private build.
 
-Two independent host-authority properties remain local, until upstream
-supports them natively.
+- The trusted launcher supplies the subscription credential through a private startup descriptor.
+  The adapter consumes the one-use in-memory bootstrap before app-server initialization completes.
+  The finite connection receives no account-identity notifications.
+- Suppress model-generated titles and prompt suggestions.
+  The reviewed Agent grant authorizes only the requested turns.
+- Wait for the matching native start event before interrupting the owned turn.
+  Preserve completion that arrives before the start reply.
+  Retry interruption only while the same prompt owns the same native turn.
+- Propagate failed or forced app-server exit as adapter failure.
+  Clear shutdown timers when the child settles.
+- Preserve numeric HTTP statuses from 400 through 599 in the existing native failure metadata.
+  Jig projects the bounded status without native error text.
 
-1. A subscription credential is projected through Jig's trusted launcher
-   over a private startup descriptor. The adapter consumes the one-shot
-   in-memory `__JIG_CODEX_AUTH_BOOTSTRAP__` before completing app-server
-   initialization, using the native `chatgptAuthTokens` login. No credential
-   is placed in a reusable environment variable, client-visible ACP request,
-   or persistent file. Failure stops initialization.
-2. Upstream's `TitleGenerator.onTurnCompleted` starts a separate ephemeral
-   model invocation with a hardcoded model. The finite Jig grant authorizes
-   only its reviewed task turns. The patch disables that unsolicited model
-   operation; explicit prompt-derived display text remains the host's job.
-
-The source-level ACP v1 translation patch used for earlier Codex releases
-is not retained. The repository's dispatch, cancellation, failed-result,
-credential-isolation and process-cleanup regressions remain the acceptance
-tests for this exact upstream version. A published version bump alone is
-not evidence of those properties.
-
-To remove these final two hunks, establish an upstream implementation
-that passes all credential isolation and finite model-dispatch checks,
-including native host conformance. Do not remove them merely because
-another ACP client implements v2.
+The recorded app-server tests verify insertion, exact turn counts, cancellation order, failure projection, and cleanup.
+Keep each restriction until upstream supplies equivalent behavior and the installed host tests confirm it.

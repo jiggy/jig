@@ -70,10 +70,14 @@ These links locate module rules. All selected domain requirements still apply.
 
 - `patches/` owns version-pinned third-party dependency corrections, applied by
   the root Bun `patchedDependencies` before the ordinary package build.
-  Codex ACP uses upstream native v2. Jig keeps only a private, one-use
-  subscription credential bootstrap and suppression of unreviewed model-based
-  title-generation turns. The upstream adapter owns ACP protocol negotiation,
-  prompt insertion, cancellation and process shutdown.
+  Codex ACP uses upstream native v2 for protocol negotiation and prompt insertion.
+
+  The private patch owns the one-use credential bootstrap and disables account-identity notifications.
+  It suppresses model-generated titles and suggestions outside the reviewed prompt.
+  Require a matching native start event before interrupting a turn.
+  Report failed or forced app-server exits as adapter failures.
+  Retain only a bounded numeric HTTP status in native failure metadata.
+
   Keep recorded integration and hostile-host regressions.
   Do not duplicate upstream protocol behavior in another compatibility patch.
 

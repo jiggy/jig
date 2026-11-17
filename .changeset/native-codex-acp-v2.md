@@ -9,7 +9,6 @@
 ---
 
 Replace the Codex ACP v1 compatibility adapter with upstream native ACP v2.
-Retain only the one-time private subscription bootstrap and suppression of
-unreviewed title-generation inference. Remove Jig's direct ACP v1 SDK
-dependency. Rebuild the canonical workspace archives affected by the patched
-dependency input.
+Preserve private subscription bootstrap, finite inference, cancellation,
+native failure diagnostics, and truthful shutdown results. Remove Jig's direct
+ACP v1 SDK dependency. Rebuild the canonical archives affected by the patch.
