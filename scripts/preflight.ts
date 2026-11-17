@@ -188,7 +188,9 @@ export function macosOwnershipSnapshot(read = capture) {
       .map((line) => `mount ${line}`),
     ...read('/bin/ps', ['-axo', 'pid=,command='])
       .split('\n')
-      .filter((line) => /macos-native-supervisor|macos-exec|\/jig-guardian-/.test(line))
+      .filter((line) =>
+        /macos-native-supervisor|macos-exec|macos-codex-preferences|\/jig-guardian-/.test(line),
+      )
       .map((line) => `process ${line.trim().split(/\s+/)[0]}`),
   ]
     .sort()

@@ -340,12 +340,19 @@ const expectedMountResidue = mountFixture
   .slice(0, 3)
   .map((line) => `mount ${line}`)
   .sort()
-function observedMounts(text: string, calls: unknown[] = []) {
+const processFixture = [
+  '12001 /fixture/libexec/macos-native-supervisor',
+  '12002 /fixture/libexec/macos-exec',
+  '12003 /fixture/libexec/macos-codex-preferences',
+  '12004 /fixture/jig-guardian-test/owner',
+  '12005 /fixture/ordinary-worker',
+].join('\n')
+function observedMounts(text: string, calls: unknown[] = [], processes = '') {
   return macosOwnershipSnapshot((command, args) => {
     calls.push({ command, args })
     if (command === '/bin/launchctl' && args.join(' ') === 'list') return 'PID\tStatus\tLabel\n'
     if (command === '/sbin/mount' && args.length === 0) return text
-    if (command === '/bin/ps' && args.join(' ') === '-axo pid=,command=') return ''
+    if (command === '/bin/ps' && args.join(' ') === '-axo pid=,command=') return processes
     throw Error('Residue observation attempted a non-observational command')
   })
 }
@@ -358,6 +365,33 @@ test('native snapshots observe automatic Jig volumes and explicit paths without 
     { command: '/bin/ps', args: ['-axo', 'pid=,command='] },
   ])
   expect(observedMounts(mountFixture.split('\n').slice(3).join('\n'))).toBe('')
+})
+test('native snapshots include trusted observer residue and refuse clean credit', () => {
+  expect(observedMounts('', [], processFixture).split('\n')).toEqual([
+    'process 12001',
+    'process 12002',
+    'process 12003',
+    'process 12004',
+  ])
+  for (const childStatus of [0, 42]) {
+    let snapshots = 0
+    const reports: string[] = []
+    const status = runNativeTests(
+      ['one.test.ts'],
+      {},
+      () => childStatus,
+      () =>
+        observedMounts(
+          '',
+          [],
+          snapshots++ === 0 ? '' : '12003 /fixture/libexec/macos-codex-preferences',
+        ),
+      (message) => reports.push(message),
+    )
+    expect(status).toBe(childStatus || 1)
+    expect(reports.join('\n')).toContain('process 12003')
+    expect(reports.join('\n')).not.toContain('passed')
+  }
 })
 test('an automatic uppercase mount refuses clean credit and preserves an earlier failure', () => {
   for (const childStatus of [0, 42]) {
@@ -376,17 +410,19 @@ test('an automatic uppercase mount refuses clean credit and preserves an earlier
     expect(reports.join('\n')).not.toContain('passed')
   }
 })
-test('qualifier and hosted Mac snapshot commands execute the same automatic-volume detection', async () => {
+test('qualifier and hosted Mac snapshots detect volumes and trusted helper processes', async () => {
   const directory = await mkdtemp(resolve(tmpdir(), 'jig-mac-mount-evidence-'))
   try {
     const bin = resolve(directory, 'bin'),
-      input = resolve(directory, 'mounts.txt')
+      input = resolve(directory, 'mounts.txt'),
+      processes = resolve(directory, 'processes.txt')
     await mkdir(bin)
     await writeFile(input, mountFixture + '\n', { mode: 0o600 })
+    await writeFile(processes, processFixture + '\n', { mode: 0o600 })
     for (const [name, body] of Object.entries({
       launchctl: 'test "$#" -eq 1 && test "$1" = list || exit 90\nprintf "PID\\tStatus\\tLabel\\n"',
       mount: 'test "$#" -eq 0 || exit 90\ncat "$MOUNT_FIXTURE"',
-      ps: 'test "$#" -eq 2 && test "$1" = -axo && test "$2" = pid=,command= || exit 90',
+      ps: 'test "$#" -eq 2 && test "$1" = -axo && test "$2" = pid=,command= || exit 90\ncat "$PROCESS_FIXTURE"',
     }))
       await writeFile(resolve(bin, name), `#!/bin/sh\nset -eu\n${body}\n`, { mode: 0o700 })
     for (const path of [
@@ -408,12 +444,25 @@ test('qualifier and hosted Mac snapshot commands execute the same automatic-volu
       const result = spawnSync('/bin/sh', ['-c', command], {
         encoding: 'utf8',
         timeout: 5000,
-        env: { PATH: `${bin}:/usr/bin:/bin`, LC_ALL: 'C', MOUNT_FIXTURE: input },
+        env: {
+          PATH: `${bin}:/usr/bin:/bin`,
+          LC_ALL: 'C',
+          MOUNT_FIXTURE: input,
+          PROCESS_FIXTURE: processes,
+        },
       })
       expect(result.error).toBeUndefined()
       expect(result.status).toBe(0)
       expect(result.stderr).toBe('')
-      expect(result.stdout.trimEnd().split('\n')).toEqual(expectedMountResidue)
+      expect(result.stdout.trimEnd().split('\n')).toEqual(
+        [
+          ...expectedMountResidue,
+          ...processFixture
+            .split('\n')
+            .slice(0, 4)
+            .map((line) => `process ${line}`),
+        ].sort(),
+      )
     }
   } finally {
     await rm(directory, { recursive: true, force: true })

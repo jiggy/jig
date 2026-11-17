@@ -76,8 +76,9 @@ operational baselines, and public-site assembly.
   the complete host suite.
 
   Unsupported Macs refuse before building. Its ownership snapshot includes both
-  explicit lowercase `jig-` paths and automatic `/Volumes/Jig-` mounts. These
-  observations establish no cleanup, detach or deletion authority. This is not
+  explicit lowercase `jig-` paths, automatic `/Volumes/Jig-` mounts, and the
+  trusted Codex preference observer process.
+  Observations establish no cleanup, detach or deletion authority. This is not
   full host qualification. The full local command checks Just, Node and jq
   availability before building. Before local tests, resolve the selected real
   Node 22+ executable.

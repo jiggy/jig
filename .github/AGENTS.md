@@ -292,8 +292,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Wait at least five minutes before rechecking remote CI status. Repository CI suites are extensive and take time to finish.
 - Preserve zero-residue checks around provisioned Jig host tests. Mac snapshots
   retain explicit lowercase `jig-` paths and automatic `/Volumes/Jig-` volume
-  names. These are
-  observations, not process, mount or filesystem cleanup authority.
+  names, plus native helpers including the trusted Codex preference observer.
+  These are observations, not process, mount or filesystem cleanup authority.
 - Acquire the original canonical CI bundle once, then run the complete Linux
   suite in independent shards on separately provisioned hosts. Every shard
   rechecks the frozen archive hashes, performs zero-residue verification, and
