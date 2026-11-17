@@ -1,12 +1,11 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   privateAcpAgentRuntime,
   revalidatePrivateAcpAgentProvider,
 } from '../../src/internal/acp-agent-provider.js'
-import { PrivateAcpSetupError } from '../../src/internal/acp-setup-diagnostics.js'
 import { openPrivateClaudeAgentProvider } from '../../src/internal/claude-agent-provider.js'
 import { openPrivateCodexAgentProvider } from '../../src/internal/codex-agent-provider.js'
 import {
@@ -26,7 +25,6 @@ import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 async function qualifyMacosStartup(
   runtime: ReturnType<typeof privateAcpAgentRuntime>,
   support: Awaited<ReturnType<typeof openPrivateInstalledBunSupport>>,
-  createSession = true,
 ): Promise<void> {
   if (support.launcherPath === null) throw new Error('native macOS launcher is missing')
   const backend = new PrivateMacosBackend({
@@ -68,6 +66,9 @@ async function qualifyMacosStartup(
           JIG_AGENT_WORK: '/work',
         },
         network: 'isolated',
+        ...(runtime.macosCodexPreferenceNotifications
+          ? { macosCodexPreferenceNotifications: true as const }
+          : {}),
 
         maxOutputBytes: 1024 * 1024,
         storageBytes: 512 * 1024 * 1024,
@@ -87,7 +88,7 @@ async function qualifyMacosStartup(
   const decoder = new TextDecoder()
   const request = async (id: number, method: string, params: unknown) => {
     await component.write(
-      new TextEncoder().encode(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n'),
+      new TextEncoder().encode(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`),
     )
     for (;;) {
       const split = buffer.indexOf('\n')
@@ -98,11 +99,11 @@ async function qualifyMacosStartup(
           if (frame.id !== undefined)
             await component.write(
               new TextEncoder().encode(
-                JSON.stringify({
+                `${JSON.stringify({
                   jsonrpc: '2.0',
                   id: frame.id,
                   error: { code: -32601, message: 'unsupported' },
-                }) + '\n',
+                })}\n`,
               ),
             )
           continue
@@ -132,13 +133,13 @@ async function qualifyMacosStartup(
     })
     expect(initialized.protocolVersion).toBe(2)
     if (runtime.authentication) await request(2, 'auth/login', runtime.authentication.request)
-    if (!createSession) return
     const session = await request(3, 'session/new', {
       cwd,
       mcpServers: [],
       ...(runtime.sessionMeta ? { _meta: runtime.sessionMeta } : {}),
     })
     expect(session.sessionId).toBeString()
+    expect(session.sessionId.length).toBeGreaterThan(0)
   } finally {
     await component.terminate()
     expect((await component.enforcement).fenced).toBe(true)
@@ -148,9 +149,7 @@ async function qualifyMacosStartup(
 }
 
 for (const client of ['codex', 'claude', 'pi'] as const) {
-  test(client === 'codex'
-    ? 'codex: native ACP startup or explicit unsupported Mac refusal without network'
-    : `${client}: native ACP startup without network`, async () => {
+  test(`${client}: native ACP startup and new session without network`, async () => {
     const selected = process.env[`JIG_${client.toUpperCase()}_STARTUP_PATH`]
     if (!selected) throw new Error(`JIG_${client.toUpperCase()}_STARTUP_PATH is required`)
     const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-native-startup-')))
@@ -161,6 +160,8 @@ for (const client of ['codex', 'claude', 'pi'] as const) {
           : client === 'claude'
             ? openPrivateClaudeAgentProvider
             : openPrivatePiAgentProvider
+      // Placeholder keys establish local startup/session behavior only.
+      // They supply no authentication, subscription or inference evidence.
       const open = () =>
         factory(
           installedBunLocation.releaseRoot,
@@ -181,19 +182,6 @@ for (const client of ['codex', 'claude', 'pi'] as const) {
           },
           root,
         )
-      if (client === 'codex' && process.platform === 'darwin') {
-        const expected = 'unsupported'
-        const configured = process.env.JIG_CODEX_MACOS_STARTUP_EXPECTATION
-        if (configured !== undefined && configured !== expected)
-          throw new Error('Codex startup expectation differs from the actual Mac profile')
-        if (expected === 'unsupported') {
-          const failure = await open().catch((error) => error)
-          expect(failure).toBeInstanceOf(PrivateAcpSetupError)
-          expect(failure).toMatchObject({ stage: 'preferences' })
-          console.info('codex native startup: explicit unsupported Mac preference-profile refusal')
-          return
-        }
-      }
       const provider = await open()
       if (client === 'codex')
         console.info(`codex selected native executable identity: ${provider.executableDigest}`)
@@ -202,45 +190,6 @@ for (const client of ['codex', 'claude', 'pi'] as const) {
       const support = await openPrivateInstalledBunSupport(installedBunLocation)
       if (process.platform === 'darwin') {
         await qualifyMacosStartup(runtime, support)
-        if (client === 'codex') {
-          const token = [
-            Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url'),
-            Buffer.from(
-              JSON.stringify({
-                email: 'offline@example.test',
-                exp: Math.floor(Date.now() / 1000) + 3600,
-                'https://api.openai.com/auth': {
-                  chatgpt_account_id: 'offline-account',
-                  chatgpt_plan_type: 'pro',
-                },
-              }),
-            ).toString('base64url'),
-            'offline-signature',
-          ].join('.')
-          await writeFile(
-            join(root, 'auth.json'),
-            JSON.stringify({
-              OPENAI_API_KEY: null,
-              auth_mode: 'chatgpt',
-              last_refresh: new Date().toISOString(),
-              tokens: {
-                access_token: token,
-                id_token: token,
-                account_id: 'offline-account',
-                refresh_token: 'never-projected',
-              },
-            }),
-            { mode: 0o600 },
-          )
-          const subscription = await openPrivateCodexAgentProvider(
-            installedBunLocation.releaseRoot,
-            { CODEX_PATH: selected, CODEX_HOME: root },
-            root,
-          )
-          // Synthetic subscription tokens prove the in-memory login handshake.
-          // Session routing requires an online, valid subscription separately.
-          await qualifyMacosStartup(privateAcpAgentRuntime(subscription), support, false)
-        }
         return
       }
       const bwrap =

@@ -49,6 +49,9 @@ test('evaluation overlap is closed to fixed phase outputs and bounded owner stor
       ).toThrow()
     expect(() => privateMacosSandboxProfile({ ...evaluation, network: 'inherited' })).toThrow()
     expect(() =>
+      privateMacosSandboxProfile({ ...evaluation, codexPreferenceNotifications: true }),
+    ).toThrow('evaluation grants')
+    expect(() =>
       privateMacosSandboxProfile({ ...evaluation, evaluationWorkspace: undefined }),
     ).toThrow('immutable')
     expect(() =>
@@ -186,4 +189,30 @@ test('offline profiles expose no preference services or shared pages', () => {
   expect(profile.text).not.toContain('ipc-posix-shm')
   expect(profile.text).not.toContain('user-preference-read')
   expect(profile.text).not.toContain('managed-preference-read')
+})
+
+test('Codex profile names exact notification services and read-only shared pages', () => {
+  const uid = process.getuid?.()
+  if (uid === undefined || uid <= 0) {
+    expect(() =>
+      privateMacosSandboxProfile({ ...files, codexPreferenceNotifications: true }),
+    ).toThrow('unprivileged UID')
+    return
+  }
+  const profile = privateMacosSandboxProfile({ ...files, codexPreferenceNotifications: true })
+  expect(profile.bootstrap).toBe('services')
+  expect(profile.text).toContain(`(ipc-posix-name "apple.cfprefs.${uid}v1")`)
+  expect(profile.text).toContain('(ipc-posix-name "apple.cfprefs.daemonv1")')
+  expect(profile.text).not.toContain('user-preference-read')
+  expect(profile.text).not.toContain('managed-preference-read')
+  expect(profile.text).not.toContain('ipc-posix-shm-write')
+  expect(profile.text).not.toContain('network-outbound')
+  expect(profile.text).not.toContain('ipc-posix-name-prefix')
+  expect(privateMacosSandboxProfile(files).text).not.toContain('cfpref')
+  expect(() =>
+    privateMacosSandboxProfile({
+      ...files,
+      codexPreferenceNotifications: false,
+    } as unknown as PrivateMacosSandboxFiles),
+  ).toThrow('notification policy')
 })

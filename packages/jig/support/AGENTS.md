@@ -22,6 +22,14 @@ setup or package-held authority.
   errno through an explicit output buffer, with `readdir` clearing errno inside
   the native call. The SDK compiler owns Darwin's variadic ABI. Descriptor code
   verifies the packaged bridge digest before loading it.
+- `macos-codex-preferences.m` is the native ARM candidate for bounded, value-free
+  forced-policy observation. It refreshes the real Codex domain and refuses
+  managed keys or unavailable observation. It never changes operator policy.
+  Its internal alarm is armed before framework calls and survives caller loss.
+  Missing observation or an inherited sandbox must refuse selection.
+- `macos-codex-preferences-universal` is the compiler-produced installed observer. Its ARM slice supplies policy observation, while its Intel slice refuses.
+  Assembly copies it to executable `libexec/macos-codex-preferences`. The package allowlist and installed smoke require its exact bytes.
+
 ## Local Contracts
 
 - Never execute package bytes before applying the selected profile and consuming
@@ -30,7 +38,7 @@ setup or package-held authority.
 - Clear registered and exception Mach rights and every unspecified descriptor
   through spawn attributes. Retain bootstrap only for the explicitly selected
   service-enabled profile. The profile must still restrict Mach service lookup
-  to the selected DNS service. Other isolated scopes retain
+  to the selected DNS or authenticated Codex preference service. Other isolated scopes retain
   no bootstrap port. Include `EXC_MASK_CRASH` and `EXC_MASK_CORPSE_NOTIFY`
   explicitly: the SDK's `EXC_MASK_ALL` excludes them. Child exit and
   remaining-coalition settlement are separate observations, including after
@@ -74,6 +82,14 @@ setup or package-held authority.
   uses the candidate native Bun on the qualified Mac, outside an enclosing
   sandbox. It compiles with warnings as errors and checks admission, inherited
   descriptor closure with a positive control, private-file denial and cleanup.
+
+- `test/macos/macos-preferences-observer.test.ts` checks the actual authenticated
+  helper and genuine inherited-sandbox refusal on native ARM hosts.
+  `test/macos/macos-preferences-boundary.test.ts` checks populated ordinary
+  preferences, denied reads and writes, narrow IPC and bounded read-only shared
+  mappings. These checks do not establish a private shared-memory layout.
+  Actual forced-policy refusal and stalled-framework alarm expiry still require
+  separate native observations. Interposition cannot establish those claims.
 
 ## Child DOX Index
 

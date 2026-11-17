@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { parse } from 'yaml'
+import { NATIVE_PREREQUISITE_TESTS } from './macos-host-test-shards.mjs'
 import { CI_QUALIFICATION_JOBS, LINUX_QUALIFICATION_JOBS } from './release-readiness.mjs'
 
 const workflows = new URL('../../.github/workflows/', import.meta.url)
@@ -132,6 +133,9 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
   )
   assert.ok(baseline)
   assert.equal(baseline.if, undefined)
+  const command = /bun test (.+?) --bail=1/.exec(baseline.run)
+  assert.ok(command, 'Native baseline must execute one complete unfiltered command')
+  assert.deepEqual(command[1].split(/\s+/), NATIVE_PREREQUISITE_TESTS)
   assert.match(baseline.run, /before-native/)
   assert.match(baseline.run, /after-native/)
   assert.match(baseline.run, /diff -u/)

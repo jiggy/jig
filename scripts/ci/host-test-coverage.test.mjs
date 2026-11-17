@@ -80,6 +80,22 @@ test('bounded ARM shards retain complete whole-file coverage and repeat native c
   assert.throws(() => planMacHostTests(files, 'x64'), /Apple Silicon/)
 })
 
+test('every host proves the native Codex preference boundary before its assigned work', () => {
+  const preferences = [
+    'packages/jig/test/macos/macos-codex-preferences.test.ts',
+    'packages/jig/test/macos/macos-preferences-boundary.test.ts',
+    'packages/jig/test/macos/macos-preferences-observer.test.ts',
+  ]
+  const shards = planMacHostTests([...required, ...ordinary], 'arm64', { shardCount: 3 })
+  for (const file of preferences) {
+    assert.ok(NATIVE_PREREQUISITE_TESTS.includes(file))
+    for (const shard of shards) {
+      assert.ok(shard.nativeFiles.includes(file))
+      assert.ok(!shard.groups.some((group) => group.file === file))
+    }
+  }
+})
+
 test('planner selects the fewest useful workers meeting the estimate and reports an unmet bounded target honestly', () => {
   const files = [...required, ...ordinary]
   const costs = {

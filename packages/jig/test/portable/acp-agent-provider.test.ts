@@ -63,6 +63,23 @@ afterEach(async () => {
   temporary.clear()
 })
 describe('private ACP Agent provider', () => {
+  test('preference observer authority is unavailable to other native clients', async () => {
+    const support = await files()
+    await expect(
+      createPrivateAcpAgentProvider({
+        client: 'test-client',
+        model: 'provider/model',
+        credentialMode: 'gateway',
+        adapterPath: support.adapter,
+        sandboxAdapterPath: '/agent/adapter.js',
+        executablePath: support.executable,
+        sandboxExecutablePath: '/agent/client',
+        environment: {},
+        macosCodexPreferencesObserverPath: support.executable,
+      }),
+    ).rejects.toThrow('native macOS Codex profile')
+  })
+
   test('keeps authentication outside stable provider identity and launch environment', async () => {
     const support = await files()
     const first = await provider(support, 'first-secret')

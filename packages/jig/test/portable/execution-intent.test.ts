@@ -65,6 +65,25 @@ test('one intent lowers to distinct host mechanisms without relocating literal a
   expect(mac.storage?.collect).toBeNull()
   expect(intent.command[0]).toEqual({ path: '/runtime/bun' })
 })
+test('Codex preference notification authority lowers only to the explicit Mac file profile', () => {
+  const supplied = { ...intent, macosCodexPreferenceNotifications: true as const }
+  expect(privateMacosExecutionPlan(supplied, allocation).files.codexPreferenceNotifications).toBe(
+    true,
+  )
+  expect(
+    privateMacosExecutionPlan(intent, allocation).files.codexPreferenceNotifications,
+  ).toBeUndefined()
+  expect(privateLinuxExecutionPlan(supplied)).not.toHaveProperty(
+    'macosCodexPreferenceNotifications',
+  )
+  expect(() =>
+    privateMacosExecutionPlan(
+      { ...intent, macosCodexPreferenceNotifications: false } as unknown as PrivateExecutionIntent,
+      allocation,
+    ),
+  ).toThrow('notification intent')
+})
+
 for (const mode of ['production', 'evaluation'] as const)
   test(`preparation ${mode} uses native work custody without ordinary output or larger streams`, () => {
     const supplied = { ...intent, preparationOutput: mode, network: 'inherited' as const }

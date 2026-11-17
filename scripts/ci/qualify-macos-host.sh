@@ -19,7 +19,7 @@ case "$#" in
   *) echo 'Unexpected qualification arguments' >&2; exit 2 ;;
 esac
 case "$(uname -s):$(uname -m)" in
-  Darwin:arm64) codex_startup_expectation=unsupported; inventory_profile=macos-arm64 ;;
+  Darwin:arm64) inventory_profile=macos-arm64 ;;
   *) echo 'Qualification requires a native Apple Silicon Mac.' >&2; exit 2 ;;
 esac
 bun scripts/ci/probe-macos-host.ts --hosted > /dev/null
@@ -176,8 +176,8 @@ if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
   if [[ -n "${JIG_MACOS_TEST_TIMINGS_DIRECTORY:-}" ]]; then
     startup_options+=(--reporter=junit "--reporter-outfile=$JIG_MACOS_TEST_TIMINGS_DIRECTORY/installed-startup.xml")
   fi
-  # ARM Codex must prove its explicit preference-observer refusal, never skip.
-  JIG_NATIVE_AGENT_STARTUP=1 JIG_CODEX_MACOS_STARTUP_EXPECTATION="$codex_startup_expectation" \
+  # Genuine clients must initialize and create a local session without network.
+  JIG_NATIVE_AGENT_STARTUP=1 \
     bun test packages/jig/test/startup/native-agent-startup.test.ts "${startup_options[@]}"
   bun packages/display-model/test/package-smoke.ts
   bun packages/display-web/test/package-smoke.ts

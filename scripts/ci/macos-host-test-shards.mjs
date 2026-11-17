@@ -48,6 +48,9 @@ export const NATIVE_PREREQUISITE_TESTS = [
   'packages/jig/test/macos/macos-backend-state.test.ts',
   'packages/jig/test/macos/macos-native-backend.test.ts',
   'packages/jig/test/macos/macos-guardian.test.ts',
+  'packages/jig/test/macos/macos-codex-preferences.test.ts',
+  'packages/jig/test/macos/macos-preferences-boundary.test.ts',
+  'packages/jig/test/macos/macos-preferences-observer.test.ts',
 ]
 
 // Successful whole-file observations from complete native runs live

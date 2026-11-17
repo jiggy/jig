@@ -73,6 +73,11 @@ export function privateMacosExecutionPlan(
     (intent.output || intent.evaluationWorkspace !== undefined)
   )
     throw new TypeError('Bun preparation collection cannot share another output profile')
+  if (
+    intent.macosCodexPreferenceNotifications !== undefined &&
+    intent.macosCodexPreferenceNotifications !== true
+  )
+    throw new TypeError('invalid Codex preference notification intent')
   const data = join(allocation.directory, 'data')
   const evaluationWorkspace = normalizePrivateProjectEvaluationWorkspace(intent.evaluationWorkspace)
   const evaluationSource =
@@ -184,6 +189,9 @@ export function privateMacosExecutionPlan(
             : [],
       protectedRoots: [join(allocation.directory, 'control')],
       network: intent.network ?? 'isolated',
+      ...(intent.macosCodexPreferenceNotifications
+        ? { codexPreferenceNotifications: true as const }
+        : {}),
       ...(evaluationWorkspace === undefined
         ? {}
         : {
