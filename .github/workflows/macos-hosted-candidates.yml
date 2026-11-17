@@ -1,5 +1,5 @@
-# One current Apple Silicon Mac runner. Pull requests run a bounded native smoke
-# suite; main releases and nightly diagnostics run full native qualification.
+# One current Apple Silicon Mac runner. Applicable PRs and eligible main releases
+# require the same complete native, installed-client and canonical artifact proof.
 name: "macOS hosted candidates"
 "on":
   pull_request: null
@@ -37,55 +37,10 @@ jobs:
         name: "Determine whether native Mac testing is required"
         run: node scripts/ci/host-scope.mjs --scope macos --github-output "$GITHUB_OUTPUT"
 
-  pr-smoke:
-    name: "Mac native smoke — arm64"
-    needs: [scope]
-    if: "${{ github.event_name == 'pull_request' && needs.scope.outputs.required == 'true' }}"
-    runs-on: macos-26
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: '24'
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: '1.4.4'
-      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
-        with:
-          just-version: '1.43.1'
-      - name: "Prove native Mac prerequisites, not an OS build identifier"
-        run: bun scripts/ci/probe-macos-host.ts --hosted
-      - name: "Compile native launcher and install source dependencies"
-        run: |
-          set -euo pipefail
-          clang -Wall -Wextra -Werror -Wno-deprecated-declarations packages/jig/support/macos-exec.c -o "$RUNNER_TEMP/macos-exec"
-          bun install --ignore-scripts
-          just --justfile packages/jig/justfile build
-      - name: "Native process identity, containment and cleanup smoke"
-        env:
-          JIG_MACOS_PROCESS_TEST: '1'
-        run: |
-          set -euo pipefail
-          snapshot() {
-            { launchctl list | awk 'NR > 1 && $3 ~ /^org\.jig\./ {print "job " $3}'; mount | awk '/jig-| on \/Volumes\/Jig-/ {print "mount " $0}'; } | LC_ALL=C sort
-          }
-          snapshot > "$RUNNER_TEMP/before-macos.txt"
-          status=0
-          bun test packages/jig/test/macos/macos-process-controls.test.ts \
-            packages/jig/test/macos/macos-descriptor-files.test.ts \
-            packages/jig/test/macos/macos-guardian.test.ts \
-            --bail=1 --timeout 420000 || status=$?
-          snapshot > "$RUNNER_TEMP/after-macos.txt"
-          diff -u "$RUNNER_TEMP/before-macos.txt" "$RUNNER_TEMP/after-macos.txt" || status=1
-          exit "$status"
-
   host-artifacts:
     name: "Prepare canonical Mac inputs"
     needs: [scope]
-    if: "${{ github.event_name != 'pull_request' && needs.scope.outputs.required == 'true' }}"
+    if: "${{ needs.scope.outputs.required == 'true' }}"
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -118,9 +73,9 @@ jobs:
   prerequisites:
     name: "Native host shard — arm64 / 0"
     needs: [scope, host-artifacts]
-    if: "${{ github.event_name != 'pull_request' && needs.scope.outputs.required == 'true' }}"
+    if: "${{ needs.scope.outputs.required == 'true' }}"
     runs-on: macos-26
-    timeout-minutes: "${{ inputs.include_startup_profile && 90 || 60 }}"
+    timeout-minutes: "${{ github.event_name == 'pull_request' && 90 || (inputs.include_startup_profile && 90 || 60) }}"
     permissions:
       contents: read
       actions: read
@@ -241,7 +196,7 @@ jobs:
         if: "${{ always() }}"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
-          name: "${{ github.event_name == 'pull_request' && format('macos-cohort-worker-{0}-{1}-r{2}-a{3}', matrix.worker, github.sha, github.run_id, github.run_attempt) || format('macos-prerequisites-{0}-0-{1}-r{2}-a{3}', matrix.arch, github.sha, github.run_id, github.run_attempt) }}"
+          name: "macos-prerequisites-arm64-0-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: |
             ${{ runner.temp }}/mac-evidence/*.txt
             ${{ runner.temp }}/mac-evidence/*.json
@@ -260,7 +215,7 @@ jobs:
 
   qualified-architecture:
     name: "Native host qualification — ${{ matrix.arch }}"
-    if: "${{ always() && github.event_name != 'pull_request' && needs.scope.result == 'success' && needs.scope.outputs.required == 'true' }}"
+    if: "${{ always() && needs.scope.result == 'success' && needs.scope.outputs.required == 'true' }}"
     needs:
       - "scope"
       - "host-artifacts"
@@ -271,7 +226,7 @@ jobs:
       actions: "read"
     timeout-minutes: 5
     env:
-      JIG_MACOS_TEST_PLAN: "${{ github.event_name == 'pull_request' && 'pull-request' || 'complete' }}"
+      JIG_MACOS_TEST_PLAN: complete
     strategy:
       fail-fast: false
       matrix:
@@ -303,11 +258,10 @@ jobs:
         name: "Download this architecture's shard evidence"
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
-          pattern: "${{ github.event_name == 'pull_request' && format('macos-cohort-worker-*-{0}-r{1}-a{2}', github.sha, github.run_id, github.run_attempt) || format('macos-prerequisites-{0}-*-{1}-r{2}-a{3}', matrix.arch, github.sha, github.run_id, github.run_attempt) }}"
-          path: "${{ github.event_name == 'pull_request' && format('{0}/macos-workers', runner.temp) || format('{0}/macos-evidence', runner.temp) }}"
+          pattern: "macos-prerequisites-arm64-0-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/macos-evidence"
       -
         name: "Read this attempt's job timing evidence"
-        if: "github.event_name != 'pull_request'"
         env:
           GH_TOKEN: "${{ github.token }}"
         run: |
@@ -321,12 +275,6 @@ jobs:
           name: "macos-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "${{ runner.temp }}/macos-host-artifacts"
       -
-        name: "Validate every PR worker and select one complete exact profile"
-        if: "github.event_name == 'pull_request'"
-        env:
-          GH_TOKEN: "${{ github.token }}"
-        run: "node scripts/ci/pr-time-budget.mjs run --reserve-seconds 0 -- node scripts/ci/macos-host-cohort-run.mjs reconcile"
-      -
         name: "Require complete exact-revision proof and summarize coverage"
         if: "always()"
         env:
@@ -335,13 +283,10 @@ jobs:
           SHARD_COUNT: "${{ matrix.count }}"
         run: |
           set -eu
-          # PR directories are normalized only after every worker's proof validates.
-          # Main/manual artifacts still have the fixed complete-host identity.
+          # Every event uses the same single complete-host receipt identity.
           python3 - <<'PY'
           import os
           from pathlib import Path
-          if os.environ["GITHUB_EVENT_NAME"] == "pull_request":
-              raise SystemExit(0)
           root = Path(os.environ["RUNNER_TEMP"]) / "macos-evidence"
           arch, sha, run, attempt = (os.environ[key] for key in ("EXPECTED_ARCH", "EXPECTED_SHA", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"))
           for shard in range(int(os.environ["SHARD_COUNT"])):
@@ -422,7 +367,6 @@ jobs:
     needs:
       - "scope"
       - "host-artifacts"
-      - "pr-smoke"
       - "prerequisites"
       - "qualified-architecture"
     runs-on: "ubuntu-24.04"
