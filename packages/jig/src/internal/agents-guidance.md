@@ -191,6 +191,7 @@ Readiness records distinguish omitted source clients from explicit pins.
 - Codex Responses access selects the ACP gateway provider before native app-server startup.
   Startup retains only the reviewed HTTPS endpoint, provider name and Responses protocol.
   Gateway headers and credentials remain in the private ACP authentication exchange.
+  The private broker matches the reviewed login method against the peer's ACP v2 `methodId`.
   Native startup and thread configuration must select the same provider.
 
 - Codex's nested sandbox uses an unprivileged Bubblewrap. Selection uses its

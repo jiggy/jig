@@ -18,7 +18,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         protocolVersion: 2,
         capabilities: { session: {} },
         info: { name: 'peer-agent', version: '2' },
-        authMethods: [{ id: 'token' }],
+        authMethods: [{ methodId: 'token', type: 'agent', name: 'Token' }],
         _meta: { secret: 'private-server-meta' },
       },
     })

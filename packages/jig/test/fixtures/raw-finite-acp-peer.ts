@@ -55,7 +55,7 @@ for await (const line of createInterface({input:process.stdin})) {
       if (message.params.protocolVersion !== 2) process.exit(29);
       if (message.params.clientCapabilities !== undefined || message.params.info?.name !== 'test-fixture' ||
           message.params.capabilities?.auth?._meta?.fixture !== true) process.exit(29);
-      reply(message.id, {protocolVersion:2, capabilities:{session:{}}, info:{name:'fixture',version:'2'}, authMethods:[{id:'fixture',type:'agent',name:'Fixture'}]});
+      reply(message.id, {protocolVersion:2, capabilities:{session:{}}, info:{name:'fixture',version:'2'}, authMethods:[{methodId:'fixture',type:'agent',name:'Fixture'}]});
       break;
     case 'authenticate':
     case 'auth/login': authentication = message.params._meta; reply(message.id, {}); break;
