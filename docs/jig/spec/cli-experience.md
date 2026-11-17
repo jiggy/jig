@@ -966,13 +966,17 @@ Source references identify the captured implementation and line.
 The analyzer covers a subset of local TypeScript.
 Unsupported operations, opaque dependencies, and analysis bounds leave visible gaps.
 Routes retain known effects before an opaque continuation and carry inherited assumptions across calls.
+
+The focused view summarizes selected route consequences and evidence.
 The main diagram projects supported calls and file writes within a fixed display bound.
+An unresolved check travels with the affected branch, including through a child return.
 Separate details show caller reactions to hypothetical contract outcomes and call failures.
 The outcome name alone does not establish an admitted result or a delivered artifact.
 
 Reporting projections require a recognized local installed implementation.
 The inspection reports requested publications and supported payload calculations.
-For supported data-only computations, an unknown payload can leave the caller continuation visible.
+Proven data-only payload calculations use a local allowance within analysis.
+An unknown payload can leave the caller continuation visible.
 It provides no observation of a Run and grants no execution authority.
 
 `jig inspect --result <directory> [--display plain|tui|web] [--json]` reads a

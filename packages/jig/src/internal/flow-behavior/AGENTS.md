@@ -19,6 +19,8 @@ Explain conditional behavior from a captured Jig project without running its met
 - Keep analyzer inputs in memory. Use the existing capture owners for filesystem reads.
 - Carry hypothetical results and known effects through caller continuations.
 - Keep incomplete values distinct from unknown control flow.
+- Keep unresolved checks attached to their conditional continuations.
+- Bound proven data-only reporting work within the enclosing analysis allowance.
 - Source analysis grants no admission, execution, or retry authority.
 - Preserve source references, call context, and explicit unsupported regions.
 - Keep the private result independent of CLI and display rendering.

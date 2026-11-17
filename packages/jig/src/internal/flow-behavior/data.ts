@@ -6,18 +6,28 @@ const readers = new Set([
   'at',
   'entries',
   'filter',
+  'findIndex',
   'includes',
   'indexOf',
   'join',
   'map',
+  'replace',
   'slice',
   'some',
   'startsWith',
   'toLowerCase',
+  'toFixed',
   'trim',
 ])
 const localArrayWrites = new Set(['push', 'splice', 'unshift'])
-const globals = new Set(['JSON.stringify', 'Math.max', 'Number.isInteger', 'Object.keys'])
+const globals = new Set([
+  'Array.isArray',
+  'Buffer.byteLength',
+  'JSON.stringify',
+  'Math.max',
+  'Number.isInteger',
+  'Object.keys',
+])
 
 export function dataIntrinsic(source: SourceIndex, callee: ts.Expression): string | undefined {
   if (
@@ -52,6 +62,15 @@ export function dataMethod(name: string): boolean {
 
 export function evaluateIntrinsic(name: string, args: readonly Value[]): Value {
   const first = args[0] ?? unknown
+  if (name === 'Array.isArray')
+    return first.kind === 'unknown' ? unknown : literal(first.kind === 'array')
+  if (
+    name === 'Buffer.byteLength' &&
+    first.kind === 'literal' &&
+    typeof first.value === 'string' &&
+    args.length === 1
+  )
+    return literal(Buffer.byteLength(first.value))
   if (name === 'Math.max') {
     const values = args.map((arg) =>
       arg.kind === 'literal' && typeof arg.value === 'number' ? arg.value : undefined,
@@ -94,6 +113,18 @@ export function evaluateIntrinsic(name: string, args: readonly Value[]): Value {
 }
 
 export function evaluateDataMethod(name: string, receiver: Value, args: readonly Value[]): Value {
+  if (name === 'toFixed' && receiver.kind === 'literal' && typeof receiver.value === 'number') {
+    const digits = args[0]
+    if (
+      args.length === 1 &&
+      digits?.kind === 'literal' &&
+      typeof digits.value === 'number' &&
+      Number.isInteger(digits.value) &&
+      digits.value >= 0 &&
+      digits.value <= 100
+    )
+      return literal(receiver.value.toFixed(digits.value))
+  }
   if (receiver.kind === 'array') {
     const array = receiver.items.map(toJson)
     if (name === 'map') return { kind: 'array', items: receiver.items.map(() => unknown) }
@@ -156,6 +187,23 @@ export function dataEffects(
     decl.initializer !== undefined &&
     ts.isArrayLiteralExpression(unwrap(decl.initializer)) &&
     (lexical(decl, scopes) || (ts.isForOfStatement(root) && values.get(decl)?.kind === 'array'))
+  const localSet = (decl: ts.Declaration, scopes: readonly ts.Node[]) => {
+    if (
+      !lexical(decl, scopes) ||
+      !ts.isVariableDeclaration(decl) ||
+      !decl.initializer ||
+      !ts.isVariableDeclarationList(decl.parent) ||
+      !(decl.parent.flags & ts.NodeFlags.Const)
+    )
+      return false
+    const initializer = unwrap(decl.initializer)
+    return (
+      ts.isNewExpression(initializer) &&
+      ts.isIdentifier(initializer.expression) &&
+      initializer.expression.text === 'Set' &&
+      source.declaration(initializer.expression) === undefined
+    )
+  }
   const functionOf = (expression: ts.Expression) => {
     const e = unwrap(expression)
     if (isLocalFunction(e)) return e
@@ -241,6 +289,14 @@ export function dataEffects(
       }
       if (name === 'test' && receiver.kind === ts.SyntaxKind.RegularExpressionLiteral)
         return args.every(sub)
+      if (name === 'add' && ts.isIdentifier(receiver)) {
+        const decl = source.declaration(receiver)
+        return decl !== undefined && localSet(decl, scopes) && args.every(sub)
+      }
+      if (name === 'replace' && args[0]?.kind === ts.SyntaxKind.RegularExpressionLiteral)
+        return sub(receiver) && args.slice(1).every(sub)
+      if (name === 'sort' && ts.isArrayLiteralExpression(receiver))
+        return sub(receiver) && args.every(sub)
       if ((name === 'update' || name === 'digest') && ts.isCallExpression(receiver)) {
         const first = source.importOf(unwrap(receiver.expression))
         if (first?.module === 'node:crypto' && first.member === 'createHash')
@@ -263,7 +319,14 @@ export function dataEffects(
         return args.length === 0 && sub(receiver)
       return readers.has(name) && sub(receiver) && args.every(sub)
     }
-    if (ts.isPropertyAccessExpression(node)) return sub(node.expression)
+    if (ts.isPropertyAccessExpression(node)) {
+      const receiver = unwrap(node.expression)
+      if (ts.isIdentifier(receiver) && ['input', 'settings'].includes(node.name.text)) {
+        const decl = source.declaration(receiver)
+        if (decl && values.get(decl)?.kind === 'context') return true
+      }
+      return sub(node.expression)
+    }
     if (ts.isElementAccessExpression(node))
       return sub(node.expression) && sub(node.argumentExpression)
     if (ts.isShorthandPropertyAssignment(node))
@@ -318,13 +381,28 @@ export function dataEffects(
         check(node.statement, inner, inFunction)
       )
     }
+    if (inFunction && ts.isForStatement(node)) {
+      const inner = [...scopes, node]
+      return [node.initializer, node.condition, node.incrementor, node.statement].every(
+        (child) => child === undefined || check(child, inner, true),
+      )
+    }
+    if (inFunction && ts.isWhileStatement(node)) return sub(node.expression) && sub(node.statement)
     if (ts.isIfStatement(node))
       return (
         sub(node.expression) &&
         sub(node.thenStatement) &&
         (node.elseStatement === undefined || sub(node.elseStatement))
       )
-    if (ts.isPrefixUnaryExpression(node))
+    if (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) {
+      if (
+        (node.operator === ts.SyntaxKind.PlusPlusToken ||
+          node.operator === ts.SyntaxKind.MinusMinusToken) &&
+        ts.isIdentifier(node.operand)
+      ) {
+        const decl = source.declaration(node.operand)
+        return decl !== undefined && lexical(decl, scopes)
+      }
       return (
         [
           ts.SyntaxKind.ExclamationToken,
@@ -333,6 +411,7 @@ export function dataEffects(
           ts.SyntaxKind.TildeToken,
         ].includes(node.operator) && sub(node.operand)
       )
+    }
     if (
       ts.isAsExpression(node) ||
       ts.isSatisfiesExpression(node) ||

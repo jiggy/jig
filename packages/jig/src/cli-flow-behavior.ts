@@ -1,66 +1,102 @@
-import type { BehaviorReport, BehaviorStep, SourceSite } from './internal/flow-behavior/model.js'
+import type {
+  BehaviorGuard,
+  BehaviorReport,
+  BehaviorReturn,
+  BehaviorStep,
+  SourceSite,
+} from './internal/flow-behavior/model.js'
 
-// All source-derived strings stay on one line and cannot introduce Markdown syntax.
+type Route = BehaviorReport['scopes'][number]['routes'][number]
+type Scope = BehaviorReport['scopes'][number]
+
+const directions = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu
+const controls = /[\p{Cc}\u2028\u2029]/gu
+
 function text(value: string): string {
   return value
     .replace(
-      /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu,
+      directions,
       (character) =>
         '[U+' + character.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0') + ']',
     )
-    .replace(/[\p{Cc}\u2028\u2029]/gu, ' ')
+    .replace(controls, ' ')
     .replace(/[\\`*_{}[\]<>()|#!]/g, '\\$&')
 }
 
-function location(site: SourceSite): string {
-  return text(site.path) + ':' + site.line
+function diagramText(value: string): string {
+  return value
+    .replace(controls, ' ')
+    .replace(directions, '')
+    .replace(/[&"<>#|]/g, (ch) => '&#' + ch.charCodeAt(0) + ';')
 }
 
-function stepLabel(step: BehaviorStep): string {
+function site(location: SourceSite): string {
+  return location.path + ':' + location.line
+}
+
+function result(facts: BehaviorReturn, includeArtifacts = false): string {
+  return [
+    facts.outcome,
+    ...facts.fields
+      .filter(([, value]) => value.length <= 27)
+      .slice(0, 2)
+      .map(([field, value]) => field + ' = ' + value),
+    ...(includeArtifacts ? facts.artifacts.map((name) => 'offers ' + name) : []),
+  ].join(' · ')
+}
+
+function label(step: Exclude<BehaviorStep, { kind: 'condition' }>): string {
   switch (step.kind) {
-    case 'condition':
-      return (step.taken ? 'If true: ' : 'If false: ') + step.code
-    case 'call': {
-      const choice =
-        step.completion === 'source-return'
-          ? 'source return'
-          : step.completion === 'if-returned'
-            ? 'if returned (contract or unknown)'
-            : 'if failed'
-      return step.slot + ' → ' + step.target + ' · ' + choice + ' · ' + step.result
-    }
-    case 'gap':
-      return 'Partial coverage · ' + step.detail
+    case 'call':
+      if (step.completion === 'if-failed') return step.slot + ' failed'
+      if (step.completion === 'if-returned')
+        return step.slot + ' if admitted ' + (step.returned?.outcome ?? 'result')
+      return step.slot + ' returns ' + (step.returned ? result(step.returned) : step.result)
     case 'effect':
       return 'Attempts ' + step.operation + ' · ' + step.detail
+    case 'gap':
+      return step.detail
     case 'end':
-      return step.completion === 'return' ? 'Returns · ' + step.detail : step.detail
+      return step.returned ? 'Returns ' + result(step.returned, true) : step.detail
   }
 }
 
-function diagram(routes: readonly (readonly BehaviorStep[])[]): string[] {
+function writesFile(step: BehaviorStep): step is Extract<BehaviorStep, { kind: 'effect' }> {
+  return step.kind === 'effect' && step.operation === 'writeFile'
+}
+
+function diagram(routes: readonly Route[]): string[] {
   const nodes = new Map<string, number>()
   const lines = ['flowchart TD', '  n0["Start"]']
   for (const route of routes) {
-    const compact = route.filter(
-      (step) =>
-        step.kind === 'call' ||
-        step.kind === 'end' ||
-        (step.kind === 'effect' && step.operation === 'writeFile'),
-    )
     let previous = 0
-    for (const step of compact) {
-      const key = JSON.stringify([previous, step])
+    let pending: BehaviorGuard[] = []
+    for (const step of route) {
+      if (step.kind === 'condition') {
+        if (step.unresolved) pending.push(step)
+        continue
+      }
+      if (step.kind !== 'call' && step.kind !== 'end' && !writesFile(step)) continue
+      const guards = step.kind === 'call' ? [...pending, ...(step.guards ?? [])] : pending
+      pending = []
+      const first = guards[0]
+      const edge = first
+        ? 'Unresolved check at ' +
+          site(first.site) +
+          ' · assume ' +
+          first.taken +
+          (guards.length > 1 ? ' · +' + (guards.length - 1) + ' checks' : '')
+        : ''
+      // Include the projected guards in the prefix identity. Sharing a node cannot
+      // splice a continuation onto a route with a different preceding check.
+      const key = JSON.stringify([previous, step, guards])
       let id = nodes.get(key)
       if (id === undefined) {
         id = nodes.size + 1
         if (id > 32) return []
         nodes.set(key, id)
-        const label = stepLabel(step)
-          .replace(/[\p{Cc}\u2028\u2029]/gu, ' ')
-          .replace(/[&"<>#]/g, (ch) => '&#' + ch.charCodeAt(0) + ';')
-          .replace(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, '')
-        lines.push(`  n${id}["${label}"]`, `  n${previous} --> n${id}`)
+        const arrow = edge ? '-->|"' + diagramText(edge) + '"|' : '-->'
+        lines.push(`  n${previous} ${arrow} n${id}["${diagramText(label(step))}"]`)
       }
       previous = id
     }
@@ -68,173 +104,227 @@ function diagram(routes: readonly (readonly BehaviorStep[])[]): string[] {
   return ['```mermaid', ...lines, '```', '']
 }
 
-type ScopeRoute = BehaviorReport['scopes'][number]['routes'][number]
+function progress(route: Route, target: string): string {
+  const stated = route.flatMap((step) =>
+    step.kind === 'effect' && step.owner === target && step.operation === 'view update'
+      ? [step.detail]
+      : [],
+  )
+  return stated.at(-1) ?? '—'
+}
+
+function selectRoutes(scope: Scope): Route[] {
+  const distinct = new Map<string, Route>()
+  for (const route of scope.routes) {
+    const key = JSON.stringify([
+      route.filter((step) => step.kind === 'call' || step.kind === 'end' || writesFile(step)),
+      progress(route, scope.target),
+    ])
+    if (!distinct.has(key)) distinct.set(key, route)
+  }
+  const group = [...distinct.values()]
+  const returned = group.filter((route) => {
+    const terminal = route.at(-1)
+    return terminal?.kind === 'end' && terminal.completion === 'return'
+  })
+  const exceptional = group.filter((route) => !returned.includes(route))
+  return [...returned.slice(0, 4), ...exceptional.slice(0, 2)]
+}
+
+function consequences(scope: Scope, routes: readonly Route[]): string[] {
+  const rows = [
+    '### Consequences',
+    '',
+    '| Result or stop | Calls | Last progress requested here | File writes attempted |',
+    '| --- | --- | --- | --- |',
+  ]
+  const summaries = new Set<string>()
+  for (const route of routes) {
+    const terminal = route.at(-1)
+    const calls = route.flatMap((step) =>
+      step.kind === 'call' ? [step.slot + (step.completion === 'if-failed' ? ' failed' : '')] : [],
+    )
+    const writes = route.filter((step) => step.kind === 'effect' && writesFile(step))
+    const values = [
+      terminal && terminal.kind !== 'condition' ? label(terminal) : 'Unknown',
+      calls.join(' → ') || '—',
+      progress(route, scope.target),
+      writes.map((write) => write.detail).join(' · ') || '—',
+    ]
+    summaries.add('| ' + values.map(text).join(' | ') + ' |')
+  }
+  return [...rows, ...summaries, '']
+}
+
+function evidence(routes: readonly Route[]): string[] {
+  const checks = new Set<string>()
+  const effects = new Set<string>()
+  const handoffs = new Set<string>()
+  for (const route of routes)
+    for (const step of route) {
+      if (step.kind === 'condition')
+        checks.add(text(step.code) + ' (' + text(site(step.site)) + ')')
+      if (step.kind === 'effect')
+        effects.add(text(label(step)) + ' (' + text(site(step.site)) + ')')
+      if (step.kind === 'call') {
+        handoffs.add(
+          text(step.slot + ' → ' + step.target + ' · ' + step.result) +
+            ' (' +
+            text(site(step.site)) +
+            ')',
+        )
+        for (const guard of step.guards ?? [])
+          checks.add(text(guard.code) + ' (' + text(site(guard.site)) + ')')
+        for (const fact of step.assumptions ?? [])
+          handoffs.add(
+            text(fact.slot + ' depends on ' + fact.detail) + ' (' + text(site(fact.site)) + ')',
+          )
+      }
+    }
+  const lines: string[] = []
+  for (const [title, entries] of [
+    ['Handoffs', handoffs],
+    ['Source checks', checks],
+    ['Reported and file effects', effects],
+  ] as const) {
+    if (entries.size) {
+      lines.push('#### ' + title, '', ...[...entries].slice(0, 12).map((entry) => '- ' + entry))
+      if (entries.size > 12) lines.push('- ' + (entries.size - 12) + ' additional entries omitted.')
+      lines.push('')
+    }
+  }
+  return lines
+}
+
+function alternatives(scope: Scope): string[] {
+  const summaries = new Set<string>()
+  for (const route of scope.alternatives) {
+    const choice = route.find(
+      (step) =>
+        step.kind === 'call' && step.assumptions?.some((item) => item.kind !== 'opaque-return'),
+    )
+    if (choice?.kind !== 'call') continue
+    const facts = choice.assumptions?.filter((item) => item.kind !== 'opaque-return') ?? []
+    const end = route.at(-1)
+    const follow = route
+      .slice(route.indexOf(choice) + 1)
+      .flatMap((step) => (step.kind === 'call' ? [step.slot] : []))
+    const writes = route.filter((step) => step.kind === 'effect' && writesFile(step))
+    summaries.add(
+      '- ' +
+        facts
+          .map((fact) => text(fact.slot + ' ' + fact.detail) + ' (' + text(site(fact.site)) + ')')
+          .join(' · ') +
+        ' → ' +
+        text(end && end.kind !== 'condition' ? label(end) : 'Unknown') +
+        (follow.length ? ' · later calls ' + text(follow.join(' → ')) : '') +
+        (writes.length ? ' · ' + text(writes.map(label).join(' · ')) : ''),
+    )
+  }
+  if (!summaries.size) return []
+  const lines = ['### Contract and failure alternatives', '', ...[...summaries].slice(0, 8)]
+  if (summaries.size > 8)
+    lines.push('- ' + (summaries.size - 8) + ' additional continuations omitted.')
+  return [...lines, '']
+}
 
 export function renderFlowBehavior(report: BehaviorReport): string {
   const lines = [
     '# Source behavior',
     '',
-    'Basis: captured working tree (unapproved). Revision ' + text(report.revision) + '.',
-    '',
-    'Routes depend on their checks and on operations completing. Unresolved checks can leave extra routes visible.',
-    'A child result must be admitted before its caller receives it.',
+    'Captured working tree (unapproved). Revision ' + text(report.revision) + '.',
     '',
   ]
   if (report.unavailable !== undefined) return [...lines, text(report.unavailable), ''].join('\n')
   const { focus, inventory, scopes } = report
-  if (focus !== undefined) {
-    lines.push('Focus: ' + text(focus) + '.', '')
-    const selected = inventory.find((target) => target.id === focus)
-    const shared = inventory.filter(
-      (t) => t.id !== focus && t.implementation === selected?.implementation,
-    )
-    if (shared.length)
+  const selected = scopes.find((scope) => scope.target === focus)
+  if (selected) {
+    lines.push('## ' + text(selected.target), '')
+    const routes = selectRoutes(selected)
+    if (routes.length) {
+      lines.push(...consequences(selected, routes))
       lines.push(
-        'Other configured uses of this implementation: ' +
-          shared.map((t) => text(t.id)).join(', ') +
-          '.',
+        'Routes depend on the shown checks, completion of intervening operations, and admission of child results.',
         '',
       )
-  }
-  lines.push('## Configured targets', '')
-  if (inventory.length === 0) lines.push('The captured project has no configured targets.', '')
-  for (const target of inventory) {
-    const routes = [...target.slots].map(([slot, to]) => text(slot) + ' → ' + text(to)).join(', ')
-    lines.push(
-      '- ' +
-        text(target.id) +
-        ' uses ' +
-        text(target.implementation) +
-        (routes ? ' · ' + routes : ''),
-    )
-  }
-  if (focus === undefined)
-    lines.push('', 'Supply an exact target to inspect its behavior and callers.')
-  if (scopes.length) {
-    const brief = (items: string[]) =>
-      items.slice(0, 8).map(text).join(', ') +
-      (items.length > 8 ? `, plus ${items.length - 8} more` : '')
-    lines.push('', '## Declared boundaries', '')
-    for (const item of inventory.filter((t) => scopes.some((s) => s.target === t.id))) {
-      const settings = JSON.stringify(item.settings)
-      const facts = ['outcomes ' + brief([...item.outcomes])]
-      const ports = Object.entries(item.attachments ?? {})
-      if (ports.length)
-        facts.push('attachments ' + brief(ports.map(([name, mode]) => name + ' (' + mode + ')')))
-      if (item.artifactResults?.length)
-        facts.push('artifact results ' + brief([...item.artifactResults]))
-      if (settings !== '{}')
-        facts.push(
-          'settings ' +
-            (Buffer.byteLength(settings) <= 512 ? text(settings) : '(details in topology)'),
+      const graph = diagram(routes)
+      lines.push(
+        ...(graph.length
+          ? graph
+          : ['Diagram exceeds the size limit. See the consequences above.', '']),
+      )
+      if (selected.routes.length > routes.length)
+        lines.push(
+          `${selected.routes.length - routes.length} additional analyzed variants are represented by the same consequences or omitted.`,
+          '',
         )
-      lines.push('- ' + text(item.id) + ' · ' + facts.join(' · '))
     }
-  }
-  for (const scope of scopes) {
-    lines.push('', '## ' + text(scope.target), '')
-    const cap = scope.target === focus ? 8 : 3
-    const key = (route: readonly BehaviorStep[]) =>
-      JSON.stringify(
-        route.filter(
-          (step) =>
-            step.kind === 'call' ||
-            step.kind === 'end' ||
-            (step.kind === 'effect' && step.operation === 'writeFile'),
+    lines.push(...alternatives(selected))
+    if (selected.gaps.length) {
+      lines.push('### Coverage gaps', '')
+      for (const gap of selected.gaps)
+        lines.push('- ' + text(gap.reason) + ' (' + text(site(gap)) + ')')
+      lines.push('')
+    }
+    lines.push(...evidence(routes))
+    const callers = scopes.filter(
+      (scope) =>
+        scope.target !== focus &&
+        scope.routes.some((route) =>
+          route.some((step) => step.kind === 'call' && step.target === focus),
         ),
-      )
-    const distinct = new Map<string, ScopeRoute>()
-    for (const route of scope.routes) if (!distinct.has(key(route))) distinct.set(key(route), route)
-    const paths = [...distinct.values()]
-    const returned = (route: ScopeRoute) =>
-      route.some((step) => step.kind === 'end' && step.completion === 'return')
-    const ordered = [...paths.filter(returned), ...paths.filter((route) => !returned(route))]
-    const shown = ordered.slice(0, cap)
-    const progression = shown.filter(returned)
-    if (scope.target === focus && shown.length > 0) {
-      const graph = diagram(progression.length ? progression : shown)
-      if (graph.length) {
-        lines.push(
-          'The diagram shows call results and attempted file writes from the main routes below.',
-          '',
-          ...graph,
-        )
-      } else
-        lines.push(
-          'The main routes exceed the diagram size limit. See the route details below.',
-          '',
-        )
-    }
-    for (const [index, route] of shown.entries()) {
-      lines.push('### Route ' + (index + 1), '')
-      for (const step of route) {
-        lines.push('- ' + text(stepLabel(step)) + ' (' + location(step.site) + ')')
-        if (step.kind === 'call') {
-          const inherited =
-            step.assumptions?.filter(
-              (item) => item.site.path !== step.site.path || item.site.line !== step.site.line,
-            ) ?? []
-          for (const assumption of inherited)
-            lines.push(
-              '  - Depends on ' +
-                text(assumption.slot + ': ' + assumption.detail) +
-                ' (' +
-                location(assumption.site) +
-                ')',
-            )
-        }
+    )
+    if (callers.length) {
+      lines.push('## Caller continuations', '')
+      for (const caller of callers) {
+        const routes = selectRoutes({
+          ...caller,
+          routes: caller.routes.filter((route) =>
+            route.some((step) => step.kind === 'call' && step.target === focus),
+          ),
+        }).slice(0, 3)
+        lines.push('### ' + text(caller.target), '', ...consequences(caller, routes))
       }
-      lines.push('')
     }
-    if (ordered.length > cap)
-      lines.push(`${ordered.length - cap} main routes exceed this view's detail limit.`, '')
-    if (scope.routes.length > paths.length)
-      lines.push(
-        `${scope.routes.length - paths.length} more analyzed variants share these call and completion sequences.`,
-        '',
-      )
-    if (scope.alternatives.length) {
-      lines.push('### Contract and failure alternatives', '')
-      const summaries = new Set<string>()
-      for (const route of scope.alternatives) {
-        const choice = route.find(
-          (step) =>
-            step.kind === 'call' && step.assumptions?.some((item) => item.kind !== 'opaque-return'),
-        )
-        if (choice?.kind !== 'call') continue
-        const facts = choice.assumptions?.filter((item) => item.kind !== 'opaque-return') ?? []
-        const effects = route.filter(
-          (step) => step.kind === 'effect' && step.operation === 'writeFile',
-        )
-        const end = route.at(-1)
-        const following = route
-          .slice(route.indexOf(choice) + 1)
-          .filter((step) => step.kind === 'call')
-        summaries.add(
-          '- ' +
-            facts
-              .map(
-                (item) => text(item.slot + ': ' + item.detail) + ' (' + location(item.site) + ')',
-              )
-              .join(', ') +
-            (effects.length
-              ? ' · ' + effects.map((step) => text(stepLabel(step))).join(', ')
-              : '') +
-            ' · later calls: ' +
-            (following.map((step) => (step.kind === 'call' ? text(step.slot) : '')).join(' → ') ||
-              'none shown') +
-            (end ? ' · ' + text(stepLabel(end)) : ''),
-        )
-      }
-      lines.push(...[...summaries].slice(0, 8))
-      if (summaries.size > 8)
-        lines.push(
-          `${summaries.size - 8} other conditional continuations exceed this view's detail limit.`,
-        )
-      lines.push('')
-    }
-    for (const gap of scope.gaps)
-      lines.push('- Unknown at ' + location(gap) + ' · ' + text(gap.reason))
   }
+  lines.push('## Configured targets and declared boundaries', '')
+  if (!inventory.length) lines.push('The captured project has no configured targets.', '')
+  const implementation = inventory.find((target) => target.id === focus)?.implementation
+  const shared = inventory.filter(
+    (target) => target.id !== focus && target.implementation === implementation,
+  )
+  if (shared.length)
+    lines.push(
+      'Other configured uses of this implementation: ' + brief(shared.map((target) => target.id)),
+      '',
+    )
+  for (const target of inventory) {
+    const facts = ['outcomes ' + brief(target.outcomes)]
+    const routes = [...target.slots].map(([slot, to]) => slot + ' → ' + to)
+    if (routes.length) facts.push(brief(routes))
+    const ports = Object.entries(target.attachments ?? {})
+    if (ports.length)
+      facts.push('attachments ' + brief(ports.map(([name, mode]) => name + ' (' + mode + ')')))
+    if (target.artifactResults?.length)
+      facts.push('artifact results ' + brief(target.artifactResults))
+    const settings = JSON.stringify(target.settings)
+    if (settings !== '{}')
+      facts.push(
+        'settings ' +
+          (Buffer.byteLength(settings) <= 512 ? text(settings) : '(details in topology)'),
+      )
+    lines.push(
+      '- ' + text(target.id + ' uses ' + target.implementation) + ' · ' + facts.join(' · '),
+    )
+  }
+  if (inventory.some((target) => target.id !== focus))
+    lines.push('', 'Supply an exact target to inspect its behavior and callers.')
   return lines.join('\n') + '\n'
+}
+
+function brief(items: readonly string[]): string {
+  return (
+    items.slice(0, 8).map(text).join(', ') +
+    (items.length > 8 ? `, plus ${items.length - 8} more` : '')
+  )
 }

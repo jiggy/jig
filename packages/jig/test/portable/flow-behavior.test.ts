@@ -205,6 +205,66 @@ test('an unknown reporting payload leaves a later handoff visible', () => {
   ])
 })
 
+test('large data-only view formatting leaves its caller route and progress uncertainty visible', () => {
+  const branches = Array.from(
+    { length: 7 },
+    (_, index) => `if (input.field${index}) { label = 'option ${index}' }`,
+  ).join('\n')
+  const caller = method(
+    `
+    import {handle} from '@jigging/flow'
+    import {withReporting} from '@jigging/reporting'
+    function render(input) {
+      let label = 'default'
+      ${branches}
+      return {summary: label, sections: []}
+    }
+    await handle(run => withReporting(run, 'progress', async reporter => {
+      reporter.view('progress').update(render(run.input))
+      return await run.call({slot: 'converter', operationId: 'convert', input: {}})
+    }))
+  `,
+    { reportingFiles: new Set(['FLOW.ts']) },
+  )
+  const child = method(handlerSource(`return {outcome:'done', output:{status:'ready'}}`))
+  const report = analyzeFlowBehavior(snapshot(child, caller))
+  const [scope] = report.scopes
+  expect(scope?.gaps).toEqual([
+    expect.objectContaining({ reason: 'Reporting payload exceeded its data analysis allowance.' }),
+  ])
+  expect(scope?.routes.flat()).toContainEqual(
+    expect.objectContaining({ kind: 'call', slot: 'converter' }),
+  )
+  expect(renderFlowBehavior(report)).toContain('display effect unknown')
+})
+
+test('the diagram attaches an unresolved callee condition to each affected completion', () => {
+  const child = method(
+    handlerSource(`
+    if (run.settings.refuse || run.input.review) return {outcome:'blocked', output:{reason:'Review'}}
+    return {outcome:'done', output:{status:'ready'}}
+  `),
+  )
+  const input = snapshot(
+    child,
+    method(
+      handlerSource(`
+    const child = await run.call({slot:'converter', operationId:'convert', input:run.input})
+    return {outcome:'done', output:{status: child.outcome === 'blocked' ? 'review' : 'ready'}}
+  `),
+    ),
+  )
+  const rendered = renderFlowBehavior(analyzeFlowBehavior(input))
+  const chart = rendered.match(/```mermaid[\s\S]+?```/)?.[0]
+  expect(chart).toMatch(
+    /Unresolved check at flows\/convert\/FLOW\.ts:2 · assume true.+converter returns/,
+  )
+  expect(chart).toMatch(
+    /Unresolved check at flows\/convert\/FLOW\.ts:2 · assume false.+converter returns/,
+  )
+  expect(rendered).toContain('### Consequences')
+})
+
 test('a child write remains visible before a later child failure', () => {
   const child = method(`
     import { handle } from '@jigging/flow'

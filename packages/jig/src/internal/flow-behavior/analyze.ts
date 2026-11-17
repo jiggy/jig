@@ -60,11 +60,13 @@ export class AnalysisBudget {
   constructor(
     readonly signal?: AbortSignal,
     readonly steps = Number(BEHAVIOR_LIMITS.steps),
+    readonly parent?: AnalysisBudget,
   ) {}
 
   check(): void {
     this.signal?.throwIfAborted()
     if (++this.#steps > this.steps) throw new AnalysisLimit('Analysis reached the work limit.')
+    this.parent?.check()
   }
 
   variants<T>(values: T[]): T[] {
@@ -222,7 +224,7 @@ export class Interpreter {
       fn.parameters.some(
         (p) =>
           !ts.isIdentifier(p.name) ||
-          p.initializer !== undefined ||
+          (p.initializer !== undefined && !this.staticInitializer(p.initializer)) ||
           p.dotDotDotToken !== undefined ||
           p.name.text === 'this',
       )
@@ -236,7 +238,14 @@ export class Interpreter {
       return [this.stop(caller, fn, 'The helper module has unsupported initialization.')]
     const values = new Map(caller.values)
     fn.parameters.forEach((parameter, index) => {
-      values.set(parameter, args[index] ?? missing)
+      const given = args[index] ?? missing
+      const fallback = parameter.initializer
+      if (given.kind !== 'undefined' || fallback === undefined) values.set(parameter, given)
+      else {
+        const evaluated = this.expression(fallback, { ...caller, values }, depth)[0]
+        // Static initializers have a single, effect-free value.
+        values.set(parameter, evaluated?.value ?? unknown)
+      }
     })
     const inner = { ...caller, values, mode: 'next' as const, value: missing }
     const results = ts.isBlock(fn.body)
@@ -287,6 +296,7 @@ export class Interpreter {
             code:
               label ?? (n.getText().length <= 140 ? n.getText() : '(see full predicate in source)'),
             taken,
+            unresolved: condition === undefined,
           }),
           taken,
         ),
@@ -483,6 +493,7 @@ export class Interpreter {
     const result = (value: Value) => [withValue(state, value)]
     if (ts.isAwaitExpression(e)) return this.expression(e.expression, state, depth, true)
     if (ts.isStringLiteralLike(e)) return result(literal(e.text))
+    if (e.kind === ts.SyntaxKind.RegularExpressionLiteral) return result(unknown)
     if (ts.isNumericLiteral(e)) return result(literal(Number(e.text)))
     if (e.kind === ts.SyntaxKind.NullKeyword) return result(literal(null))
     if (e.kind === ts.SyntaxKind.TrueKeyword || e.kind === ts.SyntaxKind.FalseKeyword)
@@ -731,6 +742,8 @@ export class Interpreter {
               return [withValue(ss, literal(a | b))]
             case ts.SyntaxKind.MinusToken:
               return [withValue(ss, literal(a - b))]
+            case ts.SyntaxKind.SlashToken:
+              return [withValue(ss, literal(a / b))]
             case ts.SyntaxKind.LessThanToken:
               return [withValue(ss, literal(a < b))]
             case ts.SyntaxKind.LessThanEqualsToken:
@@ -747,6 +760,7 @@ export class Interpreter {
           [
             ts.SyntaxKind.PlusToken,
             ts.SyntaxKind.MinusToken,
+            ts.SyntaxKind.SlashToken,
             ts.SyntaxKind.BarToken,
             ts.SyntaxKind.InKeyword,
             ts.SyntaxKind.LessThanToken,
@@ -940,6 +954,7 @@ export class Interpreter {
             withValue(
               add(s, {
                 kind: 'effect',
+                owner: this.target.id,
                 site: this.source.site(e),
                 operation: 'writeFile',
                 detail:
@@ -1041,7 +1056,6 @@ export class Interpreter {
       return [this.stop(state, e, 'Unknown notice severity expression.')]
     const argument = view ? e.arguments[1]! : first
     const pure = dataEffects(this.source, argument, state.values)
-    const observed = this.expression(argument, state, depth)
     const detail = (result: State) =>
       update
         ? progressDescription(result.mode === 'unknown' ? unknown : result.value)
@@ -1054,6 +1068,7 @@ export class Interpreter {
         : withValue(
             add(s, {
               kind: 'effect',
+              owner: this.target.id,
               operation: update ? 'view update' : 'notice',
               detail: message,
               site: this.source.site(e),
@@ -1061,9 +1076,33 @@ export class Interpreter {
             missing,
           )
     if (!pure)
-      return observed.map((result) =>
+      return this.expression(argument, state, depth).map((result) =>
         result.mode === 'next' ? record(result, detail(result)) : result,
       )
+
+    const probe = new Interpreter(
+      this.source,
+      this.target,
+      this.input,
+      new AnalysisBudget(this.budget.signal, 512, this.budget),
+      this.invokeChild,
+    )
+    let observed: State[]
+    try {
+      observed = probe.expression(argument, state, depth)
+    } catch (error) {
+      if (!(error instanceof AnalysisLimit)) throw error
+      return [
+        record(
+          add(state, {
+            kind: 'gap',
+            site: this.source.site(argument),
+            detail: 'Reporting payload exceeded its data analysis allowance.',
+          }),
+          'display effect unknown',
+        ),
+      ]
+    }
 
     // Internal formatting choices cannot alter this caller. Preserve only the
     // common displayed fact and retain explicit abrupt outcomes separately.
