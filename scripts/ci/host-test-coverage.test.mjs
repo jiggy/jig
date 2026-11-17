@@ -157,6 +157,38 @@ test('frozen plans bind source, complete inventory, policy and exact determinist
   }
 })
 
+test('frozen plan reads reject oversized files and special files without blocking', async () => {
+  const root = await mkdtemp(resolve(tmpdir(), 'jig-mac-plan-special-'))
+  try {
+    const oversized = resolve(root, 'oversized.json')
+    await writeFile(oversized, Buffer.alloc(1024 * 1024 + 1, 32))
+    await assert.rejects(
+      readFrozenMacPlan(oversized, { files: [...required, ...ordinary], source }),
+      /Invalid/,
+    )
+    await assert.rejects(
+      readFrozenMacPlan(root, { files: [...required, ...ordinary], source }),
+      /Invalid/,
+    )
+    const fifo = resolve(root, 'plan.fifo')
+    const created = spawnSync('mkfifo', [fifo], { encoding: 'utf8' })
+    assert.equal(created.status, 0, created.stderr)
+    const result = spawnSync(
+      process.execPath,
+      [resolve(import.meta.dirname, 'macos-host-test-shards.mjs'), 'matrix', fifo],
+      {
+        encoding: 'utf8',
+        timeout: 5000,
+      },
+    )
+    assert.ifError(result.error)
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /Invalid frozen Mac plan file/)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('future whole-file suites inherit explicit roles while hidden, dependency and neighboring files stay inert', async () => {
   const root = await mkdtemp(resolve(tmpdir(), 'jig-host-discovery-'))
   try {
