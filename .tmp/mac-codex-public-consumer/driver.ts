@@ -124,7 +124,13 @@ async function main() {
       assert.equal(result.observation.receipt?.runId, submission.receipt.runId)
       observe(result)
       if (result.checkpoint.availability === 'available' && own(result.checkpoint.evidence, 'stage') === 'codex-session-ready') {
-        assert.deepEqual(result.checkpoint.evidence, { stage: 'codex-session-ready', initialized: true, sessionCreated: true, promptSent: false })
+        const checkpointEvidence = result.checkpoint.evidence
+        assert.ok(checkpointEvidence && typeof checkpointEvidence === 'object' && !Array.isArray(checkpointEvidence))
+        assert.deepEqual(Reflect.ownKeys(checkpointEvidence).sort(), ['initialized', 'promptSent', 'sessionCreated', 'stage'])
+        assert.equal(own(checkpointEvidence, 'stage'), 'codex-session-ready')
+        assert.equal(own(checkpointEvidence, 'initialized'), true)
+        assert.equal(own(checkpointEvidence, 'sessionCreated'), true)
+        assert.equal(own(checkpointEvidence, 'promptSent'), false)
         ready = true
         await persist('ready-observation.json', result)
         break
