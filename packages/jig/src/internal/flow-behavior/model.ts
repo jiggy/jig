@@ -11,6 +11,7 @@ export interface BehaviorPackage {
   readonly sources: ReadonlyMap<string, string>
   readonly reportingFiles?: ReadonlySet<string>
   readonly unavailable?: string
+  readonly contractPath?: string
   readonly checkResult?: (result: JsonValue) => boolean
 }
 
@@ -79,9 +80,10 @@ export type BehaviorStep =
   | {
       readonly kind: 'end'
       readonly site: SourceSite
-      readonly completion: 'return' | 'throw' | 'unknown'
+      readonly completion: 'return' | 'rejected' | 'throw' | 'unknown'
       readonly detail: string
       readonly returned?: BehaviorReturn
+      readonly contractPath?: string
     }
 
 export interface BehaviorChildPath {

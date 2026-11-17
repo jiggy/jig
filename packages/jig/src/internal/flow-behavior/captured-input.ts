@@ -6,13 +6,13 @@ import type { PackageProjectValue } from '../../project/package-project.js'
 import { flowSelector } from '../../project/package-selector.js'
 import { SchemaDiagnostic } from '../../schema/index.js'
 import { analyzeFlowBehavior } from './compose.js'
-import { captureReportingProfile } from './reporting-capture.js'
 import {
   BEHAVIOR_LIMITS,
   type BehaviorPackage,
   type BehaviorReport,
   type BehaviorTarget,
 } from './model.js'
+import { captureReportingProfile } from './reporting-capture.js'
 
 /** Read only through the package descriptors owned by working-tree inspection. */
 export async function prepareFlowBehavior(
@@ -134,6 +134,9 @@ export async function prepareFlowBehavior(
         entry,
         sources,
         reportingFiles,
+        ...(member.captured.files.some((file) => file.path === 'FLOW.contract.json')
+          ? { contractPath: implementation + '/FLOW.contract.json' }
+          : {}),
         ...(unavailable === undefined ? {} : { unavailable }),
         ...(schema === undefined
           ? {}

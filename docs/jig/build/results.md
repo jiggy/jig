@@ -308,6 +308,10 @@ Follow a call link to see the inputs, supported child path, and continuation for
 Select another target to inspect it independently.
 The configured inventory lists declared outcomes, attachments, and artifact results.
 
+After an edit, inspect the affected target again.
+The result contract checks point out known undeclared outcomes and concrete results that fail the schema.
+Other analyzed results can remain readable when the diagram reaches its display limit.
+
 For example, a converted preview can return `needs_mapping` with outcome `done`.
 The caller's checks determine whether that preview reaches export.
 The view can also describe a supported progress calculation and its requested publication.
@@ -317,4 +321,3 @@ The map may show how its caller would respond to a contract outcome or failure.
 An effect before an opaque continuation remains visible on the route that reaches it.
 Follow reported gaps into source before relying on a continuation.
 Use ordinary Runs to verify results, effects, and displayed progress.
-After an edit, invoke the same inspection again to analyze the updated source.

@@ -978,6 +978,10 @@ Separate details show caller reactions to hypothetical contract outcomes and cal
 The view discloses where bounds omit child paths or call sites.
 The outcome name alone does not establish an admitted result or a delivered artifact.
 
+Inspection checks known returns against the target's declared outcomes and validates fully known payloads against its result schema.
+A rejected return retains effects attempted before the rejection.
+Unresolved values leave the corresponding checks incomplete.
+
 Reporting projections require a recognized local installed implementation.
 The inspection reports requested publications and supported payload calculations.
 Proven data-only payload calculations use a local allowance within analysis.

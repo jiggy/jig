@@ -75,6 +75,7 @@ function label(step: Exclude<BehaviorStep, { kind: 'condition' }>): string {
     case 'gap':
       return step.detail
     case 'end':
+      if (step.completion === 'rejected') return 'Jig would reject this result · ' + step.detail
       return step.returned ? 'Returns ' + result(step.returned, true) : step.detail
   }
 }
@@ -394,6 +395,49 @@ function alternatives(scope: Scope): string[] {
   return [...lines, '']
 }
 
+function contractChecks(scope: Scope): string[] {
+  const problems = new Set<string>()
+  for (const route of [...scope.routes, ...scope.alternatives]) {
+    const step = route.at(-1)
+    if (step?.kind !== 'end' || step.completion !== 'rejected') continue
+    problems.add(
+      '- ' +
+        text(step.detail) +
+        ' (' +
+        text(site(step.site)) +
+        ')' +
+        (step.contractPath ? ' · contract ' + text(step.contractPath) : ''),
+    )
+  }
+  if (!problems.size) return []
+  const lines = ['### Result contract checks', '', ...[...problems].slice(0, 8)]
+  if (problems.size > 8) lines.push('- ' + (problems.size - 8) + ' additional refusals omitted.')
+  return [...lines, '']
+}
+
+function otherResults(routes: readonly Route[], shown: readonly Route[]): string[] {
+  const displayed = new Set(
+    shown
+      .map((route) => route.at(-1))
+      .flatMap((step) =>
+        step?.kind === 'end' && step.completion === 'return' ? [label(step)] : [],
+      ),
+  )
+  const additional = new Map<string, SourceSite>()
+  for (const route of routes) {
+    const step = route.at(-1)
+    if (step?.kind !== 'end' || step.completion !== 'return' || !step.returned) continue
+    const title = label(step)
+    if (!displayed.has(title) && !additional.has(title)) additional.set(title, step.site)
+  }
+  if (!additional.size) return []
+  const lines = ['### Other analyzed results', '']
+  for (const [title, source] of [...additional].slice(0, 8))
+    lines.push('- ' + text(title) + ' (' + text(site(source)) + ')')
+  if (additional.size > 8) lines.push('- ' + (additional.size - 8) + ' additional results omitted.')
+  return [...lines, '']
+}
+
 export function renderFlowBehavior(report: BehaviorReport): string {
   const lines = [
     '# Source behavior',
@@ -406,6 +450,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   const selected = scopes.find((scope) => scope.target === focus)
   if (selected) {
     lines.push('## ' + text(selected.target), '')
+    lines.push(...contractChecks(selected))
     const routes = selectRoutes(selected)
     const details = callDetails([...routes, ...selected.alternatives])
     if (routes.length) {
@@ -426,7 +471,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
           '',
         )
     }
-    lines.push(...alternatives(selected))
+    lines.push(...otherResults(selected.routes, routes), ...alternatives(selected))
     if (selected.gaps.length) {
       lines.push('### Coverage gaps', '')
       for (const gap of selected.gaps)
