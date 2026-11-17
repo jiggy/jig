@@ -1,7 +1,43 @@
 diff --git a/dist/index.js b/dist/index.js
+index 5f73e89..2971785 100755
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -1,2 +1,18 @@
+@@ -35810,6 +35810,2 @@ function isNoActiveTurnError(err) {
+ }
+-function parseExpectedActiveTurnMismatch(err) {
+-  const match = errorText(err).match(/expected active turn id (\S+) but found (\S+)/);
+-  return match ? { expected: match[1], found: match[2] } : null;
+-}
+ function isUnknownThreadError(err) {
+@@ -38534,3 +38530,4 @@ ${diff}`, "");
+       void 0,
+-      false
++      false,
++      this.getHttpStatusCode(notification.params.error.codexErrorInfo)
+     );
+@@ -39234,3 +39231,6 @@ ${event.details}` : event.summary;
+           "error",
+-          params.error.message
++          params.error.message,
++          void 0,
++          true,
++          this.getHttpStatusCode(params.error.codexErrorInfo)
+         );
+@@ -39272,5 +39272,5 @@ ${event.details}` : event.summary;
+     const kind = this.sessionFailureKind(params.error);
+-    this.recordSessionFailure(kind, params.turnId, "error", params.error.message);
++    this.recordSessionFailure(kind, params.turnId, "error", params.error.message, void 0, true, this.getHttpStatusCode(params.error.codexErrorInfo));
+   }
+-  recordSessionFailure(kind, turnId, severity, title, actionsOverride, attributeToTurn = true) {
++  recordSessionFailure(kind, turnId, severity, title, actionsOverride, attributeToTurn = true, httpStatusCode) {
+     const policy = SESSION_FAILURE_POLICY[kind];
+@@ -39285,3 +39285,4 @@ ${event.details}` : event.summary;
+       title: readableServiceErrorMessage(title),
+-      actions: actionsOverride ?? policy.actions
++      actions: actionsOverride ?? policy.actions,
++      ...Number.isInteger(httpStatusCode) && httpStatusCode >= 400 && httpStatusCode <= 599 ? { httpStatusCode } : {}
+     };
+@@ -42633,2 +42634,18 @@ var CodexAcpClient = class _CodexAcpClient {
      this.configPath = response?.codexHome ?? null;
 +    // Jig's trusted launcher supplies a one-time, in-memory credential
 +    // projection. Never inherit a reusable token from environment or disk.
@@ -20,9 +56,179 @@ diff --git a/dist/index.js b/dist/index.js
 +      if (login.type !== "chatgptAuthTokens") throw new Error("Codex startup authentication failed");
 +    }
      this.isInitialized = true;
-@@ -1,3 +1,4 @@
+@@ -44442,17 +44459,32 @@ var CodexAppServerClient = class {
+   async runTurn(params, onTurnStarted) {
+-    const capturedCompletions = [];
+-    const releaseCapture = this.captureTurnCompletions(params.threadId, (event) => {
+-      capturedCompletions.push(event);
++    const started = new Set();
++    const completions = [];
++    let turnId;
++    let resolveReady;
++    const ready = new Promise((resolve) => { resolveReady = resolve; });
++    const releaseRouting = this.captureTurnRoutings(params.threadId, (id, notification) => {
++      if (notification.method !== "turn/started") return;
++      started.add(id);
++      if (id === turnId) resolveReady();
++    });
++    const releaseCompletion = this.captureTurnCompletions(params.threadId, (event) => {
++      completions.push(event);
++      if (event.turn.id === turnId) resolveReady();
+     });
+     try {
+-      const turnStarted = await this.turnStart(params);
+-      onTurnStarted?.(turnStarted.turn.id);
+-      const earlyCompletion = capturedCompletions.find((event) => event.turn.id === turnStarted.turn.id);
+-      releaseCapture();
+-      if (earlyCompletion) {
+-        return earlyCompletion;
+-      }
+-      return await this.awaitTurnCompleted(params.threadId, turnStarted.turn.id);
++      turnId = (await this.turnStart(params)).turn.id;
++      const completion = () => completions.find((event) => event.turn.id === turnId);
++      // The reply allocates an ID. Only its own native event permits interruption.
++      if (!started.has(turnId) && !completion()) {
++        await this.waitWhileConnected("the native turn start", ready);
++      }
++      const earlyCompletion = completion();
++      onTurnStarted?.(turnId, earlyCompletion !== void 0);
++      releaseRouting();
++      releaseCompletion();
++      if (earlyCompletion) return earlyCompletion;
++      return await this.awaitTurnCompleted(params.threadId, turnId);
+     } finally {
+-      releaseCapture();
++      releaseRouting();
++      releaseCompletion();
+     }
+@@ -46230,3 +46262,5 @@ var CodexAppServerSupervisor = class {
+     logger.log("[APP-SERVER SHUTDOWN]", { generation: this.child.generation });
+-    void this.stop(this.child);
++    void this.stop(this.child).then((exit) => {
++      if (exit.code !== 0 || exit.forced) process.exitCode ||= 1;
++    });
+   }
+@@ -46258,2 +46292,5 @@ var CodexAppServerSupervisor = class {
+     let wedgedTimer = null;
++    let terminateTimer;
++    let abandonTimer;
++    let forced = false;
+     const markDead = () => {
+@@ -46272,2 +46309,4 @@ var CodexAppServerSupervisor = class {
+       if (wedgedTimer !== null) clearTimeout(wedgedTimer);
++      clearTimeout(terminateTimer);
++      clearTimeout(abandonTimer);
+       child.exit = exit;
+@@ -46292,2 +46331,3 @@ var CodexAppServerSupervisor = class {
+         intentional: child.intentional,
++        forced,
+         at: this.now(),
+@@ -46381,4 +46421,5 @@ var CodexAppServerSupervisor = class {
+       }
+-      setTimeout(() => {
++      terminateTimer = setTimeout(() => {
+         if (exitSeen) return;
++        forced = true;
+         logger.log("[APP-SERVER STOP] still running after the end of stdin; sending SIGTERM", { generation });
+@@ -46388,3 +46429,3 @@ var CodexAppServerSupervisor = class {
+         }
+-        setTimeout(() => {
++        abandonTimer = setTimeout(() => {
+           if (exitSeen) return;
+@@ -47460,7 +47501,2 @@ var ASYNC_TASK_STOP_METHOD = "_session/async_task/stop";
+ // src/AuthStatusMeta.ts
+-var AUTH_STATUS_UPDATE_METHOD = "_auth/status_update";
+-var AUTH_STATUS_META_KEY = "authStatus";
+-function authStatusCapability() {
+-  return {};
+-}
+ var NOT_LOGGED_IN_LABEL = "Not logged in";
+@@ -48046,3 +48082,4 @@ var TitleGenerator = class {
    onTurnCompleted(userPromptText) {
 -    if (this.generated) return;
 +    // A review-approved Jig prompt never authorizes a separate title model turn.
 +    return;
      const src = this.getSessionTitleSource();
+@@ -48158,4 +48195,5 @@ var SUGGESTION_SCHEMA = {
+ var SUGGESTION_PROMPT = "This is an app-generated request for a suggested next user message. The user did not write this message.\n\nYour suggestion will appear in the user's empty message composer. They can accept it, edit it, or ignore it; it will not be sent automatically.\n\nPredict the single message this user is most likely to type next from the visible conversation. Use the whole conversation to understand their current intent and the latest exchange. Choose the action and specific object that best continue that intent, rather than a generally useful follow-up. Express its core naturally in the user's voice, keeping the requirements needed to retain its meaning. Choose the strongest grounded move even if several continuations are possible; uncertainty about exact wording or incidental details is not a reason to return null. Use null only when the conversation offers no grounded next move at all.\n\nSet suggestion to exactly one natural user message, one line, at most 240 characters, or null. No alternatives or explanation.\n\nReturn only JSON matching this schema: " + JSON.stringify(SUGGESTION_SCHEMA);
+-function promptSuggestionsEnabled(env = process.env) {
+-  return env["CODEX_ACP_PROMPT_SUGGESTIONS"]?.trim().toLowerCase() !== "false";
++function promptSuggestionsEnabled() {
++  // Suggestions would make another model request outside the reviewed prompt.
++  return false;
+ }
+@@ -51093,7 +51131,2 @@ var CodexAcpServer = class {
+           sse: false
+-        },
+-        _meta: {
+-          // Presence means "this agent pushes `_auth/status_update`". It
+-          // never carries a payload, and the client never asks for one.
+-          [AUTH_STATUS_META_KEY]: authStatusCapability()
+         }
+@@ -51127,8 +51160,3 @@ var CodexAcpServer = class {
+       capabilities: {
+-        auth: {
+-          _meta: {
+-            // Presence means "this agent pushes `_auth/status_update`".
+-            [AUTH_STATUS_META_KEY]: authStatusCapability()
+-          }
+-        },
++        auth: {},
+         providers: {},
+@@ -52772,8 +52800,4 @@ You have been logged out. Please try again.`);
+     }
++    // Jig owns credential projection and does not admit account-identity updates.
+     this.currentAuthStatus = next;
+-    try {
+-      await this.connection.notify(AUTH_STATUS_UPDATE_METHOD, { authStatus: next });
+-    } catch (error62) {
+-      logger.log("Failed to send auth status update", { error: String(error62) });
+-    }
+   }
+@@ -54201,10 +54225,3 @@ You have been logged out. Please try again.`);
+   }
+-  /**
+-   * Sends `turn/interrupt` and retries it against the registration race: right after a
+-   * turn (or review child turn) is started, Codex can briefly answer "no active turn to
+-   * interrupt", and once it registers a later turn under a different id, "expected active turn
+-   * id <completionTurnId> but found <Y>". Both are retried, with the id recomputed on every
+-   * attempt so a `turn/started` that arrives between retries is picked up.
+-   * Retries belong to that prompt, not to a newer prompt that starts while a reply is pending.
+-   */
++  /** Retries only while the same prompt owns the same native turn. */
+   async requestTurnInterrupt(sessionState, threadId, completionTurnId, requestName) {
+@@ -54217,3 +54234,3 @@ You have been logged out. Please try again.`);
+     const stillOwnsPrompt = () => ownsRegisteredTurn && activePrompt !== void 0 && this.activePrompts.get(sessionState.sessionId) === activePrompt;
+-    let turnId = ownsRegisteredTurn ? codexRunningTurnId(sessionState, completionTurnId) : completionTurnId;
++    const turnId = completionTurnId;
+     for (let attempt = 0; ; attempt++) {
+@@ -54230,5 +54247,3 @@ You have been logged out. Please try again.`);
+       } catch (err) {
+-        const mismatch = parseExpectedActiveTurnMismatch(err);
+-        const isMismatch = mismatch !== null && mismatch.expected === sessionState.currentTurnId && mismatch.found !== "";
+-        const retryable = stillOwnsPrompt() && (isNoActiveTurnError(err) || isMismatch) && attempt < NO_ACTIVE_TURN_RETRY_DELAYS_MS.length;
++        const retryable = stillOwnsPrompt() && isNoActiveTurnError(err) && attempt < NO_ACTIVE_TURN_RETRY_DELAYS_MS.length;
+         if (!retryable) {
+@@ -54239,3 +54254,2 @@ You have been logged out. Please try again.`);
+         if (!stillOwnsPrompt()) return;
+-        turnId = sessionState.interruptTurnId ?? (isMismatch ? mismatch.found : completionTurnId);
+         logger.log(`${requestName} - turn not interruptible yet, retrying`, {
+@@ -54289,5 +54303,5 @@ You have been logged out. Please try again.`);
+   async getInterruptibleTurnId(sessionState, requestName) {
+-    if (sessionState.currentTurnId) {
+-      return sessionState.currentTurnId;
+-    }
++    const activePrompt = this.activePrompts.get(sessionState.sessionId);
++    if (!activePrompt && sessionState.currentTurnId) return sessionState.currentTurnId;
++    if (activePrompt?.currentTurn?.threadId === sessionState.sessionId) return activePrompt.currentTurn.turnId;
+     const pendingTurnStart = this.pendingTurnStarts.get(sessionState.sessionId);
+@@ -54812,3 +54826,8 @@ You have been logged out. Please try again.`);
+           sessionState.additionalDirectories,
+-          (turnId) => {
++          (turnId, alreadyCompleted) => {
++            if (alreadyCompleted) {
++              sessionState.currentTurnId = turnId;
++              pendingTurnStart?.resolve(null);
++              return;
++            }
+             const turn = { threadId: params.sessionId, turnId };

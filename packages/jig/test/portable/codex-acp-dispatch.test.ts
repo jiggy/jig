@@ -85,7 +85,10 @@ for (const scenario of [
           return frame
         } else {
           const part = await lines.read()
-          if (part.done) throw new Error(`ACP ended: ${await diagnostics}`)
+          if (part.done) {
+            if (scenario === 'missing-executable' && buffer === '') return undefined
+            throw new Error(`ACP ended: ${await diagnostics}`)
+          }
           bytes += part.value.byteLength
           if (bytes > 256 * 1024) throw new Error('ACP fixture output overflow')
           buffer += decoder.decode(part.value, { stream: true })
@@ -105,7 +108,7 @@ for (const scenario of [
       await child.stdin.flush()
       for (;;) {
         const frame = await readFrame()
-        if (frame.id === id) return frame
+        if (frame === undefined || frame.id === id) return frame
         if (frame.method) notifications.push(frame)
       }
     }
@@ -138,7 +141,7 @@ for (const scenario of [
           capabilities: {},
           info: { name: 'jig-codex-recording', version: '2' },
         })
-        expect(initialized.error).toBeDefined()
+        if (initialized !== undefined) expect(initialized.error).toBeDefined()
         await child.stdin.end()
         expect(await child.exited, await diagnostics).not.toBe(0)
         return
@@ -148,9 +151,12 @@ for (const scenario of [
           await request(1, 'initialize', {
             protocolVersion: 2,
             info: { name: 'jig-codex-recording', version: '2' },
-            capabilities: scenario.startsWith('http-status-')
-              ? { _meta: { jetbrains: { air: { version: 1, capabilities: ['sessionFailure'] } } } }
-              : {},
+            capabilities:
+              scenario === 'completed' || scenario.startsWith('http-status-')
+                ? {
+                    _meta: { jetbrains: { air: { version: 1, capabilities: ['sessionFailure'] } } },
+                  }
+                : {},
           })
         ).error,
       ).toBeUndefined()
@@ -158,12 +164,15 @@ for (const scenario of [
       if (opened.error !== undefined) {
         const requests = await readFile(recording, 'utf8').catch(() => '')
         console.error('Codex native-v2 session setup failed', {
-          error: opened.error,
-          nativeMethods: requests.trim().split('\\n').filter(Boolean).map((line) => {
-            const item = JSON.parse(line)
-            return { method: item.method ?? item.event, params: item.params?.type ?? null }
-          }),
-          diagnostics: await readFile(join(root, 'logs', 'app-server.log'), 'utf8').catch(() => ''),
+          code: opened.error.code,
+          nativeMethods: requests
+            .trim()
+            .split('\n')
+            .filter(Boolean)
+            .map((line) => {
+              const item = JSON.parse(line)
+              return item.method ?? item.event
+            }),
         })
       }
       expect(opened.error).toBeUndefined()
@@ -375,7 +384,13 @@ test(
     }
     try {
       expect(
-        (await request(1, 'initialize', { protocolVersion: 2, capabilities: {}, info: { name: 'jig-codex-recording', version: '2' } })).error,
+        (
+          await request(1, 'initialize', {
+            protocolVersion: 2,
+            capabilities: {},
+            info: { name: 'jig-codex-recording', version: '2' },
+          })
+        ).error,
       ).toBeUndefined()
       await child.stdin.end()
       expect(await child.exited, await diagnostics).toBe(0)

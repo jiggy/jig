@@ -92,6 +92,23 @@ for await (const line of createInterface({ input: process.stdin })) {
         break
       }
       const turn = { id: `turn-${++turns}`, items: [], status: 'completed', error: null }
+      const { threadId, clientUserMessageId, input } = request.params
+      const insertUserMessage = () => {
+        if (typeof clientUserMessageId !== 'string') return
+        reply({
+          method: 'item/completed',
+          params: {
+            threadId,
+            turnId: turn.id,
+            item: {
+              id: `message-${turns}`,
+              type: 'userMessage',
+              clientId: clientUserMessageId,
+              content: input,
+            },
+          },
+        })
+      }
       const scenario = process.env.RECORD_SCENARIO
       if (scenario?.startsWith('http-status-')) {
         const value = scenario.slice('http-status-'.length)
@@ -106,6 +123,7 @@ for await (const line of createInterface({ input: process.stdin })) {
           method: 'turn/started',
           params: { threadId: request.params.threadId, turn: { ...turn, status: 'inProgress' } },
         })
+        insertUserMessage()
         reply({
           method: 'error',
           params: { threadId: request.params.threadId, turnId: turn.id, willRetry: false, error },
@@ -122,6 +140,7 @@ for await (const line of createInterface({ input: process.stdin })) {
           method: 'turn/started',
           params: { threadId: request.params.threadId, turn: { ...turn, status: 'inProgress' } },
         })
+        insertUserMessage()
       }
       if (scenario?.startsWith('immediate-follow-up') && turns === 2) {
         if (scenario === 'immediate-follow-up-start-after-reply') {
@@ -147,6 +166,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       const completed = () =>
         reply({ method: 'turn/completed', params: { threadId: request.params.threadId, turn } })
       if (scenario?.startsWith('completion-before-reply')) {
+        insertUserMessage()
         completed()
         if (scenario === 'completion-before-reply-cancel')
           appendFileSync(
@@ -156,6 +176,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         setTimeout(() => ok({ turn: { ...turn, status: 'inProgress' } }), 100)
       } else {
         ok({ turn: { ...turn, status: 'inProgress' } })
+        insertUserMessage()
         completed()
       }
       break
