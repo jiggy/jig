@@ -20,6 +20,7 @@ for (const [name, variable, packageName] of [
   ['jig', 'JIG_PACKAGE_ARCHIVE', '@jigging/jig'],
   ['flow', 'FLOW_SDK_PACKAGE_ARCHIVE', '@jigging/flow'],
   ['acp', 'AGENT_ACP_PACKAGE_ARCHIVE', '@jigging/agent-acp'],
+  ['method', 'AGENT_METHOD_PACKAGE_ARCHIVE', '@jigging/agent-method'],
 ]) {
   assert.ok(process.env[variable], `${variable} must name the exact canonical archive`)
   const path = await realpath(process.env[variable])
@@ -34,30 +35,42 @@ for (const [name, variable, packageName] of [
 await mkdir(root, { mode: 0o700 }) // Exclusive fresh destination: never repair/reuse an earlier attempt.
 const evidence = join(root, 'evidence')
 await mkdir(evidence, { mode: 0o700 })
-const environment = { NPM_CONFIG_USERCONFIG: '/dev/null' }
-for (const key of ['PATH', 'HOME', 'TMPDIR', 'FLOW_NODE', 'JIG_AUTHORING_NODE_PATH'])
+const home = join(root, 'empty-home')
+await mkdir(home, { mode: 0o700 })
+const environment = { HOME: home, NPM_CONFIG_USERCONFIG: '/dev/null' }
+for (const key of ['PATH', 'TMPDIR', 'FLOW_NODE', 'JIG_AUTHORING_NODE_PATH'])
   if (process.env[key] !== undefined) environment[key] = process.env[key]
 let commandNumber = 0
 const setupDeadline = Date.now() + 480000
-async function command(executable, args, cwd = root) {
+async function command(phase, executable, args, cwd = root) {
+  assert.ok(!['review', 'run', 'attempt'].includes(args[0]), 'Setup cannot perform review or execution')
   const allowance = Math.min(120000, setupDeadline - Date.now())
   assert.ok(allowance > 0, 'The eight-minute setup allowance expired')
   const result = spawnSync(executable, args, { cwd, env: environment, encoding: 'utf8', timeout: allowance, killSignal: 'SIGKILL', maxBuffer: 4194304 })
-  await writeFile(join(evidence, `setup-${++commandNumber}.json`), JSON.stringify({ executable, args, status: result.status, signal: result.signal, stdout: result.stdout, stderr: result.stderr }), { flag: 'wx', mode: 0o600 })
-  assert.ifError(result.error)
-  assert.equal(result.status, 0, 'Setup failed; retain this entire fresh workspace')
+  const commandIndex = ++commandNumber
+  const leaf = `setup-${String(commandIndex).padStart(3, '0')}`
+  await writeFile(join(evidence, `${leaf}.stdout.txt`), result.stdout ?? '', { flag: 'wx', mode: 0o600 })
+  await writeFile(join(evidence, `${leaf}.stderr.txt`), result.stderr ?? '', { flag: 'wx', mode: 0o600 })
+  const details = { phase, commandIndex, status: result.status, signal: result.signal,
+    error: result.error ? (result.error.code === 'ETIMEDOUT' ? 'timeout' : result.error.code === 'ENOBUFS' ? 'output-limit' : 'spawn-error') : null }
+  await writeFile(join(evidence, `${leaf}.json`), JSON.stringify(details), { flag: 'wx', mode: 0o600 })
+  if (result.error || result.status !== 0) {
+    await writeFile(join(evidence, 'setup-failure.json'), JSON.stringify(details), { flag: 'wx', mode: 0o600 })
+    console.error(JSON.stringify({ setupFailed: true, ...details }))
+    throw Error(`Setup failed during ${phase} (command ${commandIndex}, status ${result.status}); private transcripts retained`)
+  }
 }
 async function put(path, content) {
   await mkdir(dirname(join(root, path)), { recursive: true })
   await writeFile(join(root, path), typeof content === 'string' ? content : `${JSON.stringify(content, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
 }
 await put('package.json', { name: 'ordinary-codex-startup-driver', private: true, type: 'module', dependencies: { '@jigging/jig': `file:${archives.jig.path}` } })
-await command(process.execPath, ['--no-env-file', '--config=/dev/null', 'install', '--ignore-scripts', '--backend=copyfile'])
+await command('install-public-cli', process.execPath, ['--no-env-file', '--config=/dev/null', 'install', '--ignore-scripts', '--backend=copyfile'])
 await put('project/package.json', { private: true, type: 'module', workspaces: ['flows/*', 'libs/*'] })
-for (const [name, archive] of [['flow', archives.flow], ['acp', archives.acp]]) {
+for (const [name, archive] of [['flow', archives.flow], ['acp', archives.acp], ['method', archives.method]]) {
   const destination = join(root, 'project/libs', name)
   await mkdir(destination, { recursive: true })
-  await command('tar', ['-xzf', archive.path, '--strip-components=1', '-C', destination])
+  await command(`extract-${name}`, 'tar', ['-xzf', archive.path, '--strip-components=1', '-C', destination])
 }
 await put('project/jig.ts', "import {defineJig,discover} from '@jigging/jig'; export default defineJig({flows:discover('flows'),bindings:discover('bindings')});\n")
 await put('project/bindings/startup.ts', "import {defineBinding} from '@jigging/jig'; export default defineBinding({package:'flows/startup',slots:{native:{kind:'acp',client:'codex',maxTurns:1}}});\n")
@@ -68,13 +81,15 @@ await copyFile(join(here, 'FLOW.ts'), join(root, 'project/flows/startup/FLOW.ts'
 await mkdir(join(root, 'project/flows/startup/contracts'))
 const cli = join(root, 'node_modules/.bin/jig')
 for (const [source, name] of [['jig:finite-acp', 'finite-acp'], ['jig:run-checkpoint', 'progress']])
-  await command(cli, ['import-contract', source, `flows/startup/contracts/${name}`], join(root, 'project'))
-await command('git', ['init', '--quiet'], join(root, 'project'))
-await command(process.execPath, ['--no-env-file', '--config=/dev/null', 'install', '--lockfile-only', '--ignore-scripts', '--no-progress'], join(root, 'project'))
+  await command(`import-${name}`, cli, ['import-contract', source, `flows/startup/contracts/${name}`], join(root, 'project'))
+await command('initialize-source-repository', 'git', ['init', '--quiet'], join(root, 'project'))
+await command('lock-source-workspace', process.execPath, ['--no-env-file', '--config=/dev/null', 'install', '--lockfile-only', '--ignore-scripts', '--no-progress'], join(root, 'project'))
 await rm(join(root, 'project/node_modules'), { recursive: true, force: true })
-await command('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-sha256', '-days', '1', '-subj', '/CN=localhost', '-keyout', join(evidence, 'loopback.key'), '-out', join(evidence, 'loopback.crt')])
+await command('create-loopback-certificate', 'openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-sha256', '-days', '1', '-subj', '/CN=localhost', '-keyout', join(evidence, 'loopback.key'), '-out', join(evidence, 'loopback.crt')])
 await copyFile(join(here, 'driver.ts'), join(root, 'driver.ts'))
 for (const archive of Object.values(archives))
   assert.equal(createHash('sha256').update(await readFile(archive.path)).digest('hex'), archive.sha256, 'Canonical input changed during setup')
 await put('evidence/archives.json', archives)
+const protectedState = await lstat(join(root, 'project/.jig')).catch(error => { if (error.code === 'ENOENT') return null; throw error })
+assert.equal(protectedState, null, 'Setup unexpectedly created protected project state; do not continue')
 console.log(JSON.stringify({ prepared: true, workspace: root, next: 'Run driver.ts explicitly with JIG_CODEX_STARTUP_PATH set; preparation has submitted no Run.' }))

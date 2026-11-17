@@ -61,10 +61,11 @@ async function main() {
   stage = 'inspect'
   const inspected = await observer.inspect({ target: 'binding:startup' })
   assert.ok(inspected && typeof inspected === 'object' && !Array.isArray(inspected))
-  assert.equal(typeof inspected.approval, 'string')
+  const approval: unknown = Reflect.get(inspected, 'approval')
+  assert.ok(typeof approval === 'string' && approval.length > 0)
   stage = 'prepare'
   prepared = await owner.prepare({
-    expectedApproval: inspected.approval as string, target: 'binding:startup', input: null, files: [],
+    expectedApproval: approval, target: 'binding:startup', input: null, files: [],
     constraints: { durationMs: 240000, resultBytes: 1048576, artifactBytes: 4194304 },
     outputIntent: { packet: false, receive: [] },
   })

@@ -25,7 +25,8 @@ network isolation or absence of traffic to every other destination.
 
 ## Prepare without submitting work
 
-Use native ARM macOS 15 or 26 and qualified Bun 1.4.4. The genuine Codex executable
+Use qualified Bun 1.4.4, Node 24, Git, tar and OpenSSL on PATH.
+Preparation can run on Linux; driver execution requires native ARM macOS 15 or 26. The genuine Codex executable
 must match the startup qualification's selected binary. Supply the exact same
 canonical candidate archive bytes used by the host qualification:
 
@@ -33,14 +34,21 @@ canonical candidate archive bytes used by the host qualification:
 export JIG_PACKAGE_ARCHIVE=/absolute/canonical/jig/archive.tgz
 export FLOW_SDK_PACKAGE_ARCHIVE=/absolute/canonical/flow-sdk/archive.tgz
 export AGENT_ACP_PACKAGE_ARCHIVE=/absolute/canonical/agent-acp/archive.tgz
+export AGENT_METHOD_PACKAGE_ARCHIVE=/absolute/canonical/agent-method/archive.tgz
 bun prepare.mjs /private/tmp/ordinary-codex-startup-UNIQUE
 ```
 
 The destination must be fresh and outside the repository. Setup has an eight-minute
 aggregate allowance and a two-minute per-command ceiling. It installs the archives
 normally, imports both contracts through the installed public CLI, and freezes the
-ordinary source-workspace lock. It does not review, prepare or submit a Run.
-Dependency installation may use the package registry. The loopback key is generated
+ordinary source-workspace lock. The unchanged Agent Method archive supplies the ACP
+workspace’s declared development dependency; the consumer calls no Agent Method.
+Setup uses a new fixture-owned empty HOME and disables npm user configuration.
+It does not review, prepare or submit a Run. Unexpected protected project state
+causes setup to fail.
+Dependency installation may use the package registry. Failures name a closed
+phase, command index, status and signal. Raw stdout/stderr stay in private
+`evidence/setup-NNN.stdout.txt` and `.stderr.txt` files; do not upload them. The loopback key is generated
 locally and stays in the private workspace; never upload it.
 
 ## Execute only after this diagnostic is reviewed
@@ -68,4 +76,6 @@ also compare the surrounding sequential host job/mount/process observations. The
 public cleanup result is the product's confirmed result, not an independent
 host-residue inspection.
 
-Files were prepared without executing setup, a native client, a Run, or a model turn.
+Linux preparation passed all nine setup commands against the verified canonical
+candidate, with a fresh fixture-owned HOME. No review, driver, native client, Run
+or model turn was executed. All four canonical archive hashes remained unchanged.

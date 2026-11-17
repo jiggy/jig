@@ -39,7 +39,7 @@ jobs:
           mkdir "$RUNNER_TEMP/public-evidence"
           sw_vers > "$RUNNER_TEMP/public-evidence/host.txt"
           bun --revision >> "$RUNNER_TEMP/public-evidence/host.txt"
-          for pair in 'JIG_PACKAGE_ARCHIVE jig' 'FLOW_SDK_PACKAGE_ARCHIVE flow-sdk' 'AGENT_ACP_PACKAGE_ARCHIVE agent-acp'; do
+          for pair in 'JIG_PACKAGE_ARCHIVE jig' 'FLOW_SDK_PACKAGE_ARCHIVE flow-sdk' 'AGENT_ACP_PACKAGE_ARCHIVE agent-acp' 'AGENT_METHOD_PACKAGE_ARCHIVE agent-method'; do
             read -r variable package <<< "$pair"
             archives=("$RUNNER_TEMP/canonical/$package/"*.tgz)
             test "${#archives[@]}" = 1
