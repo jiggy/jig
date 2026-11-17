@@ -607,11 +607,14 @@ These timings establish neither native admission nor payload execution.
 Unknown values and accessors must not expose private payloads or change the original failure.
 Disabled capture must leave error objects uninspected.
 
-Root Agent live suites select one exact client/input contract per file. Codex
-subscription requires its native executable and CODEX_HOME. Codex Responses
-requires the executable, model and OpenRouter key. Claude and Pi require their
-own executable, API model/provider and key. The protected native API workflow
-selects only its matching file. Restoration is an independent explicit opt-in.
+Root Agent live suites select one exact client and input contract per file.
+Codex subscription requires its native executable and CODEX_HOME.
+Codex Responses, Claude, and Pi require their executable, model, and provider key.
+Codex Responses accepts an OpenRouter fallback key only for the OpenRouter endpoint.
+The protected release workflow can select the documented first-party endpoints for Codex Responses and Claude.
+
+The protected native API workflow selects only its matching file.
+Restoration is an independent explicit opt-in.
 
 The Codex Responses text check requires exactly the requested readiness word,
 ignoring capitalization and surrounding whitespace. Live qualification still

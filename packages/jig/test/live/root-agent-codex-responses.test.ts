@@ -4,11 +4,18 @@ import {
   qualifyCodexInstalledConversation,
 } from '../fixtures/codex-responses-qualification.js'
 
+const openRouterBaseURL = 'https://openrouter.ai/api/v1'
+const openAIBaseURL = 'https://api.openai.com/v1'
+const baseURL = process.env.JIG_NATIVE_API_BASE_URL ?? openRouterBaseURL
 const options = {
   codexPath: process.env.JIG_CODEX_PROOF_PATH,
-  apiKey: process.env.OPENROUTER_API_KEY,
+  // The trusted qualification runner selects exactly one credential and
+  // endpoint. The native client cannot choose or switch provider accounts.
+  apiKey:
+    process.env.JIG_NATIVE_API_KEY ??
+    (baseURL === openRouterBaseURL ? process.env.OPENROUTER_API_KEY : undefined),
   model: process.env.JIG_CODEX_RESPONSES_MODEL,
-  baseURL: 'https://openrouter.ai/api/v1',
+  baseURL,
 }
 if (
   !(
@@ -17,9 +24,12 @@ if (
   ) ||
   !options.codexPath ||
   !options.apiKey ||
-  !options.model
+  !options.model ||
+  (baseURL !== openRouterBaseURL && baseURL !== openAIBaseURL)
 )
-  throw Error('Selected native Codex API proof requires its host, executable, model, and API key')
+  throw Error(
+    'Selected native Codex API proof requires its host, executable, model, API key, and supported endpoint',
+  )
 const selected = options as { codexPath: string; apiKey: string; model: string; baseURL: string }
 describe.serial('private contained Agent Run lifecycle', () => {
   test(
