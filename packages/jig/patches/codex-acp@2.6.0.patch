@@ -1,5 +1,5 @@
 diff --git a/dist/index.js b/dist/index.js
-index 5f73e89..2971785 100755
+index 5f73e89..95d4ab3 100755
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -35810,6 +35810,2 @@ function isNoActiveTurnError(err) {
@@ -222,7 +222,18 @@ index 5f73e89..2971785 100755
 +    if (!activePrompt && sessionState.currentTurnId) return sessionState.currentTurnId;
 +    if (activePrompt?.currentTurn?.threadId === sessionState.sessionId) return activePrompt.currentTurn.turnId;
      const pendingTurnStart = this.pendingTurnStarts.get(sessionState.sessionId);
-@@ -54812,3 +54826,8 @@ You have been logged out. Please try again.`);
+@@ -54454,3 +54468,4 @@ You have been logged out. Please try again.`);
+             const notInsertedMessage = "The prompt ended before Codex recorded the user message";
+-            reject(response.stopReason === "cancelled" ? RequestError.requestCancelled(void 0, notInsertedMessage) : failure3 !== null ? new RequestError(failure3.code, failure3.message) : RequestError.internalError(void 0, notInsertedMessage));
++            const cancelled = response.stopReason === "cancelled";
++            if (!cancelled) reject(failure3 !== null ? new RequestError(failure3.code, failure3.message) : RequestError.internalError(void 0, notInsertedMessage));
+             if (turnWasAdopted || startedTurn !== null) {
+@@ -54459,2 +54474,4 @@ You have been logged out. Please try again.`);
+             }
++            // Report native settlement before rejecting an uninserted cancellation.
++            if (cancelled) reject(RequestError.requestCancelled(void 0, notInsertedMessage));
+             return;
+@@ -54812,3 +54829,8 @@ You have been logged out. Please try again.`);
            sessionState.additionalDirectories,
 -          (turnId) => {
 +          (turnId, alreadyCompleted) => {

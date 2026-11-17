@@ -287,6 +287,22 @@ export class PrivateFiniteAcpPolicy {
         const error = object(frame.error)
         if (!Number.isSafeInteger(error.code) || typeof error.message !== 'string')
           fail('Invalid ACP error response')
+        if (pending.method === PROMPT && this.cancelSent && error.code === -32800) {
+          this.v2.cancelBeforeInsertion()
+          this.pending = undefined
+          this.promptSettled = true
+          return freeze({
+            toAdapter: response(
+              id,
+              {
+                code: -32800,
+                message: 'Native ACP prompt cancelled before insertion',
+                data: { reason: 'cancelled-before-insertion' },
+              },
+              true,
+            ),
+          })
+        }
         // Recognize the installed Codex report without forwarding its private
         // guidance suffix. This reports a client claim, not its underlying cause.
         const managedPreferencesUnavailable =

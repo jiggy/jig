@@ -11,6 +11,7 @@ Jig applies the following restrictions to its private build.
 - Wait for the matching native start event before interrupting the owned turn.
   Preserve completion that arrives before the start reply.
   Retry interruption only while the same prompt owns the same native turn.
+  Publish cancelled idle before rejecting a prompt cancelled during native work before insertion.
 - Propagate failed or forced app-server exit as adapter failure.
   Clear shutdown timers when the child settles.
 - Preserve numeric HTTP statuses from 400 through 599 in the existing native failure metadata.

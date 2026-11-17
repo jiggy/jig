@@ -535,6 +535,16 @@ class FinitePeer {
           typeof error.message !== 'string'
         )
           failure('Native ACP error response is invalid')
+        if (
+          method === 'session/prompt' &&
+          error.code === -32800 &&
+          error.data !== null &&
+          typeof error.data === 'object' &&
+          !Array.isArray(error.data) &&
+          Object.keys(error.data).length === 1 &&
+          (error.data as JsonObject).reason === 'cancelled-before-insertion'
+        )
+          throw new OperationError('CANCELLED', 'Native ACP prompt cancelled before insertion')
         const operation = {
           initialize: 'initialize the AI client',
           'session/new': 'start an AI session',

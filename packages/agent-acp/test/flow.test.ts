@@ -728,112 +728,133 @@ describe('ordinary session retention and restoration', () => {
 })
 
 describe('ordinary continuing Agent', () => {
-  test('continues, rejects stale control, interrupts and settles before another turn', async () => {
-    const commands = pair(),
-      replies = pair(),
-      events = pair()
-    let prompts = 0
-    const held: JsonValue = null
-    const f = fixture({
-      input: { instructions: 'Initial context.', conversation: true },
-      commands: commands.receive,
-      replies: replies.send,
-      events: events.send,
-      async emit(frame, send) {
-        if (frame.method === 'session/prompt' && ++prompts === 2) {
-          await f.frameSend(send, {
-            jsonrpc: '2.0',
-            id: frame.id!,
-            result: { messageId: 'turn-1-msg' },
-          })
-          await f.frameSend(send, {
-            jsonrpc: '2.0',
-            method: 'session/update',
-            params: {
-              sessionId: 'owned-session',
-              update: { sessionUpdate: 'user_message', messageId: 'turn-1-msg' },
-            },
-          })
-          await f.frameSend(send, {
-            jsonrpc: '2.0',
-            method: 'session/update',
-            params: {
-              sessionId: 'owned-session',
-              update: { sessionUpdate: 'state_update', state: 'running' },
-            },
-          })
-          return true
-        }
-        if (frame.method === 'session/cancel') {
-          await f.frameSend(send, {
-            jsonrpc: '2.0',
-            method: 'session/update',
-            params: {
-              sessionId: 'owned-session',
-              update: { sessionUpdate: 'state_update', state: 'idle', stopReason: 'cancelled' },
-            },
-          })
-          return true
-        }
-        return false
-      },
-    })
-    const work = agentAcpFlow(f.run)
-    expect((await replies.receive.next()).value).toMatchObject({
-      type: 'result',
-      turn: 0,
-      result: { outcome: 'done' },
-    })
-    expect((await events.receive.next()).value).toMatchObject({ turn: 0 })
-    await commands.send.send({ type: 'prompt', turn: 1, input: { instructions: 'Continue.' } })
-    expect((await replies.receive.next()).value).toMatchObject({
-      type: 'accepted',
-      command: 'prompt',
-      turn: 1,
-    })
-    await commands.send.send({ type: 'interrupt', turn: 0 })
-    expect((await replies.receive.next()).value).toMatchObject({
-      type: 'rejected',
-      code: 'STALE_TURN',
-    })
-    await commands.send.send({ type: 'prompt', turn: 2, input: { instructions: 'Too early.' } })
-    expect((await replies.receive.next()).value).toMatchObject({ type: 'rejected', code: 'BUSY' })
-    await commands.send.send({ type: 'interrupt', turn: 1 })
-    expect((await replies.receive.next()).value).toMatchObject({
-      type: 'accepted',
-      command: 'interrupt',
-    })
-    expect((await replies.receive.next()).value).toEqual({ type: 'cancelled', turn: 1 })
-    await commands.send.send({ type: 'prompt', turn: 2, input: { instructions: 'Now continue.' } })
-    expect((await replies.receive.next()).value).toMatchObject({
-      type: 'accepted',
-      command: 'prompt',
-    })
-    expect((await replies.receive.next()).value).toMatchObject({
-      type: 'result',
-      turn: 2,
-      result: { output: { text: 'The answer.' } },
-    })
-    await commands.send.send({
-      type: 'prompt',
-      turn: 3,
-      input: { instructions: 'Beyond allowance.' },
-    })
-    expect((await replies.receive.next()).value).toMatchObject({
-      type: 'rejected',
-      code: 'TURN_LIMIT',
-    })
-    await commands.send.send({ type: 'close', turn: 2 })
-    await commands.send.close()
-    expect((await replies.receive.next()).value).toMatchObject({
-      type: 'accepted',
-      command: 'close',
-    })
-    expect(await work).toEqual({ outcome: 'done', output: { turns: 3 } })
-    expect(f.frames.filter((frame) => frame.method === 'session/new')).toHaveLength(1)
-    expect(f.frames.filter((frame) => frame.method === 'session/prompt')).toHaveLength(3)
-    expect(f.stats().settled).toBe(true)
-  })
+  test.each([false, true])(
+    'continues after interruption (cancelled before insertion: %s)',
+    async (beforeInsertion) => {
+      const commands = pair(),
+        replies = pair(),
+        events = pair()
+      let prompts = 0
+      let cancelledPromptId: JsonValue | undefined
+      const held: JsonValue = null
+      const f = fixture({
+        input: { instructions: 'Initial context.', conversation: true },
+        commands: commands.receive,
+        replies: replies.send,
+        events: events.send,
+        async emit(frame, send) {
+          if (frame.method === 'session/prompt' && ++prompts === 2) {
+            if (beforeInsertion) cancelledPromptId = frame.id!
+            else {
+              await f.frameSend(send, {
+                jsonrpc: '2.0',
+                id: frame.id!,
+                result: { messageId: 'turn-1-msg' },
+              })
+              await f.frameSend(send, {
+                jsonrpc: '2.0',
+                method: 'session/update',
+                params: {
+                  sessionId: 'owned-session',
+                  update: { sessionUpdate: 'user_message', messageId: 'turn-1-msg' },
+                },
+              })
+            }
+            await f.frameSend(send, {
+              jsonrpc: '2.0',
+              method: 'session/update',
+              params: {
+                sessionId: 'owned-session',
+                update: { sessionUpdate: 'state_update', state: 'running' },
+              },
+            })
+            return true
+          }
+          if (frame.method === 'session/cancel') {
+            await f.frameSend(send, {
+              jsonrpc: '2.0',
+              method: 'session/update',
+              params: {
+                sessionId: 'owned-session',
+                update: { sessionUpdate: 'state_update', state: 'idle', stopReason: 'cancelled' },
+              },
+            })
+            if (cancelledPromptId !== undefined)
+              await f.frameSend(send, {
+                jsonrpc: '2.0',
+                id: cancelledPromptId,
+                error: {
+                  code: -32800,
+                  message: 'Native ACP prompt cancelled before insertion',
+                  data: { reason: 'cancelled-before-insertion' },
+                },
+              })
+            return true
+          }
+          return false
+        },
+      })
+      const work = agentAcpFlow(f.run)
+      expect((await replies.receive.next()).value).toMatchObject({
+        type: 'result',
+        turn: 0,
+        result: { outcome: 'done' },
+      })
+      expect((await events.receive.next()).value).toMatchObject({ turn: 0 })
+      await commands.send.send({ type: 'prompt', turn: 1, input: { instructions: 'Continue.' } })
+      expect((await replies.receive.next()).value).toMatchObject({
+        type: 'accepted',
+        command: 'prompt',
+        turn: 1,
+      })
+      await commands.send.send({ type: 'interrupt', turn: 0 })
+      expect((await replies.receive.next()).value).toMatchObject({
+        type: 'rejected',
+        code: 'STALE_TURN',
+      })
+      await commands.send.send({ type: 'prompt', turn: 2, input: { instructions: 'Too early.' } })
+      expect((await replies.receive.next()).value).toMatchObject({ type: 'rejected', code: 'BUSY' })
+      await commands.send.send({ type: 'interrupt', turn: 1 })
+      expect((await replies.receive.next()).value).toMatchObject({
+        type: 'accepted',
+        command: 'interrupt',
+      })
+      expect((await replies.receive.next()).value).toEqual({ type: 'cancelled', turn: 1 })
+      await commands.send.send({
+        type: 'prompt',
+        turn: 2,
+        input: { instructions: 'Now continue.' },
+      })
+      expect((await replies.receive.next()).value).toMatchObject({
+        type: 'accepted',
+        command: 'prompt',
+      })
+      expect((await replies.receive.next()).value).toMatchObject({
+        type: 'result',
+        turn: 2,
+        result: { output: { text: 'The answer.' } },
+      })
+      await commands.send.send({
+        type: 'prompt',
+        turn: 3,
+        input: { instructions: 'Beyond allowance.' },
+      })
+      expect((await replies.receive.next()).value).toMatchObject({
+        type: 'rejected',
+        code: 'TURN_LIMIT',
+      })
+      await commands.send.send({ type: 'close', turn: 2 })
+      await commands.send.close()
+      expect((await replies.receive.next()).value).toMatchObject({
+        type: 'accepted',
+        command: 'close',
+      })
+      expect(await work).toEqual({ outcome: 'done', output: { turns: 3 } })
+      expect(f.frames.filter((frame) => frame.method === 'session/new')).toHaveLength(1)
+      expect(f.frames.filter((frame) => frame.method === 'session/prompt')).toHaveLength(3)
+      expect(f.stats().settled).toBe(true)
+    },
+  )
 
   test('losing control is not a clean conversation end', async () => {
     const commands = pair(),
