@@ -31,17 +31,17 @@ describe('captured Agent source locations', () => {
       "  package: 'npm:@jigging/agent-acp',",
       '  slots: {',
       "    native: { kind: 'acp', client: 'claude', maxTurns: 2 },",
-      "    'alternate': { kind: 'acp', client: 'claude' },",
+      "    'alternate': { kind: 'acp', client: 'codex' },",
       '  },',
       '})',
     ].join('\r\n')
     const facts = privateAgentSourceLocations(path, encoder.encode(source), {
       native: 'claude',
-      alternate: 'claude',
+      alternate: 'codex',
       absent: 'codex',
     })
     expect(facts.native).toEqual({ path, line: 6, column: 36, kind: 'client-literal' })
-    expect(textAt(source, facts.alternate!, 8)).toBe("'claude'")
+    expect(textAt(source, facts.alternate!, 7)).toBe("'codex'")
     expect(facts.alternate!.kind).toBe('client-literal')
     expect(facts.absent).toEqual({ path, kind: 'unlocated' })
     expect(Object.isFrozen(facts)).toBe(true)
@@ -56,7 +56,7 @@ describe('captured Agent source locations', () => {
     const fact = locate(source)
     expect(fact.kind).toBe('client-literal')
     expect(fact.line).toBe(3)
-    expect(textAt(source, fact, 4)).toBe("'claude'")
+    expect(textAt(source, fact, 8)).toBe("'claude'")
   })
 
   test('never treats comments, strings, another property or a mismatched client as the selected literal', () => {
@@ -154,7 +154,7 @@ describe('captured Agent source locations', () => {
     const fact = privateAgentSourceLocations(path, captured, { native: 'claude' }).native!
     expect(fact.kind).toBe('client-literal')
     expect(fact.line).toBe(2)
-    expect(textAt(new TextDecoder().decode(captured), fact, 4)).toBe("'claude'")
+    expect(textAt(new TextDecoder().decode(captured), fact, 8)).toBe("'claude'")
     expect(locate(visibleSource, 'claude').kind).toBe('selection-context')
   })
 
@@ -191,10 +191,10 @@ describe('captured named ACP policy locations', () => {
   })
 
   test('supports valid JSON escaping while pointing to the actual captured token', () => {
-    const source = '{"kind":"acp","\\u0063lient":"\\u0070i"}'
+    const source = '{"kind":"acp","\\u0063lient":"\\u0063laude"}'
     const fact = privateAgentGrantSourceLocation(grantPath, encoder.encode(source), 'claude')
     expect(fact.kind).toBe('client-literal')
-    expect(textAt(source, fact, 9)).toBe('"\\u0070i"')
+    expect(textAt(source, fact, 13)).toBe('"\\u0063laude"')
   })
 
   test('refuses duplicate, malformed, wrong-client and non-ACP objects', () => {

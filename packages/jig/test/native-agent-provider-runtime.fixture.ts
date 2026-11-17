@@ -14,7 +14,7 @@ async function fixture() {
   const release = join(root, 'release')
   const agent = join(release, 'libexec', 'agent')
   await Promise.all(
-    [project, agent].map((path) => mkdir(path, { recursive: true })),
+    [project, install, agent].map((path) => mkdir(path, { recursive: true })),
   )
   const executable = join(install, 'claude')
   const library = join(install, 'libfixture.so')

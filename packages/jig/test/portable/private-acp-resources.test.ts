@@ -43,19 +43,17 @@ describe('isolated operator-selected ACP authentication profiles', () => {
     PATH: '/usr/bin',
     OPENAI_API_KEY: 'unselected-ambient-key',
     CLAUDE_CODE_OAUTH_TOKEN: 'unselected-ambient-token',
-    PI_PROVIDER: 'unselected-provider',
+    ANTHROPIC_API_KEY: 'unselected-anthropic-key',
     JIG_ACP_PROFILE_PERSONAL_CODEX__CODEX_HOME: '/operator/codex-personal',
     JIG_ACP_PROFILE_WORK_API__OPENAI_API_KEY: 'selected-api-key',
     JIG_ACP_PROFILE_CLAUDE_WORK__ANTHROPIC_AUTH_TOKEN: 'selected-claude-token',
-    JIG_ACP_PROFILE_PI_HOME__PI_PROVIDER: 'openai-codex',
-    JIG_ACP_PROFILE_PI_HOME__PI_CODING_AGENT_DIR: '/operator/pi-personal',
   }
   test('never forwards ambient credentials or credentials from a sibling profile', () => {
     const personal = privateAcpProfileEnvironment(sources, 'codex', 'personal-codex')
     expect(personal.CODEX_HOME).toBe('/operator/codex-personal')
     expect(personal.OPENAI_API_KEY).toBeUndefined()
     expect(personal.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
-    expect(personal.PI_PROVIDER).toBeUndefined()
+    expect(personal.ANTHROPIC_API_KEY).toBeUndefined()
     expect(Object.keys(personal).some((key) => key.startsWith('JIG_ACP_PROFILE_'))).toBeFalse()
     const api = privateAcpProfileEnvironment(sources, 'codex', 'work-api')
     expect(api.OPENAI_API_KEY).toBe('selected-api-key')
