@@ -11,6 +11,7 @@ import {
   type BehaviorChildPath,
   type BehaviorGuard,
   type BehaviorInput,
+  type BehaviorPackage,
   type BehaviorReport,
   type BehaviorStep,
   type BehaviorTarget,
@@ -18,15 +19,16 @@ import {
 } from './model.js'
 import { SourceIndex } from './source.js'
 import {
-  inputFacts,
+  describe,
   field,
+  inputFacts,
   literal,
   object,
   resultText,
   returnFacts,
   toJson,
-  type Value,
   unknown,
+  type Value,
 } from './values.js'
 
 type Scope = BehaviorReport['scopes'][number]
@@ -145,7 +147,10 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
               ...step.site,
               reason: step.detail,
             })
-        const route = completedRoute(state, site)
+        const pkg = input.packages.get(target.implementation)
+        const refusal =
+          state.mode === 'return' ? resultRefusal(state.value, target, pkg) : undefined
+        const route = completedRoute(state, site, refusal, pkg?.contractPath)
         ;(isAlternative ? alternate : routes).set(JSON.stringify(route, mapEntries), route)
       }
     } catch (error) {
@@ -283,9 +288,11 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
 
     for (const state of states) {
       const { prefix, guards } = callerEvidence(state.steps)
+      const refusal =
+        state.mode === 'return' && callee ? resultRefusal(state.value, callee, pkg) : undefined
       const childPath = retainChild(
         inputSummary,
-        completedRoute(state, callee ? location(callee) : site),
+        completedRoute(state, callee ? location(callee) : site, refusal, pkg?.contractPath),
       )
       if (state.mode === 'unknown') {
         opaque.push({ steps: prefix, assumptions: state.assumptions, guards, childPath })
@@ -306,50 +313,16 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
         continue
       }
       if (state.mode !== 'return') continue
+      if (refusal !== undefined) {
+        values.push(choice('throw', unknown, refusal, prefix, state.assumptions, guards, childPath))
+        continue
+      }
       const outcome = field(state.value, 'outcome')
-      if (outcome.kind === 'unknown') {
+      if (outcome.kind !== 'literal' || typeof outcome.value !== 'string') {
         opaque.push({ steps: prefix, assumptions: state.assumptions, guards, childPath })
         continue
       }
-      if (
-        outcome.kind !== 'literal' ||
-        typeof outcome.value !== 'string' ||
-        !callee?.outcomes.includes(outcome.value)
-      ) {
-        values.push(
-          choice(
-            'throw',
-            unknown,
-            'source result has an invalid outcome',
-            prefix,
-            state.assumptions,
-            guards,
-            childPath,
-          ),
-        )
-        continue
-      }
       const output = field(state.value, 'output')
-      const concrete = toJson(
-        object([
-          ['outcome', outcome],
-          ['output', output],
-        ]),
-      )
-      if (concrete !== undefined && pkg && pkg.checkResult?.(concrete) === false) {
-        values.push(
-          choice(
-            'throw',
-            unknown,
-            'known result fails its declared schema',
-            prefix,
-            state.assumptions,
-            guards,
-            childPath,
-          ),
-        )
-        continue
-      }
       const returned = object([
         ['outcome', outcome],
         ['output', output],
@@ -469,8 +442,48 @@ function sameSite(a: SourceSite, b: SourceSite): boolean {
   return a.path === b.path && a.line === b.line && a.column === b.column
 }
 
-function completedRoute(state: State, fallback: SourceSite): Route {
+function resultRefusal(
+  value: Value,
+  target: BehaviorTarget,
+  pkg: BehaviorPackage | undefined,
+): string | undefined {
+  if (value.kind === 'unknown') return undefined
+  if (value.kind !== 'object') return 'The returned result must be an object.'
+  const outcome = field(value, 'outcome')
+  if (outcome.kind === 'unknown') return undefined
+  if (outcome.kind !== 'literal' || typeof outcome.value !== 'string')
+    return 'The result must have a string outcome.'
+  if (!target.outcomes.includes(outcome.value))
+    return 'The target does not declare outcome ' + describe(outcome) + '.'
+  const concrete = toJson(
+    object([
+      ['outcome', outcome],
+      ['output', field(value, 'output')],
+    ]),
+  )
+  if (concrete !== undefined && pkg?.checkResult?.(concrete) === false)
+    return 'The known result fails its declared schema.'
+  return undefined
+}
+
+function completedRoute(
+  state: State,
+  fallback: SourceSite,
+  refusal?: string,
+  contractPath?: string,
+): Route {
   if (state.mode === 'unknown' && state.steps.at(-1)?.kind === 'end') return state.steps
+  if (refusal !== undefined)
+    return [
+      ...state.steps,
+      {
+        kind: 'end',
+        site: state.site ?? fallback,
+        completion: 'rejected',
+        detail: refusal,
+        ...(contractPath === undefined ? {} : { contractPath }),
+      },
+    ]
   return [
     ...state.steps,
     {

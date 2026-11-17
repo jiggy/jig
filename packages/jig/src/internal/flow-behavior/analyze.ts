@@ -1,5 +1,4 @@
 import ts from 'typescript-parser'
-import { progressDescription } from './reporting.js'
 import {
   dataEffects,
   dataIntrinsic,
@@ -10,14 +9,14 @@ import {
 } from './data.js'
 import {
   BEHAVIOR_LIMITS,
-  type BehaviorStep,
   type BehaviorAssumption,
+  type BehaviorStep,
   type BehaviorTarget,
   type SourceSite,
 } from './model.js'
-import { type LocalFunction, type SourceIndex, isLocalFunction, unwrap } from './source.js'
+import { progressDescription } from './reporting.js'
+import { isLocalFunction, type LocalFunction, type SourceIndex, unwrap } from './source.js'
 import {
-  type Value,
   describe,
   field,
   fromJson,
@@ -26,6 +25,7 @@ import {
   object,
   truth,
   unknown,
+  type Value,
 } from './values.js'
 
 export interface State {
@@ -642,6 +642,10 @@ export class Interpreter {
         const known = truth(value)
         return [withValue(s, known === undefined ? unknown : literal(!known))]
       })
+    if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.MinusToken) {
+      const operand = unwrap(e.operand)
+      if (ts.isNumericLiteral(operand)) return result(literal(-Number(operand.text)))
+    }
     if (ts.isConditionalExpression(e))
       return this.continue(this.expression(e.condition, state, depth), (s, value) =>
         this.branch(e.condition, value, s, (ss, taken) =>

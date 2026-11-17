@@ -18,6 +18,7 @@ The diagram marks assumptions on the affected branches.
 Proven data-only formatting can exhaust its own allowance while the caller remains visible.
 
 Linked child paths preserve configured callers, distinct call sites, and guards before file writes.
+Known result refusals retain prior effects in standalone and child paths.
 
 `portable/package-project.test.ts` checks source-only linking and refusal to create activation requests.
 Unpinned Agent resources remain unselected for inspection and still require an operator choice for review.

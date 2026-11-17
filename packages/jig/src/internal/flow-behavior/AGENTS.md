@@ -22,6 +22,7 @@ Explain conditional behavior from a captured Jig project without running its met
 - Keep unresolved checks attached to their conditional continuations.
 - Retain bounded child paths from the call evaluation that supplied the displayed result.
 - Keep contextual presentation records outside semantic path deduplication.
+- Apply the same known-return contract checks at standalone and child boundaries.
 - Bound proven data-only reporting work within the enclosing analysis allowance.
 - Source analysis grants no admission, execution, or retry authority.
 - Preserve source references, call context, and explicit unsupported regions.

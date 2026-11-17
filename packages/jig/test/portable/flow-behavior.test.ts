@@ -6,6 +6,7 @@ import type {
   BehaviorPackage,
   BehaviorTarget,
 } from '../../src/internal/flow-behavior/model.js'
+import { compileEmbeddedSchema, SchemaDiagnostic } from '../../src/schema/index.js'
 
 const handlerSource = (body: string) =>
   `import { handle } from '@jigging/flow'; await handle(async (run) => { ${body} });`
@@ -109,6 +110,93 @@ test('opaque children retain hypothetical caller responses and concrete schema r
   expect(rejected.scopes[0]!.routes.flat()).not.toContainEqual(
     expect.objectContaining({ completion: 'source-return' }),
   )
+})
+
+test('a known undeclared outcome is refused both directly and through its caller', () => {
+  const path = 'flows/convert/FLOW.contract.json'
+  const input = snapshot(
+    method(
+      `
+    import {handle} from '@jigging/flow'
+    import {writeFile} from 'node:fs/promises'
+    await handle(async run => {
+      await writeFile('draft.json', '{}')
+      return {outcome:'review', output:{status:'draft'}}
+    })
+  `,
+      { contractPath: path },
+    ),
+  )
+  const report = analyzeFlowBehavior({ ...input, focus: 'flow:flows/convert' })
+  const [scope] = report.scopes
+  const route = scope?.routes[0]
+  expect(route?.map((step) => step.kind)).toEqual(['effect', 'end'])
+  expect(route?.at(-1)).toMatchObject({
+    completion: 'rejected',
+    detail: 'The target does not declare outcome "review".',
+    contractPath: path,
+    site: { path: 'flows/convert/FLOW.ts', line: 6 },
+  })
+  const lines = renderFlowBehavior(report)
+  expect(lines).toContain('### Result contract checks')
+  expect(lines).toContain(path)
+  const caller = report.scopes.find((item) => item.target === 'binding:code')
+  expect(caller?.routes[0]?.map((step) => step.kind)).toEqual(['effect', 'call', 'end'])
+  expect(caller?.routes[0]?.[1]).toMatchObject({
+    completion: 'if-failed',
+    result: 'The target does not declare outcome "review".',
+  })
+})
+
+test('standalone schema checks reject concrete results and leave unknown values unresolved', () => {
+  const schema = compileEmbeddedSchema(
+    {
+      type: 'object',
+      properties: { output: { type: 'number' } },
+      required: ['output'],
+    },
+    { path: 'flows/convert/FLOW.contract.json' },
+  )
+  const inspect = (output: string) => {
+    const input = snapshot(
+      method(handlerSource(`return {outcome:'done', output:${output}}`), {
+        checkResult(value) {
+          try {
+            schema.validate(value, 'INVALID_RESULT')
+            return true
+          } catch (error) {
+            if (error instanceof SchemaDiagnostic) return false
+            throw error
+          }
+        },
+      }),
+    )
+    return analyzeFlowBehavior({ ...input, focus: 'flow:flows/convert' }).scopes[0]?.routes[0]?.at(
+      -1,
+    )
+  }
+  expect(inspect('"unacceptable"')).toMatchObject({
+    completion: 'rejected',
+    detail: 'The known result fails its declared schema.',
+  })
+  expect(inspect('run.input.value')).toMatchObject({ completion: 'return' })
+})
+
+test('negative numeric literals preserve the source branch after a lookup sentinel', () => {
+  const child = method(
+    handlerSource(`
+    if (run.input.index === -1) return {outcome:'done', output:{status:'missing'}}
+    return {outcome:'done', output:{status:'found'}}
+  `),
+  )
+  const importer = method(
+    handlerSource(`
+    return await run.call({slot:'converter', operationId:'convert', input:{index:-1}})
+  `),
+  )
+  const routes = analyzeFlowBehavior(snapshot(child, importer)).scopes[0]?.routes
+  expect(routes).toHaveLength(1)
+  expect(routes?.[0]?.at(-1)).toMatchObject({ detail: 'outcome "done", status = "missing"' })
 })
 
 test('conditional publication follows closure state and the computed view payload', () => {
