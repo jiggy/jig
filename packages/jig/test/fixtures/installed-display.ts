@@ -43,6 +43,7 @@ export const expectedInstalledFiles = [
   'dist/project/limits.d.ts',
   'dist/schema/types.d.ts',
   'libexec/installed-cli.js',
+  'libexec/flow-behavior.typescript-notices.txt',
   'libexec/image-preview-worker.js',
   'libexec/authoring/contract-authoring-worker.js',
   'libexec/markdown-runtime.js',

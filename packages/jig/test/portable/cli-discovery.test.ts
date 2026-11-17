@@ -670,5 +670,14 @@ test('complete topology grammar rejects conflicting operands before host acquisi
     expect(await main(args, { writeError: () => {} })).toBe(2)
   }
   expect(privateCliRequiresHost(['inspect', '--flow', '--all'])).toBe(true)
+  expect(privateCliRequiresHost(['inspect', '--flow', '--behavior'])).toBe(true)
+  for (const flags of [
+    ['--behavior'],
+    ['--flow', '--behavior', '--approved'],
+    ['--flow', '--behavior', '--json'],
+  ]) {
+    expect(privateCliRequiresHost(['inspect', ...flags])).toBe(false)
+    expect(await main(['inspect', ...flags], { writeError: () => {} })).toBe(2)
+  }
   expect(privateCliRequiresHost(['inspect', '--flow', '--all', '--approved'])).toBe(false)
 })

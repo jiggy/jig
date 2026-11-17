@@ -952,6 +952,26 @@ Markdown refuses graphs beyond fixed target and connection bounds. Inline settin
 The [limits reference](../reference/limits.md#inspect-application-composition) lists these fixed presentation bounds.
 Saved packets contain no configured-topology record.
 
+`jig inspect --flow [target | --all] --behavior` inspects supported current source.
+The command uses the same captured working tree and resolved slots as the topology view.
+It writes literal Markdown to stdout, including through a pipe.
+`--behavior` requires `--flow` and excludes `--approved` and `--json`.
+
+The declared entrypoint selects the default focus.
+An exact target retains its configured context, including other uses of its implementation and callers.
+Without a focus, including with `--all`, the view lists configured targets for subsequent inspection.
+Each analyzed route keeps its own conditions, call results, effects, and continuation.
+Source references identify the captured implementation and line.
+
+The analyzer covers a subset of local TypeScript.
+Unsupported operations, opaque dependencies, and analysis bounds leave visible gaps.
+The view can show caller reactions to hypothetical contract outcomes, including for opaque children.
+The outcome name alone does not establish an admitted result or a delivered artifact.
+
+Reporting projections require a recognized local installed implementation.
+The inspection reports requested publications and supported payload calculations.
+It provides no observation of a Run and grants no execution authority.
+
 `jig inspect --result <directory> [--display plain|tui|web] [--json]` reads a
 saved packet without loading a project, verifying an execution installation,
 reading operator configuration or credentials, acquiring execution authority,

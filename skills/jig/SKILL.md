@@ -17,6 +17,11 @@ For a new project, recommend the [FLOW and Jig authoring skills](reference/for-a
 Use the FLOW skill when designing, creating, composing, or reviewing the project's Flows.
 If it is unavailable, follow its [canonical design guidance](https://flow.jig.md/guide/design) and the task's FLOW specifications.
 Keep portable method guidance with FLOW and host configuration with Jig.
+
+For conditional handoffs, child outcomes, or shared methods, check whether the installed CLI supports `--behavior`.
+Use `jig inspect --flow <target> --behavior` when available.
+Verify the affected conditions in source and test the alternatives that must remain.
+See [source behavior inspection](reference/build/results.md#inspect-source-behavior).
 Complete this step when the outcome, existing project state, and execution prerequisites are clear.
 
 ## 2. Design the project before its configuration
@@ -30,8 +35,6 @@ This topology does not establish execution order, conditions, or caller reaction
 Use `--approved` when investigating retained authorized configuration.
 
 For conditional routing changes, follow [change a conditional route](reference/build/design.md#change-a-conditional-route).
-Keep the decision owner, changed handoff, preserved alternatives, and evidence consumers together in a focused behavioral Mermaid slice.
-Derive it from source and keep it in the task context or existing project documentation.
 Describe which choices belong to the application, each Flow, its local configuration, the operator, and Jig.
 Use a short outline or existing project documentation, without requiring another design artifact.
 

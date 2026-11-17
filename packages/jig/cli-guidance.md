@@ -241,7 +241,14 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   `--approved` selects retained authorized configuration without evaluating visible source.
   Installed npm dependencies remain required and their manifest/lock agreement stays unchecked.
   Graph and inline-value bounds disclose unavailable or omitted presentation.
-  No behavior, source bundles, caller reactions, or behavioral impact are supplied.
+  Topology supplies configured routes. Source behavior has a separate view.
+
+- `src/cli-flow-behavior.ts` renders conditional source routes as literal Markdown.
+  `--behavior` uses current capture and excludes approved and JSON output.
+  `src/internal/flow-inspection-scope.ts` provides target selection for both views.
+  Keep call results with their own continuations.
+  Separate source returns, contract-based hypotheses, and observed execution.
+  Bound focused detail and label omitted routes and opaque regions.
 
 - `inspect` compares the last local approval with current local execution
   identities, including selected children. Report mismatches as review required

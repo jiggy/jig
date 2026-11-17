@@ -47,7 +47,10 @@ import {
   recoverPrivateCheckpointRun,
 } from './internal/project-session-controller.js'
 import { privatePresentationDeadline } from './internal/root-run-timeout-policy.js'
-import { inspectWorkingFlow } from './internal/working-flow-inspection.js'
+import {
+  inspectWorkingFlow,
+  inspectWorkingFlowBehavior,
+} from './internal/working-flow-inspection.js'
 import { canonicalJson } from './json.js'
 
 interface InstalledCliOutcome {
@@ -307,7 +310,7 @@ async function runWithEnvironment(
       const host: PrivateCliCommandHost = Object.freeze({
         inspectFlow: async (
           project: string,
-          options: import('./cli-flow-context.js').FlowContextOptions,
+          options: import('./internal/flow-inspection-scope.js').FlowContextOptions,
           signal?: AbortSignal,
         ) =>
           inspectWorkingFlow(
@@ -317,6 +320,17 @@ async function runWithEnvironment(
             signal,
           ),
         ...(delivery === undefined ? {} : { delivery }),
+        inspectBehavior: async (
+          project: string,
+          options: import('./internal/flow-inspection-scope.js').FlowContextOptions,
+          signal?: AbortSignal,
+        ) =>
+          inspectWorkingFlowBehavior(
+            project,
+            await openPrivateInstalledDeclarationEvaluator(location, project),
+            options,
+            signal,
+          ),
 
         acquire: async (
           project: string,

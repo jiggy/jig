@@ -9,6 +9,9 @@
 It also checks exact Jig requirements before evaluating working-tree declarations.
 The installed lifecycle case verifies relative Flow selectors in current and approved inspection.
 
+It also inspects a consumer before and after a callee edit, then verifies the unchanged caller through a native Run.
+`portable/flow-behavior.test.ts` checks inert source interpretation and reporting payloads independently.
+
 `portable/package-project.test.ts` checks source-only linking and refusal to create activation requests.
 Unpinned Agent resources remain unselected for inspection and still require an operator choice for review.
 

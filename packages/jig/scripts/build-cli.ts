@@ -28,6 +28,14 @@ export async function privateBuildCli(): Promise<void> {
     __JIG_IMAGE_PREVIEW_WORKER_DIGEST__: JSON.stringify(digest),
   })
   await Bun.write(resolve(root, 'libexec/installed-cli.js'), command)
+  const parserNotices = new URL(
+    '../ThirdPartyNoticeText.txt',
+    import.meta.resolve('typescript-parser'),
+  )
+  await Bun.write(
+    resolve(root, 'libexec/flow-behavior.typescript-notices.txt'),
+    await readFile(parserNotices),
+  )
 
   async function build(entrypoint: string, define: Record<string, string> = {}): Promise<Blob> {
     const result = await Bun.build({
