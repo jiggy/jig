@@ -3,6 +3,7 @@ import type { JsonValue } from '../../json.js'
 export interface SourceSite {
   readonly path: string
   readonly line: number
+  readonly column?: number
 }
 
 export interface BehaviorPackage {
@@ -56,6 +57,7 @@ export type BehaviorStep =
   | {
       readonly kind: 'call'
       readonly site: SourceSite
+      readonly caller: string
       readonly slot: string
       readonly target: string
       readonly completion: 'source-return' | 'if-returned' | 'if-failed'
@@ -63,6 +65,7 @@ export type BehaviorStep =
       readonly returned?: BehaviorReturn
       readonly assumptions?: readonly BehaviorAssumption[]
       readonly guards?: readonly BehaviorGuard[]
+      readonly childPath?: number
     }
   | {
       readonly kind: 'effect'
@@ -70,6 +73,7 @@ export type BehaviorStep =
       readonly site: SourceSite
       readonly operation: string
       readonly detail: string
+      readonly guards?: readonly BehaviorGuard[]
     }
   | { readonly kind: 'gap'; readonly site: SourceSite; readonly detail: string }
   | {
@@ -80,11 +84,17 @@ export type BehaviorStep =
       readonly returned?: BehaviorReturn
     }
 
+export interface BehaviorChildPath {
+  readonly input: string
+  readonly steps: readonly BehaviorStep[]
+}
+
 export interface BehaviorReport {
   readonly unavailable?: string
   readonly revision: string
   readonly focus: string | undefined
   readonly inventory: readonly BehaviorTarget[]
+  readonly childPaths: readonly BehaviorChildPath[]
   readonly scopes: readonly {
     readonly target: string
     readonly routes: readonly (readonly BehaviorStep[])[]
@@ -103,4 +113,6 @@ export const BEHAVIOR_LIMITS = {
   variants: 32,
   scopes: 24,
   stepsPerRoute: 72,
+  retainedChildPaths: 256,
+  retainedChildSteps: 4_096,
 } as const

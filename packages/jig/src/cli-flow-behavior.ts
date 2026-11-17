@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type {
   BehaviorGuard,
   BehaviorReport,
@@ -8,6 +9,9 @@ import type {
 
 type Route = BehaviorReport['scopes'][number]['routes'][number]
 type Scope = BehaviorReport['scopes'][number]
+type Call = Extract<BehaviorStep, { kind: 'call' }>
+type CallCase = { call: Call; after: readonly BehaviorStep[] }
+type CallDetails = ReadonlyMap<string, ReadonlyMap<string, CallCase & { index: number }>>
 
 const directions = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu
 const controls = /[\p{Cc}\u2028\u2029]/gu
@@ -32,6 +36,20 @@ function diagramText(value: string): string {
 
 function site(location: SourceSite): string {
   return location.path + ':' + location.line
+}
+
+function callAnchor(call: Call): string {
+  const key = JSON.stringify([call.caller, call.site, call.slot])
+  const slot = call.slot
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .slice(0, 32)
+  return 'call-' + slot + '-' + createHash('sha256').update(key).digest('hex').slice(0, 16)
+}
+
+function guardLabel(guard: BehaviorGuard): string {
+  const code = guard.code.replace(/\s+/g, ' ')
+  return '(' + (code.length <= 72 ? code : code.slice(0, 69) + '…') + ')'
 }
 
 function result(facts: BehaviorReturn, includeArtifacts = false): string {
@@ -77,7 +95,10 @@ function diagram(routes: readonly Route[]): string[] {
         continue
       }
       if (step.kind !== 'call' && step.kind !== 'end' && !writesFile(step)) continue
-      const guards = step.kind === 'call' ? [...pending, ...(step.guards ?? [])] : pending
+      const guards =
+        step.kind === 'call' || step.kind === 'effect'
+          ? [...pending, ...(step.guards ?? [])]
+          : pending
       pending = []
       const first = guards[0]
       const edge = first
@@ -85,11 +106,13 @@ function diagram(routes: readonly Route[]): string[] {
           site(first.site) +
           ' · assume ' +
           first.taken +
+          ' ' +
+          guardLabel(first) +
           (guards.length > 1 ? ' · +' + (guards.length - 1) + ' checks' : '')
         : ''
       // Include the projected guards in the prefix identity. Sharing a node cannot
       // splice a continuation onto a route with a different preceding check.
-      const key = JSON.stringify([previous, step, guards])
+      const key = JSON.stringify([previous, step, guards], withoutChildPath)
       let id = nodes.get(key)
       if (id === undefined) {
         id = nodes.size + 1
@@ -116,10 +139,13 @@ function progress(route: Route, target: string): string {
 function selectRoutes(scope: Scope): Route[] {
   const distinct = new Map<string, Route>()
   for (const route of scope.routes) {
-    const key = JSON.stringify([
-      route.filter((step) => step.kind === 'call' || step.kind === 'end' || writesFile(step)),
-      progress(route, scope.target),
-    ])
+    const key = JSON.stringify(
+      [
+        route.filter((step) => step.kind === 'call' || step.kind === 'end' || writesFile(step)),
+        progress(route, scope.target),
+      ],
+      withoutChildPath,
+    )
     if (!distinct.has(key)) distinct.set(key, route)
   }
   const group = [...distinct.values()]
@@ -131,7 +157,59 @@ function selectRoutes(scope: Scope): Route[] {
   return [...returned.slice(0, 4), ...exceptional.slice(0, 2)]
 }
 
-function consequences(scope: Scope, routes: readonly Route[]): string[] {
+function withoutChildPath(key: string, value: unknown): unknown {
+  return key === 'childPath' ? undefined : value
+}
+
+function continuation(route: Route, at: number, call: Call): BehaviorStep[] {
+  const after: BehaviorStep[] = []
+  for (const step of route.slice(at + 1)) {
+    if (step.kind === 'call' || step.kind === 'end') {
+      after.push(step)
+      break
+    }
+    if (
+      after.length < 3 &&
+      (step.kind === 'condition' || (writesFile(step) && step.owner === call.caller))
+    )
+      after.push(step)
+  }
+  return after
+}
+
+function caseKey(call: Call, after: readonly BehaviorStep[]): string {
+  const steps = after.map((step) =>
+    step.kind === 'call' ? [step.caller, step.slot, step.target, step.site] : step,
+  )
+  return JSON.stringify([call.childPath, call.result, steps])
+}
+
+const callCaseLimit = 4
+
+function callDetails(routes: readonly Route[]): { shown: CallDetails; omitted: number } {
+  const entries = new Map<string, Map<string, CallCase & { index: number }>>()
+  const omitted = new Set<string>()
+  for (const route of routes)
+    for (const [index, call] of route.entries()) {
+      if (call.kind !== 'call') continue
+      const anchor = callAnchor(call)
+      let cases = entries.get(anchor)
+      if (cases === undefined) {
+        if (entries.size >= 8) {
+          omitted.add(anchor)
+          continue
+        }
+        cases = new Map()
+        entries.set(anchor, cases)
+      }
+      const after = continuation(route, index, call)
+      const key = caseKey(call, after)
+      if (!cases.has(key)) cases.set(key, { call, after, index: cases.size + 1 })
+    }
+  return { shown: entries, omitted: omitted.size }
+}
+
+function consequences(scope: Scope, routes: readonly Route[], details?: CallDetails): string[] {
   const rows = [
     '### Consequences',
     '',
@@ -141,19 +219,106 @@ function consequences(scope: Scope, routes: readonly Route[]): string[] {
   const summaries = new Set<string>()
   for (const route of routes) {
     const terminal = route.at(-1)
-    const calls = route.flatMap((step) =>
-      step.kind === 'call' ? [step.slot + (step.completion === 'if-failed' ? ' failed' : '')] : [],
-    )
+    const calls = route.flatMap((step, index) => {
+      if (step.kind !== 'call') return []
+      const title = text(step.slot + (step.completion === 'if-failed' ? ' failed' : ''))
+      const anchor = callAnchor(step)
+      const cases = details?.get(anchor)
+      const match = cases?.get(caseKey(step, continuation(route, index, step)))
+      if (match && match.index <= callCaseLimit)
+        return ['[' + title + '](#' + anchor + '-path-' + match.index + ')']
+      return [cases ? '[' + title + '](#' + anchor + ')' : title]
+    })
     const writes = route.filter((step) => step.kind === 'effect' && writesFile(step))
     const values = [
-      terminal && terminal.kind !== 'condition' ? label(terminal) : 'Unknown',
+      terminal && terminal.kind !== 'condition' ? text(label(terminal)) : 'Unknown',
       calls.join(' → ') || '—',
-      progress(route, scope.target),
-      writes.map((write) => write.detail).join(' · ') || '—',
+      text(progress(route, scope.target)),
+      text(writes.map((write) => write.detail).join(' · ')) || '—',
     ]
-    summaries.add('| ' + values.map(text).join(' | ') + ' |')
+    summaries.add('| ' + values.join(' | ') + ' |')
   }
   return [...rows, ...summaries, '']
+}
+
+function detailLine(step: BehaviorStep): string {
+  return text(
+    (step.kind === 'condition'
+      ? (step.unresolved ? 'Assume ' : 'Check ') + guardLabel(step) + ' is ' + step.taken
+      : step.kind === 'call'
+        ? label(step) + ' · ' + step.target
+        : label(step)) +
+      ' (' +
+      site(step.site) +
+      ')',
+  )
+}
+
+function renderCallDetails(
+  report: BehaviorReport,
+  details: CallDetails,
+  omitted: number,
+): string[] {
+  if (!details.size) return []
+  const lines = ['## Calls in context', '']
+  for (const [anchor, variants] of details) {
+    const cases = [...variants.values()]
+    const first = cases[0]
+    if (!first) continue
+    const { call } = first
+    lines.push(
+      '<a id="' + anchor + '"></a>',
+      '### ' + text(call.slot + ' in ' + call.caller),
+      '',
+      text(
+        call.target +
+          ' · ' +
+          site(call.site) +
+          (call.site.column === undefined ? '' : ':' + call.site.column),
+      ),
+      '',
+    )
+    for (const { call, after, index } of cases.slice(0, callCaseLimit)) {
+      const path = call.childPath === undefined ? undefined : report.childPaths[call.childPath]
+      lines.push('- <a id="' + anchor + '-path-' + index + '"></a>**' + text(label(call)) + '**')
+      if (path) {
+        lines.push('  - Input from this caller · ' + text(path.input))
+        const steps = path.steps.filter(
+          (step) =>
+            step.kind !== 'effect' || step.operation === 'writeFile' || step.operation === 'notice',
+        )
+        const shown = steps.length > 6 ? [...steps.slice(0, 4), ...steps.slice(-2)] : steps
+        if (steps.length)
+          lines.push(
+            '  - Child path · ' +
+              shown.map(detailLine).join(' → ') +
+              (shown.length < steps.length
+                ? ' · ' + (steps.length - shown.length) + ' intermediate steps omitted'
+                : ''),
+          )
+        else lines.push('  - Child path unavailable · ' + text(call.result))
+      } else lines.push('  - Child path exceeds the retained analysis allowance.')
+      if (after.length)
+        lines.push(
+          '  - Back in ' +
+            text(call.caller) +
+            ' · ' +
+            after
+              .map((step) =>
+                step.kind === 'call'
+                  ? text('Call ' + step.slot + ' → ' + step.target + ' (' + site(step.site) + ')')
+                  : detailLine(step),
+              )
+              .join(' → '),
+        )
+    }
+    if (cases.length > callCaseLimit)
+      lines.push('- ' + (cases.length - callCaseLimit) + ' additional call paths omitted.')
+    lines.push('')
+  }
+  if (omitted)
+    lines.push(omitted + ' additional call sites exceed the contextual detail limit.', '')
+  return lines
 }
 
 function evidence(routes: readonly Route[]): string[] {
@@ -166,6 +331,9 @@ function evidence(routes: readonly Route[]): string[] {
         checks.add(text(step.code) + ' (' + text(site(step.site)) + ')')
       if (step.kind === 'effect')
         effects.add(text(label(step)) + ' (' + text(site(step.site)) + ')')
+      if (step.kind === 'call' || step.kind === 'effect')
+        for (const guard of step.guards ?? [])
+          checks.add(text(guard.code) + ' (' + text(site(guard.site)) + ')')
       if (step.kind === 'call') {
         handoffs.add(
           text(step.slot + ' → ' + step.target + ' · ' + step.result) +
@@ -173,8 +341,6 @@ function evidence(routes: readonly Route[]): string[] {
             text(site(step.site)) +
             ')',
         )
-        for (const guard of step.guards ?? [])
-          checks.add(text(guard.code) + ' (' + text(site(guard.site)) + ')')
         for (const fact of step.assumptions ?? [])
           handoffs.add(
             text(fact.slot + ' depends on ' + fact.detail) + ' (' + text(site(fact.site)) + ')',
@@ -241,8 +407,9 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   if (selected) {
     lines.push('## ' + text(selected.target), '')
     const routes = selectRoutes(selected)
+    const details = callDetails([...routes, ...selected.alternatives])
     if (routes.length) {
-      lines.push(...consequences(selected, routes))
+      lines.push(...consequences(selected, routes, details.shown))
       lines.push(
         'Routes depend on the shown checks, completion of intervening operations, and admission of child results.',
         '',
@@ -267,6 +434,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       lines.push('')
     }
     lines.push(...evidence(routes))
+    lines.push(...renderCallDetails(report, details.shown, details.omitted))
     const callers = scopes.filter(
       (scope) =>
         scope.target !== focus &&

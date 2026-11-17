@@ -80,7 +80,7 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
     command([cli, 'inspect', '--flow', '--behavior', ...args], project)
   const before = await inspect()
   expect(before.stdout).toContain('# Source behavior')
-  expect(before.stdout).toContain('converter → exporter')
+  expect(before.stdout).toMatch(/\[converter\]\(#call-converter-[^)]+\) → \[exporter\]/)
   expect(before.stdout).toContain('exporter → flow:flows/export · outcome "done"')
   expect(before.stdout).toContain('status = "exported"')
   await put('flows/convert/FLOW.ts', converter('needs_mapping'))

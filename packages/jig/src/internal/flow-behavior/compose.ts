@@ -8,6 +8,7 @@ import {
 import {
   BEHAVIOR_LIMITS,
   type BehaviorAssumption,
+  type BehaviorChildPath,
   type BehaviorGuard,
   type BehaviorInput,
   type BehaviorReport,
@@ -17,6 +18,7 @@ import {
 } from './model.js'
 import { SourceIndex } from './source.js'
 import {
+  inputFacts,
   field,
   literal,
   object,
@@ -29,7 +31,7 @@ import {
 
 type Scope = BehaviorReport['scopes'][number]
 type Route = Scope['routes'][number]
-type Handoff = { readonly slot: string; readonly site: SourceSite }
+type Handoff = { readonly caller: string; readonly slot: string; readonly site: SourceSite }
 
 export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal): BehaviorReport {
   const targets = new Map(input.targets.map((target) => [target.id, target]))
@@ -39,8 +41,11 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     return target ? [target] : []
   })
   const scopes: Scope[] = []
+  const childPaths: BehaviorChildPath[] = []
+  const childKeys = new Map<string, number>()
+  let childSteps = 0
   const { focus, revision } = input
-  if (focus === undefined) return { revision, focus, inventory, scopes }
+  if (focus === undefined) return { revision, focus, inventory, scopes, childPaths }
 
   const primary = new AnalysisBudget(signal)
   const visible = [focus, ...input.visible.filter((id) => id !== focus)]
@@ -72,7 +77,8 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     for (const candidate of scopes)
       for (const route of candidate.routes)
         for (const step of route)
-          if (step.kind === 'call') seeds.set(JSON.stringify([step.slot, step.site]), step)
+          if (step.kind === 'call')
+            seeds.set(JSON.stringify([step.caller, step.slot, step.site]), step)
     const alternatives = new Map<string, Route>()
     const gaps = new Map(scope.gaps.map((gap) => [JSON.stringify(gap), gap]))
     for (const seed of [...seeds.values()].slice(0, 8)) {
@@ -90,7 +96,23 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     }
     scopes[index] = { ...scope, alternatives: [...alternatives.values()], gaps: [...gaps.values()] }
   }
-  return { revision, focus, inventory, scopes }
+  return { revision, focus, inventory, scopes, childPaths }
+
+  function retainChild(argument: string, steps: Route): number | undefined {
+    const key = JSON.stringify([argument, steps])
+    const existing = childKeys.get(key)
+    if (existing !== undefined) return existing
+    if (
+      childPaths.length >= BEHAVIOR_LIMITS.retainedChildPaths ||
+      childSteps + steps.length > BEHAVIOR_LIMITS.retainedChildSteps
+    )
+      return undefined
+    const id = childPaths.length
+    childKeys.set(key, id)
+    childPaths.push({ input: argument, steps })
+    childSteps += steps.length
+    return id
+  }
 
   function location(target: BehaviorTarget): SourceSite {
     return {
@@ -117,39 +139,14 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       for (const state of states) {
         const isAlternative = state.assumptions.some((fact) => fact.kind !== 'opaque-return')
         if ((handoff !== undefined) !== isAlternative) continue
-        const terminal = state.site ?? site
         for (const step of state.steps)
           if (step.kind === 'gap' || (step.kind === 'end' && step.completion === 'unknown'))
             evidence.set(JSON.stringify([step.site, step.detail]), {
               ...step.site,
               reason: step.detail,
             })
-        const route: Route =
-          state.mode === 'unknown' && state.steps.at(-1)?.kind === 'end'
-            ? state.steps
-            : [
-                ...state.steps,
-                {
-                  kind: 'end',
-                  completion:
-                    state.mode === 'throw'
-                      ? 'throw'
-                      : state.mode === 'unknown'
-                        ? 'unknown'
-                        : 'return',
-                  detail:
-                    state.mode === 'return'
-                      ? resultText(state.value)
-                      : state.mode === 'throw'
-                        ? failureText(state.value)
-                        : state.mode === 'unknown'
-                          ? 'Continuation unknown'
-                          : 'Finishes without an explicit return',
-                  site: terminal,
-                  ...(state.mode === 'return' ? { returned: returnFacts(state.value) } : {}),
-                },
-              ]
-        ;(isAlternative ? alternate : routes).set(JSON.stringify(route), route)
+        const route = completedRoute(state, site)
+        ;(isAlternative ? alternate : routes).set(JSON.stringify(route, mapEntries), route)
       }
     } catch (error) {
       if (!(error instanceof AnalysisLimit)) throw error
@@ -202,12 +199,24 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
         const next = assumptions.every((fact) => fact.kind === 'opaque-return')
           ? handoff
           : undefined
-        return continuations(callee, slot, selected, value, site, childDepth, chain, budget, next)
+        return continuations(
+          target.id,
+          callee,
+          slot,
+          selected,
+          value,
+          site,
+          childDepth,
+          chain,
+          budget,
+          next,
+        )
       },
     ).run(depth)
   }
 
   function continuations(
+    caller: string,
     callee: BehaviorTarget | undefined,
     slot: string,
     selected: string | undefined,
@@ -219,6 +228,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     handoff: Handoff | undefined,
   ): ChildResult[] {
     const target = selected ?? '(unresolved or host resource)'
+    const inputSummary = inputFacts(argument)
     const choice = (
       mode: ChildResult['mode'],
       value: Value,
@@ -226,6 +236,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       prefix: readonly BehaviorStep[],
       assumptions: readonly BehaviorAssumption[],
       guards: readonly BehaviorGuard[] = [],
+      childPath?: number,
     ): ChildResult => ({
       mode,
       value,
@@ -234,6 +245,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       step: {
         kind: 'call',
         site,
+        caller,
         slot,
         target,
         result,
@@ -241,6 +253,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
           mode === 'throw' ? 'if-failed' : assumptions.length ? 'if-returned' : 'source-return',
         ...(assumptions.length ? { assumptions } : {}),
         ...(guards.length ? { guards } : {}),
+        ...(childPath !== undefined ? { childPath } : {}),
         ...(mode === 'next' ? { returned: returnFacts(value) } : {}),
       },
     })
@@ -249,7 +262,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       detail: string,
     ): BehaviorAssumption => ({ kind, detail, site, slot })
     const allowSecondary =
-      handoff?.slot === slot && handoff.site.path === site.path && handoff.site.line === site.line
+      handoff?.caller === caller && handoff.slot === slot && sameSite(handoff.site, site)
     const states = callee ? evaluate(callee, argument, depth, active, budget, handoff) : []
     const pkg = callee && input.packages.get(callee.implementation)
     const values: ChildResult[] = []
@@ -257,43 +270,45 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       steps: readonly BehaviorStep[]
       assumptions: readonly BehaviorAssumption[]
       guards: readonly BehaviorGuard[]
+      childPath: number | undefined
     }[] = []
-    if (states.length === 0) opaque.push({ steps: [], assumptions: [], guards: [] })
+    if (states.length === 0)
+      opaque.push({
+        steps: [],
+        assumptions: [],
+        guards: [],
+        childPath: retainChild(inputSummary, []),
+      })
     const outcomes = new Set<string>()
 
     for (const state of states) {
-      const guards = state.steps
-        .flatMap((step) =>
-          step.kind === 'condition' && step.unresolved
-            ? [step]
-            : step.kind === 'call'
-              ? (step.guards ?? [])
-              : [],
-        )
-        .slice(0, 4)
-      const prefix: BehaviorStep[] = state.steps.flatMap((step): BehaviorStep[] =>
-        step.kind === 'effect'
-          ? [step]
-          : step.kind === 'gap'
-            ? [step]
-            : step.kind === 'end' && step.completion === 'unknown'
-              ? [{ kind: 'gap', site: step.site, detail: step.detail }]
-              : [],
+      const { prefix, guards } = callerEvidence(state.steps)
+      const childPath = retainChild(
+        inputSummary,
+        completedRoute(state, callee ? location(callee) : site),
       )
       if (state.mode === 'unknown') {
-        opaque.push({ steps: prefix, assumptions: state.assumptions, guards })
+        opaque.push({ steps: prefix, assumptions: state.assumptions, guards, childPath })
         continue
       }
       if (state.mode === 'throw') {
         values.push(
-          choice('throw', state.value, failureText(state.value), prefix, state.assumptions, guards),
+          choice(
+            'throw',
+            state.value,
+            failureText(state.value),
+            prefix,
+            state.assumptions,
+            guards,
+            childPath,
+          ),
         )
         continue
       }
       if (state.mode !== 'return') continue
       const outcome = field(state.value, 'outcome')
       if (outcome.kind === 'unknown') {
-        opaque.push({ steps: prefix, assumptions: state.assumptions, guards })
+        opaque.push({ steps: prefix, assumptions: state.assumptions, guards, childPath })
         continue
       }
       if (
@@ -309,6 +324,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
             prefix,
             state.assumptions,
             guards,
+            childPath,
           ),
         )
         continue
@@ -329,6 +345,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
             prefix,
             state.assumptions,
             guards,
+            childPath,
           ),
         )
         continue
@@ -340,7 +357,17 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       ])
       if (state.assumptions.every((fact) => fact.kind === 'opaque-return'))
         outcomes.add(outcome.value)
-      values.push(choice('next', returned, resultText(returned), prefix, state.assumptions, guards))
+      values.push(
+        choice(
+          'next',
+          returned,
+          resultText(returned),
+          prefix,
+          state.assumptions,
+          guards,
+          childPath,
+        ),
+      )
     }
     for (const prefix of opaque) {
       const assumption = newAssumption(
@@ -364,6 +391,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
           prefix.steps,
           facts,
           prefix.guards,
+          prefix.childPath,
         ),
       )
       if (
@@ -382,6 +410,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
               newAssumption('call-failure', 'opaque continuation fails after known prefix'),
             ],
             prefix.guards,
+            prefix.childPath,
           ),
         )
     }
@@ -401,6 +430,8 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
             'outcome ' + JSON.stringify(name) + '; contract alternative',
             [],
             [newAssumption('contract-return', 'admits outcome ' + JSON.stringify(name))],
+            [],
+            retainChild(inputSummary, []),
           ),
         )
       }
@@ -411,25 +442,74 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
           'call or result admission fails',
           [],
           [newAssumption('call-failure', 'call or result admission fails')],
+          [],
+          retainChild(inputSummary, []),
         ),
       )
     }
     const distinct = new Map<string, ChildResult>()
-    for (const result of values) distinct.set(JSON.stringify(result, mapEntries), result)
+    for (const result of values) {
+      const key = JSON.stringify(result, mapEntries)
+      if (!distinct.has(key)) distinct.set(key, result)
+    }
     return budget.variants(
       [...distinct.values()].filter(
         (option) =>
           !allowSecondary ||
           option.assumptions.some(
             (fact) =>
-              fact.kind !== 'opaque-return' &&
-              fact.slot === slot &&
-              fact.site.path === site.path &&
-              fact.site.line === site.line,
+              fact.kind !== 'opaque-return' && fact.slot === slot && sameSite(fact.site, site),
           ),
       ),
     )
   }
+}
+
+function sameSite(a: SourceSite, b: SourceSite): boolean {
+  return a.path === b.path && a.line === b.line && a.column === b.column
+}
+
+function completedRoute(state: State, fallback: SourceSite): Route {
+  if (state.mode === 'unknown' && state.steps.at(-1)?.kind === 'end') return state.steps
+  return [
+    ...state.steps,
+    {
+      kind: 'end',
+      site: state.site ?? fallback,
+      completion:
+        state.mode === 'throw' ? 'throw' : state.mode === 'unknown' ? 'unknown' : 'return',
+      detail:
+        state.mode === 'return'
+          ? resultText(state.value)
+          : state.mode === 'throw'
+            ? failureText(state.value)
+            : state.mode === 'unknown'
+              ? 'Continuation unknown'
+              : 'Finishes without an explicit return',
+      ...(state.mode === 'return' ? { returned: returnFacts(state.value) } : {}),
+    },
+  ]
+}
+
+function callerEvidence(steps: Route): { prefix: BehaviorStep[]; guards: BehaviorGuard[] } {
+  const prefix: BehaviorStep[] = []
+  let guards: BehaviorGuard[] = []
+  for (const step of steps) {
+    if (step.kind === 'condition' && step.unresolved) guards.push(step)
+    if (step.kind === 'call') guards.push(...(step.guards ?? []))
+    if (step.kind === 'effect') {
+      // Conditions seen before a write belong to the write's incoming edge.
+      // A later condition stays with the child completion.
+      if (step.operation === 'writeFile' && guards.length) {
+        prefix.push({ ...step, guards: [...guards, ...(step.guards ?? [])].slice(0, 4) })
+        guards = []
+      } else prefix.push(step)
+    }
+    if (step.kind === 'gap') prefix.push(step)
+    if (step.kind === 'end' && step.completion === 'unknown')
+      prefix.push({ kind: 'gap', site: step.site, detail: step.detail })
+  }
+  return { prefix, guards: guards.slice(0, 4) }
 }
 
 function failureText(value: Value): string {
@@ -438,7 +518,9 @@ function failureText(value: Value): string {
     : 'Throws'
 }
 
-function mapEntries(_key: string, value: unknown): unknown {
+function mapEntries(key: string, value: unknown): unknown {
+  // Retaining a representative child path must not change the analysis budget.
+  if (key === 'childPath') return undefined
   if (value instanceof Map) return [...value]
   if (typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'function')
     return { kind: 'function' }

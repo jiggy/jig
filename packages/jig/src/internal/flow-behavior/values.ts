@@ -95,6 +95,25 @@ export function returnFacts(value: Value): BehaviorReturn {
   }
 }
 
+export function inputFacts(value: Value): string {
+  if (value.kind !== 'object') return describe(value)
+  const facts = [...value.fields].filter(([, field]) => field.kind !== 'unknown')
+  const listed = facts
+    .slice(0, 5)
+    .map(
+      ([name, field]) =>
+        (name.length <= 72 ? name : name.slice(0, 69) + '…') + ' = ' + describe(field),
+    )
+  return (
+    [
+      ...listed,
+      ...(value.open || value.fields.size > listed.length
+        ? ['other fields unknown or omitted']
+        : []),
+    ].join(' · ') || 'empty object'
+  )
+}
+
 export function resultText(value: Value): string {
   const { outcome, fields, artifacts } = returnFacts(value)
   return [

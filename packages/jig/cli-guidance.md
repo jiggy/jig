@@ -239,7 +239,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 - `src/cli-flow-behavior.ts` renders conditional source routes as literal Markdown.
   `--behavior` uses current capture and excludes approved and JSON output.
   `src/internal/flow-inspection-scope.ts` provides target selection for both views.
-  Keep call results with their own continuations and distinguish source evidence from execution.
+  Link each retained child path to the continuation of its own caller.
   Lead with route consequences and attach their unresolved checks.
   Give main routes their own analysis budget and disclose omissions and opaque regions.
 
