@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, realpath, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -21,9 +21,16 @@ import {
 import { PrivateMacosBackend } from '../../src/internal/macos-native-backend.js'
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 
-async function qualifyMacosStartup(
+type NativeRequest = (
+  id: number,
+  method: string,
+  params: unknown,
+) => Promise<Record<string, unknown>>
+
+async function withMacosNativeClient(
   runtime: ReturnType<typeof privateAcpAgentRuntime>,
   support: Awaited<ReturnType<typeof openPrivateInstalledBunSupport>>,
+  exercise: (request: NativeRequest, cwd: string) => Promise<void>,
 ): Promise<void> {
   if (support.launcherPath === null) throw new Error('native macOS launcher is missing')
   const backend = new PrivateMacosBackend({
@@ -132,19 +139,105 @@ async function qualifyMacosStartup(
     })
     expect(initialized.protocolVersion).toBe(2)
     if (runtime.authentication) await request(2, 'auth/login', runtime.authentication.request)
-    const session = await request(3, 'session/new', {
-      cwd,
-      mcpServers: [],
-      ...(runtime.sessionMeta ? { _meta: runtime.sessionMeta } : {}),
-    })
-    expect(session.sessionId).toBeString()
-    expect(session.sessionId.length).toBeGreaterThan(0)
+    await exercise(request, cwd)
   } finally {
     await component.terminate()
     expect((await component.enforcement).fenced).toBe(true)
     await iterator.return?.()
     await stderr
   }
+}
+
+async function qualifyMacosStartup(
+  runtime: ReturnType<typeof privateAcpAgentRuntime>,
+  support: Awaited<ReturnType<typeof openPrivateInstalledBunSupport>>,
+): Promise<void> {
+  await withMacosNativeClient(runtime, support, async (request, cwd) => {
+    const session = await request(3, 'session/new', {
+      cwd,
+      mcpServers: [],
+      ...(runtime.sessionMeta ? { _meta: runtime.sessionMeta } : {}),
+    })
+    expect(session.sessionId).toBeString()
+    expect((session.sessionId as string).length).toBeGreaterThan(0)
+  })
+}
+
+async function writeSyntheticSubscription(root: string, expiresAt = Date.now() + 3_600_000) {
+  const token = [
+    Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url'),
+    Buffer.from(
+      JSON.stringify({
+        email: 'offline@example.test',
+        exp: Math.floor(expiresAt / 1_000),
+        'https://api.openai.com/auth': {
+          chatgpt_account_id: 'offline-account',
+          chatgpt_plan_type: 'pro',
+        },
+      }),
+    ).toString('base64url'),
+    'offline-signature',
+  ].join('.')
+  const source = JSON.stringify({
+    OPENAI_API_KEY: null,
+    auth_mode: 'chatgpt',
+    last_refresh: new Date().toISOString(),
+    tokens: {
+      access_token: token,
+      id_token: token,
+      account_id: 'offline-account',
+      refresh_token: 'offline-refresh-never-projected',
+    },
+  })
+  await writeFile(join(root, 'auth.json'), source, { mode: 0o600 })
+  return source
+}
+
+if (process.platform === 'darwin') {
+  test('codex: synthetic subscription reaches native offline login without creating a session', async () => {
+    const selected = process.env.JIG_CODEX_STARTUP_PATH
+    if (!selected) throw new Error('JIG_CODEX_STARTUP_PATH is required')
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-codex-subscription-')))
+    try {
+      const source = await writeSyntheticSubscription(root)
+      const provider = await openPrivateCodexAgentProvider(
+        installedBunLocation.releaseRoot,
+        { CODEX_PATH: selected, CODEX_HOME: root },
+        root,
+      )
+      expect(provider.credentialMode).toBe('openai-subscription')
+      await revalidatePrivateAcpAgentProvider(provider)
+      const runtime = privateAcpAgentRuntime(provider)
+      expect(runtime.environment.JIG_CODEX_STARTUP_INPUT).toBe('subscription')
+      expect(runtime.startupInput).toBeFunction()
+      const support = await openPrivateInstalledBunSupport(installedBunLocation)
+      // initialize consumes the credential frame and performs native account/login/start.
+      // Synthetic tokens cannot establish real authentication or subscription session routing.
+      await withMacosNativeClient(runtime, support, async () => {})
+      expect(await readFile(join(root, 'auth.json'), 'utf8')).toBe(source)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 60_000)
+
+  test('codex: expired synthetic subscription refuses selection without API-key fallback', async () => {
+    const selected = process.env.JIG_CODEX_STARTUP_PATH
+    if (!selected) throw new Error('JIG_CODEX_STARTUP_PATH is required')
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-codex-expired-')))
+    try {
+      const source = await writeSyntheticSubscription(root, Date.now() - 60_000)
+      await expect(
+        openPrivateCodexAgentProvider(
+          installedBunLocation.releaseRoot,
+          { CODEX_PATH: selected, CODEX_HOME: root },
+          root,
+        ),
+      ).rejects.toThrow('Codex file-backed login is unavailable')
+      expect(await readFile(join(root, 'auth.json'), 'utf8')).toBe(source)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 60_000)
 }
 
 for (const client of ['codex', 'claude'] as const) {
