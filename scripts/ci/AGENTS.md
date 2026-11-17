@@ -337,6 +337,7 @@ They consume frozen package exports with tracked test helpers and installed
 
   The checked-in default caps native concurrency at three useful workers. Timing observations affect placement, never required coverage.
   Every worker and collector independently validate the frozen plan against source inventory.
+  Frozen plans are bounded regular files read through one no-follow, nonblocking descriptor.
 
   The default planning target is 1,200 estimated seconds, with one to three shards.
   Every worker reserves 59 estimated seconds for native checks. One installed owner reserves 315 estimated seconds for consumer work.

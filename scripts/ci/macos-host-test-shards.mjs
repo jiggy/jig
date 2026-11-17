@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { lstatSync, readFileSync } from 'node:fs'
+import { closeSync, constants, fstatSync, openSync, readFileSync, readSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -223,10 +223,34 @@ export function createFrozenMacPlan(
 }
 
 export async function readFrozenMacPlan(file, { root = process.cwd(), files, source } = {}) {
-  const metadata = lstatSync(file)
-  if (!metadata.isFile() || metadata.size > 1024 * 1024)
+  const maximumBytes = 1024 * 1024
+  if (!constants.O_NOFOLLOW || !constants.O_NONBLOCK)
+    throw new Error('Frozen Mac plan reads require no-follow and nonblocking support')
+  let descriptor
+  try {
+    descriptor = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+  } catch {
     throw new Error('Invalid frozen Mac plan file')
-  const observed = JSON.parse(readFileSync(file, 'utf8'))
+  }
+  let observed
+  try {
+    const metadata = fstatSync(descriptor)
+    if (!metadata.isFile() || metadata.size > maximumBytes)
+      throw new Error('Invalid frozen Mac plan file')
+    // Keep validation and bounded reading on the opened inode. A replacement
+    // path cannot redirect the read, and concurrent growth cannot exceed this bound.
+    const bytes = Buffer.alloc(maximumBytes + 1)
+    let length = 0
+    while (length < bytes.length) {
+      const count = readSync(descriptor, bytes, length, bytes.length - length, null)
+      if (count === 0) break
+      length += count
+    }
+    if (length > maximumBytes) throw new Error('Invalid frozen Mac plan file')
+    observed = JSON.parse(bytes.subarray(0, length).toString('utf8'))
+  } finally {
+    closeSync(descriptor)
+  }
   const expected = createFrozenMacPlan(files ?? (await discoverHostTests(root, 'arm64')), 'arm64', {
     source: source ?? gitSource(root),
     policy: observed.policy,
