@@ -555,10 +555,8 @@ test('missing, malformed, oversized or linked PR receipts remove timings without
   })
 })
 
-test('the actual workflow summary step consumes exact shard evidence and refuses an incomplete run', async () => {
-  const verify = async (f) => {
-    const plan = f.plan
-    if (plan === 'pull-request') await addCohortReceipts(f)
+test('the workflow summary enforces complete host evidence on PRs and releases', async () => {
+  const verify = async (f, eventName) => {
     const workflow = parse(
       await readFile(resolve(repository, '.github/workflows/macos-hosted-candidates.yml'), 'utf8'),
     )
@@ -653,7 +651,7 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
       await rm(evidence, { recursive: true, force: true })
       await mkdir(evidence)
       for (const directory of f.directories) {
-        const suffix = plan === 'pull-request' ? '' : '-r42-a2'
+        const suffix = '-r42-a2'
         await cp(directory, resolve(evidence, `${directory.split('/').at(-1)}${suffix}`), {
           recursive: true,
         })
@@ -670,8 +668,8 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
           GITHUB_RUN_ID: '42',
           GITHUB_RUN_ATTEMPT: '2',
           GITHUB_REPOSITORY: 'local/local',
-          GITHUB_EVENT_NAME: plan === 'pull-request' ? 'pull_request' : 'push',
-          JIG_MACOS_TEST_PLAN: plan,
+          GITHUB_EVENT_NAME: eventName,
+          JIG_MACOS_TEST_PLAN: 'complete',
           GITHUB_STEP_SUMMARY: markdown,
         },
       })
@@ -685,13 +683,7 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
     assert.equal(summary.timing_available, true)
     assert.equal(summary.files, f.expectedCount)
     assert.equal(summary.planned_files, f.expectedCount)
-    if (plan === 'pull-request') {
-      assert.deepEqual(
-        summary.shards.map(({ timing }) => timing.job_seconds),
-        [900, 500, 700],
-      )
-      return
-    }
+    assert.equal(summary.worker_mapping_applicable, false)
     const marker = resolve(f.directories[0], 'shard-0.complete')
     await rm(marker)
     const incomplete = await run()
@@ -703,5 +695,6 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
     assert.equal(wrongCandidate.status, 1)
     assert.match(wrongCandidate.stderr, /different canonical candidate/)
   }
-  for (const plan of ['complete', 'pull-request']) await fixture('arm64', verify, { plan })
+  for (const eventName of ['push', 'pull_request'])
+    await fixture('arm64', (f) => verify(f, eventName), { plan: 'complete' })
 })
