@@ -173,8 +173,8 @@ when deciding whether this tradeoff fits your workload.
 
 Linux and Apple Silicon qualification must pass before publication.
 Only Apple Silicon is a supported Mac target. Intel Mac testing is retired.
-PRs run a faster native smoke, while release candidates require full host
-qualification. See [macOS native qualification](https://github.com/jiggy/jig/blob/main/RELEASING.md#macos-native-qualification).
+Applicable PRs and release candidates both require complete native and
+installed-client qualification on one current Apple Silicon runner. See [macOS native qualification](https://github.com/jiggy/jig/blob/main/RELEASING.md#macos-native-qualification).
 
 Jig's host-tool lookup currently uses `/usr/bin`, `/bin`, and
 `/run/current-system/sw/bin`, not your shell's `PATH`.

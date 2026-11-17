@@ -59,8 +59,8 @@ The merged release must pass CI, complete Linux and Apple Silicon qualification,
 and native Agent qualification. Automatic native qualification runs only for exact eligible generated release sources after successful Linux qualification.
 Explicit manual dispatch on main retains diagnostics for other sources. Omitted automatic calls create no qualification evidence.
 
-Native Apple Silicon diagnostics also run nightly. Release publication still
-requires complete same-revision Mac qualification; PR smoke alone is insufficient.
+Native Apple Silicon diagnostics also run nightly. Applicable source PRs and
+release candidates both require complete source-bound Mac qualification.
 
 The publisher then publishes the exact tested archives, followed by source tags and GitHub prereleases.
 Current releases use `alpha`. Installation uses `@alpha`, not `@latest`.
@@ -106,12 +106,15 @@ This check publishes nothing and does not establish provenance or release readin
 
 ## macOS native qualification
 
-Applicable PRs run a short native Apple Silicon smoke on the current GitHub-hosted
-`macos-26` image. This quick test does not produce release qualification
-evidence. Eligible main releases and manual main runs execute complete native
-and installed qualification on one current ARM Mac, retaining source-bound
-candidate archives and zero-residue proof. Scheduled diagnostics run the same
-full suite. Intel Macs are not a supported CI target.
+Applicable source PRs and eligible main releases require the same complete
+native and installed qualification on one GitHub-hosted `macos-26` ARM Mac.
+The PR gate includes the full source-selected test inventory, pinned native
+client startup/refusal, canonical archives and zero-residue verification.
+
+Both PR and release qualification produce source-bound host evidence.
+Manual main runs and scheduled diagnostics use the same full suite.
+Intel Macs are not supported. The OS build number is recorded as provenance,
+rather than used as an admission allowlist.
 
 ## If a release stops
 

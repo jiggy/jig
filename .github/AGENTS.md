@@ -209,7 +209,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   Keep these checks and `test` in merge policy. There are no test-name selection
   modes, temporary benchmark predicates or
-  compact witnesses. Native macOS smoke is PR-scoped. Full ARM qualification remains a release gate.
+  compact witnesses. All applicable PRs and releases require full ARM qualification.
 
 - Model and web/TUI display packages enter dependency ownership, source and host
   test inventories, and frozen standalone artifact gates. Their
@@ -372,22 +372,18 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   Frozen archives are test inputs, never embedded dependencies.
 
-- `workflows/macos-hosted-candidates.yml` is the single Apple Silicon
-  Mac workflow. Applicable PRs run a bounded native smoke on `macos-26`
-  without waiting for full release artifacts or coordinating a multi-machine
-  cohort. The smoke validates actual process prerequisites and fail-closed
-  native containment with pre/post ownership snapshots. It is not a release
-  qualification receipt.
-- Eligible main releases, manual runs and scheduled diagnostics use one
-  `macos-26` ARM host for complete native, installed-consumer and cleanup
-  qualification. Only these full runs may publish candidate-bound Mac
-  qualification evidence. Exact candidate archives and runtime binaries remain
-  pinned. The host build number is observed provenance, not a fixed allowlist.
-
-- The `affected-macos` gate requires the correct PR or full job set for the
-  verified source. Required releases still fail closed when native evidence is
-  absent, regardless of infrastructure availability. No Intel Mac lane is
-  maintained.
+- `workflows/macos-hosted-candidates.yml` is the only Apple Silicon
+  Mac workflow. Applicable source PRs, eligible main releases and scheduled
+  diagnostics run full qualification on one `macos-26` ARM runner.
+  No exact OS-build allowlist or multi-machine allocator is required.
+- Canonical candidate archives, genuine pinned offline clients, the complete
+  source-pinned test inventory and zero-residue checks are required for PRs
+  and releases. A successful smoke subset cannot replace these obligations.
+- The `affected-macos` gate requires every selected job to complete and
+  validates candidate-bound observed host evidence, for PRs and releases.
+  Missing, failed or cancelled execution cannot count as qualification.
+  Verified documentation-only changes may omit native tests.
+  Intel Mac qualification is retired.
 
 - Release completion events from CI, Linux, hosted Mac and native Agent
   workflows each run a short read-only readiness check. Duplicate and

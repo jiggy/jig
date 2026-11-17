@@ -23,15 +23,14 @@ preparation never becomes a consumer requirement.
   Production image decoding uses a disposable process. The portable suite owns
   its lifetime and fallback cases. Those checks do not qualify the thread experiment.
 - `host-scope.mjs` selects Linux and Apple Silicon execution for the
-  current exact source. Verified independent site/docs/Python-only changes may
-  omit native jobs. Applicable PRs require one fast macOS ARM smoke. Eligible
-  main releases, manual runs and nightly diagnostics require one full native
-  ARM qualification.
-
-- `affected-macos` validates the selected job set and
-  release evidence. Smoke cannot substitute for full release qualification.
-  Linux main and manual qualification rules are unchanged. No Intel CI lane
-  or five-worker Mac allocator is required.
+  exact source. Verified independent site/docs/Python-only changes may omit
+  native jobs. Applicable source PRs, eligible main releases and scheduled
+  diagnostics require complete `macos-26` ARM qualification.
+- `affected-macos` validates all required job results and source-bound
+  candidate evidence on both PRs and releases. Canonical archives, the full
+  native and installed-client test inventory, and zero-residue checks
+  must pass. Partial PR smoke cannot replace this proof.
+  There is no Intel CI lane or Mac cohort allocator.
 
 - `skill-reference-changes.mjs` transfers generated references as inert data between read-only generation and a fresh trusted writer.
   Bind every transfer to its exact PR source and originating workflow run and attempt.
