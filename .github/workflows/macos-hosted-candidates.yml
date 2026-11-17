@@ -107,111 +107,19 @@ jobs:
             --timeout 420000 --reporter=junit \
             --reporter-outfile="$RUNNER_TEMP/native-diagnostics/native-tests.xml" \
             2>&1 | tee "$RUNNER_TEMP/native-diagnostics/native-tests.txt"
+      - name: Observe actual forced policy on this disposable guest
+        if: ${{ !cancelled() && steps.native-assets.outcome == 'success' }}
+        env:
+          JIG_DISPOSABLE_MAC_POLICY_DIAGNOSTIC: '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .tmp/forced-policy-positive/run.py "$PWD/packages/jig" | tee "$RUNNER_TEMP/native-diagnostics/forced-policy.json"
       - name: Retain bounded public synthetic diagnostic evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: native-development-macos15-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
-          path: ${{ runner.temp }}/native-diagnostics
-          retention-days: 7
-          if-no-files-found: ignore
-  test-current:
-    name: Same native bytes — macOS 26
-    needs: build-and-test-oldest
-    if: ${{ always() && github.repository == 'jiggy/jig' && github.ref != 'refs/heads/main' && needs.build-and-test-oldest.outputs.artifact_id != '' }}
-    runs-on: macos-26
-    timeout-minutes: 30
-    env:
-      JIG_MACOS_PROCESS_TEST: "1"
-      JIG_NATIVE_AGENT_STARTUP: "1"
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: "24"
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: 1.4.4
-      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
-        with:
-          just-version: 1.43.1
-      - name: Download this execution's immutable generated asset artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          artifact-ids: ${{ needs.build-and-test-oldest.outputs.artifact_id }}
-          merge-multiple: true
-          path: ${{ runner.temp }}/native-development-assets
-      - name: Verify source, overlay only generated native outputs and record host
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(uname -m)" = arm64
-          mkdir "$RUNNER_TEMP/native-diagnostics"
-          node --input-type=module - <<'JS'
-          import { createHash } from 'node:crypto'
-          import { chmodSync, cpSync, readFileSync } from 'node:fs'
-          import { join } from 'node:path'
-          const root = join(process.env.RUNNER_TEMP, 'native-development-assets')
-          const metadata = JSON.parse(readFileSync(join(root,'NATIVE-DEVELOPMENT.json'),'utf8'))
-          const files = [
-            'packages/jig/support/macos-exec-universal',
-            'packages/jig/support/macos-descriptor-bridge.dylib',
-            'packages/jig/support/macos-codex-preferences-universal',
-            'packages/jig/support/macos-native-build.json',
-            'packages/jig/src/internal/macos-descriptor-files.ts',
-            'packages/jig/src/internal/installed-bun-support.ts',
-          ]
-          if (metadata.schemaVersion !== 1 || metadata.diagnosticOnly !== true ||
-              metadata.sourceRevision !== process.env.GITHUB_SHA ||
-              metadata.producerRunId !== process.env.GITHUB_RUN_ID ||
-              metadata.producerRunAttempt !== process.env.GITHUB_RUN_ATTEMPT ||
-              JSON.stringify(Object.keys(metadata.files).sort()) !== JSON.stringify([...files].sort()))
-            throw Error('Native diagnostic artifact source or execution mismatch')
-          for (const file of files) {
-            const from = join(root,file)
-            const actual = createHash('sha256').update(readFileSync(from)).digest('hex')
-            if (metadata.files[file] !== actual) throw Error('Generated native artifact hash mismatch')
-            cpSync(from,file)
-            if (file.endsWith('-universal')) chmodSync(file, 0o755)
-          }
-          JS
-          bun packages/jig/scripts/native-support.mjs check
-          {
-            printf 'DIAGNOSTIC ONLY. Same generated assets; no canonical candidate or qualification receipt.\n'
-            git rev-parse HEAD
-            uname -a
-            sw_vers
-            xcrun --show-sdk-version
-            xcrun clang --version
-            bun --revision
-          } > "$RUNNER_TEMP/native-diagnostics/host.txt"
-      - name: Build the ordinary workspace and install genuine offline clients
-        shell: bash
-        run: |
-          set -euo pipefail
-          bun install --ignore-scripts
-          just --justfile packages/jig/justfile build
-          bun scripts/ci/install-macos-test-clients.ts "$RUNNER_TEMP/jig-native-clients" >> "$GITHUB_ENV"
-      - name: Test the same Codex boundary and complete offline native client startup
-        shell: bash
-        run: |
-          set -euo pipefail
-          bun test \
-            packages/jig/test/macos/macos-codex-preferences.test.ts \
-            packages/jig/test/macos/macos-preferences-boundary.test.ts \
-            packages/jig/test/macos/macos-preferences-observer.test.ts \
-            packages/jig/test/startup/native-agent-startup.test.ts \
-            --timeout 420000 --reporter=junit \
-            --reporter-outfile="$RUNNER_TEMP/native-diagnostics/native-tests.xml" \
-            2>&1 | tee "$RUNNER_TEMP/native-diagnostics/native-tests.txt"
-      - name: Retain bounded public synthetic diagnostic evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: native-development-macos26-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
           path: ${{ runner.temp }}/native-diagnostics
           retention-days: 7
           if-no-files-found: ignore

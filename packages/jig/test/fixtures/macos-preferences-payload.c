@@ -31,6 +31,14 @@ static int containsCanary(const unsigned char *page, size_t size, const char *va
   for (size_t i = 0; i < length; i++) wide[i * 2 + 1] = (unsigned char)value[i];
   return contains(page, size, wide, length * 2);
 }
+// Closed numeric diagnostics only: no names, mapped bytes or preference values.
+static int mappingFailure(int index, int status, int error, const struct stat *metadata) {
+  fprintf(stderr, "preference-map index=%d status=%d errno=%d type=%u size=%lld\n",
+          index, status, error,
+          metadata ? (unsigned int)(metadata->st_mode & S_IFMT) : 0,
+          metadata ? (long long)metadata->st_size : 0);
+  return status;
+}
 int main(int argc, char **argv) {
   if (argc != 6) return 1;
   CFStringRef domain = string("com.openai.codex"), key = string(argv[1]);
@@ -133,13 +141,18 @@ int main(int argc, char **argv) {
   for (int i = 0; i < 2; i++) {
     int fd = shm_open(names[i], O_RDONLY, 0);
     if (fd < 0) return 20;
-    struct stat metadata;
-    if (fstat(fd, &metadata) || !S_ISREG(metadata.st_mode) || metadata.st_size <= 0 || metadata.st_size > 65536) return 21;
+    struct stat metadata = {0};
+    if (fstat(fd, &metadata)) return mappingFailure(i, 201, errno, NULL);
+    // XNU pshm_stat copies permission-only pshm_mode for shm_open descriptors.
+    // POSIX shared memory has no filesystem S_IFREG invariant.
+    // https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/posix_shm.c
+    if (metadata.st_size <= 0) return mappingFailure(i, 203, 0, &metadata);
+    if (metadata.st_size > 65536) return mappingFailure(i, 204, 0, &metadata);
     size_t pageSize = (size_t)metadata.st_size;
     unsigned char *page = mmap(NULL, pageSize, PROT_READ, MAP_SHARED, fd, 0);
-    if (page == MAP_FAILED) return 21;
+    if (page == MAP_FAILED) return mappingFailure(i, 205, errno, &metadata);
     if (containsCanary(page, pageSize, argv[3]) || containsCanary(page, pageSize, "owned-initial-canary")) return 25;
-    if (munmap(page, pageSize)) return 21;
+    if (munmap(page, pageSize)) return mappingFailure(i, 206, errno, &metadata);
     if (mmap(NULL, pageSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0) != MAP_FAILED) return 22;
     close(fd);
     fd = shm_open(names[i], O_RDWR, 0);

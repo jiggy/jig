@@ -96,14 +96,20 @@ test('ARM Codex notification access denies seeded preference values, writes and 
         collect(component.stderr),
         component.enforcement,
       ])
-      expect(receipt).toMatchObject({
-        exitCode: 0,
-        signal: null,
-        fenced: true,
-        stopReason: 'payload_exit',
+      expect({
+        receipt: {
+          exitCode: receipt.exitCode,
+          signal: receipt.signal,
+          fenced: receipt.fenced,
+          stopReason: receipt.stopReason,
+        },
+        stdout,
+        stderr,
+      }).toEqual({
+        receipt: { exitCode: 0, signal: null, fenced: true, stopReason: 'payload_exit' },
+        stdout: 'preference values and writes denied; notification reads only\n',
+        stderr: '',
       })
-      expect(stderr).toBe('')
-      expect(stdout).toBe('preference values and writes denied; notification reads only\n')
     } finally {
       await component.terminate()
       safeToRemove = true
