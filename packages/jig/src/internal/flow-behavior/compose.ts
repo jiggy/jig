@@ -7,6 +7,7 @@ import {
 } from './analyze.js'
 import {
   BEHAVIOR_LIMITS,
+  type BehaviorAssumption,
   type BehaviorInput,
   type BehaviorReport,
   type BehaviorStep,
@@ -16,8 +17,9 @@ import {
 import { SourceIndex } from './source.js'
 import { field, literal, object, resultText, toJson, type Value, unknown } from './values.js'
 
-type Effect = Extract<BehaviorStep, { kind: 'effect' }>
 type Scope = BehaviorReport['scopes'][number]
+type Route = Scope['routes'][number]
+type Handoff = { readonly slot: string; readonly site: SourceSite }
 
 export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal): BehaviorReport {
   const targets = new Map(input.targets.map((target) => [target.id, target]))
@@ -27,68 +29,58 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     return target ? [target] : []
   })
   const scopes: Scope[] = []
-  if (input.focus === undefined)
-    return { revision: input.revision, focus: undefined, inventory, scopes }
+  const { focus, revision } = input
+  if (focus === undefined) return { revision, focus, inventory, scopes }
 
-  // A focus gets priority. Other displayed targets retain their own configured instance.
-  const focus = input.focus
+  const primary = new AnalysisBudget(signal)
   const visible = [focus, ...input.visible.filter((id) => id !== focus)]
-  const budget = new AnalysisBudget(signal)
+  // Finish all primary analysis before spending work on secondary alternatives.
   for (const id of visible) {
     signal?.throwIfAborted()
     const target = targets.get(id)
-    if (target === undefined) continue
-    const site = location(target)
+    if (!target) continue
     if (scopes.length >= BEHAVIOR_LIMITS.scopes) {
       scopes.push({
         target: id,
         routes: [],
-        gaps: [{ ...site, reason: 'Scope analysis limit reached. Inspect this target directly.' }],
+        alternatives: [],
+        gaps: [
+          {
+            ...location(target),
+            reason: 'Scope analysis limit reached. Inspect this target directly.',
+          },
+        ],
       })
       break
     }
-    try {
-      const run = evaluate(target, unknown, 0, new Set())
-      const gaps = new Map<string, Scope['gaps'][number]>()
-      const routes = new Map<string, readonly BehaviorStep[]>()
-      if (run.length === 0)
-        gaps.set('entry', {
-          ...site,
-          reason:
-            input.packages.get(target.implementation)?.unavailable ??
-            'The implementation is opaque.',
-        })
-      for (const state of run) {
-        const terminal = state.site ?? site
-        for (const step of state.steps)
-          if (step.kind === 'end' && step.completion === 'unknown')
-            gaps.set(JSON.stringify(step.site), { ...step.site, reason: step.detail })
-        const route =
-          state.mode === 'unknown'
-            ? state.steps
-            : [
-                ...state.steps,
-                {
-                  kind: 'end' as const,
-                  completion: state.mode === 'throw' ? ('throw' as const) : ('return' as const),
-                  detail:
-                    state.mode === 'return'
-                      ? resultText(state.value)
-                      : state.mode === 'throw'
-                        ? 'Throws'
-                        : 'Finishes without an explicit return',
-                  site: terminal,
-                },
-              ]
-        routes.set(JSON.stringify(route), route)
-      }
-      scopes.push({ target: id, routes: [...routes.values()], gaps: [...gaps.values()] })
-    } catch (error) {
-      if (!(error instanceof AnalysisLimit)) throw error
-      scopes.push({ target: id, routes: [], gaps: [{ ...site, reason: error.message }] })
-    }
+    scopes.push(inspect(target, primary))
   }
-  return { revision: input.revision, focus, inventory, scopes }
+  const index = scopes.findIndex((scope) => scope.target === focus)
+  const scope = scopes[index]
+  if (scope) {
+    const seeds = new Map<string, Handoff>()
+    for (const candidate of scopes)
+      for (const route of candidate.routes)
+        for (const step of route)
+          if (step.kind === 'call') seeds.set(JSON.stringify([step.slot, step.site]), step)
+    const alternatives = new Map<string, Route>()
+    const gaps = new Map(scope.gaps.map((gap) => [JSON.stringify(gap), gap]))
+    for (const seed of [...seeds.values()].slice(0, 8)) {
+      // Keep the work allowance for each handoff independent.
+      const conditional = inspect(targets.get(focus)!, new AnalysisBudget(signal, 6_000), seed)
+      for (const route of conditional.alternatives) alternatives.set(JSON.stringify(route), route)
+      for (const gap of conditional.gaps) gaps.set(JSON.stringify(gap), gap)
+    }
+    if (seeds.size > 8) {
+      const site = location(targets.get(focus)!)
+      gaps.set('secondary-limit', {
+        ...site,
+        reason: 'Some handoffs exceed the conditional analysis limit.',
+      })
+    }
+    scopes[index] = { ...scope, alternatives: [...alternatives.values()], gaps: [...gaps.values()] }
+  }
+  return { revision, focus, inventory, scopes }
 
   function location(target: BehaviorTarget): SourceSite {
     return {
@@ -98,16 +90,85 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     }
   }
 
+  function inspect(target: BehaviorTarget, budget: AnalysisBudget, handoff?: Handoff): Scope {
+    const site = location(target)
+    const evidence = new Map<string, Scope['gaps'][number]>()
+    const routes = new Map<string, Route>()
+    const alternate = new Map<string, Route>()
+    try {
+      const states = evaluate(target, unknown, 0, new Set(), budget, handoff)
+      if (!handoff && states.length === 0)
+        evidence.set('entry', {
+          ...site,
+          reason:
+            input.packages.get(target.implementation)?.unavailable ??
+            'The implementation is opaque.',
+        })
+      for (const state of states) {
+        const isAlternative = state.assumptions.some((fact) => fact.kind !== 'opaque-return')
+        if ((handoff !== undefined) !== isAlternative) continue
+        const terminal = state.site ?? site
+        for (const step of state.steps)
+          if (step.kind === 'gap' || (step.kind === 'end' && step.completion === 'unknown'))
+            evidence.set(JSON.stringify([step.site, step.detail]), {
+              ...step.site,
+              reason: step.detail,
+            })
+        const route: Route =
+          state.mode === 'unknown' && state.steps.at(-1)?.kind === 'end'
+            ? state.steps
+            : [
+                ...state.steps,
+                {
+                  kind: 'end',
+                  completion:
+                    state.mode === 'throw'
+                      ? 'throw'
+                      : state.mode === 'unknown'
+                        ? 'unknown'
+                        : 'return',
+                  detail:
+                    state.mode === 'return'
+                      ? resultText(state.value)
+                      : state.mode === 'throw'
+                        ? failureText(state.value)
+                        : state.mode === 'unknown'
+                          ? 'Continuation unknown'
+                          : 'Finishes without an explicit return',
+                  site: terminal,
+                },
+              ]
+        ;(isAlternative ? alternate : routes).set(JSON.stringify(route), route)
+      }
+    } catch (error) {
+      if (!(error instanceof AnalysisLimit)) throw error
+      evidence.set('limit', {
+        ...site,
+        reason: handoff
+          ? 'Conditional alternatives for ' + handoff.slot + ': ' + error.message
+          : error.message,
+      })
+    }
+    return {
+      target: target.id,
+      routes: [...routes.values()],
+      alternatives: [...alternate.values()],
+      gaps: [...evidence.values()],
+    }
+  }
+
   function evaluate(
     target: BehaviorTarget,
     argument: Value,
     depth: number,
     active: ReadonlySet<string>,
+    budget: AnalysisBudget,
+    handoff: Handoff | undefined,
   ): State[] {
     budget.check()
     const pkg = input.packages.get(target.implementation)
     if (
-      pkg === undefined ||
+      !pkg ||
       pkg.unavailable !== undefined ||
       active.has(target.id) ||
       depth >= BEHAVIOR_LIMITS.depth
@@ -119,11 +180,20 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       sources.set(target.implementation, index)
     }
     const chain = new Set([...active, target.id])
-    return new Interpreter(index, target, argument, budget, (slot, value, site, childDepth) => {
-      const selected = target.slots.get(slot)
-      const callee = selected === undefined ? undefined : targets.get(selected)
-      return continuations(callee, slot, selected, value, site, childDepth, chain)
-    }).run(depth)
+    return new Interpreter(
+      index,
+      target,
+      argument,
+      budget,
+      (slot, value, site, childDepth, assumptions) => {
+        const selected = target.slots.get(slot)
+        const callee = selected === undefined ? undefined : targets.get(selected)
+        const next = assumptions.every((fact) => fact.kind === 'opaque-return')
+          ? handoff
+          : undefined
+        return continuations(callee, slot, selected, value, site, childDepth, chain, budget, next)
+      },
+    ).run(depth)
   }
 
   function continuations(
@@ -134,111 +204,202 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     site: SourceSite,
     depth: number,
     active: ReadonlySet<string>,
+    budget: AnalysisBudget,
+    handoff: Handoff | undefined,
   ): ChildResult[] {
     const target = selected ?? '(unresolved or host resource)'
     const choice = (
       mode: ChildResult['mode'],
       value: Value,
-      completion: ChildResult['step']['completion'],
       result: string,
-      effects?: readonly Effect[],
+      prefix: readonly BehaviorStep[],
+      assumptions: readonly BehaviorAssumption[],
     ): ChildResult => ({
       mode,
       value,
-      step: { kind: 'call', site, slot, target, completion, result },
-      ...(effects === undefined ? {} : { effects }),
+      prefix,
+      assumptions,
+      step: {
+        kind: 'call',
+        site,
+        slot,
+        target,
+        result,
+        completion:
+          mode === 'throw' ? 'if-failed' : assumptions.length ? 'if-returned' : 'source-return',
+        ...(assumptions.length ? { assumptions } : {}),
+      },
     })
-    const refusal = choice('throw', unknown, 'if-failed', 'call or result admission fails')
-    const results = callee === undefined ? [] : evaluate(callee, argument, depth, active)
-    const pkg = callee === undefined ? undefined : input.packages.get(callee.implementation)
+    const newAssumption = (
+      kind: BehaviorAssumption['kind'],
+      detail: string,
+    ): BehaviorAssumption => ({ kind, detail, site, slot })
+    const allowSecondary =
+      handoff?.slot === slot && handoff.site.path === site.path && handoff.site.line === site.line
+    const states = callee ? evaluate(callee, argument, depth, active, budget, handoff) : []
+    const pkg = callee && input.packages.get(callee.implementation)
     const values: ChildResult[] = []
-    let opaque = results.length === 0
-    for (const result of results) {
-      if (result.mode === 'unknown') {
-        opaque = true
+    const opaque: { steps: readonly BehaviorStep[]; assumptions: readonly BehaviorAssumption[] }[] =
+      []
+    if (states.length === 0) opaque.push({ steps: [], assumptions: [] })
+    const outcomes = new Set<string>()
+
+    for (const state of states) {
+      const prefix: BehaviorStep[] = state.steps.flatMap((step): BehaviorStep[] =>
+        step.kind === 'effect'
+          ? [step]
+          : step.kind === 'gap'
+            ? [step]
+            : step.kind === 'end' && step.completion === 'unknown'
+              ? [{ kind: 'gap', site: step.site, detail: step.detail }]
+              : [],
+      )
+      if (state.mode === 'unknown') {
+        opaque.push({ steps: prefix, assumptions: state.assumptions })
         continue
       }
-      const effects = result.steps.filter((step): step is Effect => step.kind === 'effect')
-      if (result.mode === 'throw') {
+      if (state.mode === 'throw') {
         values.push(
-          choice('throw', unknown, 'if-failed', 'source throws before returning', effects),
+          choice('throw', state.value, failureText(state.value), prefix, state.assumptions),
         )
         continue
       }
-      if (result.mode !== 'return') continue
-      const outcome = field(result.value, 'outcome')
+      if (state.mode !== 'return') continue
+      const outcome = field(state.value, 'outcome')
       if (outcome.kind === 'unknown') {
-        opaque = true
+        opaque.push({ steps: prefix, assumptions: state.assumptions })
         continue
       }
       if (
         outcome.kind !== 'literal' ||
         typeof outcome.value !== 'string' ||
         !callee?.outcomes.includes(outcome.value)
-      )
+      ) {
+        values.push(
+          choice(
+            'throw',
+            unknown,
+            'source result has an invalid outcome',
+            prefix,
+            state.assumptions,
+          ),
+        )
         continue
-      const output = field(result.value, 'output')
+      }
+      const output = field(state.value, 'output')
       const concrete = toJson(
         object([
           ['outcome', outcome],
           ['output', output],
         ]),
       )
-      if (concrete !== undefined && pkg?.checkResult?.(concrete) === false) {
+      if (concrete !== undefined && pkg && pkg.checkResult?.(concrete) === false) {
         values.push(
-          choice('throw', unknown, 'if-failed', 'known result fails its declared schema', effects),
+          choice(
+            'throw',
+            unknown,
+            'known result fails its declared schema',
+            prefix,
+            state.assumptions,
+          ),
         )
         continue
       }
-      // Only the host knows what artifact was captured and forwarded.
       const returned = object([
         ['outcome', outcome],
         ['output', output],
         ['artifacts', unknown],
       ])
-      values.push(choice('next', returned, 'source-return', resultText(returned), effects))
+      if (state.assumptions.every((fact) => fact.kind === 'opaque-return'))
+        outcomes.add(outcome.value)
+      values.push(choice('next', returned, resultText(returned), prefix, state.assumptions))
     }
-    // Keep caller reactions to declared but unobserved custom results discoverable.
-    // A hypothesis is conditional on the child actually returning an admitted value.
-    const names = (callee?.outcomes ?? []).filter(
-      (name) =>
-        opaque ||
-        (name !== 'done' &&
-          !values.some((item) => {
-            const outcome = field(item.value, 'outcome')
-            return outcome.kind === 'literal' && outcome.value === name
-          })),
-    )
-    for (const name of names)
+    for (const prefix of opaque) {
+      const assumption = newAssumption(
+        'opaque-return',
+        'opaque implementation completes and returns an admitted result',
+      )
+      const facts = [...prefix.assumptions, assumption]
+      // Keep a known caller's follow-on behavior even when a callee is opaque.
+      const returned = callee
+        ? object([
+            ['outcome', literal('done')],
+            ['output', unknown],
+            ['artifacts', unknown],
+          ])
+        : object([], true)
       values.push(
         choice(
           'next',
-          object([
-            ['outcome', literal(name)],
-            ['output', unknown],
-            ['artifacts', unknown],
-          ]),
-          'if-returned',
-          'outcome ' +
-            JSON.stringify(name) +
-            (opaque ? '; implementation incomplete' : '; contract alternative'),
+          returned,
+          callee ? 'outcome "done"; implementation incomplete' : 'result unknown',
+          prefix.steps,
+          facts,
         ),
       )
-    if (opaque && names.length === 0)
-      values.push(choice('next', object([], true), 'if-returned', 'result unknown'))
-    const candidates = values.filter(
-      (result, index) =>
-        values.findIndex(
-          (other) =>
-            other.step.completion === result.step.completion &&
-            other.step.result === result.step.result &&
-            JSON.stringify(other.effects) === JSON.stringify(result.effects) &&
-            // Values with unresolved fields may carry different caller-relevant facts.
-            JSON.stringify(other.value, mapEntries) === JSON.stringify(result.value, mapEntries),
-        ) === index,
+      if (
+        allowSecondary &&
+        prefix.steps.length > 0 &&
+        prefix.assumptions.every((fact) => fact.kind === 'opaque-return')
+      )
+        values.push(
+          choice('throw', unknown, 'call fails after the known prefix', prefix.steps, [
+            ...prefix.assumptions,
+            newAssumption('call-failure', 'opaque continuation fails after known prefix'),
+          ]),
+        )
+    }
+    if (allowSecondary) {
+      // Hypotheses at different handoffs do not multiply the main analysis.
+      for (const name of callee?.outcomes ?? []) {
+        if (name === 'done' || outcomes.has(name)) continue
+        const outcome = literal(name)
+        values.push(
+          choice(
+            'next',
+            object([
+              ['outcome', outcome],
+              ['output', unknown],
+              ['artifacts', unknown],
+            ]),
+            'outcome ' + JSON.stringify(name) + '; contract alternative',
+            [],
+            [newAssumption('contract-return', 'admits outcome ' + JSON.stringify(name))],
+          ),
+        )
+      }
+      values.push(
+        choice(
+          'throw',
+          unknown,
+          'call or result admission fails',
+          [],
+          [newAssumption('call-failure', 'call or result admission fails')],
+        ),
+      )
+    }
+    const distinct = new Map<string, ChildResult>()
+    for (const result of values) distinct.set(JSON.stringify(result, mapEntries), result)
+    return budget.variants(
+      [...distinct.values()].filter(
+        (option) =>
+          !allowSecondary ||
+          option.assumptions.some(
+            (fact) =>
+              fact.kind !== 'opaque-return' &&
+              fact.slot === slot &&
+              fact.site.path === site.path &&
+              fact.site.line === site.line,
+          ),
+      ),
     )
-    return budget.variants([...candidates, refusal])
   }
+}
+
+function failureText(value: Value): string {
+  return value.kind === 'literal' && typeof value.value === 'string' && value.value.length <= 160
+    ? 'Throws: ' + value.value
+    : 'Throws'
 }
 
 function mapEntries(_key: string, value: unknown): unknown {

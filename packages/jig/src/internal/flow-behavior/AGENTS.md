@@ -9,6 +9,7 @@ Explain conditional behavior from a captured Jig project without running its met
 - `captured-input.ts` borrows source and interface facts from working-tree inspection.
 - `source.ts` resolves parsed source inside one captured package.
 - `analyze.ts` evaluates a bounded TypeScript subset through inert values.
+- `data.ts` checks which data computations can safely lose value precision.
 - `compose.ts` owns configured handoffs, caller continuations, and coverage.
 - `reporting-capture.ts` recognizes local installed Reporting bytes.
 - `reporting.ts` describes supported authored progress payloads.
@@ -16,7 +17,8 @@ Explain conditional behavior from a captured Jig project without running its met
 ## Local Contracts
 
 - Keep analyzer inputs in memory. Use the existing capture owners for filesystem reads.
-- Keep captured source returns distinct from hypothetical child results.
+- Carry hypothetical results and known effects through caller continuations.
+- Keep incomplete values distinct from unknown control flow.
 - Source analysis grants no admission, execution, or retry authority.
 - Preserve source references, call context, and explicit unsupported regions.
 - Keep the private result independent of CLI and display rendering.

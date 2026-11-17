@@ -7,7 +7,7 @@ import type {
   BehaviorTarget,
 } from '../../src/internal/flow-behavior/model.js'
 
-const constructor = (body: string) =>
+const handlerSource = (body: string) =>
   `import { handle } from '@jigging/flow'; await handle(async (run) => { ${body} });`
 const method = (text: string, extensions: Partial<BehaviorPackage> = {}): BehaviorPackage => ({
   entry: 'FLOW.ts',
@@ -17,7 +17,7 @@ const method = (text: string, extensions: Partial<BehaviorPackage> = {}): Behavi
 function snapshot(
   callee: BehaviorPackage,
   importer = method(
-    constructor(`
+    handlerSource(`
   const result = await run.call({ slot: 'converter', operationId: 'convert', input: {} })
   if (result.outcome === 'blocked') return { outcome: 'done', output: { status: 'refused' } }
   if (result.output.status === 'needs_mapping') return { outcome: 'done', output: { status: 'attention' } }
@@ -62,7 +62,7 @@ function snapshot(
       ['flows/convert', callee],
       [
         'flows/export',
-        method(constructor(`return { outcome: 'done', output: { status: 'exported' } }`)),
+        method(handlerSource(`return { outcome: 'done', output: { status: 'exported' } }`)),
       ],
     ]),
   }
@@ -71,7 +71,9 @@ function snapshot(
 test('a callee-only change alters the unchanged caller continuation', () => {
   const paths = (status: string) =>
     analyzeFlowBehavior(
-      snapshot(method(constructor(`return { outcome: 'done', output: { status: '${status}' } }`))),
+      snapshot(
+        method(handlerSource(`return { outcome: 'done', output: { status: '${status}' } }`)),
+      ),
     ).scopes[0]!.routes
   const before = paths('ready').find(
     (p) => p.at(-1)?.kind === 'end' && p.at(-1)?.detail.includes('exported'),
@@ -89,7 +91,7 @@ test('opaque children retain hypothetical caller responses and concrete schema r
     snapshot(method('', { unavailable: 'Opaque implementation.' })),
   )
   expect(
-    opaque.scopes[0]!.routes.some(
+    opaque.scopes[0]!.alternatives.some(
       (route) =>
         route.some(
           (s) =>
@@ -99,7 +101,7 @@ test('opaque children retain hypothetical caller responses and concrete schema r
   ).toBe(true)
   const rejected = analyzeFlowBehavior(
     snapshot(
-      method(constructor(`return { outcome: 'done', output: { status: 'ready' } }`), {
+      method(handlerSource(`return { outcome: 'done', output: { status: 'ready' } }`), {
         checkResult: () => false,
       }),
     ),
@@ -130,7 +132,7 @@ test('conditional publication follows closure state and the computed view payloa
     }))
   `
   const child = method(
-    constructor(`return { outcome: 'done', output: { status: 'needs_mapping' } }`),
+    handlerSource(`return { outcome: 'done', output: { status: 'needs_mapping' } }`),
   )
   const report = analyzeFlowBehavior(
     snapshot(child, method(body, { reportingFiles: new Set(['FLOW.ts']) })),
@@ -149,14 +151,17 @@ test('conditional publication follows closure state and the computed view payloa
 
 test('unsupported mutation preserves the known prefix and stops before a stale return', () => {
   const root = method(
-    constructor(`
+    handlerSource(`
     const result = await run.call({ slot: 'converter', operationId: 'convert', input: {} })
     opaque(result)
     return result
   `),
   )
   const report = analyzeFlowBehavior(
-    snapshot(method(constructor(`return { outcome: 'done', output: { status: 'ready' } }`)), root),
+    snapshot(
+      method(handlerSource(`return { outcome: 'done', output: { status: 'ready' } }`)),
+      root,
+    ),
   )
   const [scope] = report.scopes
   expect(scope!.routes.flat()).toContainEqual(
@@ -166,6 +171,38 @@ test('unsupported mutation preserves the known prefix and stops before a stale r
     expect.objectContaining({ kind: 'end', completion: 'return' }),
   )
   expect(scope!.gaps[0]?.reason).toBe('Opaque call may affect later behavior.')
+})
+
+test('an unknown reporting payload leaves a later handoff visible', () => {
+  const body = `
+    import { handle } from '@jigging/flow'
+    import { withReporting } from '@jigging/reporting'
+    function describe(data: { title: string }) {
+      return { summary: \`Preview: \${data.title?.trim() ?? 'Unknown'}\`, sections: [] }
+    }
+    await handle(run => withReporting(run, 'progress', async reporter => {
+      reporter.view('progress').update(describe(run.input))
+      return await run.call({ slot: 'converter', operationId: 'convert', input: {} })
+    }))
+  `
+  const child = method(handlerSource(`return { outcome: 'done', output: { status: 'ready' } }`))
+  const steps = analyzeFlowBehavior(
+    snapshot(
+      child,
+      method(body, {
+        reportingFiles: new Set(['FLOW.ts']),
+      }),
+    ),
+  ).scopes[0]!.routes[0]!
+  expect(steps).toEqual([
+    expect.objectContaining({
+      kind: 'effect',
+      operation: 'view update',
+      detail: 'display effect unknown',
+    }),
+    expect.objectContaining({ kind: 'call', slot: 'converter', completion: 'source-return' }),
+    expect.objectContaining({ kind: 'end', detail: 'outcome "done", status = "ready"' }),
+  ])
 })
 
 test('a child write remains visible before a later child failure', () => {
@@ -186,12 +223,129 @@ test('a child write remains visible before a later child failure', () => {
   expect(route?.[2]).toMatchObject({ kind: 'end', completion: 'throw' })
 })
 
+test('a grandchild contract alternative remains conditional in its callers', () => {
+  const input = snapshot(
+    method(
+      handlerSource(`
+      const answer = await run.call({ slot: 'review', operationId: 'review', input: {} })
+      return { outcome: 'done', output: { status: answer.outcome === 'blocked' ? 'review' : 'ready' } }
+    `),
+    ),
+    method(
+      handlerSource(
+        `return await run.call({ slot: 'converter', operationId: 'convert', input: {} })`,
+      ),
+    ),
+  )
+  const [root, middle, leaf] = input.targets
+  const [scope] = analyzeFlowBehavior({
+    ...input,
+    targets: [
+      root!,
+      { ...middle!, slots: new Map([['review', leaf!.id]]) },
+      { ...leaf!, outcomes: ['done', 'blocked'] },
+    ],
+  }).scopes
+  expect(
+    scope!.routes.flat().some((step) => step.kind === 'call' && step.result.includes('"review"')),
+  ).toBe(false)
+  expect(scope!.alternatives.flat()).toContainEqual(
+    expect.objectContaining({
+      kind: 'call',
+      slot: 'converter',
+      completion: 'if-returned',
+      result: 'outcome "done", status = "review"',
+      assumptions: [expect.objectContaining({ kind: 'contract-return', slot: 'review' })],
+    }),
+  )
+})
+
+test('opaque completion carries an earlier write without assigning it to every failure', () => {
+  const input = snapshot(
+    method(`
+    import { handle } from '@jigging/flow'
+    import { writeFile } from 'node:fs/promises'
+    await handle(async () => {
+      await writeFile('preview.json', 'sample')
+      opaque()
+    })
+  `),
+  )
+  const [scope] = analyzeFlowBehavior(input).scopes
+  const wrote = (route: (typeof scope.routes)[number]) =>
+    route.some((step) => step.kind === 'effect' && step.operation === 'writeFile')
+  expect(
+    scope!.routes.some(
+      (route) =>
+        wrote(route) &&
+        route.some(
+          (step) =>
+            step.kind === 'call' &&
+            step.slot === 'converter' &&
+            step.assumptions?.some((fact) => fact.kind === 'opaque-return'),
+        ),
+    ),
+  ).toBe(true)
+  expect(
+    scope!.alternatives.some(
+      (route) =>
+        wrote(route) &&
+        route.some(
+          (step) => step.kind === 'call' && step.result === 'call fails after the known prefix',
+        ),
+    ),
+  ).toBe(true)
+  expect(
+    scope!.alternatives.some(
+      (route) =>
+        !wrote(route) &&
+        route.some(
+          (step) =>
+            step.kind === 'call' &&
+            step.slot === 'converter' &&
+            step.result === 'call or result admission fails',
+        ),
+    ),
+  ).toBe(true)
+})
+
+test('additional contract outcomes leave the main diagram and source routes intact', () => {
+  const slots = ['first', 'second', 'third', 'fourth']
+  const initial = snapshot(
+    method(handlerSource(`return { outcome: 'done', output: { status: 'ready' } }`)),
+    method(
+      handlerSource(
+        slots
+          .map((slot) => `await run.call({ slot: '${slot}', operationId: '${slot}', input: {} });`)
+          .join('\n') + `return { outcome: 'done', output: {} }`,
+      ),
+    ),
+  )
+  const [root, worker] = initial.targets
+  const build = (outcomes: string[]) =>
+    analyzeFlowBehavior({
+      ...initial,
+      targets: [
+        { ...root!, slots: new Map(slots.map((slot) => [slot, worker!.id])) },
+        { ...worker!, outcomes },
+      ],
+    })
+  const narrow = build(['done'])
+  const wide = build(['done', 'blocked', 'limit'])
+  const chart = (report: typeof wide) =>
+    renderFlowBehavior(report).match(/```mermaid[\s\S]+?```/)?.[0]
+  expect(chart(narrow)).toContain('fourth')
+  expect(chart(wide)).toBe(chart(narrow))
+  expect(wide.scopes[0]!.routes).toEqual(narrow.scopes[0]!.routes)
+  expect(wide.scopes[0]!.alternatives.length).toBeGreaterThan(8)
+})
+
 test('an overbound scope is explicit and another target still has its source results', () => {
   const many = Array.from({ length: 6 }, (_, i) => `if (run.input.field${i}) {}\n`).join('')
   const report = analyzeFlowBehavior(
     snapshot(
-      method(constructor(`return { outcome: 'done', output: { status: 'ready' } }`)),
-      method(constructor(many + `return { outcome: 'done', output: {} }`)),
+      method(handlerSource(`return { outcome: 'done', output: { status: 'ready' } }`)),
+      method(handlerSource(many + `return { outcome: 'done', output: {} }`)),
     ),
   )
   expect(report.scopes[0]?.routes).toEqual([])

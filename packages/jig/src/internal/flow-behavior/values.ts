@@ -6,6 +6,7 @@ export type Value =
   | { readonly kind: 'literal'; readonly value: string | number | boolean | null }
   | { readonly kind: 'object'; readonly fields: ReadonlyMap<string, Value>; readonly open?: true }
   | { readonly kind: 'array'; readonly items: readonly Value[] }
+  | { readonly kind: 'path'; readonly suffix: string }
   | { readonly kind: 'function'; readonly node: LocalFunction }
 
 export const unknown: Value = { kind: 'unknown' }
@@ -73,6 +74,7 @@ export function describe(value: Value): string {
     if (typeof value.value === 'string' && value.value.length > 80) return 'text'
     return JSON.stringify(value.value)
   }
+  if (value.kind === 'path') return 'path ending in ' + JSON.stringify(value.suffix)
   if (value.kind === 'undefined') return 'undefined'
   if (value.kind === 'array') return 'array'
   return value.kind

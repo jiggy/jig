@@ -241,7 +241,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   `src/internal/flow-inspection-scope.ts` provides target selection for both views.
   Keep call results with their own continuations.
   Separate source returns, contract-based hypotheses, and observed execution.
-  Bound focused detail and label omitted routes and opaque regions.
+  Give main routes their own analysis budget and disclose omissions and opaque regions.
 
 - `inspect` compares the last local approval with current local execution
   identities, including selected children. Report mismatches as review required

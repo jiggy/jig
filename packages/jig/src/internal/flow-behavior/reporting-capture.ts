@@ -7,9 +7,16 @@ import { isProtectedProjectPath } from '../../project/paths.js'
 import { openPrivateProjectRoot } from '../../project/root.js'
 
 const version = '0.1.0-alpha.6'
+// Local import closure of the recognized Reporting entrypoint.
 const profile = new Map([
+  ['dist/bundle.js', '22b8db13e2eb5f56b09b6e807b093ce94c0d7426d5664bc3ba174ae33ecc3f20'],
   ['dist/index.js', 'e2da67791f615666185d5174705dd31ada69fe964656d8e167933daa3b0ab07c'],
+  ['dist/message.js', '3e74c16d046344b399124452cedb9fc1c19a2e765a413061b701730937ec4c2f'],
+  ['dist/preview.js', '0b33f78a878b75f96d16345c531da0eb27de5fcef5c9b207646164dd11df4999'],
   ['dist/publisher.js', '04cc22508d5c5abcff985f0bb6794f71eaba49ec7ab45030ac598d5aa8662d12'],
+  ['dist/reporting.json', 'fd4c90271c0ae48cbb718a88bb8366e69fa7df9b3f8b0f402a6d1022dfe9fc9a'],
+  ['dist/validation.js', '99df737e38ff50d0a0a74291d1658da10e09330164fa3a41cff2378ce1f41377'],
+  ['dist/view.js', '5e18862a1d4a0a1e2db0a4646305e02a5969a000e4ae86651d603f78dc881afa'],
 ])
 
 /** Match local installed Reporting bytes without loading the dependency. */
