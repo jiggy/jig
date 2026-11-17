@@ -91,7 +91,7 @@ test('always-present host gates require successful scope and exactly complete or
     const jobs =
       scope === 'linux'
         ? ['host-artifacts', 'host-suite', 'rootless-linux']
-        : ['host-artifacts', 'prerequisites', 'qualified-architecture']
+        : ['host-artifacts', 'qualified-architecture']
     for (const event of ['pull_request', 'push', 'workflow_dispatch']) {
       for (const required of [true, false]) {
         const report = { required }

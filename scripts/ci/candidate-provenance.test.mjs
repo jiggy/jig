@@ -588,6 +588,7 @@ function readinessFixture() {
     { source, policy: { targetSeconds: 1200, minShards: 2, maxShards: 2 } },
   )
   const macCoverage = {
+    scope: 'release',
     plan: macPlan,
     majors: [15, 26],
     executions: [15, 26]
@@ -839,6 +840,9 @@ test('complete qualification cannot publish feature, pending or stale versioned 
 
 test('Mac release receipts require both complete major lanes and exact executed identities', async () => {
   for (const mutate of [
+    (receipt) => {
+      receipt.coverage.scope = 'pull_request'
+    },
     (receipt) => {
       delete receipt.coverage
     },
@@ -1461,6 +1465,7 @@ test('Mac qualification writer refuses missing, partial or failed coverage befor
       { skipped_reports: 1 },
       { errors: ['refused'] },
       { files: 11 },
+      { coverage: { ...coverage, scope: 'pull_request' } },
       { coverage: { ...coverage, majors: [26] } },
     ]) {
       await writeFile(summaryPath, JSON.stringify({ ...summary, ...change }))

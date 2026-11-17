@@ -8,7 +8,7 @@ import { releaseState } from '../release/state.mjs'
 const revision = /^[0-9a-f]{40}$/
 const roles = {
   linux: ['scope', 'host-artifacts', 'host-suite', 'rootless-linux'],
-  macos: ['scope', 'host-artifacts', 'prerequisites', 'qualified-architecture'],
+  macos: ['scope', 'host-artifacts', 'qualified-architecture'],
 }
 
 // These inputs do not enter a Jig native host or its npm artifacts. Everything
@@ -101,12 +101,13 @@ export function checkHostJobs(scope, report, statuses) {
     'Incomplete host job result set',
   )
   assert.equal(statuses.scope, 'success', 'Host scope check failed')
-  for (const role of roles[scope].slice(1))
+  for (const role of roles[scope].slice(1)) {
     assert.equal(
       statuses[role],
       report.required ? 'success' : 'skipped',
       `Unexpected host job result: ${role}`,
     )
+  }
   return report
 }
 

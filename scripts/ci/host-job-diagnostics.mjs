@@ -63,9 +63,20 @@ export function hostJobSummary(identity, jobs, annotations = {}) {
   )
     throw new Error('Invalid current-attempt job observations')
   const failures = jobs
-    .filter((job) => job.status === 'completed' && job.conclusion !== 'success')
+    .filter((job) => job.status === 'completed' && !['success', 'skipped'].includes(job.conclusion))
     .sort((a, b) => Number(runnerNotAssigned(b)) - Number(runnerNotAssigned(a)))
   if (!failures.length) return ''
+  if (
+    identity.event === 'pull_request' &&
+    jobs.some(
+      (job) =>
+        job.name === 'Native host qualification — arm64' &&
+        job.status === 'completed' &&
+        job.conclusion === 'success',
+    ) &&
+    failures.every((job) => /^Native host shard — macos-(15|26) \/ [0-7]$/.test(job.name))
+  )
+    return '## Mac PR allocation\n\nThe required collector verified every selected shard. Other candidates supplied no required coverage; their allocation or setup failures do not invalidate the verified winners.\n'
   const lines = ['## Host job failure diagnostics', '']
   const capacityFailure = failures.some(
     (job) => hostJobReason(job, annotations[job.id]) === capacityReason,
@@ -99,6 +110,7 @@ export function collectHostJobSummary(environment = process.env) {
     repository: environment.GITHUB_REPOSITORY,
     runId: Number(environment.GITHUB_RUN_ID),
     attempt: Number(environment.GITHUB_RUN_ATTEMPT),
+    event: environment.GITHUB_EVENT_NAME,
   }
   requireIdentity(identity)
   const deadline = Date.now() + 20_000
