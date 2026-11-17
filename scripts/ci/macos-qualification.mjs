@@ -16,12 +16,16 @@ const positive = (value) => Number.isSafeInteger(value) && value > 0
 
 // This retained receipt binds the complete frozen plan to actual runner jobs.
 // The collector separately reconstructs source membership and validates reports.
-export function validateMacCoverage(
-  coverage,
-  { source, majors = MACOS_COMPATIBILITY_MAJORS, attempt } = {},
-) {
+export function validateMacCoverage(coverage, { source, scope = 'release', attempt } = {}) {
+  if (!['pull_request', 'release'].includes(scope) || coverage?.scope !== scope)
+    throw new Error('Mac qualification coverage scope does not match its required evidence')
   const plan = coverage?.plan
-  if (plan?.version !== 1 || plan.source !== source || plan.architecture !== 'arm64')
+  if (
+    !/^[a-f0-9]{40}$/.test(source ?? '') ||
+    plan?.version !== 1 ||
+    plan.source !== source ||
+    plan.architecture !== 'arm64'
+  )
     throw new Error('Mac qualification lacks its exact source-bound frozen plan')
   const policy = validateMacShardPolicy(plan.policy)
   const { digest, ...payload } = plan
@@ -34,21 +38,27 @@ export function validateMacCoverage(
     plan.shards.some((shard, index) => shard.index !== index || !Array.isArray(shard.groups))
   )
     throw new Error('Mac qualification frozen plan is incomplete or changed')
-  if (JSON.stringify(coverage.majors) !== JSON.stringify(majors))
-    throw new Error('Mac qualification is missing oldest/current major compatibility')
-  const expected = majors.flatMap((major) =>
-    plan.shards.map((shard) => ({ major, shard: shard.index })),
-  )
+  // PRs qualify each frozen role once, on its already selected physical host.
+  // Releases independently qualify every role on both supported majors.
+  const expected =
+    scope === 'pull_request'
+      ? plan.shards.map((shard) => ({ shard: shard.index }))
+      : MACOS_COMPATIBILITY_MAJORS.flatMap((major) =>
+          plan.shards.map((shard) => ({ major, shard: shard.index })),
+        )
   if (!Array.isArray(coverage.executions) || coverage.executions.length !== expected.length)
     throw new Error('Mac qualification lacks complete executed shard identities')
   const jobs = new Set()
   const artifacts = new Set()
   for (const { major, shard } of expected) {
-    const rows = coverage.executions.filter((row) => row.major === major && row.shard === shard)
+    const rows = coverage.executions.filter(
+      (row) => row?.shard === shard && (major === undefined || row.major === major),
+    )
     const row = rows[0]
     if (
       rows.length !== 1 ||
-      row.name !== macJobName(major, shard) ||
+      !MACOS_COMPATIBILITY_MAJORS.includes(row.major) ||
+      row.name !== macJobName(row.major, shard) ||
       !positive(row.jobId) ||
       jobs.has(row.jobId) ||
       !positive(row.runAttempt) ||
@@ -61,6 +71,14 @@ export function validateMacCoverage(
     jobs.add(row.jobId)
     artifacts.add(row.artifactId)
   }
+  const majors =
+    scope === 'release'
+      ? MACOS_COMPATIBILITY_MAJORS
+      : MACOS_COMPATIBILITY_MAJORS.filter((major) =>
+          coverage.executions.some((row) => row.major === major),
+        )
+  if (JSON.stringify(coverage.majors) !== JSON.stringify(majors))
+    throw new Error('Mac qualification majors do not match its complete executed coverage')
   return coverage
 }
 

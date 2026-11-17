@@ -60,7 +60,9 @@ and native Agent qualification. Automatic native qualification runs only for exa
 Explicit manual dispatch on main retains diagnostics for other sources. Omitted automatic calls create no qualification evidence.
 
 Apple Silicon release qualification covers complete macOS 15 and macOS 26 host inventories, installed consumers, and cleanup.
-PRs retain the complete current-major inventory across parallel workers. Each worker runs native enforcement checks.
+PRs retain the complete inventory across parallel workers selected from macOS 15 and macOS 26.
+Each shard fixes its winner before tests and requires complete native enforcement and cleanup checks.
+PR coverage does not establish complete independent coverage of both majors and cannot qualify publication.
 Intel execution support is retired. Patch-build observations remain evidence without becoming exact-build admission rules.
 
 The publisher then publishes the exact tested archives, followed by source tags and GitHub prereleases.
@@ -108,7 +110,8 @@ This check publishes nothing and does not establish provenance or release readin
 ## Mac qualification
 
 The hosted Mac workflow generates a complete shard plan within a bounded capacity setting.
-Whole files run sequentially on isolated Mac workers. The current capacity cap is three concurrent workers.
+Whole files run sequentially on isolated Mac workers. The current cap is three useful workers.
+PRs may queue six candidates to obtain those workers. Nightly and release qualification run every shard on both majors with three concurrent workers.
 This cap can grow with measured workload and available concurrency. It does not change test membership.
 
 Nightly diagnostics test both supported qualification majors against fresh scheduled canonical inputs.

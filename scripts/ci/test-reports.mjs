@@ -9,6 +9,7 @@ import {
   NATIVE_PREREQUISITE_TESTS,
   planMacHostTests,
 } from './macos-host-test-shards.mjs'
+import { MACOS_COMPATIBILITY_MAJORS } from './macos-qualification.mjs'
 import { filesForTarget, gitRepositoryTests } from './suite-inventory.mjs'
 
 const manifest = JSON.parse(readFileSync(new URL('./test-suites.json', import.meta.url)))
@@ -249,7 +250,14 @@ function readMacShard({
   }
   return {
     hostProfile,
-    shard: { shard: shard.index, files, executed, skipped_reports: 0, failures: 0 },
+    shard: {
+      major: macosMajor,
+      shard: shard.index,
+      files,
+      executed,
+      skipped_reports: 0,
+      failures: 0,
+    },
   }
 }
 
@@ -261,6 +269,7 @@ export function readMacReports({
   detailed = false,
   planFile = process.env.JIG_MACOS_TEST_PLAN_FILE,
   macosMajor = process.env.JIG_MACOS_MAJOR,
+  selectedMajorsByShard,
 }) {
   const { architecture, shards, plannedFiles } = macReportPlan(
     repository,
@@ -268,12 +277,34 @@ export function readMacReports({
     targetId,
     planFile,
   )
+  const singleMajor =
+    typeof macosMajor === 'string' &&
+    MACOS_COMPATIBILITY_MAJORS.some((major) => String(major) === macosMajor)
+      ? Number(macosMajor)
+      : macosMajor
+  if (selectedMajorsByShard === undefined) {
+    if (!MACOS_COMPATIBILITY_MAJORS.includes(singleMajor))
+      throw new Error(
+        'Mac reports require one supported compatibility major or explicit PR shard selections',
+      )
+  } else if (
+    macosMajor !== undefined ||
+    !Array.isArray(selectedMajorsByShard) ||
+    selectedMajorsByShard.length !== shards.length ||
+    shards.some((shard) => !MACOS_COMPATIBILITY_MAJORS.includes(selectedMajorsByShard[shard.index]))
+  )
+    throw new Error('Mac PR reports require exactly one supported major per frozen shard')
   const shardEvidence = shards.map((shard) => {
     const directory = join(
       evidenceDirectory,
       `macos-prerequisites-${architecture}-${shard.index}-${source}`,
     )
-    return { shard, directory, hostProfile: macHostProfile(directory, architecture) }
+    return {
+      shard,
+      directory,
+      hostProfile: macHostProfile(directory, architecture),
+      macosMajor: selectedMajorsByShard?.[shard.index] ?? singleMajor,
+    }
   })
   const identities = new Set()
   const rows = shardEvidence.map(
@@ -284,7 +315,6 @@ export function readMacReports({
         source,
         shardCount: shards.length,
         identities,
-        macosMajor,
       }).shard,
   )
   const count = rows.reduce((total, row) => total + row.executed, 0)

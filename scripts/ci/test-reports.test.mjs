@@ -189,6 +189,7 @@ function options(f, extra = {}) {
     targetId: 'macos-arm64',
     evidenceDirectory: f.evidence,
     planFile: f.planFile,
+    macosMajor: 15,
     ...extra,
   }
 }
@@ -205,15 +206,19 @@ test('complete generated ARM shards reconcile unique files and repeated native e
   assert.equal(result.shards.length, f.shards.length)
   assert.equal(readMacReports(options(f)).count, result.executed)
 })
-test('union coverage permits patch drift while each host retains validated native prerequisites', () => {
+test('strict major coverage permits patch drift while each host retains validated prerequisites', () => {
   const f = fixture()
   const path = join(f.directories.at(-1), 'prerequisites.json')
   writeFileSync(
     path,
-    JSON.stringify({ ...prerequisites('arm64'), kernel: '25.6.0', build: '25G332' }),
+    JSON.stringify({ ...prerequisites('arm64'), kernel: '24.6.1', build: '24H233' }),
   )
   const report = readMacReports(options(f, { detailed: true }))
-  assert.equal(report.hostProfiles.at(-1).build, '25G332')
+  assert.equal(report.hostProfiles.at(-1).build, '24H233')
+  writeFileSync(
+    path,
+    JSON.stringify({ ...prerequisites('arm64'), kernel: '25.6.0', build: '25G332' }),
+  )
   assert.throws(() => readMacReports(options(f, { macosMajor: 15 })), /major differs/)
   for (const change of [
     { arch: 'x64' },
@@ -277,4 +282,99 @@ test('reports reject skipped, duplicated, truncated and foreign cases', () => {
   }
   const f = fixture()
   assert.throws(() => readMacReports(options(f, { targetId: 'macos-x64' })))
+})
+
+function selectedReports(f, majors, extra = {}) {
+  for (const [index, major] of majors.entries()) {
+    writeFileSync(
+      join(f.directories[index], 'prerequisites.json'),
+      JSON.stringify({
+        ...prerequisites('arm64'),
+        kernel: major === 26 ? '25.6.0' : '24.6.1',
+        build: major === 26 ? '25G332' : '24H233',
+      }),
+    )
+  }
+  return options(f, { macosMajor: undefined, selectedMajorsByShard: majors, ...extra })
+}
+
+test('explicit PR selections reconcile one complete mixed-major physical shard per frozen role', () => {
+  const f = fixture()
+  const selected = [15, 26, 15]
+  const input = selectedReports(f, selected, { detailed: true })
+  const report = readMacReports(input)
+  assert.equal(report.files, f.files.length)
+  assert.equal(report.planned_files, f.files.length)
+  assert.equal(
+    report.executed,
+    f.files.length + (f.shards.length - 1) * NATIVE_PREREQUISITE_TESTS.length,
+  )
+  assert.deepEqual(
+    report.shards.map(({ major, shard }) => [major, shard]),
+    [
+      [15, 0],
+      [26, 1],
+      [15, 2],
+    ],
+  )
+  assert.deepEqual(
+    report.hostProfiles.map(({ kernel }) => kernel),
+    ['24.6.1', '25.6.0', '24.6.1'],
+  )
+  assert.equal(readMacReports({ ...input, detailed: false }).count, report.executed)
+  assert.throws(
+    () => readMacReports({ ...input, selectedMajorsByShard: undefined }),
+    /require one supported/,
+  )
+  assert.throws(
+    () => readMacReports({ ...input, macosMajor: 15, selectedMajorsByShard: undefined }),
+    /major differs/,
+  )
+})
+
+test('mixed PR reports require exact supported selections and each selected actual host major', () => {
+  const f = fixture()
+  const input = selectedReports(f, [15, 26, 15])
+  const sparseSelection = [15, 26, 15]
+  Reflect.deleteProperty(sparseSelection, 1)
+  for (const selectedMajorsByShard of [
+    null,
+    {},
+    [],
+    [15, 26],
+    [15, 26, 15, 26],
+    [15, 14, 15],
+    [15, '26', 15],
+    sparseSelection,
+  ]) {
+    assert.throws(
+      () => readMacReports({ ...input, selectedMajorsByShard }),
+      /exactly one supported/,
+    )
+  }
+  assert.throws(() => readMacReports({ ...input, macosMajor: 15 }), /exactly one supported/)
+  assert.throws(
+    () => readMacReports({ ...input, selectedMajorsByShard: [26, 15, 26] }),
+    /major differs/,
+  )
+  for (const major of [undefined, null, 14, 27, '015', '15\n', [15]])
+    assert.throws(() => readMacReports(options(f, { macosMajor: major })), /require one supported/)
+})
+
+test('mixed PR coverage cannot omit a worker baseline, installed proof or source identity', () => {
+  for (const [index, file] of [
+    [0, 'native-tests.xml'],
+    [1, 'native-tests.xml'],
+    [2, 'native-tests.xml'],
+    [2, 'installed-startup.xml'],
+  ]) {
+    const f = fixture()
+    const input = selectedReports(f, [26, 15, 26])
+    rmSync(join(f.directories[index], file))
+    assert.throws(() => readMacReports(input), /ENOENT/)
+  }
+  const f = fixture()
+  const input = selectedReports(f, [26, 15, 26])
+  writeFileSync(join(f.directories[1], 'shard-1.complete'), `${'b'.repeat(40)} arm64 1`)
+  assert.throws(() => readMacReports(input), /Stale Mac execution marker/)
 })

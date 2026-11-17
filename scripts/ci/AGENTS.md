@@ -33,9 +33,11 @@ preparation never becomes a consumer requirement.
   Verified feature, pending and stale main sources omit Mac jobs.
   Eligible generated releases and unknown eligibility require complete qualification.
   The selector verifies the main ref, repository and exact push SHA before reading source-pinned release metadata.
+
   Final `affected-linux` and `affected-macos` checks
-  independently reconstruct this decision and require either every native job's
-  success or every job's explicit omission.
+  independently reconstruct this decision and require complete observed native qualification or explicit omission.
+  The collector verifies selected workers for PRs and the complete major matrix for other events.
+  Raw candidate results grant no qualification.
 
   An omitted PR or nonrelease Mac main source creates no host qualification receipt.
   Apple Silicon is the supported Mac architecture. Nightly diagnostics retain complete oldest/current major coverage without granting release readiness.
@@ -347,7 +349,19 @@ They consume frozen package exports with tracked test helpers and installed
 - `mac-command-budget.mjs` bounds worker commands and reserves cleanup and evidence time before the GitHub job backstop.
   It verifies the current assigned execution before establishing the absolute deadline.
   Child process groups settle after completion or failure. Expired work cannot publish a completion marker.
+- `macos-pr-race.mjs` selects PR workers before native work. Candidates publish unique readiness offers.
+  One Ubuntu selector per role publishes a decision bound to its actual execution and the chosen offer's immutable ID and digest.
+  Both records bind source, run, attempt, allocated worker, frozen plan and prepared inputs.
+  Artifact names do not provide mutual exclusion. Duplicate decisions, unverified transport and mismatched identities refuse.
+
+  Candidates wait for their role's decision. Failed selected workers cannot inherit another OS's success.
+  Selectors watch their chosen worker so failed-job retries include failed roles.
+  Verified retention no-ops preserve successful reports when only another role needs retrying.
+  Rebuilt inputs exclude decisions older than the actual preparation attempt.
+  No installation, native owner, mutable fixture or Jig Run is retained.
 - `macos-qualification.mjs` validates the source-bound plan, required compatibility majors, and original execution identities in release receipts.
+  Explicit PR scope requires one selected physical execution per shard. Strict release scope requires every shard on both majors.
+  Publication validators reject PR coverage, including attempts to relabel a mixed-major union as complete release coverage.
   Release readiness derives required job names from this complete receipt and verifies actual current-attempt job identities.
 - `macos-host-collect.mjs` reconciles immutable per-shard artifacts against the complete plan for every required macOS major.
   It rejects missing or failed reports, changed inputs, foreign jobs, ambiguous artifacts, and unconfirmed completion.
@@ -357,6 +371,13 @@ They consume frozen package exports with tracked test helpers and installed
 
   Main and release qualification require fresh current-attempt coverage.
   This retains test evidence only. Jig Runs, installations, owners, and mutable fixtures are never reused.
+
+  The collector has no dependency on the raw candidate matrix. PR observation is bounded to forty minutes with a forty-five-minute job backstop.
+  Strict dual-major observation allows eighty minutes, or 170 minutes with optional startup profiling, with ninety- or 180-minute job backstops.
+  These bounds cover sequential capacity waves and establish no turnaround guarantee.
+
+  It does not wait for unused PR candidates. It retains original worker, selector, decision and evidence identities and verifies each worker's decision copy.
+  Decision caching retains immutable bytes only. Current retention and metadata are revalidated.
 
 - `merge-attempts.mjs` selects the newest authoritative execution of each named
   job without falling back from failures. `merge-retry.mjs` owns PR CI input
@@ -392,7 +413,8 @@ They consume frozen package exports with tracked test helpers and installed
   Every shard supplies a complete native baseline. Unique file coverage and repeated native executions remain distinct counts.
   Each observed host retains its architecture, kernel, build, and pinned Bun revision.
 
-  Patch-build equality across workers is unnecessary. A selected major requires every host to match that major.
+  Patch-build equality across workers is unnecessary. Strict major reports require every host to match that major.
+  Explicit PR reports require one selected supported major per frozen shard and validate each actual host against that selection.
 
   Linux Bun commands retain their stdout parser. Linux Node commands retain
   exact single-file JUnit reports
@@ -565,6 +587,8 @@ They consume frozen package exports with tracked test helpers and installed
   require every Linux hostile test file in provisioned host conformance.
 - `node --test scripts/ci/macos-host-collect.test.mjs` checks complete generated matrices and original-run retry lineage.
   It rejects changed inputs, failed latest executions, missing shards, and stale qualification sessions.
+- `node --test scripts/ci/macos-pr-race.test.mjs scripts/ci/macos-qualification.test.mjs` verifies bounded offers and sole-writer decisions, pre-test worker selection, failed-winner refusal, retry no-ops and explicit mixed-major PR scope.
+  Real ZIP transports test record digests and exact contents. These portable checks establish no native enforcement or GitHub service atomicity.
 - `node --test scripts/ci/macos-host-profiles.test.mjs` checks behavioral prerequisites, pinned runtimes, unsupported architecture refusal, and bounded evidence. Ordinary input records establish no native qualification.
 - `node --test scripts/ci/macos-candidate-archives.test.mjs` executes the
   qualifier's actual archive staging and revalidation sections with real tools.

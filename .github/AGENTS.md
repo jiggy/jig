@@ -373,14 +373,32 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Frozen archives are test inputs, never embedded dependencies.
 
 - `workflows/macos-hosted-candidates.yml` qualifies Apple Silicon using a generated, bounded whole-file shard matrix.
-  Applicable PRs test the current macOS major. Releases, manual runs, and nightly diagnostics test both macOS 15 and macOS 26.
+  Each applicable PR shard races macOS 15 and macOS 26 candidates. Releases, manual runs, and nightly diagnostics independently test both majors.
   Every required major retains complete host-dependent, portable, installed-consumer, and cleanup coverage.
 
   Intel execution support is retired.
 
   Scope freezes a source-bound plan before requesting Macs. Measured durations choose useful shards within the checked-in capacity limit.
-  Each host runs the complete native enforcement and Codex preference-boundary baseline, then its sequential assigned files. The installed owner also runs genuine offline-client checks.
-  A matrix allows three concurrent jobs. Worker count and runner labels remain separate from test membership.
+  Each selected worker runs the complete native enforcement and Codex preference-boundary baseline, then its sequential assigned files. The installed owner also runs genuine offline-client checks.
+
+  The default plan permits three useful workers and six PR candidates. Strict runs permit three concurrent workers.
+  Worker count and runner labels remain separate from test membership.
+
+  Before native work, each candidate publishes a uniquely named readiness offer.
+  One Ubuntu selector per shard publishes a decision bound to its actual execution and the chosen offer.
+  The decision binds source, run, attempt, assigned worker, prepared inputs and frozen plan.
+  Candidates verify that decision before tests. Artifact names are not a mutual-exclusion primitive.
+
+  The winner's failure remains a failure. A successful result on another OS cannot replace it.
+  Nonselected candidates perform no builds, native tests or consumer work.
+
+  PR candidate jobs permit job-level errors. The independent required collector validates the selected jobs' original steps, complete reports and cleanup.
+  No native or test step permits errors. Strict main and release jobs remain mandatory.
+
+  Three independent Ubuntu selectors avoid a barrier between shards.
+  The collector starts after preparation and waits only for selected PR workers and their selectors.
+  Its gate does not depend on unused queued candidates. Those jobs may remain pending or cancelled in the overall workflow.
+  GitHub does not supply individual queued-job cancellation here.
 
   Different observed patch builds may contribute coverage within one required major.
   This union establishes the ARM behavior contract, rather than independently certifying each observed build.
@@ -403,9 +421,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Main and release qualification remain fresh and complete for their current attempt.
   Expired or rebuilt inputs require fresh complete qualification.
 
-  The final gate always reports. Optional bounded GitHub diagnostics identify confirmed runner nonallocation without changing the qualification verdict.
+  The final gate requires collector success and complete observed execution evidence.
+  Its observed execution check remains mandatory. Optional bounded GitHub diagnostics distinguish missing required coverage from unused candidates after verified PR coverage.
   Native test and cleanup failures remain distinct from allocation failures.
-  No allocator, spare-worker pool, exact-build matching, or external scheduler participates.
+  No spare-worker pool, exact-build matching or external scheduler participates.
 
   CI creates fresh scheduled canonical inputs nightly. Scheduled Mac diagnostics select those exact-source scheduled inputs.
   Scheduled receipts cannot replace main-push release evidence. Manual startup profiling remains optional and non-gating.

@@ -750,7 +750,11 @@ test('Mac hosts queue after Quick and consume immutable prepared inputs', async 
   )
   const workers = workflow.jobs.prerequisites
   assert.deepEqual(workers.needs, ['scope', 'host-artifacts'])
-  const download = workers.steps.find((step) => step.uses?.startsWith('actions/download-artifact@'))
+  const download = workers.steps.find(
+    (step) =>
+      step.uses?.startsWith('actions/download-artifact@') &&
+      step.with?.['artifact-ids'] === '${{ needs.host-artifacts.outputs.artifact_id }}',
+  )
   assert.equal(download.with['artifact-ids'], '${{ needs.host-artifacts.outputs.artifact_id }}')
   assert.ok(!workers.steps.some((step) => step.run?.includes('candidate-transfer.mjs acquire')))
   const verified = workers.steps.findIndex((step) =>

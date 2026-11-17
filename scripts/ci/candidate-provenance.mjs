@@ -448,7 +448,7 @@ export async function writeQualificationReceipt({
       throw new Error('Mac qualification summary did not pass')
     coverage = validateMacCoverage(summary.coverage, {
       source: receipt.sourceRevision,
-      majors: consumer.event === 'pull_request' ? [26] : undefined,
+      scope: consumer.event === 'pull_request' ? 'pull_request' : 'release',
       ...(consumer.event !== 'pull_request' ? { attempt: consumer.runAttempt } : {}),
     })
   }
