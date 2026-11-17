@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkNativeSupport } from '../../scripts/native-support.mjs'
 import { privateMacosKernelPlatform } from '../../src/internal/macos-process-controls.js'
@@ -17,11 +17,8 @@ test('actual ARM observer authenticates its asset and refuses inherited sandboxe
   const hash = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex')
   expect(hash(observer)).toBe(manifest.sha256['support/macos-codex-preferences-universal'])
   const installed = join(root, 'libexec/macos-codex-preferences')
-  const assets = [observer]
-  if (existsSync(installed)) {
-    expect(hash(installed)).toBe(hash(observer))
-    assets.push(installed)
-  }
+  expect(hash(installed)).toBe(hash(observer))
+  const assets = [observer, installed]
   for (const actual of assets) {
     const run = (command: string, args: string[]) => {
       const result = spawnSync(command, args, { env: {}, encoding: 'utf8', timeout: 6000 })

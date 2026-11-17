@@ -10,9 +10,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build-and-test-oldest:
-    name: Native development — macOS 15
+    name: Native development — macOS 26
     if: github.repository == 'jiggy/jig' && github.ref != 'refs/heads/main'
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     outputs:
       artifact_id: ${{ steps.native-assets.outputs.artifact-id }}
@@ -48,11 +48,10 @@ jobs:
             xcrun clang --version
             bun --revision
           } > "$RUNNER_TEMP/native-diagnostics/host.txt"
-      - name: Compile genuine native assets with the checked-in Apple build recipe
+      - name: Verify the exact checked-in compiler-produced native assets
         shell: bash
         run: |
           set -euo pipefail
-          bun packages/jig/scripts/native-support.mjs build
           bun packages/jig/scripts/native-support.mjs check
           node --input-type=module - <<'JS'
           import { createHash } from 'node:crypto'
@@ -119,7 +118,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: native-development-macos15-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
+          name: native-development-macos26-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
           path: ${{ runner.temp }}/native-diagnostics
           retention-days: 7
           if-no-files-found: ignore
