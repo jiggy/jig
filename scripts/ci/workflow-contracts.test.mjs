@@ -123,10 +123,10 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
   assert.equal(native.strategy.matrix, '${{ fromJSON(needs.scope.outputs.workers) }}')
   assert.equal(native.environment, undefined)
   assert.equal(native['continue-on-error'], undefined)
-  assert.equal(
-    native.env.JIG_MACOS_TEST_PLAN_FILE,
-    '${{ runner.temp }}/macos-host-artifacts/PLAN.json',
-  )
+  assert.equal(native.env.JIG_MACOS_TEST_PLAN_FILE, undefined)
+  assert.ok(native.steps.some((step) => step.run?.includes('JIG_MACOS_TEST_PLAN_FILE=%s')))
+  for (const job of Object.values(workflow.jobs))
+    assert.doesNotMatch(JSON.stringify(job.env ?? {}), /\$\{\{\s*runner\./)
   const baseline = native.steps.find((step) =>
     step.run?.includes('bun test packages/jig/test/macos/'),
   )
