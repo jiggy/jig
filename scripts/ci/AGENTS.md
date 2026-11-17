@@ -354,6 +354,9 @@ They consume frozen package exports with tracked test helpers and installed
   Both records bind source, run, attempt, allocated worker, frozen plan and prepared inputs.
   Artifact names do not provide mutual exclusion. Duplicate decisions, unverified transport and mismatched identities refuse.
 
+  A listed artifact may not yet have a readable archive. Transient archive reads remain pending under the original observation deadline.
+  API transport retries allow at most three reads with one-second backoff. Authorization, record, digest and identity failures remain fatal.
+
   Candidates wait for their role's decision. Failed selected workers cannot inherit another OS's success.
   Selectors watch their chosen worker so failed-job retries include failed roles.
   Verified retention no-ops preserve successful reports when only another role needs retrying.
