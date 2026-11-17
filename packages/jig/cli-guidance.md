@@ -217,6 +217,10 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Mermaid uses readable identities that remain stable across inventory order and focused views.
   Name collisions receive exact distinguishing suffixes without changing selector labels.
 
+  `--all` selects every configured target and connection without an entrypoint focus.
+  It requires `--flow` and excludes an explicit target. Current and approved bases keep their existing semantics.
+  Markdown bounds never truncate the complete JSON inventory.
+
   An explicit focus retains upstream caller paths and their direct slot targets.
   Other uses of the focus package and their downstream closures remain visible.
   Caller peers are not recursively expanded. Boundary notices count omitted incoming and outgoing connections.

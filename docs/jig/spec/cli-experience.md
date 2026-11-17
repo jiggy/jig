@@ -901,10 +901,16 @@ Changed or unchecked environments recommend `jig review`, not `jig run`.
 Unsafe, incompatible or busy state produces a bounded diagnostic without repair.
 Ordinary redirected inspection emits JSON. Explicit `--json` selects JSON, while `--flow` selects the Markdown presentation below.
 
-`jig inspect --flow [target] [--approved] [--json]` projects configured topology.
+`jig inspect --flow [target | --all] [--approved] [--json]` projects configured topology.
 Markdown remains literal through pipes. Explicit `--json` returns the selected configured records.
 Each target retains its exact selector, package identity, settings, and resolved caller-local routes.
 Separate Bindings remain distinct. Native resources retain their configured caller slots.
+
+`--all` includes every configured target and connection, including disconnected targets.
+It overrides default entrypoint focus and cannot accompany an explicit target.
+The declared entrypoint remains identified separately.
+It requires `--flow` and applies equally to current and approved inspection.
+Markdown retains its presentation bounds. JSON returns the complete configured records.
 
 Markdown identifies each Binding's implementing package even when its settings are empty.
 Bidirectional controls in rendered labels and values are shown as visible code points.

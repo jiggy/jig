@@ -626,3 +626,49 @@ test('approved configured Markdown uses awaited literal output without creating 
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test('complete topology includes disconnected targets and resources without entrypoint focus', () => {
+  const snapshot: JsonValue = {
+    basis: 'working-tree',
+    revision: 'complete',
+    state: 'unreviewed',
+    entrypoint: 'binding:main',
+    targets: [
+      { target: 'binding:main', package: 'flows/main', flow: { routes: [] } },
+      {
+        target: 'binding:separate',
+        package: 'flows/separate',
+        flow: { routes: [{ slot: 'fetch', resource: 'http-request' }] },
+      },
+    ],
+  }
+  expect((flowContextRecord(snapshot, {}) as TopologyView).scope.omittedTargets).toBe(1)
+  const all = flowContextRecord(snapshot, { all: true }) as TopologyView
+  expect(all.targets.map((target) => target.target)).toEqual(['binding:main', 'binding:separate'])
+  expect(all.scope).toMatchObject({
+    target: null,
+    entrypoint: 'binding:main',
+    omittedTargets: 0,
+    omittedConnections: 0,
+  })
+  const text = renderFlowContext(snapshot, { all: true })
+  expect(text).toContain('binding:separate')
+  expect(text).toContain('http-request')
+  expect(text).toContain('Entrypoint: binding:main.')
+  expect(text).not.toContain('Root:')
+  expect(() => flowContextRecord(snapshot, { all: true, target: 'binding:main' })).toThrow()
+})
+
+test('complete topology grammar rejects conflicting operands before host acquisition', async () => {
+  for (const args of [
+    ['inspect', '--all'],
+    ['inspect', '--flow', '--all', '--all'],
+    ['inspect', '--flow', '--all', 'binding:main'],
+    ['inspect', '--flow', '--all', '--result', 'saved'],
+  ]) {
+    expect(privateCliRequiresHost(args)).toBe(false)
+    expect(await main(args, { writeError: () => {} })).toBe(2)
+  }
+  expect(privateCliRequiresHost(['inspect', '--flow', '--all'])).toBe(true)
+  expect(privateCliRequiresHost(['inspect', '--flow', '--all', '--approved'])).toBe(false)
+})

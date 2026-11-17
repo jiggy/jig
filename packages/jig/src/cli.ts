@@ -244,7 +244,7 @@ The destination parent must exist; existing destinations are never replaced.
 Example:
   jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
-       jig inspect --flow [target] [--approved] [--json]
+       jig inspect --flow [target | --all] [--approved] [--json]
        jig inspect --result DIRECTORY [--display plain|tui|web] [--json]
 
 List the current project's approved targets, or show one target's retained
@@ -261,6 +261,7 @@ Launch readiness and remote provider availability remain unchecked.
   --json     Emit JSON even in a terminal (redirected output is JSON unless --flow is selected)
   --flow     Emit configured topology as Markdown, including when piped
              A target retains callers, their other slots and shared package uses
+  --all      With --flow: include every configured target and connection
   --approved With --flow: use the last approved snapshot instead of the working tree
   --result DIRECTORY  Inspect a saved packet without approval or new execution
   --display MODE      For saved results: plain (default), tui or web
@@ -998,8 +999,14 @@ function parseInspect(arguments_: readonly string[]) {
   let display: 'plain' | 'tui' | 'web' | undefined
   let flow = false
   let approved = false
+  let all = false
   for (let index = 1; index < arguments_.length; index++) {
     const value = arguments_[index]!
+    if (value === '--all') {
+      if (all) usage('inspect', '--all may only be supplied once.')
+      all = true
+      continue
+    }
     if (value === '--approved' && !approved) {
       approved = true
       continue
@@ -1043,6 +1050,8 @@ function parseInspect(arguments_: readonly string[]) {
   if (display !== undefined && resultDirectory === undefined)
     usage('inspect', '--display requires --result DIRECTORY.')
   if (approved && !flow) usage('inspect', '--approved requires --flow.')
+  if (all && !flow) usage('inspect', '--all requires --flow.')
+  if (all && selector !== undefined) usage('inspect', '--all cannot be combined with a target.')
   if (flow && resultDirectory !== undefined)
     usage('inspect', 'Saved packets contain no retained flow context.')
   return {
@@ -1053,6 +1062,7 @@ function parseInspect(arguments_: readonly string[]) {
     display: display ?? 'plain',
     flow,
     approved,
+    all,
   }
 }
 
@@ -1201,6 +1211,7 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
     await runtime.writeRecord(
       renderFlowContext(snapshot, {
         ...(selector === undefined ? {} : { target: selector }),
+        ...(parsed.all ? { all: true } : {}),
       }),
     )
     return 0
@@ -1208,6 +1219,7 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
   if (parsed.flow && json) {
     const context = flowContextRecord(snapshot, {
       ...(selector === undefined ? {} : { target: selector }),
+      ...(parsed.all ? { all: true } : {}),
     })
     await runtime.writeRecord(`${textDecoder.decode(canonicalJson(context))}\n`)
     return 0
