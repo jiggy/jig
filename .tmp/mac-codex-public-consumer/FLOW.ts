@@ -74,7 +74,8 @@ await handle(async run => {
     })])
     throw Error('Startup consumer unexpectedly resumed')
   } catch (error) {
-    if (!run.signal.aborted) {
+    const cancelled = run.signal.aborted || (error instanceof OperationError && error.code === 'CANCELLED')
+    if (!cancelled) {
       const codes = ['CANCELLED', 'DEADLINE_EXCEEDED', 'OWNER_CLOSED', 'OPERATION_CONFLICT', 'UNAVAILABLE', 'PERMISSION_DENIED', 'RESOURCE_EXHAUSTED', 'INVALID_INPUT', 'INVALID_RESULT', 'UNCERTAIN', 'EXECUTION_FAILED', 'LAGGED', 'DISCONNECTED', 'PROTOCOL_ERROR', 'CHANNEL_LOST']
       const cause = error instanceof OperationError && codes.includes(error.code) ? error.code : 'APPLICATION'
       await save('native-startup-failed', { startupPhase: phase, startupCause: cause }).catch(() => {})
