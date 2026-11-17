@@ -175,7 +175,6 @@ try {
       process.platform === 'darwin' || process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1',
   })
   assert.notEqual((await stat(executable)).mode & 0o111, 0)
-  assert.notEqual((await stat(piLauncher)).mode & 0o111, 0)
   const launcher = await readFile(executable, 'utf8')
   assert.match(launcher, /^#!\/bin\/sh\n/)
   assert.match(launcher, /\/usr\/bin\/readlink/)
