@@ -147,7 +147,7 @@ test('PRs and releases require complete current ARM qualification with canonical
   expect(mac.jobs.prerequisites.if).not.toContain("event_name != 'pull_request'")
   expect(mac.jobs['qualified-architecture'].if).not.toContain("event_name != 'pull_request'")
   expect(mac.jobs.prerequisites.steps.some((step: any) =>
-    step.run?.includes('scripts/ci/qualify-macos-host.sh --shard'),
+    step.run?.includes('bash scripts/ci/qualify-macos-host.sh --shard'),
   )).toBeTrue()
   expect(mac.jobs.prerequisites.steps.some((step: any) =>
     step.run?.includes('install-macos-test-clients.ts'),

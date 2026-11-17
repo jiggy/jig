@@ -144,7 +144,7 @@ test('PRs and releases both require complete native ARM candidate qualification'
   assert.ok(mac.jobs['host-artifacts'].steps.some((step) => step.run?.includes('candidate-transfer.mjs acquire')))
   assert.ok(mac.jobs.prerequisites.steps.some((step) => step.run?.includes('install-macos-test-clients.ts')))
   assert.ok(mac.jobs.prerequisites.steps.some((step) => step.run?.includes('candidate-provenance.mjs verify')))
-  assert.ok(mac.jobs.prerequisites.steps.some((step) => step.run?.includes('qualify-macos-host.sh --shard')))
+  assert.ok(mac.jobs.prerequisites.steps.some((step) => step.run?.includes('bash scripts/ci/qualify-macos-host.sh --shard')))
   assert.match(mac.jobs.prerequisites.steps.find((step) => step.name === 'Retain candidate prerequisite evidence').with.name, /macos-prerequisites-arm64-0/)
   assert.ok(mac.jobs['qualified-architecture'].steps.some((step) => step.run?.includes('macos-host-summary.py')))
   assert.ok(mac.jobs['qualified-architecture'].steps.some((step) => step.run?.includes('candidate-provenance.mjs qualification')))

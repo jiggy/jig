@@ -515,7 +515,7 @@ test('every Mac source PR requires full native and installed ARM qualification',
   assert.ok(workflow.jobs.prerequisites.steps.some((step) => step.run?.includes('probe-macos-host.ts')))
   assert.ok(workflow.jobs.prerequisites.steps.some((step) => step.run?.includes('macos-process-controls.test.ts')))
   assert.ok(workflow.jobs.prerequisites.steps.some((step) => step.run?.includes('install-macos-test-clients.ts')))
-  assert.ok(workflow.jobs.prerequisites.steps.some((step) => step.run?.includes('qualify-macos-host.sh --shard')))
+  assert.ok(workflow.jobs.prerequisites.steps.some((step) => step.run?.includes('bash scripts/ci/qualify-macos-host.sh --shard')))
   assert.equal(workflow.jobs['qualified-architecture'].strategy.matrix.include[0].count, 1)
   assert.equal(workflow.jobs['qualified-architecture'].env.JIG_MACOS_TEST_PLAN, 'complete')
   assert.ok(workflow.jobs['qualified-architecture'].steps.some(
