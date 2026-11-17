@@ -53,7 +53,7 @@ scene.querySelector = selector => { assert(Object.hasOwn(singles, selector), `kn
 
 assert.equal(contextButtons.length, 3);
 assert.equal(strategyButtons.length, 3);
-assert.equal(clientButtons.length, 3);
+assert.deepEqual(clientButtons.map(button => button.dataset.kaSelectClient), ['codex', 'claude']);
 assert.equal(topologies.length, 9);
 assert.equal(controls.length, 3);
 assert(controls.every(control => control.hidden), 'no-JS controls stay hidden');
@@ -107,4 +107,5 @@ for (let round = 0; round < 2; round++) {
     }
   }
 }
-console.log(`Architecture: ${combinations} selections pass (27 combinations, repeated); independent app/strategy/client state, retained strategy, semantic panels, quiet initialization, complete no-JS view.`);
+assert.equal(combinations, 36);
+console.log(`Architecture: ${combinations} selections pass; independent app/strategy/client state, retained strategy, semantic panels, quiet initialization, complete no-JS view.`);
