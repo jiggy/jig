@@ -51,6 +51,8 @@ export async function prepareFlowBehavior(
       settings,
       slots,
       outcomes: ['done', ...Object.keys(flow.invocation.outcomes ?? {})],
+      attachments: flow.invocation.attachments ?? {},
+      artifactResults: flow.invocation.artifactResults ?? [],
     })
   }
   for (const flow of project.flows)

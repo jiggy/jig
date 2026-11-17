@@ -303,12 +303,16 @@ jig inspect --flow --all --behavior
 ```
 
 Read the selected target's routes alongside their source locations.
+The main diagram emphasizes calls and file writes. Route details show source checks and reporting.
+Declared boundaries list available outcome names, attachments, and artifact results.
+
 For example, a converted preview can return `needs_mapping` with outcome `done`.
 The caller's checks determine whether that preview reaches export.
 The view can also describe a supported progress calculation and its requested publication.
 
 An opaque component remains visible in the configured inventory.
-The caller may still expose a reaction to an outcome allowed by the child's contract.
+The map may show how its caller would respond to a contract outcome or failure.
+An effect before an opaque continuation remains visible on the route that reaches it.
 Follow reported gaps into source before relying on a continuation.
 Use ordinary Runs to verify results, effects, and displayed progress.
 After an edit, invoke the same inspection again to analyze the updated source.

@@ -1,8 +1,17 @@
 import ts from 'typescript-parser'
 import { progressDescription } from './reporting.js'
 import {
+  dataEffects,
+  dataIntrinsic,
+  dataMethod,
+  evaluateDataMethod,
+  evaluateIntrinsic,
+  isData,
+} from './data.js'
+import {
   BEHAVIOR_LIMITS,
   type BehaviorStep,
+  type BehaviorAssumption,
   type BehaviorTarget,
   type SourceSite,
 } from './model.js'
@@ -22,16 +31,18 @@ import {
 export interface State {
   readonly values: ReadonlyMap<ts.Node, Value>
   readonly steps: readonly BehaviorStep[]
+  readonly assumptions: readonly BehaviorAssumption[]
   readonly mode: 'next' | 'return' | 'throw' | 'unknown'
   readonly value: Value
   readonly site?: SourceSite
 }
 
 export interface ChildResult {
-  readonly mode: 'next' | 'throw'
+  readonly mode: 'next' | 'throw' | 'unknown'
   readonly value: Value
   readonly step: Extract<BehaviorStep, { kind: 'call' }>
-  readonly effects?: readonly Extract<BehaviorStep, { kind: 'effect' }>[]
+  readonly prefix: readonly BehaviorStep[]
+  readonly assumptions: readonly BehaviorAssumption[]
 }
 
 type InvokeChild = (
@@ -39,18 +50,21 @@ type InvokeChild = (
   input: Value,
   site: SourceSite,
   depth: number,
+  assumptions: readonly BehaviorAssumption[],
 ) => readonly ChildResult[]
 
 export class AnalysisLimit extends Error {}
 
 export class AnalysisBudget {
   #steps = 0
-  constructor(readonly signal?: AbortSignal) {}
+  constructor(
+    readonly signal?: AbortSignal,
+    readonly steps = Number(BEHAVIOR_LIMITS.steps),
+  ) {}
 
   check(): void {
     this.signal?.throwIfAborted()
-    if (++this.#steps > BEHAVIOR_LIMITS.steps)
-      throw new AnalysisLimit('Analysis reached the work limit.')
+    if (++this.#steps > this.steps) throw new AnalysisLimit('Analysis reached the work limit.')
   }
 
   variants<T>(values: T[]): T[] {
@@ -85,7 +99,13 @@ export class Interpreter {
   ) {}
 
   run(depth: number): State[] {
-    const initial: State = { values: new Map(), steps: [], mode: 'next', value: missing }
+    const initial: State = {
+      values: new Map(),
+      steps: [],
+      assumptions: [],
+      mode: 'next',
+      value: missing,
+    }
     const entry = this.source.entry
     if (entry === undefined) return []
     const statements = entry.statements.filter((n) => ts.isExpressionStatement(n))
@@ -215,7 +235,9 @@ export class Interpreter {
     )
       return [this.stop(caller, fn, 'The helper module has unsupported initialization.')]
     const values = new Map(caller.values)
-    fn.parameters.forEach((p, i) => values.set(p, args[i] ?? missing))
+    fn.parameters.forEach((parameter, index) => {
+      values.set(parameter, args[index] ?? missing)
+    })
     const inner = { ...caller, values, mode: 'next' as const, value: missing }
     const results = ts.isBlock(fn.body)
       ? this.block(fn.body.statements, [inner], depth)
@@ -252,6 +274,7 @@ export class Interpreter {
     value: Value,
     state: T,
     alternatives: (s: State, taken: boolean) => State[],
+    label?: string,
   ): State[] {
     const condition = truth(value)
     const possible = condition === undefined ? [true, false] : [condition]
@@ -261,7 +284,8 @@ export class Interpreter {
           add(state, {
             kind: 'condition',
             site: this.source.site(n),
-            code: n.getText().length <= 140 ? n.getText() : '(see full predicate in source)',
+            code:
+              label ?? (n.getText().length <= 140 ? n.getText() : '(see full predicate in source)'),
             taken,
           }),
           taken,
@@ -317,11 +341,17 @@ export class Interpreter {
         ['Error', 'TypeError', 'RangeError'].includes(error.expression.text) &&
         this.source.declaration(error.expression) === undefined &&
         (error.arguments ?? []).every((arg) => this.staticInitializer(arg))
-      const results = ordinaryError ? [state] : this.expression(error, state, depth)
+      const message = ts.isNewExpression(error) ? error.arguments?.[0] : undefined
+      const results = ordinaryError
+        ? [
+            withValue(
+              state,
+              message && ts.isStringLiteralLike(message) ? literal(message.text) : unknown,
+            ),
+          ]
+        : this.expression(error, state, depth)
       return results.map((s) =>
-        s.mode === 'next'
-          ? { ...s, mode: 'throw' as const, value: unknown, site: this.source.site(n) }
-          : s,
+        s.mode === 'next' ? { ...s, mode: 'throw' as const, site: this.source.site(n) } : s,
       )
     }
     if (ts.isTryStatement(n)) {
@@ -335,7 +365,7 @@ export class Interpreter {
             return this.statement(
               caught.block,
               caught.variableDeclaration
-                ? this.bind(resumed, caught.variableDeclaration.name, unknown)
+                ? this.bind(resumed, caught.variableDeclaration.name, s.value)
                 : resumed,
               depth,
             )
@@ -348,7 +378,9 @@ export class Interpreter {
             s.mode === 'unknown'
               ? [s]
               : this.statement(finalizer, next(s), depth).map((fin) =>
-                  fin.mode !== 'next' ? fin : { ...s, values: fin.values, steps: fin.steps },
+                  fin.mode !== 'next'
+                    ? fin
+                    : { ...s, values: fin.values, steps: fin.steps, assumptions: fin.assumptions },
                 ),
           ),
         )
@@ -361,6 +393,43 @@ export class Interpreter {
       ts.isEmptyStatement(n)
     )
       return [state]
+    if (ts.isForOfStatement(n)) {
+      const proof = dataEffects(this.source, n, state.values)
+      if (proof) {
+        const arrays = new Set<Value | undefined>(
+          [...proof.writes]
+            .map((key) => state.values.get(key))
+            .filter((value) => value?.kind === 'array'),
+        )
+        const invalidate = (value: Value): Value =>
+          arrays.has(value)
+            ? unknown
+            : value.kind === 'array'
+              ? { kind: 'array', items: value.items.map(invalidate) }
+              : value.kind === 'object'
+                ? object(
+                    [...value.fields].map(([key, field]) => [key, invalidate(field)]),
+                    value.open,
+                  )
+                : value
+        return [
+          {
+            ...add(state, {
+              kind: 'gap',
+              site: this.source.site(n),
+              detail:
+                'Iteration details unknown. This continuation assumes the data loop completes.',
+            }),
+            values: new Map(
+              [...state.values].map(([key, value]) => [
+                key,
+                proof.writes.has(key as ts.Declaration) ? unknown : invalidate(value),
+              ]),
+            ),
+          },
+        ]
+      }
+    }
     return [this.stop(state, n, 'Unsupported statement: ' + ts.SyntaxKind[n.kind] + '.')]
   }
 
@@ -518,6 +587,45 @@ export class Interpreter {
         )
       return states
     }
+    if (ts.isTemplateExpression(e)) {
+      let states = result(literal(e.head.text))
+      for (const span of e.templateSpans)
+        states = this.continue(states, (s, prefix) =>
+          this.continue(this.expression(span.expression, s, depth), (ss, value) => [
+            withValue(
+              ss,
+              prefix.kind === 'literal' && value.kind === 'literal'
+                ? literal(String(prefix.value) + String(value.value) + span.literal.text)
+                : unknown,
+            ),
+          ]),
+        )
+      return states
+    }
+    if (ts.isTypeOfExpression(e))
+      return this.continue(this.expression(e.expression, state, depth), (s, value) => [
+        withValue(
+          s,
+          value.kind === 'unknown'
+            ? unknown
+            : literal(
+                value.kind === 'literal'
+                  ? typeof value.value
+                  : value.kind === 'undefined' || value.kind === 'function'
+                    ? value.kind
+                    : 'object',
+              ),
+        ),
+      ])
+    if (
+      ts.isNewExpression(e) &&
+      ts.isIdentifier(e.expression) &&
+      e.expression.text === 'Set' &&
+      this.source.declaration(e.expression) === undefined &&
+      (e.arguments ?? []).every((arg) => dataEffects(this.source, arg, state.values) !== undefined)
+    ) {
+      return result(object([['size', unknown]]))
+    }
     if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.ExclamationToken)
       return this.continue(this.expression(e.operand, state, depth), (s, value) => {
         const known = truth(value)
@@ -553,6 +661,8 @@ export class Interpreter {
         operator === ts.SyntaxKind.BarBarToken
       ) {
         const known = truth(left)
+        if (known === undefined && dataEffects(this.source, e.right, s.values))
+          return [withValue(s, unknown)]
         if (known === undefined)
           return this.branch(e.left, left, s, (ss, taken) =>
             taken === (operator === ts.SyntaxKind.AmpersandAmpersandToken)
@@ -564,8 +674,17 @@ export class Interpreter {
           : [withValue(s, left)]
       }
       if (operator === ts.SyntaxKind.QuestionQuestionToken) {
-        if (left.kind === 'unknown')
-          return [this.stop(s, e, 'Nullish fallback depends on an unknown value.')]
+        if (left.kind === 'unknown') {
+          if (dataEffects(this.source, e.right, s.values)) return [withValue(s, unknown)]
+          return this.branch(
+            e.left,
+            unknown,
+            s,
+            (ss, coalesces) =>
+              coalesces ? this.expression(e.right, ss, depth) : [withValue(ss, left)],
+            'nullish test: ' + e.left.getText().slice(0, 100),
+          )
+        }
         return left.kind === 'undefined' || (left.kind === 'literal' && left.value === null)
           ? this.expression(e.right, s, depth)
           : [withValue(s, left)]
@@ -591,6 +710,13 @@ export class Interpreter {
           ]
         }
         if (
+          operator === ts.SyntaxKind.PlusToken &&
+          left.kind === 'literal' &&
+          right.kind === 'literal' &&
+          (typeof left.value === 'string' || typeof right.value === 'string')
+        )
+          return [withValue(ss, literal(String(left.value) + String(right.value)))]
+        if (
           left.kind === 'literal' &&
           right.kind === 'literal' &&
           typeof left.value === 'number' &&
@@ -601,6 +727,8 @@ export class Interpreter {
           switch (operator) {
             case ts.SyntaxKind.PlusToken:
               return [withValue(ss, literal(a + b))]
+            case ts.SyntaxKind.BarToken:
+              return [withValue(ss, literal(a | b))]
             case ts.SyntaxKind.MinusToken:
               return [withValue(ss, literal(a - b))]
             case ts.SyntaxKind.LessThanToken:
@@ -613,6 +741,21 @@ export class Interpreter {
               return [withValue(ss, literal(a >= b))]
           }
         }
+        if (
+          isData(left) &&
+          isData(right) &&
+          [
+            ts.SyntaxKind.PlusToken,
+            ts.SyntaxKind.MinusToken,
+            ts.SyntaxKind.BarToken,
+            ts.SyntaxKind.InKeyword,
+            ts.SyntaxKind.LessThanToken,
+            ts.SyntaxKind.LessThanEqualsToken,
+            ts.SyntaxKind.GreaterThanToken,
+            ts.SyntaxKind.GreaterThanEqualsToken,
+          ].includes(operator)
+        )
+          return [withValue(ss, unknown)]
         return [this.stop(ss, e, 'Unsupported or unresolved binary operation.')]
       })
     })
@@ -642,75 +785,105 @@ export class Interpreter {
     }
     if (ts.isPropertyAccessExpression(callee)) {
       const receiver = this.boundValue(callee.expression, state)
-      if (
-        receiver?.kind === 'reporter' &&
-        callee.name.text === 'view' &&
-        e.arguments.length <= 2 &&
-        e.arguments.every((arg) => this.staticInitializer(arg))
-      )
-        return [withValue(state, { kind: 'report-view' })]
-      const operation =
-        receiver?.kind === 'report-view' && callee.name.text === 'update'
-          ? 'view update'
-          : receiver?.kind === 'reporter' && callee.name.text === 'notice'
-            ? 'notice'
-            : undefined
-      if (operation !== undefined && e.arguments[0] !== undefined)
-        return this.continue(this.expression(e.arguments[0], state, depth), (s, value) => {
-          const severity = e.arguments[1]
-          if (operation === 'notice' && severity !== undefined && !ts.isStringLiteralLike(severity))
-            return [this.stop(s, e, 'Unknown notice severity expression.')]
-          const detail =
-            operation === 'view update'
-              ? progressDescription(value)
-              : severity !== undefined && ts.isStringLiteralLike(severity)
-                ? severity.text
-                : 'default severity'
-          return [
-            withValue(
-              add(s, {
-                kind: 'effect',
-                operation,
-                detail,
-                site: this.source.site(e),
-              }),
-              missing,
-            ),
-          ]
-        })
-      if (
-        ((receiver?.kind === 'reporter' && ['activity', 'clear'].includes(callee.name.text)) ||
-          (receiver?.kind === 'report-view' && callee.name.text === 'retire')) &&
-        e.arguments.every((arg) => this.staticInitializer(arg))
-      )
-        return [withValue(state, missing)]
-      if (
-        ts.isIdentifier(callee.expression) &&
-        callee.expression.text === 'Math' &&
-        this.source.declaration(callee.expression) === undefined &&
-        callee.name.text === 'max'
-      ) {
-        let rows: { state: State; values: number[]; unknown: boolean }[] = [
-          { state, values: [], unknown: false },
-        ]
-        for (const argument of e.arguments)
-          rows = this.budget.variants(
-            rows.flatMap((row) =>
-              row.state.mode !== 'next'
-                ? [row]
-                : this.expression(argument, row.state, depth).map((s) => {
-                    const value = s.value
-                    return value.kind === 'literal' && typeof value.value === 'number'
-                      ? { ...row, state: s, values: [...row.values, value.value] }
-                      : { ...row, state: s, unknown: true }
-                  }),
-            ),
-          )
-        return rows.map((row) =>
-          row.state.mode === 'next'
-            ? withValue(row.state, row.unknown ? unknown : literal(Math.max(...row.values)))
-            : row.state,
+      const reporting = this.reportCall(e, callee.name.text, receiver, state, depth)
+      if (reporting !== undefined) return reporting
+      if (ts.isCallExpression(unwrap(callee.expression))) {
+        const inner = unwrap(callee.expression)
+        if (
+          ts.isCallExpression(inner) &&
+          ts.isPropertyAccessExpression(inner.expression) &&
+          this.boundValue(inner.expression.expression, state)?.kind === 'reporter'
         )
+          return this.continue(
+            this.expression(inner, state, depth),
+            (ss, view) =>
+              this.reportCall(e, callee.name.text, view, ss, depth) ?? [
+                this.stop(ss, e, 'Opaque reporting view operation.'),
+              ],
+          )
+      }
+      const intrinsic = dataIntrinsic(this.source, callee)
+      if (
+        intrinsic ||
+        (dataMethod(callee.name.text) && dataEffects(this.source, e, state.values))
+      ) {
+        const args = (ss: State, recv: Value) =>
+          this.arguments(e.arguments, ss, depth).map((row) =>
+            row.state.mode !== 'next'
+              ? row.state
+              : withValue(
+                  row.state,
+                  intrinsic && row.values.every(isData)
+                    ? evaluateIntrinsic(intrinsic, row.values)
+                    : intrinsic
+                      ? unknown
+                      : evaluateDataMethod(callee.name.text, recv, row.values),
+                ),
+          )
+        if (intrinsic) return args(state, unknown)
+        return this.continue(this.expression(callee.expression, state, depth), args)
+      }
+      if (
+        receiver?.kind === 'array' &&
+        ts.isIdentifier(callee.expression) &&
+        ['push', 'unshift', 'splice'].includes(callee.name.text)
+      ) {
+        const declaration = this.source.declaration(callee.expression)
+        if (
+          declaration &&
+          ts.isVariableDeclaration(declaration) &&
+          ts.isVariableDeclarationList(declaration.parent) &&
+          (declaration.parent.flags & ts.NodeFlags.Const) !== 0 &&
+          declaration.initializer &&
+          ts.isArrayLiteralExpression(unwrap(declaration.initializer))
+        ) {
+          return this.arguments(e.arguments, state, depth).map(({ state: ss, values }) => {
+            if (ss.mode !== 'next') return ss
+            // Do not conflate a receiver that an argument may already have changed.
+            if (
+              ss.values.get(declaration) !== receiver ||
+              !values.every(isData) ||
+              values.some((item) => contains(item, receiver))
+            )
+              return this.stop(ss, e, 'The local array mutation could not be isolated.')
+            const items = [...receiver.items]
+            if (callee.name.text === 'push') items.push(...values)
+            else if (callee.name.text === 'unshift') items.unshift(...values)
+            else {
+              const [start, size, ...insert] = values
+              if (
+                start?.kind !== 'literal' ||
+                typeof start.value !== 'number' ||
+                size?.kind !== 'literal' ||
+                typeof size.value !== 'number'
+              )
+                return this.stop(ss, e, 'Unknown splice range.')
+              const removed = items.splice(start.value, size.value, ...insert)
+              return this.updateArray(ss, receiver, items, { kind: 'array', items: removed })
+            }
+            return this.updateArray(ss, receiver, items, literal(items.length))
+          })
+        }
+      }
+      if (callee.name.text === 'sort' && e.arguments.length === 0) {
+        const inner = unwrap(callee.expression)
+        if (
+          ts.isCallExpression(inner) &&
+          dataIntrinsic(this.source, unwrap(inner.expression)) === 'Object.keys'
+        )
+          return this.continue(this.expression(inner, state, depth), (ss, value) => [
+            withValue(
+              ss,
+              value.kind === 'array'
+                ? {
+                    kind: 'array',
+                    items: [...value.items].sort((a, b) =>
+                      describe(a) < describe(b) ? -1 : describe(a) === describe(b) ? 0 : 1,
+                    ),
+                  }
+                : unknown,
+            ),
+          ])
       }
     }
 
@@ -734,18 +907,7 @@ export class Interpreter {
       )
     )
       return [this.stop(state, e, 'Opaque call may affect later behavior.')]
-    let args: readonly { state: State; values: readonly Value[] }[] = [{ state, values: [] }]
-    for (const argument of e.arguments)
-      args = this.budget.variants(
-        args.flatMap((row) =>
-          row.state.mode !== 'next'
-            ? [row]
-            : this.expression(argument, row.state, depth).map((s) => ({
-                state: s,
-                values: [...row.values, s.value],
-              })),
-        ),
-      )
+    const args = this.arguments(e.arguments, state, depth)
     return this.budget.variants(
       args.flatMap(({ state: s, values }) => {
         if (s.mode !== 'next') return [s]
@@ -753,7 +915,17 @@ export class Interpreter {
           const async = ts.getModifiers(fn)?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)
           if (async && !awaited)
             return [this.stop(s, e, 'An unawaited helper may continue independently.')]
+          const proof = values.every(isData) && dataEffects(this.source, fn, s.values)
           return this.invoke(fn, values, s, depth + 1).map((body) => {
+            if (proof && body.mode === 'unknown')
+              return withValue(
+                add(s, {
+                  kind: 'gap',
+                  site: body.site ?? this.source.site(e),
+                  detail: 'Data result unknown. This continuation assumes the helper completes.',
+                }),
+                unknown,
+              )
             if (body.mode === 'return' && body.value.kind === 'function')
               return this.stop(body, e, 'Escaping closures are outside the supported subset.')
             return body.mode === 'return'
@@ -770,14 +942,33 @@ export class Interpreter {
                 kind: 'effect',
                 site: this.source.site(e),
                 operation: 'writeFile',
-                detail: values[0]?.kind === 'literal' ? describe(values[0]) : 'destination unknown',
+                detail:
+                  values[0]?.kind === 'literal' || values[0]?.kind === 'path'
+                    ? describe(values[0])
+                    : 'destination unknown',
               }),
               missing,
             ),
           ]
         }
-        if (imported?.module === 'node:path' && imported.member === 'join')
-          return [withValue(s, unknown)]
+        if (imported?.module === 'node:path' && imported.member === 'join') {
+          const last = values.at(-1)
+          return [
+            withValue(
+              s,
+              last?.kind === 'literal' && typeof last.value === 'string'
+                ? { kind: 'path', suffix: last.value }
+                : unknown,
+            ),
+          ]
+        }
+        if (
+          imported?.module === '@jigging/reporting' &&
+          imported.member === 'previewCollection' &&
+          this.source.reportingEnabled(e) &&
+          values.every(isData)
+        )
+          return [withValue(s, object([['collection', unknown]]))]
         if (imported !== undefined)
           return [this.stop(s, e, 'Opaque imported call: ' + imported.module + '.')]
         const request = values[0] ?? unknown
@@ -789,11 +980,13 @@ export class Interpreter {
           field(request, 'input'),
           this.source.site(e),
           depth + 1,
+          s.assumptions,
         ).map((child) => {
           let updated = s
-          for (const effect of child.effects ?? []) updated = add(updated, effect)
+          for (const step of child.prefix) updated = add(updated, step)
           return {
             ...add(updated, child.step),
+            assumptions: [...s.assumptions, ...child.assumptions],
             mode: child.mode,
             value: child.value,
             site: child.step.site,
@@ -803,9 +996,128 @@ export class Interpreter {
     )
   }
 
+  private arguments(args: readonly ts.Expression[], state: State, depth: number) {
+    let rows: { state: State; values: readonly Value[] }[] = [{ state, values: [] }]
+    for (const arg of args)
+      rows = this.budget.variants(
+        rows.flatMap((row) =>
+          row.state.mode !== 'next'
+            ? [row]
+            : this.expression(arg, row.state, depth).map((nextState) => ({
+                state: nextState,
+                values: [...row.values, nextState.value],
+              })),
+        ),
+      )
+    return rows
+  }
+
+  private reportCall(
+    e: ts.CallExpression,
+    method: string,
+    receiver: Value | undefined,
+    state: State,
+    depth: number,
+  ): State[] | undefined {
+    const view = receiver?.kind === 'reporter' && method === 'view'
+    const notice = receiver?.kind === 'reporter' && method === 'notice'
+    const update = receiver?.kind === 'report-view' && method === 'update'
+    if (
+      ((receiver?.kind === 'reporter' && ['activity', 'clear'].includes(method)) ||
+        (receiver?.kind === 'report-view' && method === 'retire')) &&
+      e.arguments.every((arg) => this.staticInitializer(arg))
+    )
+      return [withValue(state, missing)]
+    if (!view && !notice && !update) return undefined
+    const first = e.arguments[0]
+    if (!first || e.arguments.length > (update ? 1 : 2))
+      return [this.stop(state, e, 'Unsupported reporting arguments.')]
+    if (view && (!ts.isStringLiteralLike(first) || e.arguments[1] === undefined))
+      return e.arguments.length === 1 && ts.isStringLiteralLike(first)
+        ? [withValue(state, { kind: 'report-view' })]
+        : [this.stop(state, e, 'Unknown reporting view key.')]
+    const severity = notice ? e.arguments[1] : undefined
+    if (severity && !ts.isStringLiteralLike(severity))
+      return [this.stop(state, e, 'Unknown notice severity expression.')]
+    const argument = view ? e.arguments[1]! : first
+    const pure = dataEffects(this.source, argument, state.values)
+    const observed = this.expression(argument, state, depth)
+    const detail = (result: State) =>
+      update
+        ? progressDescription(result.mode === 'unknown' ? unknown : result.value)
+        : severity && ts.isStringLiteralLike(severity)
+          ? severity.text
+          : 'default severity'
+    const record = (s: State, message: string) =>
+      view
+        ? withValue(s, { kind: 'report-view' })
+        : withValue(
+            add(s, {
+              kind: 'effect',
+              operation: update ? 'view update' : 'notice',
+              detail: message,
+              site: this.source.site(e),
+            }),
+            missing,
+          )
+    if (!pure)
+      return observed.map((result) =>
+        result.mode === 'next' ? record(result, detail(result)) : result,
+      )
+
+    // Internal formatting choices cannot alter this caller. Preserve only the
+    // common displayed fact and retain explicit abrupt outcomes separately.
+    const ordinary = observed.filter((result) => result.mode !== 'throw')
+    const abrupt = observed.filter((result) => result.mode === 'throw')
+    const firstDetail = ordinary[0] && detail(ordinary[0])
+    if (!firstDetail) return abrupt
+    return [
+      ...abrupt,
+      record(
+        state,
+        ordinary.every((result) => detail(result) === firstDetail)
+          ? firstDetail
+          : 'display effect unknown',
+      ),
+    ]
+  }
+
+  private updateArray(
+    state: State,
+    receiver: Value,
+    items: readonly Value[],
+    result: Value,
+  ): State {
+    const updated: Value = { kind: 'array', items }
+    const replace = (value: Value): Value =>
+      value === receiver
+        ? updated
+        : value.kind === 'array' && contains(value, receiver)
+          ? { kind: 'array', items: value.items.map(replace) }
+          : value.kind === 'object' && contains(value, receiver)
+            ? object(
+                [...value.fields].map(([key, field]) => [key, replace(field)]),
+                value.open,
+              )
+            : value
+    return {
+      ...state,
+      value: result,
+      values: new Map([...state.values].map(([key, value]) => [key, replace(value)])),
+    }
+  }
+
   private boundValue(e: ts.Expression, state: State): Value | undefined {
     if (!ts.isIdentifier(e)) return undefined
     const declaration = this.source.declaration(e)
     return declaration !== undefined ? state.values.get(declaration) : undefined
   }
+}
+
+function contains(value: Value, member: Value): boolean {
+  return (
+    value === member ||
+    (value.kind === 'array' && value.items.some((item) => contains(item, member))) ||
+    (value.kind === 'object' && [...value.fields.values()].some((item) => contains(item, member)))
+  )
 }
