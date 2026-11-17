@@ -73,7 +73,7 @@ snapshot() {
   {
     launchctl list | awk 'NR > 1 && $3 ~ /^org\.jig\./ {print "job " $3}'
     mount | awk '/jig-| on \/Volumes\/Jig-/ {print "mount " $0}'
-    ps -axo pid=,command= | awk '/macos-native-supervisor|macos-exec|\/jig-guardian-/ && !/awk/ {print "process " $0}'
+    ps -axo pid=,command= | awk '/macos-native-supervisor|macos-exec|macos-codex-preferences|\/jig-guardian-/ && !/awk/ {print "process " $0}'
   } | LC_ALL=C sort
 }
 snapshot > "$scratch/before"
