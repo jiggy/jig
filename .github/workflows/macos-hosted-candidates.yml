@@ -1,108 +1,24 @@
-# Every allocated ARM guest performs useful source-pinned work and its own native baseline.
-name: macOS hosted candidates
+# Temporary native-development workflow. Never merge this replacement into main.
+# It produces diagnostic native bytes and same-byte tests, not qualification receipts.
+name: Mac Codex ARM development diagnostics
 on:
-  pull_request: null
   workflow_dispatch:
-    inputs:
-      include_startup_profile:
-        description: Profile installed startup on Apple Silicon (optional, up to 30 minutes)
-        type: boolean
-        default: false
-  push:
-    branches:
-      - main
-  schedule:
-    - cron: 23 3 * * *
 permissions:
   contents: read
 concurrency:
-  group: macos-hosted-${{ github.ref != 'refs/heads/main' && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: mac-codex-development-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  scope:
-    name: Determine macos host scope
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+  build-and-test-oldest:
+    name: Native development — macOS 15
+    if: github.repository == 'jiggy/jig' && github.ref != 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 30
     outputs:
-      required: ${{ steps.scope.outputs.required }}
-      workers: ${{ steps.plan.outputs.workers }}
-      shard_count: ${{ steps.plan.outputs.shard_count }}
-      max_parallel: ${{ steps.plan.outputs.max_parallel }}
-      plan_id: ${{ steps.plan-artifact.outputs.artifact-id }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: "24"
-      - name: Determine whether complete host qualification is required
-        id: scope
-        run: node scripts/ci/host-scope.mjs --scope macos --github-output "$GITHUB_OUTPUT"
-      - name: Freeze the complete source-bound useful-shard plan
-        id: plan
-        run: |-
-          node scripts/ci/macos-host-test-shards.mjs freeze arm64 "$RUNNER_TEMP/PLAN.json"
-          node scripts/ci/macos-host-collect.mjs matrix "$RUNNER_TEMP/PLAN.json"
-      - id: plan-artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: macos-plan-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
-          path: ${{ runner.temp }}/PLAN.json
-          retention-days: 7
-          if-no-files-found: error
-  host-artifacts:
-    name: Prepare Mac inputs
-    needs: scope
-    if: ${{ needs.scope.outputs.required == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    outputs:
-      artifact_id: ${{ steps.prepared-artifacts.outputs.artifact-id }}
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: "24"
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          artifact-ids: ${{ needs.scope.outputs.plan_id }}
-          merge-multiple: true
-          path: ${{ runner.temp }}/mac-plan
-      - name: Acquire the exact canonical CI candidates after Quick checks
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |-
-          set -eu
-          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600
-          cp "$RUNNER_TEMP/mac-plan/PLAN.json" "$RUNNER_TEMP/macos-host-artifacts/PLAN.json"
-      - name: Retain exact macos host artifacts
-        id: prepared-artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: macos-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
-          path: ${{ runner.temp }}/macos-host-artifacts
-          retention-days: 7
-          if-no-files-found: error
-  prerequisites:
-    name: Native host shard — macos-${{ matrix.major }} / ${{ matrix.shard }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ inputs.include_startup_profile && matrix.installed && 65 || 25 }}
-    permissions:
-      contents: read
-      actions: read
+      artifact_id: ${{ steps.native-assets.outputs.artifact-id }}
     env:
-      JIG_MACOS_MAJOR: ${{ matrix.major }}
-    strategy:
-      fail-fast: false
-      max-parallel: ${{ fromJSON(needs.scope.outputs.max_parallel) }}
-      matrix: ${{ fromJSON(needs.scope.outputs.workers) }}
+      JIG_MACOS_PROCESS_TEST: "1"
+      JIG_NATIVE_AGENT_STARTUP: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -110,142 +26,104 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
-      - name: Reserve cleanup and evidence time from this assigned job deadline
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MACOS_JOB_NAME: Native host shard — macos-${{ matrix.major }} / ${{ matrix.shard }}
-          MACOS_JOB_MINUTES: ${{ inputs.include_startup_profile && matrix.installed && 65 || 25 }}
-        run: node scripts/ci/mac-command-budget.mjs start
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.4.4
       - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
         with:
           just-version: 1.43.1
-      - name: Record exact host and verify native process prerequisites
-        env:
-          EXPECTED_ARCH: ${{ matrix.arch }}
+      - name: Record diagnostic source and genuine native host
+        shell: bash
         run: |
-          set -o pipefail
-          mkdir -p "$RUNNER_TEMP/mac-evidence"
-          printf 'JIG_MACOS_TEST_PLAN_FILE=%s\n' "$RUNNER_TEMP/macos-host-artifacts/PLAN.json" >> "$GITHUB_ENV"
-          git rev-parse HEAD > "$RUNNER_TEMP/mac-evidence/source.txt"
-          uname -a > "$RUNNER_TEMP/mac-evidence/host.txt"
-          sw_vers >> "$RUNNER_TEMP/mac-evidence/host.txt"
-          xcrun --show-sdk-version >> "$RUNNER_TEMP/mac-evidence/host.txt"
-          bun -e 'if (process.arch !== process.env.EXPECTED_ARCH) throw Error("incorrect native architecture")'
-          node scripts/ci/mac-command-budget.mjs run bun scripts/ci/probe-macos-host.ts --hosted | tee "$RUNNER_TEMP/mac-evidence/prerequisites.json"
-      - name: Compile the native launcher and validate SDK descriptor layouts
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(uname -m)" = arm64
+          mkdir "$RUNNER_TEMP/native-diagnostics"
+          {
+            printf 'DIAGNOSTIC ONLY. No canonical candidate or qualification receipt.\n'
+            git rev-parse HEAD
+            uname -a
+            sw_vers
+            xcrun --show-sdk-version
+            xcrun clang --version
+            bun --revision
+          } > "$RUNNER_TEMP/native-diagnostics/host.txt"
+      - name: Compile genuine native assets with the checked-in Apple build recipe
+        shell: bash
         run: |
-          set -o pipefail
-          node scripts/ci/mac-command-budget.mjs run clang -Wall -Wextra -Werror -Wno-deprecated-declarations packages/jig/support/macos-exec.c -o "$RUNNER_TEMP/mac-evidence/macos-exec"
-          node scripts/ci/mac-command-budget.mjs run clang -Wall -Wextra -Werror packages/jig/test/fixtures/macos-file-abi.c -o "$RUNNER_TEMP/mac-evidence/file-abi"
-          "$RUNNER_TEMP/mac-evidence/file-abi" | tee "$RUNNER_TEMP/mac-evidence/file-abi.txt"
-          file "$RUNNER_TEMP/mac-evidence/macos-exec" >> "$RUNNER_TEMP/mac-evidence/host.txt"
-      - name: Install build dependencies without lifecycle scripts
-        run: node scripts/ci/mac-command-budget.mjs run bun install --ignore-scripts
-      - name: Build the source-test workspace packages
-        run: node scripts/ci/mac-command-budget.mjs run just --justfile packages/jig/justfile build
-      - name: Prepare genuine pinned clients for offline startup and refusal checks
-        if: matrix.installed
-        timeout-minutes: 3
-        run: node scripts/ci/mac-command-budget.mjs run bun scripts/ci/install-macos-test-clients.ts "$RUNNER_TEMP/jig-native-clients" >> "$GITHUB_ENV"
-      - name: Download the prepared canonical Mac inputs
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        timeout-minutes: 3
-        with:
-          artifact-ids: ${{ needs.host-artifacts.outputs.artifact_id }}
-          merge-multiple: true
-          path: ${{ runner.temp }}/macos-host-artifacts
-      - name: Verify exact canonical publication archives
-        run: |-
-          set -eu
-          node scripts/ci/candidate-provenance.mjs verify "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA"
-          printf 'JIG_CI_CANDIDATE_DIRECTORY=%s\n' "$RUNNER_TEMP/macos-host-artifacts" >> "$GITHUB_ENV"
-          cp "$RUNNER_TEMP/macos-host-artifacts/CANDIDATE.json" "$RUNNER_TEMP/mac-evidence/CANDIDATE.json"
-          cp "$RUNNER_TEMP/macos-host-artifacts/ARTIFACT.json" "$RUNNER_TEMP/mac-evidence/ARTIFACT.json"
-
+          set -euo pipefail
+          bun packages/jig/scripts/native-support.mjs build
+          bun packages/jig/scripts/native-support.mjs check
           node --input-type=module - <<'JS'
-          import {readFileSync,writeFileSync} from "node:fs"
-          import {digest} from "./scripts/ci/candidate-provenance.mjs"
-          const inputArtifactId=Number(process.env.MACOS_INPUT_ARTIFACT_ID)
-          if(!Number.isSafeInteger(inputArtifactId)||inputArtifactId<=0)throw Error("Invalid prepared artifact identity")
-          writeFileSync(`${process.env.RUNNER_TEMP}/mac-evidence/INPUT.json`,JSON.stringify({sourceRevision:process.env.GITHUB_SHA,inputArtifactId,planSha256:digest(readFileSync(process.env.JIG_MACOS_TEST_PLAN_FILE))})+"\n",{flag:"wx"})
-          JS
-        env:
-          MACOS_INPUT_ARTIFACT_ID: ${{ needs.host-artifacts.outputs.artifact_id }}
-      - name: Test native containment and recovery
-        env:
-          JIG_MACOS_PROCESS_TEST: "1"
-        run: |
-          set -o pipefail
-          snapshot() {
-            { launchctl list | awk 'NR > 1 && $3 ~ /^org\.jig\./ {print "job " $3}'; mount | awk '/jig-| on \/Volumes\/Jig-/ {print "mount " $0}'; } | LC_ALL=C sort
+          import { createHash } from 'node:crypto'
+          import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+          import { dirname, join } from 'node:path'
+          const files = [
+            'packages/jig/support/macos-exec-universal',
+            'packages/jig/support/macos-descriptor-bridge.dylib',
+            'packages/jig/support/macos-codex-preferences-universal',
+            'packages/jig/support/macos-native-build.json',
+            'packages/jig/src/internal/macos-descriptor-files.ts',
+            'packages/jig/src/internal/installed-bun-support.ts',
+          ]
+          const root = join(process.env.RUNNER_TEMP, 'native-development-assets')
+          const hashes = {}
+          for (const file of files) {
+            const target = join(root, file)
+            mkdirSync(dirname(target), {recursive:true})
+            cpSync(file, target)
+            hashes[file] = createHash('sha256').update(readFileSync(target)).digest('hex')
           }
-          snapshot > "$RUNNER_TEMP/mac-evidence/before-native.txt"
-          status=0
-          node scripts/ci/mac-command-budget.mjs run bun test packages/jig/test/macos/macos-process-controls.test.ts packages/jig/test/macos/macos-execution.test.ts packages/jig/test/macos/macos-descriptor-files.test.ts packages/jig/test/macos/macos-descriptor-handoff.test.ts packages/jig/test/macos/macos-volume.test.ts packages/jig/test/macos/macos-backend-state.test.ts packages/jig/test/macos/macos-native-backend.test.ts packages/jig/test/macos/macos-guardian.test.ts --bail=1 --timeout 420000 --reporter=junit --reporter-outfile="$RUNNER_TEMP/mac-evidence/native-tests.xml" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/native-tests.txt" || status=$?
-          snapshot > "$RUNNER_TEMP/mac-evidence/after-native.txt"
-          diff -u "$RUNNER_TEMP/mac-evidence/before-native.txt" "$RUNNER_TEMP/mac-evidence/after-native.txt" || status=1
-          exit "$status"
-      - name: Run the complete assigned whole-file shard
-        env:
-          MAC_HOST_ROLE: ${{ matrix.shard }}
-          JIG_MACOS_TEST_TIMINGS_DIRECTORY: ${{ runner.temp }}/mac-evidence
-          JIG_STARTUP_PROFILE_DIRECTORY: ${{ matrix.installed && inputs.include_startup_profile && format('{0}/mac-startup-profile', runner.temp) || '' }}
-        run: |
-          set -o pipefail
-          node scripts/ci/mac-command-budget.mjs run scripts/ci/qualify-macos-host.sh --shard "$MAC_HOST_ROLE" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/host-conformance.txt"
-      - name: Verify canonical candidate metadata is unchanged
-        run: |
-          set -eu
-          node scripts/ci/candidate-provenance.mjs verify "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA"
-          cmp "$RUNNER_TEMP/mac-evidence/CANDIDATE.json" "$RUNNER_TEMP/macos-host-artifacts/CANDIDATE.json"
-          cmp "$RUNNER_TEMP/mac-evidence/ARTIFACT.json" "$RUNNER_TEMP/macos-host-artifacts/ARTIFACT.json"
-      - name: Record successful shard
-        env:
-          MAC_HOST_ROLE: ${{ matrix.shard }}
-          EXPECTED_ARCH: ${{ matrix.arch }}
-        run: |
-          node scripts/ci/mac-command-budget.mjs check
-          printf '%s %s %s\n' "$GITHUB_SHA" "$EXPECTED_ARCH" "$MAC_HOST_ROLE" > "$RUNNER_TEMP/mac-evidence/shard-$MAC_HOST_ROLE.complete"
-      - name: Retain candidate prerequisite evidence
-        if: ${{ always() }}
+          writeFileSync(join(root, 'NATIVE-DEVELOPMENT.json'), JSON.stringify({
+            schemaVersion:1, diagnosticOnly:true, sourceRevision:process.env.GITHUB_SHA,
+            producerRunId:process.env.GITHUB_RUN_ID, producerRunAttempt:process.env.GITHUB_RUN_ATTEMPT,
+            files:hashes,
+          }, null, 2) + '\n', {flag:'wx'})
+          JS
+      - name: Retain exact generated assets before diagnostic tests
+        id: native-assets
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: macos-prerequisites-${{ matrix.major }}-${{ matrix.shard }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/mac-evidence/*.txt
-            ${{ runner.temp }}/mac-evidence/*.json
-            ${{ runner.temp }}/mac-evidence/*.xml
-            ${{ runner.temp }}/mac-evidence/*.complete
+          name: native-development-assets-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-development-assets
           retention-days: 7
-      - name: Retain optional installed startup profile
-        if: ${{ always() && matrix.installed && inputs.include_startup_profile }}
+          if-no-files-found: error
+      - name: Build the ordinary workspace and install genuine offline clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun install --ignore-scripts
+          just --justfile packages/jig/justfile build
+          bun scripts/ci/install-macos-test-clients.ts "$RUNNER_TEMP/jig-native-clients" >> "$GITHUB_ENV"
+      - name: Test the Codex boundary and complete offline native client startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun test \
+            packages/jig/test/macos/macos-codex-preferences.test.ts \
+            packages/jig/test/macos/macos-preferences-boundary.test.ts \
+            packages/jig/test/macos/macos-preferences-observer.test.ts \
+            packages/jig/test/startup/native-agent-startup.test.ts \
+            --timeout 420000 --reporter=junit \
+            --reporter-outfile="$RUNNER_TEMP/native-diagnostics/native-tests.xml" \
+            2>&1 | tee "$RUNNER_TEMP/native-diagnostics/native-tests.txt"
+      - name: Retain bounded public synthetic diagnostic evidence
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: macos-startup-profile-${{ matrix.major }}-${{ matrix.shard }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
-          path: ${{ runner.temp }}/mac-startup-profile
+          name: native-development-macos15-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-diagnostics
+          retention-days: 7
           if-no-files-found: ignore
-          retention-days: 7
-      - name: Require evidence retention within the assigned job deadline
-        run: node scripts/ci/mac-command-budget.mjs check
-    needs:
-      - scope
-      - host-artifacts
-    if: ${{ needs.scope.outputs.required == 'true' }}
-  qualified-architecture:
-    name: Native host qualification — arm64
-    if: ${{ always() && needs.scope.result == 'success' && needs.scope.outputs.required == 'true' }}
-    needs:
-      - scope
-      - host-artifacts
-      - prerequisites
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      actions: read
-    timeout-minutes: 10
+  test-current:
+    name: Same native bytes — macOS 26
+    needs: build-and-test-oldest
+    if: ${{ always() && github.repository == 'jiggy/jig' && github.ref != 'refs/heads/main' && needs.build-and-test-oldest.outputs.artifact_id != '' }}
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      JIG_MACOS_PROCESS_TEST: "1"
+      JIG_NATIVE_AGENT_STARTUP: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -253,96 +131,87 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
-      - name: Validate the latest actual executions and complete native coverage
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/ci/macos-host-collect.mjs collect
-      - name: Retain coverage, provenance and accepted execution identities
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          name: macos-summary-arm64-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
-          path: ${{ runner.temp }}/mac-summary.json
-          retention-days: 7
-          if-no-files-found: ignore
-      - name: Bind complete native qualification to the canonical candidate
-        run: |-
-          set -eu
-          mkdir "$RUNNER_TEMP/macos-qualification"
-          node scripts/ci/job-evidence.mjs --id macos-arm64 --summary "$RUNNER_TEMP/mac-summary.json" --artifacts --residue --output "$RUNNER_TEMP/macos-observed.json"
-          node scripts/ci/candidate-provenance.mjs qualification "$RUNNER_TEMP/macos-host-artifacts" "$RUNNER_TEMP/macos-qualification/QUALIFICATION.json" --kind macos --profile arm64 --coverage-summary "$RUNNER_TEMP/mac-summary.json"
-          cp "$RUNNER_TEMP/mac-summary.json" "$RUNNER_TEMP/macos-qualification/mac-summary.json"
-          cp "$RUNNER_TEMP/macos-host-artifacts/PLAN.json" "$RUNNER_TEMP/macos-qualification/PLAN.json"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+          bun-version: 1.4.4
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
         with:
-          name: macos-qualification-arm64-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
-          path: ${{ runner.temp }}/macos-qualification
-          retention-days: 7
-          if-no-files-found: error
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: macos-observed-arm64-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
-          path: ${{ runner.temp }}/macos-observed.json
-          retention-days: 7
-          if-no-files-found: error
-  affected-macos:
-    name: affected-macos
-    permissions:
-      contents: read
-      actions: read
-      checks: read
-    if: always()
-    needs:
-      - scope
-      - host-artifacts
-      - prerequisites
-      - qualified-architecture
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: "24"
-      - name: Explain runner allocation and execution failures
-        timeout-minutes: 1
-        if: always()
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/ci/host-job-diagnostics.mjs
-      - name: Revalidate host scope and every required job result
-        env:
-          JOB_RESULTS: ${{ toJSON(needs) }}
-        run: |
-          set -eu
-          node -e 'const fs=require("node:fs"),jobs=JSON.parse(process.env.JOB_RESULTS);fs.writeFileSync(process.argv[1],JSON.stringify(Object.fromEntries(Object.entries(jobs).map(([id,job])=>[id,job.result]))));' "$RUNNER_TEMP/host-job-results.json"
-          node scripts/ci/host-scope.mjs --scope macos --results "$RUNNER_TEMP/host-job-results.json" > "$RUNNER_TEMP/affected-report.json"
-      - name: Download complete observed execution evidence
-        if: ${{ needs.scope.outputs.required == 'true' }}
+          just-version: 1.43.1
+      - name: Download this execution's immutable generated asset artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          pattern: macos-observed-*-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
-          path: ${{ runner.temp }}/observed-evidence
-          merge-multiple: false
-      - name: Require complete observed host qualification
-        if: ${{ needs.scope.outputs.required == 'true' }}
-        env:
-          JOB_RESULTS: ${{ toJSON(needs) }}
+          artifact-ids: ${{ needs.build-and-test-oldest.outputs.artifact_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/native-development-assets
+      - name: Verify source, overlay only generated native outputs and record host
+        shell: bash
         run: |
-          set -eu
-          node -e 'const fs=require("node:fs"),jobs=JSON.parse(process.env.JOB_RESULTS);fs.writeFileSync(process.argv[1],JSON.stringify({"macos-arm64":jobs["qualified-architecture"].result}));' "$RUNNER_TEMP/host-evidence-results.json"
-          node scripts/ci/job-evidence.mjs --directory "$RUNNER_TEMP/observed-evidence" --results "$RUNNER_TEMP/host-evidence-results.json" --scope macos --output "$RUNNER_TEMP/host-evidence.json"
-      - name: Retain host scope and complete qualification reconciliation
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(uname -m)" = arm64
+          mkdir "$RUNNER_TEMP/native-diagnostics"
+          node --input-type=module - <<'JS'
+          import { createHash } from 'node:crypto'
+          import { chmodSync, cpSync, readFileSync } from 'node:fs'
+          import { join } from 'node:path'
+          const root = join(process.env.RUNNER_TEMP, 'native-development-assets')
+          const metadata = JSON.parse(readFileSync(join(root,'NATIVE-DEVELOPMENT.json'),'utf8'))
+          const files = [
+            'packages/jig/support/macos-exec-universal',
+            'packages/jig/support/macos-descriptor-bridge.dylib',
+            'packages/jig/support/macos-codex-preferences-universal',
+            'packages/jig/support/macos-native-build.json',
+            'packages/jig/src/internal/macos-descriptor-files.ts',
+            'packages/jig/src/internal/installed-bun-support.ts',
+          ]
+          if (metadata.schemaVersion !== 1 || metadata.diagnosticOnly !== true ||
+              metadata.sourceRevision !== process.env.GITHUB_SHA ||
+              metadata.producerRunId !== process.env.GITHUB_RUN_ID ||
+              metadata.producerRunAttempt !== process.env.GITHUB_RUN_ATTEMPT ||
+              JSON.stringify(Object.keys(metadata.files).sort()) !== JSON.stringify([...files].sort()))
+            throw Error('Native diagnostic artifact source or execution mismatch')
+          for (const file of files) {
+            const from = join(root,file)
+            const actual = createHash('sha256').update(readFileSync(from)).digest('hex')
+            if (metadata.files[file] !== actual) throw Error('Generated native artifact hash mismatch')
+            cpSync(from,file)
+            if (file.endsWith('-universal')) chmodSync(file, 0o755)
+          }
+          JS
+          bun packages/jig/scripts/native-support.mjs check
+          {
+            printf 'DIAGNOSTIC ONLY. Same generated assets; no canonical candidate or qualification receipt.\n'
+            git rev-parse HEAD
+            uname -a
+            sw_vers
+            xcrun --show-sdk-version
+            xcrun clang --version
+            bun --revision
+          } > "$RUNNER_TEMP/native-diagnostics/host.txt"
+      - name: Build the ordinary workspace and install genuine offline clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun install --ignore-scripts
+          just --justfile packages/jig/justfile build
+          bun scripts/ci/install-macos-test-clients.ts "$RUNNER_TEMP/jig-native-clients" >> "$GITHUB_ENV"
+      - name: Test the same Codex boundary and complete offline native client startup
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun test \
+            packages/jig/test/macos/macos-codex-preferences.test.ts \
+            packages/jig/test/macos/macos-preferences-boundary.test.ts \
+            packages/jig/test/macos/macos-preferences-observer.test.ts \
+            packages/jig/test/startup/native-agent-startup.test.ts \
+            --timeout 420000 --reporter=junit \
+            --reporter-outfile="$RUNNER_TEMP/native-diagnostics/native-tests.xml" \
+            2>&1 | tee "$RUNNER_TEMP/native-diagnostics/native-tests.txt"
+      - name: Retain bounded public synthetic diagnostic evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: macos-affected-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
-          path: |-
-            ${{ runner.temp }}/affected-report.json
-            ${{ runner.temp }}/host-evidence.json
+          name: native-development-macos26-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-diagnostics
           retention-days: 7
           if-no-files-found: ignore
