@@ -48,6 +48,7 @@ jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run [flow:path|npm:package|binding:id] [options]
 jig inspect [flow:path|npm:package|binding:id] [--json]
+jig inspect --flow [target | --all] --behavior
 jig inspect --result <directory> [--display plain|tui|web] [--json]
 jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>
 jig import-contract --list
@@ -178,6 +179,10 @@ evaluating source, contacting providers, preparing dependencies or changing stat
 It checks that approval against current local execution identities and reports
 changed or unverifiable environments. It does not check visible source edits,
 launch readiness or remote availability; Run still revalidates before execution.
+
+Use `jig inspect --flow --behavior` to read supported source routes before a Run.
+Focus on a target to see its caller continuations and other uses of the same implementation.
+The [source behavior guide](https://jig.md/build/results#inspect-source-behavior) explains partial coverage and how to verify a route.
 
 `jig inspect --result ./result-packet --display tui` reopens saved result,
 file and diagnostic evidence without starting work or requiring a project.

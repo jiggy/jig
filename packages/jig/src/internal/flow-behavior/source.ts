@@ -1,0 +1,118 @@
+import { posix } from 'node:path'
+import ts from 'typescript-parser'
+import type { BehaviorPackage, SourceSite } from './model.js'
+
+const root = '/flow/'
+const compilerOptions: ts.CompilerOptions = {
+  noLib: true,
+  types: [],
+  module: ts.ModuleKind.ESNext,
+  moduleResolution: ts.ModuleResolutionKind.Bundler,
+  allowImportingTsExtensions: true,
+}
+
+export type LocalFunction = ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration
+
+export function isLocalFunction(node: ts.Node): node is LocalFunction {
+  return ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node)
+}
+
+export function unwrap(expression: ts.Expression): ts.Expression {
+  while (
+    ts.isParenthesizedExpression(expression) ||
+    ts.isAsExpression(expression) ||
+    ts.isSatisfiesExpression(expression) ||
+    ts.isNonNullExpression(expression) ||
+    ts.isTypeAssertionExpression(expression)
+  )
+    expression = expression.expression
+  return expression
+}
+
+export class SourceIndex {
+  readonly #files: ReadonlyMap<string, string>
+  readonly #program: ts.Program
+  readonly #checker: ts.TypeChecker
+  readonly #reporting: ReadonlySet<string>
+  readonly entry: ts.SourceFile | undefined
+
+  constructor(
+    readonly implementation: string,
+    pkg: BehaviorPackage,
+  ) {
+    this.#reporting = pkg.reportingFiles ?? new Set()
+    this.#files = new Map([...pkg.sources].map(([path, bytes]) => [root + path, bytes]))
+    const host: ts.CompilerHost = {
+      getSourceFile: (path) => {
+        const text = this.#files.get(path)
+        return text === undefined
+          ? undefined
+          : ts.createSourceFile(path, text, ts.ScriptTarget.ES2022, true)
+      },
+      getCurrentDirectory: () => root,
+      getDefaultLibFileName: () => '',
+      getCanonicalFileName: (path) => path,
+      getNewLine: () => '\n',
+      useCaseSensitiveFileNames: () => true,
+      fileExists: (path) => this.#files.has(path),
+      readFile: (path) => this.#files.get(path),
+      writeFile: () => {
+        throw new Error('Behavior analysis cannot emit code')
+      },
+      resolveModuleNames: (names, containingFile) =>
+        names.map((name) => {
+          // Only an exact relative TypeScript file inside this captured package is understood.
+          if (!name.startsWith('./') && !name.startsWith('../')) return undefined
+          const candidate = posix.resolve(posix.dirname(containingFile), name)
+          if (!candidate.startsWith(root) || !this.#files.has(candidate)) return undefined
+          return { resolvedFileName: candidate, extension: ts.Extension.Ts }
+        }),
+    }
+    this.#program = ts.createProgram({
+      rootNames: [root + pkg.entry],
+      options: compilerOptions,
+      host,
+    })
+    this.#checker = this.#program.getTypeChecker()
+    this.entry = this.#program.getSourceFile(root + pkg.entry)
+  }
+
+  valid(file: ts.SourceFile): boolean {
+    return this.#program.getSyntacticDiagnostics(file).length === 0
+  }
+
+  declaration(node: ts.Node): ts.Declaration | undefined {
+    const symbol =
+      ts.isShorthandPropertyAssignment(node.parent) && node.parent.name === node
+        ? this.#checker.getShorthandAssignmentValueSymbol(node.parent)
+        : this.#checker.getSymbolAtLocation(node)
+    if (symbol === undefined) return undefined
+    const resolved =
+      symbol.flags & ts.SymbolFlags.Alias ? this.#checker.getAliasedSymbol(symbol) : symbol
+    return resolved.valueDeclaration ?? resolved.declarations?.[0]
+  }
+
+  importOf(node: ts.Node): { module: string; member: string } | undefined {
+    const declaration = this.#checker.getSymbolAtLocation(node)?.declarations?.[0]
+    if (declaration === undefined || !ts.isImportSpecifier(declaration)) return undefined
+    const statement = declaration.parent.parent.parent
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier))
+      return undefined
+    return {
+      module: statement.moduleSpecifier.text,
+      member: (declaration.propertyName ?? declaration.name).text,
+    }
+  }
+
+  reportingEnabled(node: ts.Node): boolean {
+    return this.#reporting.has(node.getSourceFile().fileName.slice(root.length))
+  }
+
+  site(node: ts.Node): SourceSite {
+    const file = node.getSourceFile()
+    return {
+      path: this.implementation + '/' + file.fileName.slice(root.length),
+      line: file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1,
+    }
+  }
+}

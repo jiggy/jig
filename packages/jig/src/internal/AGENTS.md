@@ -111,6 +111,8 @@ membership. Configuration alone does not prove execution.
 
 ## Child DOX Index
 
+- [flow-behavior/AGENTS.md](flow-behavior/AGENTS.md) — Bounded source inspection and caller continuations.
+
 - [admission-guidance.md](admission-guidance.md) — Capture, preparation, review,
   retained authority, tickets, quotas, retirement and installation verification.
 - [execution-guidance.md](execution-guidance.md) — Dispatch, finite effects,

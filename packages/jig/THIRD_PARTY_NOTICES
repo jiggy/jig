@@ -765,3 +765,11 @@ has requested that any alterations which yield different font metrics be
 given a different name.
 
 $Id$
+
+TypeScript parser
+-----------------
+Jig bundles the TypeScript 5.9.3 compiler API for offline source inspection.
+TypeScript is copyright Microsoft Corporation and is licensed under the
+Apache License, Version 2.0. The license accompanies this archive at
+LICENSES/Apache-2.0.txt. The compiler's upstream notices accompany the bundle at
+libexec/flow-behavior.typescript-notices.txt.

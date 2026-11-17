@@ -31,6 +31,8 @@ import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-a
 import { parsePrivateExploreArguments, privateExecuteExplore } from './cli-explore.js'
 import type { PrivateExploreLaunch } from './cli-explore-launch.js'
 import { flowContextRecord, renderFlowContext } from './cli-flow-context.js'
+import { renderFlowBehavior } from './cli-flow-behavior.js'
+import type { BehaviorReport } from './internal/flow-behavior/model.js'
 import {
   privateCliHumanText,
   privateCliStyleEnabled,
@@ -245,6 +247,7 @@ Example:
   jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
        jig inspect --flow [target | --all] [--approved] [--json]
+       jig inspect --flow [target | --all] --behavior
        jig inspect --result DIRECTORY [--display plain|tui|web] [--json]
 
 List the current project's approved targets, or show one target's retained
@@ -262,6 +265,7 @@ Launch readiness and remote provider availability remain unchecked.
   --flow     Emit configured topology as Markdown, including when piped
              A target retains callers, their other slots and shared package uses
   --all      With --flow: include every configured target and connection
+  --behavior With --flow: explain supported behavior from current source
   --approved With --flow: use the last approved snapshot instead of the working tree
   --result DIRECTORY  Inspect a saved packet without approval or new execution
   --display MODE      For saved results: plain (default), tui or web
@@ -401,9 +405,14 @@ export interface PrivateCliCommandHost {
   readonly prepareRun?: typeof preparePrivateCliRun
   readonly inspectFlow?: (
     project: string,
-    options: import('./cli-flow-context.js').FlowContextOptions,
+    options: import('./internal/flow-inspection-scope.js').FlowContextOptions,
     signal?: AbortSignal,
   ) => Promise<JsonValue>
+  readonly inspectBehavior?: (
+    project: string,
+    options: import('./internal/flow-inspection-scope.js').FlowContextOptions,
+    signal?: AbortSignal,
+  ) => Promise<BehaviorReport>
   acquire(
     project: string,
     options?: {
@@ -1000,8 +1009,14 @@ function parseInspect(arguments_: readonly string[]) {
   let flow = false
   let approved = false
   let all = false
+  let behavior = false
   for (let index = 1; index < arguments_.length; index++) {
     const value = arguments_[index]!
+    if (value === '--behavior') {
+      if (behavior) usage('inspect', '--behavior may only be supplied once.')
+      behavior = true
+      continue
+    }
     if (value === '--all') {
       if (all) usage('inspect', '--all may only be supplied once.')
       all = true
@@ -1051,6 +1066,12 @@ function parseInspect(arguments_: readonly string[]) {
     usage('inspect', '--display requires --result DIRECTORY.')
   if (approved && !flow) usage('inspect', '--approved requires --flow.')
   if (all && !flow) usage('inspect', '--all requires --flow.')
+  if (behavior && !flow) usage('inspect', '--behavior requires --flow.')
+  if (behavior && (approved || json))
+    usage(
+      'inspect',
+      '--behavior uses the working tree and emits Markdown. Remove --approved and --json.',
+    )
   if (all && selector !== undefined) usage('inspect', '--all cannot be combined with a target.')
   if (flow && resultDirectory !== undefined)
     usage('inspect', 'Saved packets contain no retained flow context.')
@@ -1063,6 +1084,7 @@ function parseInspect(arguments_: readonly string[]) {
     flow,
     approved,
     all,
+    behavior,
   }
 }
 
@@ -1146,6 +1168,25 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
   let snapshot: JsonValue
   runtime.signal?.throwIfAborted()
   try {
+    if (parsed.behavior) {
+      if (runtime.host.inspectBehavior === undefined)
+        throw new CliDiagnostic(
+          'JIG_SOURCE_INSPECTION_UNAVAILABLE',
+          'Behavior inspection needs the installed Jig declaration evaluator on a supported host. Use the installed jig command.',
+          2,
+        )
+      const report = await runtime.host.inspectBehavior(
+        runtime.currentDirectory,
+        {
+          ...(selector === undefined ? {} : { target: selector }),
+          ...(parsed.all ? { all: true } : {}),
+        },
+        runtime.signal,
+      )
+      runtime.signal?.throwIfAborted()
+      await runtime.writeRecord(renderFlowBehavior(report))
+      return 0
+    }
     if (parsed.flow && !parsed.approved) {
       if (runtime.host.inspectFlow === undefined)
         throw new CliDiagnostic(

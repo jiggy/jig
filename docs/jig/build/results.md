@@ -292,4 +292,23 @@ Declared npm dependencies must already be installed. Their manifest and lock agr
 An Agent resource can remain unselected while inspecting. Choose its native client during review.
 Inspection checks the project's declared Jig version before evaluating declarations.
 
-This configured map is a structural aid. It does not supply a behavioral overview or establish the consequences of an edit.
+## Inspect source behavior
+
+Use the behavior view to investigate what a caller checks after a child returns.
+
+```sh
+jig inspect --flow --behavior
+jig inspect --flow binding:code --behavior
+jig inspect --flow --all --behavior
+```
+
+Read the selected target's routes alongside their source locations.
+For example, a converted preview can return `needs_mapping` with outcome `done`.
+The caller's checks determine whether that preview reaches export.
+The view can also describe a supported progress calculation and its requested publication.
+
+An opaque component remains visible in the configured inventory.
+The caller may still expose a reaction to an outcome allowed by the child's contract.
+Follow reported gaps into source before relying on a continuation.
+Use ordinary Runs to verify results, effects, and displayed progress.
+After an edit, invoke the same inspection again to analyze the updated source.

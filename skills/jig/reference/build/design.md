@@ -214,11 +214,11 @@ Read the caller's guard, dispatch, and return handling to establish the behavior
 Use `jig inspect --flow --all` for the complete project, including disconnected targets.
 Use `jig inspect --flow <target>` to retain other callers, entrypoints, and uses of a shared method.
 
-Keep a focused Mermaid flowchart in the task context or existing project documentation.
-Use actions and decisions as nodes, name callees at handoffs, and label edges with guards or outcomes established in source.
-Include the unchanged alternatives beside the changed route.
-Name any folded validation, error handling, cancellation, persistence, or concurrent join that affects the result.
-This is a source interpretation. Configured connections alone cannot supply those relationships.
+Use `jig inspect --flow <target> --behavior` when the installed command supports it.
+Read the prepared routes to locate the decision, affected handoff, and preserved alternatives.
+Verify unresolved conditions, effects, and continuations in the source.
+Use source directly when the view cannot describe the relevant behavior.
+See [source behavior inspection](results.md#inspect-source-behavior) for the command and its coverage.
 
 Follow the selected route into its evidence consumers: result records, saved reports, live views, and application guidance.
 A correct dispatch change can leave these consumers describing the previous behavior.

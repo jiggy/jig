@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import type { FlowContextOptions } from '../cli-flow-context.js'
+import { type FlowContextOptions, selectFlowContext } from './flow-inspection-scope.js'
 import { invalid } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
 import { captureOpenedPackageDirectory } from '../package/capture.js'
@@ -23,14 +23,70 @@ import { isProtectedProjectPath } from '../project/paths.js'
 import { retainFlowSourcePackages } from '../project/retained-flow.js'
 import { openPrivateProjectRoot } from '../project/root.js'
 import { privateDomainDigest } from './identity.js'
+import { PRIVATE_FLOW_CONTEXT_LIMITS } from './inspection-policy.js'
+import type { BehaviorReport } from './flow-behavior/model.js'
+import type { PackageProjectValue } from '../project/package-project.js'
 
 /** Capture and link current authoring with the ordinary resolver. Never opens admission state. */
-export async function inspectWorkingFlow(
+export function inspectWorkingFlow(
   project: string,
   evaluator: PrivateAuthorEvaluatorOptions,
   options: FlowContextOptions = {},
   signal?: AbortSignal,
 ): Promise<JsonValue> {
+  return captureWorkingFlow(project, evaluator, options, (topology) => topology, signal)
+}
+
+export function inspectWorkingFlowBehavior(
+  project: string,
+  evaluator: PrivateAuthorEvaluatorOptions,
+  options: FlowContextOptions,
+  signal?: AbortSignal,
+): Promise<BehaviorReport> {
+  return captureWorkingFlow(
+    project,
+    evaluator,
+    options,
+    async (topology, linked, members) => {
+      const selection = selectFlowContext(topology, options)
+      if (
+        selection.included.length > PRIVATE_FLOW_CONTEXT_LIMITS.targets ||
+        selection.edges.length > PRIVATE_FLOW_CONTEXT_LIMITS.connections
+      )
+        return {
+          revision: String(selection.snapshot.revision),
+          focus: selection.focus,
+          inventory: [],
+          scopes: [],
+          unavailable: 'This view exceeds the presentation limits. Inspect a smaller target.',
+        }
+
+      const { prepareFlowBehavior } = await import('./flow-behavior/captured-input.js')
+      return prepareFlowBehavior(
+        resolve(project),
+        String(selection.snapshot.revision),
+        selection.focus,
+        selection.included.map((item) => String(item.target)),
+        linked,
+        members,
+        signal,
+      )
+    },
+    signal,
+  )
+}
+
+async function captureWorkingFlow<T>(
+  project: string,
+  evaluator: PrivateAuthorEvaluatorOptions,
+  options: FlowContextOptions,
+  projectResult: (
+    topology: JsonValue,
+    linked: PackageProjectValue,
+    members: readonly CapturedFlowMember[],
+  ) => T | Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
   const root = await openPrivateProjectRoot(project)
   let temporary: string | undefined
   let authoring: Awaited<ReturnType<typeof captureProjectAuthoring>> | undefined
@@ -181,7 +237,7 @@ export async function inspectWorkingFlow(
     await jigRequirement.verify()
     await root.verify()
     signal?.throwIfAborted()
-    return {
+    const topology: JsonValue = {
       basis: 'working-tree',
       state: 'unreviewed',
       revision: privateDomainDigest('JIG-Working-Flow-Inspection/1', {
@@ -199,6 +255,7 @@ export async function inspectWorkingFlow(
         : { entrypoint: declaration.value.entrypoint }),
       targets,
     }
+    return await projectResult(topology, linked, source.members)
   } catch (error) {
     operationFailure = error
     throw error

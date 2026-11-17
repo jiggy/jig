@@ -14,6 +14,7 @@ import {
   requireFoundationOptIn,
 } from '../fixtures/host-foundation/materialize.js'
 import { checkInstalledDisplay, installedRuntime } from '../fixtures/installed-display.js'
+import { checkInstalledFlowBehavior } from '../fixtures/installed-flow-behavior.js'
 
 requireFoundationOptIn()
 const qualification = await qualifyFoundationHost()
@@ -122,6 +123,8 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
         expect(existsSync(join(project, path))).toBe(false)
       expect(await foundationResidue(qualification, command, root)).toEqual(before)
     }
+    await checkInstalledFlowBehavior(cli, join(root, 'behavior'), command)
+    expect(await foundationResidue(qualification, command, root)).toEqual(before)
     const installed = realpathSync(join(tooling, 'node_modules/@jigging/jig'))
     const runtime = realpathSync(
       createRequire(join(installed, 'package.json')).resolve(
