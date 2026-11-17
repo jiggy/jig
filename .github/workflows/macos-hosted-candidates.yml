@@ -402,7 +402,7 @@ jobs:
           node scripts/ci/host-scope.mjs --scope macos --results "$RUNNER_TEMP/host-job-results.json" > "$RUNNER_TEMP/affected-report.json"
       -
         name: "Download complete observed execution evidence"
-        if: "${{ needs.scope.outputs.required == 'true' && github.event_name != 'pull_request' }}"
+        if: "${{ needs.scope.outputs.required == 'true' }}"
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
           pattern: "macos-observed-*-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
@@ -410,7 +410,7 @@ jobs:
           merge-multiple: false
       -
         name: "Require complete observed host qualification"
-        if: "${{ needs.scope.outputs.required == 'true' && github.event_name != 'pull_request' }}"
+        if: "${{ needs.scope.outputs.required == 'true' }}"
         env:
           JOB_RESULTS: "${{ toJSON(needs) }}"
         run: |
