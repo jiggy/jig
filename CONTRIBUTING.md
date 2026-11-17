@@ -25,17 +25,16 @@ applicable path's terms. Include third-party provenance and required notices.
 
 ### macOS
 
-Use **Bun 1.4.2**, Node 22 or newer, Just 1.43.1, and jq. The Mac candidate's
-build checks the exact Bun version; the Linux Nix shell below pins a different
-qualified runtime and is not the Mac setup path.
+For native Apple Silicon macOS 15+, use **Bun 1.4.4**, Node 22 or newer, Just 1.43.1, and jq.
+The build checks the exact Bun version. The Linux Nix shell below is a separate setup path.
 
 With an older Bun installation, install the pinned version using Bun's
 [official installer](https://bun.sh/docs/installation):
 
 ```sh
-curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.2"
+curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.4"
 export PATH="$HOME/.bun/bin:$PATH"
-bun --version # must print 1.4.2
+bun --version # must print 1.4.4
 export JIG_AUTHORING_NODE_PATH="$(node -p 'process.execPath')"
 bun i
 just jig::build
@@ -193,13 +192,13 @@ builds Jig. Packing is explicit: `just jig::pack` or `just flow::pack`
 builds first and then packs. There is no automatic `prepack` hook.
 The release publisher still consumes already tested archives without rebuilding.
 
-Before pushing a review milestone, run `just preflight`. On an exact supported
-Mac it also runs every Mac-specific regression file in fresh sequential test
+Before pushing a review milestone, run `just preflight`.
+On a supported Apple Silicon Mac, it also runs every Mac regression file in fresh sequential test
 processes and checks that host ownership residue is unchanged. Native tests
 need ordinary launchd and disk-image access, so an enclosing execution sandbox
 may refuse them. They require no installed Agent clients or model calls.
 Unsupported Macs refuse before building; other hosts report portable-only
-coverage. Complete Linux and Intel/Apple Silicon qualification remains in CI.
+coverage. Complete Linux and Apple Silicon qualification remains in CI.
 Run this pass while other Jig work on the same host is idle so the residue
 comparison describes this test run.
 
@@ -225,9 +224,9 @@ The default profile follows the local OS (`portable-linux` on Linux and
 `portable` elsewhere). `--profile` selects either explicitly. These checks use
 the source runner's existing stage limits. They do not allocate a native host,
 so they also work on Macs outside the native preflight profiles. Complete Linux
-and Apple Silicon qualifications remain required CI checks. Complete Intel
-qualification runs nightly and can be requested manually for a PR. The ordinary
-`just preflight` still runs the local regression pass described above.
+and Apple Silicon qualifications remain required CI checks.
+Mac releases and nightly diagnostics test complete macOS 15 and macOS 26 inventories.
+Intel execution support is retired. The ordinary `just preflight` retains the local regression pass described above.
 
 ## Package release changes
 
