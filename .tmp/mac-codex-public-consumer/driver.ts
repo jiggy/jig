@@ -4,7 +4,7 @@ import { createServer } from 'node:https'
 import { open, readFile, realpath, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { AttemptClientError, createAttemptClient } from '@jigging/jig/client'
+import { ATTEMPT_FAILURE_CODES, AttemptClientError, createAttemptClient } from '@jigging/jig/client'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const project = join(root, 'project')
@@ -12,10 +12,49 @@ const evidence = join(root, 'evidence')
 const cli = join(root, 'node_modules/.bin/jig')
 let stage = 'preflight'
 let cancelSent = false
+let startupFailure: Record<string, unknown> | undefined
+let lastObservation: Record<string, unknown> | undefined
+let observationEvents = 0
 let server: ReturnType<typeof createServer> | undefined
 let submission: Awaited<ReturnType<ReturnType<typeof createAttemptClient>['submit']>> | undefined
 let prepared: Awaited<ReturnType<ReturnType<typeof createAttemptClient>['prepare']>> | undefined
 const traffic = { connections: 0, tlsSessions: 0, requests: 0 }
+
+const checkpointStages = ['flow-started', 'native-ready', 'native-initialized', 'codex-session-ready', 'native-startup-failed']
+const startupPhases = ['flow-started', 'create-channels', 'await-native-ready', 'initialize', 'session-new', 'checkpoint-ready', 'await-root-cancel']
+const causes = [...ATTEMPT_FAILURE_CODES, 'APPLICATION']
+const select = (value: unknown, allowed: readonly string[]) => typeof value === 'string' && allowed.includes(value) ? value : null
+function own(value: unknown, key: string): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const descriptor = Object.getOwnPropertyDescriptor(value, key)
+  return descriptor && Object.hasOwn(descriptor, 'value') ? descriptor.value : undefined
+}
+function projectObservation(result: { observation: unknown; checkpoint: unknown }) {
+  const terminal = own(result.observation, 'terminal')
+  const checkpointEvidence = own(result.checkpoint, 'evidence')
+  const details = own(terminal, 'details')
+  const sequence = own(result.checkpoint, 'sequence')
+  return {
+    execution: select(own(result.observation, 'execution'), ['accepted', 'running', 'terminal', 'uncertain']),
+    terminalStatus: select(own(terminal, 'status'), ['succeeded', 'failed', 'lost']),
+    terminalCode: select(own(terminal, 'code'), [...ATTEMPT_FAILURE_CODES, 'COORDINATOR_LOST']),
+    cleanup: select(own(result.observation, 'cleanup'), ['pending', 'confirmed', 'unresolved']),
+    checkpointAvailability: select(own(result.checkpoint, 'availability'), ['available', 'expired', 'unavailable']),
+    checkpointSequence: Number.isInteger(sequence) && Number(sequence) >= 1 && Number(sequence) <= 16 ? sequence : null,
+    checkpointStage: select(own(checkpointEvidence, 'stage'), checkpointStages),
+    startupPhase: select(own(checkpointEvidence, 'startupPhase'), startupPhases) ?? select(own(details, 'startupPhase'), startupPhases),
+    startupCause: select(own(checkpointEvidence, 'startupCause'), causes) ?? select(own(details, 'startupCause'), causes),
+  }
+}
+function observe(result: { observation: unknown; checkpoint: unknown }) {
+  const projected = projectObservation(result)
+  if (JSON.stringify(projected) !== JSON.stringify(lastObservation) && observationEvents++ < 24)
+    console.log(JSON.stringify({ event: 'public-observation', stage, ...projected }))
+  lastObservation = projected
+}
+function clientFailure(error: unknown) {
+  return error instanceof AttemptClientError ? { code: error.code, operation: error.operation, uncertain: error.uncertain } : {}
+}
 
 async function persist(name: string, value: unknown) {
   const file = await open(join(evidence, name), 'wx', 0o600)
@@ -79,27 +118,39 @@ async function main() {
   stage = 'await-ready-checkpoint'
   const readyDeadline = Date.now() + 90000
   let ready = false
-  let startupFailure: unknown
   try {
     while (Date.now() < readyDeadline) {
       const result = await observer.result({ ticket: prepared.ticket })
       assert.equal(result.observation.receipt?.runId, submission.receipt.runId)
-      if (result.checkpoint.availability === 'available' && result.checkpoint.sequence === 1) {
+      observe(result)
+      if (result.checkpoint.availability === 'available' && own(result.checkpoint.evidence, 'stage') === 'codex-session-ready') {
         assert.deepEqual(result.checkpoint.evidence, { stage: 'codex-session-ready', initialized: true, sessionCreated: true, promptSent: false })
         ready = true
         await persist('ready-observation.json', result)
         break
       }
-      if (result.observation.terminal) throw Error('Fresh Run ended before accepted startup checkpoint')
+      if (own(result.checkpoint.evidence, 'stage') === 'native-startup-failed') {
+        startupFailure = { reason: 'flow-reported-startup-failure', observation: lastObservation }
+        throw Error('Flow reported a closed startup failure')
+      }
+      if (result.observation.terminal) {
+        startupFailure = { reason: 'terminal-before-ready', observation: lastObservation }
+        throw Error('Fresh Run ended before accepted startup checkpoint')
+      }
       await sleep(250)
     }
     assert.equal(ready, true, 'No accepted genuine startup checkpoint within ninety seconds')
-  } catch (error) { startupFailure = error }
+  } catch (error) {
+    startupFailure ??= { reason: ready ? 'ready-observation-failed' : 'ready-not-established', ...clientFailure(error), observation: lastObservation }
+    await persist('startup-failure.json', startupFailure)
+    console.error(JSON.stringify({ event: 'startup-failure', ...startupFailure }))
+  }
   // Exactly one explicit cancellation, including failure teardown. Never retry it.
   stage = 'cancel-once'
   cancelSent = true
   const cancellation = await observer.cancel({ ticket: prepared.ticket })
   await persist('cancellation.json', cancellation)
+  console.log(JSON.stringify({ event: 'cancel-acknowledgement', acknowledged: cancellation.acknowledged }))
   assert.equal(cancellation.acknowledged, true)
   stage = 'await-confirmed-cleanup'
   const settlementDeadline = Date.now() + 90000
@@ -107,21 +158,27 @@ async function main() {
   while (Date.now() < settlementDeadline) {
     const result = await observer.result({ ticket: prepared.ticket })
     assert.equal(result.observation.receipt?.runId, submission.receipt.runId)
+    observe(result)
     if (result.observation.terminal && result.observation.cleanup === 'confirmed') { settled = result; break }
     if (result.observation.cleanup === 'unresolved') throw Error('Fresh Run cleanup was unresolved')
     await sleep(250)
   }
   assert.ok(settled, 'Cancellation acknowledgement did not establish confirmed cleanup within ninety seconds')
   await persist('terminal-observation.json', settled)
-  assert.equal(settled.observation.terminal?.status, 'failed')
-  assert.equal(settled.observation.terminal?.status === 'failed' && settled.observation.terminal.code, 'CANCELLED')
+  stage = 'validate-confirmed-cleanup'
   assert.equal(settled.observation.cleanup, 'confirmed')
+  stage = 'join-owner-completion'
   const ended = await bounded(completion, 15000, 'Owning application connection did not settle')
   if ('error' in ended) throw ended.error
   assert.equal(ended.observation?.receipt?.runId, submission.receipt.runId)
   assert.equal(ended.observation?.cleanup, 'confirmed')
+  stage = 'validate-startup-outcome'
+  if (startupFailure) throw Error('Startup failed before teardown; preserve its separate closed diagnostic')
+  stage = 'validate-cancelled-terminal'
+  assert.equal(settled.observation.terminal?.status, 'failed')
+  assert.equal(settled.observation.terminal?.status === 'failed' && settled.observation.terminal.code, 'CANCELLED')
+  stage = 'validate-loopback-traffic'
   assert.deepEqual(traffic, { connections: 0, tlsSessions: 0, requests: 0 }, 'The selected loopback API endpoint observed traffic without a prompt')
-  if (startupFailure) throw startupFailure
   stage = 'verified'
   const summary = { qualifiedBoundary: 'ordinary-installed-codex-startup-and-root-cancellation', runId: submission.receipt.runId, initialized: ready, sessionCreated: ready, promptSent: false, cancelRequests: 1, terminal: 'CANCELLED', cleanup: 'confirmed', selectedEndpointTraffic: traffic,
     kernelNetworkIsolation: false, providerAuthenticationQualified: false, inferenceQualified: false }
@@ -132,9 +189,9 @@ try { await main() }
 catch (error) {
   // Preserve private state and tickets. This driver neither resubmits nor resets
   // an attempt after an uncertain transport or cancellation result.
-  await persist('failure.json', { stage, cancelSent, prepared: prepared !== undefined, submitted: submission !== undefined, traffic,
-    ...(error instanceof AttemptClientError ? { code: error.code, operation: error.operation, uncertain: error.uncertain } : { errorName: error instanceof Error ? error.name : 'unknown' }) }).catch(() => {})
-  console.error(JSON.stringify({ failed: true, stage, cancelSent, evidenceRetained: true,
+  await persist('failure.json', { stage, cancelSent, startupFailure: startupFailure ?? null, observation: lastObservation ?? null, prepared: prepared !== undefined, submitted: submission !== undefined, traffic,
+    ...(error instanceof AttemptClientError ? { code: error.code, operation: error.operation, uncertain: error.uncertain } : { errorCategory: 'assertion-or-application' }) }).catch(() => {})
+  console.error(JSON.stringify({ failed: true, stage, cancelSent, startupFailure: startupFailure ?? null, observation: lastObservation ?? null, traffic, evidenceRetained: true,
     ...(error instanceof AttemptClientError ? { code: error.code, operation: error.operation, uncertain: error.uncertain } : {}) }))
   process.exitCode = 1
 } finally {
