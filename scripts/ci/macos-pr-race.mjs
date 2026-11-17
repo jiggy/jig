@@ -500,12 +500,13 @@ export function selectMacPrDecisions({
       selected = rows.filter((row) => row.decision.attempt === attempt)
     if (selected.length !== 1) throw new Error('Ambiguous latest Mac shard decision')
     const row = selected[0]
+    const selectedName = macJobName(row.decision.major, shard)
     for (const candidate of candidates) {
-      if (
-        candidate.run_attempt <= attempt ||
-        noAllocation(candidate) ||
-        noop(candidate, 'Decide PR shard contention', NOOP_STEP_NAMES)
-      )
+      if (candidate.run_attempt <= attempt) continue
+      // GitHub has queued a replacement of this winner, even before it assigns a runner.
+      if (candidate.name === selectedName && candidate.status === 'queued')
+        throw pending('The fixed Mac worker retry is awaiting allocation')
+      if (noAllocation(candidate) || noop(candidate, 'Decide PR shard contention', NOOP_STEP_NAMES))
         continue
       if (['queued', 'in_progress'].includes(candidate.status))
         throw pending('New Mac candidate has not settled its decision')

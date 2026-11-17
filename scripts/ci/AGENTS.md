@@ -369,6 +369,9 @@ They consume frozen package exports with tracked test helpers and installed
 - `macos-host-collect.mjs` reconciles immutable per-shard artifacts against the complete plan for every required macOS major.
   It rejects missing or failed reports, changed inputs, foreign jobs, ambiguous artifacts, and unconfirmed completion.
   PR failed-job retries may retain successful shard evidence within the original run and unchanged qualification session.
+  A queued retry of a selected worker keeps collection pending before it receives a runner.
+  An unrelated queued candidate does not delay an accepted winner.
+
   The latest actual execution is authoritative. Later failures cannot fall back to earlier green.
   Original execution IDs, attempts, timestamps, and artifact identities remain visible.
 
