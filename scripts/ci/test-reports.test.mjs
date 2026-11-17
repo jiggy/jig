@@ -179,7 +179,7 @@ function fixture(architecture) {
   return { root, source, evidence, reports, directories, files, architecture }
 }
 test('full ARM Mac reader owns every report once including native and installed startup', () => {
-  for (const arch of ['arm64'] {
+  for (const arch of ['arm64']) {
     const f = fixture(arch)
     const original = readFileSync(f.reports[0], 'utf8')
     const owningFile = /<testcase file="([^"]+)"/.exec(original)[1]
@@ -226,7 +226,7 @@ test('full ARM Mac reader owns every report once including native and installed 
   }
 })
 test('full Mac reports require the exact current host prerequisites from every shard', () => {
-  for (const architecture of ['arm64'] {
+  for (const architecture of ['arm64']) {
     const f = fixture(architecture)
     const path = join(f.directories.at(-1), 'prerequisites.json')
     const read = () =>
@@ -322,7 +322,7 @@ test('a partial ARM shard plan cannot qualify the complete single-host role', ()
   )
 })
 test('full Mac reader rejects reordered plans even when every matching report remains complete', () => {
-  for (const architecture of ['arm64'] {
+  for (const architecture of ['arm64']) {
     const f = fixture(architecture)
     const shards = planMacHostTests(f.files, architecture)
     const shard = shards.find((item) => item.groups.length > 1)
