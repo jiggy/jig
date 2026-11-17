@@ -15,7 +15,8 @@ test('review-only required enum rejects missing, repeated and unsupported operan
     for (const args of [
       ['review', '--agent'],
       ['review', '--agent', 'unknown'],
-      ['review', '--agent', 'pi', '--agent', 'codex'],
+      ['review', '--agent', 'pi'],
+      ['review', '--agent', 'claude', '--agent', 'codex'],
       ['run', '--agent', 'codex'],
     ]) {
       const errors: string[] = []
@@ -43,10 +44,10 @@ const issue = {
   location: { path: 'bindings/model.ts', line: 5, column: 33, kind: 'client-literal' as const },
   declaration: 'bindings/model.ts',
   slot: 'native',
-  client: 'pi' as const,
-  sourceClient: 'pi' as const,
-  policy: { kind: 'acp' as const, client: 'pi' as const },
-  code: 'PROJECT_ACP_PI_EXECUTABLE' as const,
+  client: 'claude' as const,
+  sourceClient: 'claude' as const,
+  policy: { kind: 'acp' as const, client: 'claude' as const },
+  code: 'PROJECT_ACP_CLAUDE_EXECUTABLE' as const,
   recipients: [{ binding: 'model', declaration: 'bindings/model.ts', slot: 'native' }],
   omittedRecipients: 0,
   observedRefusals: 1,
@@ -73,17 +74,17 @@ test('omitted policy rows do not erase the primary refusal from rendering', () =
       agentRetryCommands: {
         codex: 'jig review --agent codex',
         claude: 'jig review --agent claude',
-        pi: 'jig review --agent pi',
+
       },
     })
-    expect(text).toContain(details ? 'Pi is selected' : 'Pi executable not found')
+    expect(text).toContain(details ? 'Claude Code is selected' : 'Claude Code executable not found')
     expect(text).toContain('bindings/model.ts')
     expect(text).toContain(
       details ? 'Any existing approval remains unchanged' : 'Previous approval unchanged',
     )
     if (!details) {
       expect(text).not.toContain('$ jig review --agent codex')
-      expect(text).toContain('Install Pi')
+      expect(text).toContain('Install Claude Code')
     }
   }
 })
@@ -98,7 +99,7 @@ test('non-ACP unavailability is not rendered as an ACP refusal', () => {
         agentRetryCommands: {
           codex: 'jig review --agent codex',
           claude: 'jig review --agent claude',
-          pi: 'jig review --agent pi',
+
         },
       },
     ),

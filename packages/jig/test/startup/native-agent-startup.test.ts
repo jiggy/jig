@@ -19,7 +19,6 @@ import {
   resolvePrivateLinuxHostPath,
 } from '../../src/internal/linux-host-paths.js'
 import { PrivateMacosBackend } from '../../src/internal/macos-native-backend.js'
-import { openPrivatePiAgentProvider } from '../../src/internal/pi-agent-provider.js'
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 
 async function qualifyMacosStartup(
@@ -148,18 +147,14 @@ async function qualifyMacosStartup(
   }
 }
 
-for (const client of ['codex', 'claude', 'pi'] as const) {
+for (const client of ['codex', 'claude'] as const) {
   test(`${client}: native ACP startup and new session without network`, async () => {
     const selected = process.env[`JIG_${client.toUpperCase()}_STARTUP_PATH`]
     if (!selected) throw new Error(`JIG_${client.toUpperCase()}_STARTUP_PATH is required`)
     const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-native-startup-')))
     try {
       const factory =
-        client === 'codex'
-          ? openPrivateCodexAgentProvider
-          : client === 'claude'
-            ? openPrivateClaudeAgentProvider
-            : openPrivatePiAgentProvider
+        client === 'codex' ? openPrivateCodexAgentProvider : openPrivateClaudeAgentProvider
       // Placeholder keys establish local startup/session behavior only.
       // They supply no authentication, subscription or inference evidence.
       const open = () =>
@@ -169,16 +164,10 @@ for (const client of ['codex', 'claude', 'pi'] as const) {
             [`${client.toUpperCase()}_PATH`]: selected,
             ...(client === 'codex'
               ? { OPENAI_API_KEY: 'offline-placeholder', OPENAI_MODEL: 'gpt-5.3-codex' }
-              : client === 'claude'
-                ? {
-                    ANTHROPIC_API_KEY: 'offline-placeholder',
-                    ANTHROPIC_MODEL: 'claude-haiku-4-5',
-                  }
-                : {
-                    PI_API_KEY: 'offline-placeholder',
-                    PI_PROVIDER: 'mistral',
-                    PI_MODEL: 'ministral-8b-2512',
-                  }),
+              : {
+                  ANTHROPIC_API_KEY: 'offline-placeholder',
+                  ANTHROPIC_MODEL: 'claude-haiku-4-5',
+                }),
           },
           root,
         )

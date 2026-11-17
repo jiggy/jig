@@ -27,7 +27,7 @@ Keep the example's declared dependencies and supplied acceptance cases.
 
 The example declares the ACP Agent dependency and keeps an unpinned
 native grant in `bindings/agent.ts`. [Choose your client](../build/agents.md#switching)
-during interactive review, or use `--agent codex|claude|pi` in automation.
+during interactive review, or use `--agent codex|claude` in automation.
 The `defaultProviders` map selects that Binding for the Agent Run contract.
 To require a particular client for a specialist, pin it explicitly in source.
 

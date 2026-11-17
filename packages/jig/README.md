@@ -43,7 +43,7 @@ repository stays unchanged.
 Project commands:
 
 ```text
-jig init [--bare] <directory> [--agent [codex|claude|pi]]
+jig init [--bare] <directory> [--agent [codex|claude]]
 jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run [flow:path|npm:package|binding:id] [options]
@@ -201,8 +201,8 @@ with `package: 'npm:@jigging/agent-acp'`.
 Its Binding grants the underlying HTTP endpoint or finite ACP resource;
 replacing the method does not require a host plugin.
 
-Native Codex, Claude Code, and Pi clients selected by ACP grants are discovered on the operator's
-`PATH`. Absolute `CODEX_PATH`, `CLAUDE_PATH`, and `PI_PATH` overrides select a
+Native Codex and Claude Code clients selected by ACP grants are discovered on the operator's
+`PATH`. Absolute `CODEX_PATH` and `CLAUDE_PATH` overrides select a
 specific installation. Review shows the resolved executable; project-local
 binaries are excluded from implicit discovery. See [Choose an Agent](https://jig.md/build/agents)
 for supported installations and authentication.

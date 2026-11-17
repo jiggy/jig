@@ -45,9 +45,6 @@
     bun build node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js --target=bun --format=esm --outfile=libexec/agent/claude-agent-acp.js
     cp node_modules/@agentclientprotocol/claude-agent-acp/LICENSE libexec/agent/claude-agent-acp.LICENSE
     cp node_modules/@anthropic-ai/claude-agent-sdk/LICENSE.md libexec/agent/claude-agent-sdk.LICENSE
-    bun build src/internal/pi-agent-launcher.ts --target=bun --format=esm --outfile=libexec/agent/pi-agent-launcher.js
-    bun build node_modules/pi-acp/dist/index.js --target=bun --format=esm --outfile=libexec/agent/pi-acp.js
-    cp node_modules/pi-acp/LICENSE libexec/agent/pi-acp.LICENSE
     bun build src/internal/bun-native-preparation-worker.ts --target=bun --format=esm --outfile=libexec/preparation/bun-native-preparation-worker.js
     bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-sdk.bundle.js
     cp ../../docs/jig/spec/machine/project-authoring-1.schema.json libexec/evaluator/project-authoring-1.schema.json

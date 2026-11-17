@@ -48,8 +48,8 @@ or foreign lockfiles. Patch declarations and bytes are captured, checked against
 the lock, and retained with the prepared installation; Bun owns their application
 inside the same script-disabled scope. An ordinary API-backed Agent
 prepares its request as data and uses an exact reviewed HTTP grant; the
-separate HTTP owner holds the credential and network authority. Native Codex,
-Claude Code, or Pi clients inherit networking only inside their admitted ACP
+separate HTTP owner holds the credential and network authority. Native Codex and
+Claude Code clients inherit networking only inside their admitted ACP
 execution scope. Their executable, authentication and launch policy remain
 operator configuration. Jig supplies no default model.
 
@@ -58,7 +58,7 @@ through a transient private channel. Instructions and selected Skill text
 arrive through the ordinary Agent Flow's admitted resource call. A
 native ACP client starts with an empty work directory. Jig provides it no
 filesystem, terminal, or MCP client capability, no MCP servers, and no
-persistent permission. Claude and Pi profiles disable their tools; Codex uses
+persistent permission. Claude profiles disable their tools. Codex uses
 its pinned constrained workspace mode with permission requests refused. Linux
 additionally supplies managed restrictions; subscription authentication stays
 in memory with ephemeral storage, rather than in a tool-readable file.

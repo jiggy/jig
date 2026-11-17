@@ -16,7 +16,7 @@ async function fixture(algorithm, respond, scenario) {
   server.listen(0, '127.0.0.1')
   await once(server, 'listening')
   const archive = {
-    name: 'pi',
+    name: 'claude',
     url: `http://127.0.0.1:${server.address().port}/archive`,
     algorithm,
     digest: createHash(algorithm)
@@ -100,7 +100,7 @@ test('persistent HTTP failure stops after three attempts and reports the status'
       await assert.rejects(run(), (error) => {
         assert.equal(error.code, 1)
         assert.equal(error.stdout, '')
-        assert.match(error.stderr, /client download failed: pi \(attempt 3\/3; HTTP 403\)/)
+        assert.match(error.stderr, /client download failed: claude \(attempt 3\/3; HTTP 403\)/)
         return true
       })
       assert.equal(requests(), 3)
@@ -115,7 +115,7 @@ test('changed archive identity refuses immediately without acquisition retries',
     async ({ run, requests }) => {
       await assert.rejects(run({ digest: '0'.repeat(64) }), (error) => {
         assert.equal(error.stdout, '')
-        assert.match(error.stderr, /client archive identity changed: pi/)
+        assert.match(error.stderr, /client archive identity changed: claude/)
         assert.doesNotMatch(error.stderr, /retrying/)
         return true
       })

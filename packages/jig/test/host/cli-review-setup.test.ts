@@ -23,7 +23,7 @@ async function fixture(run: (root: string, command: Command) => Promise<void>) {
       cwd: root,
       env: {
         ...foundationEnvironment(),
-        PI_PATH: join(root, 'absent-pi'),
+        CLAUDE_PATH: join(root, 'absent-claude'),
         CODEX_PATH: join(root, 'absent-codex'),
         CLAUDE_PATH: join(root, 'absent-claude'),
       },
@@ -87,7 +87,7 @@ async function addUnavailableAgent(root: string) {
     root,
     'bindings/model.ts',
     `import {defineBinding} from '@jigging/jig';
-export default defineBinding({package: 'flows/agent', slots: {native: {kind: 'acp', client: 'pi'}}});`,
+export default defineBinding({package: 'flows/agent', slots: {native: {kind: 'acp', client: 'claude'}}});`,
   )
 }
 
@@ -121,7 +121,7 @@ describe.serial('installed review setup with actual configuration evaluation', (
       const retry = await command([
         'review',
         '--agent',
-        'pi',
+        'claude',
         '--allow-resolution-network',
         '--generate-contracts',
         '--verification',
@@ -130,7 +130,7 @@ describe.serial('installed review setup with actual configuration evaluation', (
       ])
       expect(retry.code, retry.stderr).toBe(2)
       expect(retry.stderr).toContain(
-        '$ jig review --agent pi --allow-resolution-network --generate-contracts --verification strict',
+        '$ jig review --agent claude --allow-resolution-network --generate-contracts --verification strict',
       )
       expect(retry.stderr).not.toContain('--yes')
       expect(await readFile(join(root, 'jig.lock'))).toEqual(lock)

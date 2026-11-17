@@ -540,7 +540,7 @@ test('native qualification writer binds the exact upstream Linux receipt and pre
         root,
         output: join(temporary, 'bad.json'),
         kind: 'native',
-        profile: 'pi',
+        profile: 'codex',
         env,
       }),
       /requires its Linux receipt/,
@@ -628,7 +628,7 @@ function readinessFixture() {
     [300, [artifact(3001, `macos-qualification-arm64-${source}-r300-a1`, mac)]],
     [
       400,
-      ['codex', 'claude', 'pi'].map((client, i) => {
+      ['codex', 'claude'].map((client, i) => {
         const receipt = qualify('native', client, native)
         receipt.upstream = { receiptSha256: linuxDigest, receipt: structuredClone(linuxReceipt) }
         receipts.set(4000 + i, receipt)
@@ -640,7 +640,7 @@ function readinessFixture() {
     [100, [...CI_QUALIFICATION_JOBS, 'candidate-build']],
     [200, [...LINUX_QUALIFICATION_JOBS]],
     [300, [...MACOS_QUALIFICATION_JOBS, ...macCoverage.executions.map((row) => row.name)]],
-    [400, ['codex', 'claude', 'pi'].map((client) => `${client} — Ubuntu 24.04`)],
+    [400, ['codex', 'claude'].map((client) => `${client} — Ubuntu 24.04`)],
   ])
   const jobs = new Map(
     [...names].map(([id, list]) => [
@@ -721,7 +721,7 @@ test('the actual readiness snapshot satisfies the shared publisher guard', async
     receipt: hostSnapshot.candidate.receiptSha256,
   }
   validateSnapshot(hostSnapshot, context)
-  assert.equal(hostSnapshot.artifacts.length, 6)
+  assert.equal(hostSnapshot.artifacts.length, 5)
   for (let index = 0; index < hostSnapshot.artifacts.length; index++) {
     const incomplete = structuredClone(hostSnapshot)
     incomplete.artifacts.splice(index, 1)
@@ -749,7 +749,7 @@ test('readiness accepts complete canonical qualification even when native descen
       LINUX_QUALIFICATION_JOBS.length +
       MACOS_QUALIFICATION_JOBS.length +
       fixture.receipts.get(3001).coverage.executions.length +
-      3,
+      2,
   )
   assert.deepEqual(
     result.flowSnapshot.runs.map((entry) => entry.runId),
@@ -760,7 +760,7 @@ test('readiness accepts complete canonical qualification even when native descen
     [100, 200, 300, 400],
   )
   assert.equal(result.flowSnapshot.artifacts.length, 1)
-  assert.equal(result.hostSnapshot.artifacts.length, 6)
+  assert.equal(result.hostSnapshot.artifacts.length, 5)
   for (const retained of result.hostSnapshot.runs)
     assert.ok(
       retained.jobs.every(
@@ -787,7 +787,7 @@ test('native source selection adds no qualification credit and cannot replace a 
   assert.equal(complete.readyHost, true)
   assert.deepEqual(
     complete.hostSnapshot.runs.find((entry) => entry.runId === 400).jobs.map((job) => job.name),
-    ['codex', 'claude', 'pi'].map((client) => `${client} — Ubuntu 24.04`),
+    ['codex', 'claude'].map((client) => `${client} — Ubuntu 24.04`),
   )
   fixture.jobs.get(400).find((job) => job.name === 'codex — Ubuntu 24.04').conclusion = 'skipped'
   assert.equal((await fixture.check()).readyHost, false)
@@ -940,11 +940,12 @@ test('a queued manual native run can acquire current evidence after its creation
   native.created_at = '2025-12-31T00:00:00Z'
   native.event = 'workflow_dispatch'
   native.head_sha = source
-  for (const receipt of [4000, 4001, 4002]) {
-    fixture.receipts.get(receipt).consumer.event = native.event
-    fixture.receipts.get(receipt).consumer.headSha = source
+  for (const artifact of fixture.artifacts.get(400)) {
+    const { consumer } = fixture.receipts.get(artifact.id)
+    consumer.event = native.event
+    consumer.headSha = source
+    artifact.workflow_run.head_sha = source
   }
-  for (const artifact of fixture.artifacts.get(400)) artifact.workflow_run.head_sha = source
   const result = await fixture.check()
   assert.equal(result.readyFlow, true)
   assert.equal(result.readyHost, true)
@@ -1068,7 +1069,7 @@ test('failed, cancelled, skipped, missing or stale host evidence blocks Jig whil
       f.receipts.get(4001).upstream.receiptSha256 = 'e'.repeat(64)
     },
     (f) => {
-      f.receipts.get(4002).candidate.artifactDigest = `sha256:${'e'.repeat(64)}`
+      f.receipts.get(4001).candidate.artifactDigest = `sha256:${'e'.repeat(64)}`
     },
   ]
   for (const mutate of mutations) {

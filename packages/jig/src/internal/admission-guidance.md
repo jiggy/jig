@@ -409,7 +409,7 @@ Version metadata is checked before evaluation and reverified before capture comp
   Unknown child codes and private exception messages remain closed.
 
   Unsupported Volta selections retain the existing wrapper diagnostic, including
-  Claude/Pi and Codex installations outside the supported static npm profile.
+  Claude and Codex installations outside the supported static npm profile.
   Preserve that cause through Codex opening without executing the dispatcher or
   choosing another installation. The operator may select the actual native
   binary. The private project-session acquisition and operation callbacks permit

@@ -172,7 +172,7 @@ test('automatic native scope selects exact generated releases and preserves manu
   const feature = commit(root, 'Native scope source')
   assert.deepEqual(await select(feature), {
     output: 'qualify=false\n',
-    summary: `## Native qualification source\n\nSource: ${feature}\n\n**Native qualification omitted**: feature-source.\n\n**No native clients were tested. No qualification receipt was created.**\n\nSource selection creates no qualification evidence. Publication still requires all three native clients.\n`,
+    summary: `## Native qualification source\n\nSource: ${feature}\n\n**Native qualification omitted**: feature-source.\n\n**No native clients were tested. No qualification receipt was created.**\n\nSource selection creates no qualification evidence. Publication still requires both native clients.\n`,
   })
   await note(root, 'native-scope-change', ['@jigging/jig'])
   const pending = commit(root, 'Pending release')

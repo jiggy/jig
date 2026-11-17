@@ -725,7 +725,7 @@ test('native live jobs require release scope while manual main diagnostics remai
   assert.equal(job.if, "needs.scope.outputs.qualify == 'true'")
   assert.deepEqual(
     job.strategy.matrix.include.map(({ client }) => client),
-    ['codex', 'claude', 'pi'],
+    ['codex', 'claude'],
   )
   assert.equal(job.strategy['fail-fast'], false)
   assert.equal(job.environment, 'native-agent-api')
@@ -734,7 +734,7 @@ test('native live jobs require release scope while manual main diagnostics remai
   const native = job.steps.find((step) => step.id === 'native-api').run
   assert.ok(native.includes('--timeout 420000 "${test_arguments[@]}"'))
   const selection = native.slice(native.indexOf('test_arguments=()'), native.indexOf('set +e'))
-  for (const client of ['codex', 'claude', 'pi']) {
+  for (const client of ['codex', 'claude']) {
     const result = spawnSync(
       '/bin/bash',
       [
@@ -798,11 +798,6 @@ test('native provider proof selects first-party credentials only with a protecte
       client: 'claude', key: 'test-claude-key', model: 'claude-test-model',
       selectedKey: 'test-claude-key', selectedModel: 'claude-test-model',
       selectedRoute: 'anthropic', selectedBase: 'https://api.anthropic.com', status: 0,
-    },
-    {
-      client: 'pi', key: '', model: '', selectedKey: 'test-router-key',
-      selectedModel: 'mistralai/ministral-8b-2512', selectedRoute: 'openrouter',
-      selectedBase: '', status: 0,
     },
     { client: 'codex', key: 'test-codex-key', model: '', status: 1 },
     { client: 'claude', key: '', model: 'claude-test-model', status: 1 },

@@ -13,7 +13,7 @@ The application declares ordinary FLOW and ACP Agent package dependencies.
 Review prepares those dependencies. Download this directory and follow
 [Choose an Agent](https://jig.md/build/agents) for authentication and configuration.
 The inline ACP policy in `bindings/agent.ts` leaves `client` unspecified,
-so the operator chooses Codex, Claude Code or Pi during review.
+so the operator chooses Codex or Claude Code during review.
 Inspect `issue.json`, `bindings/specialist.ts`, and
 `flows/read-project/logs-cases.json`.
 From this directory:
@@ -25,7 +25,7 @@ jig run
 
 Interactive review asks for the native Agent client. For an automated
 review, use `jig review --agent CLIENT --allow-resolution-network`,
-where `CLIENT` is `codex`, `claude`, or `pi`. Review shows the effective
+where `CLIENT` is `codex` or `claude`. Review shows the effective
 client before approval and leaves the Binding unchanged. Repeat the choice
 on later reviews. To require a specific client, explicitly pin it in the
 Binding and review that policy change. Normal `jig run` uses only the

@@ -64,10 +64,6 @@ describe('isolated operator-selected ACP authentication profiles', () => {
     const claude = privateAcpProfileEnvironment(sources, 'claude', 'claude-work')
     expect(claude.ANTHROPIC_AUTH_TOKEN).toBe('selected-claude-token')
     expect(claude.OPENAI_API_KEY).toBeUndefined()
-    const pi = privateAcpProfileEnvironment(sources, 'pi', 'pi-home')
-    expect(pi.PI_CODING_AGENT_DIR).toBe('/operator/pi-personal')
-    expect(pi.PI_PROVIDER).toBe('openai-codex')
-    expect(pi.OPENAI_API_KEY).toBeUndefined()
   })
   test('rejects missing, ambiguous and cross-client profile data without fallback', () => {
     for (const [client, profile, value] of [
@@ -80,7 +76,6 @@ describe('isolated operator-selected ACP authentication profiles', () => {
         'claude-work',
         { JIG_ACP_PROFILE_CLAUDE_WORK__CLAUDE_CODE_OAUTH_TOKEN: 'conflict' },
       ],
-      ['pi', 'pi-home', { JIG_ACP_PROFILE_PI_HOME__PI_API_KEY: 'conflict' }],
     ] as const) {
       expect(() =>
         privateAcpProfileEnvironment({ ...sources, ...value }, client, profile),
@@ -104,7 +99,7 @@ describe('target-selected private ACP resources', () => {
     expect(privateLinuxProtectedDestination('/agent/client')).toBeFalse()
   })
   test('maps ordinary setup errors without exposing private causes or accepting forged codes', () => {
-    for (const client of ['codex', 'claude', 'pi'] as const) {
+    for (const client of ['codex', 'claude'] as const) {
       for (const stage of [
         'executable',
         'installation',
@@ -144,7 +139,7 @@ describe('target-selected private ACP resources', () => {
       const environment = { PATH: '', CODEX_PATH: join(root, 'missing-codex') }
       const owner = openPrivateAcpResources(support, environment, root)
       environment.CODEX_PATH = process.execPath
-      for (const client of ['codex', 'claude', 'pi'] as const) {
+      for (const client of ['codex', 'claude'] as const) {
         await expect(
           selectPrivateAcpResources(owner, slots(client), support),
         ).rejects.toMatchObject({ code: acpSetupCode(client, 'executable') })

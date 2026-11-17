@@ -84,7 +84,7 @@ test('session retention is separately reviewed and restricted to qualified Codex
   })
   for (const retainSessions of [false, 1, 'true', null])
     expect(() => normalizeGrant({ kind: 'acp', client: 'codex', retainSessions })).toThrow()
-  for (const client of ['claude', 'pi'])
+  for (const client of ['claude'])
     expect(() => normalizeGrant({ kind: 'acp', client, retainSessions: true })).toThrow()
   expect(
     normalizeGrant({
@@ -217,7 +217,7 @@ test('one slot grammar supports inline policies and optional named reuse', () =>
 test('ACP model is bounded reviewed policy, not an environment or prompt override', async () => {
   for (const model of ['', null, 42, ' model', 'model\n', '../model', 'a'.repeat(257)])
     expect(() => normalizeGrant({ kind: 'acp', client: 'codex', model })).toThrow()
-  const grant = normalizeGrant({ kind: 'acp', client: 'pi', model: 'provider/model:free' })
+  const grant = normalizeGrant({ kind: 'acp', client: 'claude', model: 'provider/model:free' })
   for (const name of ['project-authoring', 'jig-lock']) {
     const bytes = await Bun.file(
       new URL(`../../../docs/jig/spec/machine/${name}-1.schema.json`, suiteTestUrl),

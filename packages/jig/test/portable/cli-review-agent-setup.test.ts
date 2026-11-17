@@ -15,10 +15,10 @@ function issue(overrides: Partial<PrivateAgentReadinessIssue> = {}): PrivateAgen
     location: { path: 'bindings/model.ts', line: 5, column: 33, kind: 'client-literal' },
     declaration: 'bindings/model.ts',
     slot: 'native',
-    client: 'pi',
-    sourceClient: 'pi',
-    policy: { kind: 'acp', client: 'pi' },
-    code: 'PROJECT_ACP_PI_EXECUTABLE',
+    client: 'claude',
+    sourceClient: 'claude',
+    policy: { kind: 'acp', client: 'claude' },
+    code: 'PROJECT_ACP_CLAUDE_EXECUTABLE',
     recipients: [{ binding: 'model', declaration: 'bindings/model.ts', slot: 'native' }],
     omittedRecipients: 0,
     observedRefusals: 1,
@@ -47,7 +47,7 @@ const options = {
     codex: "jig review './project' --agent codex --allow-resolution-network --verification strict",
     claude:
       "jig review './project' --agent claude --allow-resolution-network --verification strict",
-    pi: "jig review './project' --agent pi --allow-resolution-network --verification strict",
+
   },
 }
 
@@ -61,11 +61,11 @@ describe('concise review Agent recovery', () => {
     )
     expect(text).toBe(`Review could not finish
 
-  Agent unavailable: Pi executable not found.
+  Agent unavailable: Claude Code executable not found.
   Selection context: "bindings/model.ts":5:33; slot "native".
 
   Next step
-    Install Pi, add it to PATH, or set PI_PATH to its absolute executable path.
+    Install Claude Code, add it to PATH, or set CLAUDE_PATH to its absolute executable path.
     $ ${options.retryCommand}
 
   Or use Codex
@@ -73,7 +73,7 @@ describe('concise review Agent recovery', () => {
     $ ${options.agentRetryCommands.codex}
     Only unpinned Agent grants use this choice. Explicit pins remain unchanged.
 
-  Diagnostic code: PROJECT_ACP_PI_EXECUTABLE
+  Diagnostic code: PROJECT_ACP_CLAUDE_EXECUTABLE
 
   No new approval. Previous approval unchanged. No Flow or model call started.
   Setup details: add --details to your review command.
@@ -109,19 +109,19 @@ describe('concise review Agent recovery', () => {
 
   test('a rejected override needs repair without claiming the client is missing', () => {
     const text = renderReviewAgentSetup(
-      report([issue({ rejectedOverride: 'PI_PATH' })]),
+      report([issue({ rejectedOverride: 'CLAUDE_PATH' })]),
       compactOptions,
     )
-    expect(text).toContain('PI_PATH was rejected. PATH was not used.')
-    expect(text).toContain('Set PI_PATH to an absolute Pi executable, or unset it to use PATH.')
+    expect(text).toContain('CLAUDE_PATH was rejected. PATH was not used.')
+    expect(text).toContain('Set CLAUDE_PATH to an absolute Claude Code executable, or unset it to use PATH.')
     expect(text).not.toContain('executable not found')
   })
 
   test('model pins, retention and non-executable causes do not suggest a client-switch command', () => {
     for (const value of [
-      issue({ policy: { kind: 'acp', client: 'pi', model: 'chosen-model' } }),
+      issue({ policy: { kind: 'acp', client: 'claude', model: 'chosen-model' } }),
       issue({ policy: { kind: 'acp', client: 'codex', retainSessions: true } }),
-      issue({ code: 'PROJECT_ACP_PI_MODEL' }),
+      issue({ code: 'PROJECT_ACP_CLAUDE_MODEL' }),
       issue({ alternatives: [] }),
     ]) {
       const text = renderReviewAgentSetup(report([value]), compactOptions)
@@ -167,15 +167,15 @@ describe('read-only review Agent setup diagnostics', () => {
   test('details retain provenance, passive alternatives, selected-client repair and one safe retry', () => {
     const text = renderReviewAgentSetup(report(), options)
     expect(text).toContain('Review could not finish')
-    expect(text).toContain('Pi is selected, but no usable executable')
+    expect(text).toContain('Claude Code is selected, but no usable executable')
     expect(text).toContain('"bindings/model.ts":5:33; slot "native"')
     expect(text).toContain('captured source client literal')
     expect(text).toContain('binding:model')
     expect(text).toContain('authentication and readiness not checked')
-    expect(text).toContain('To keep Pi:')
-    expect(text).toContain('PI_PATH')
-    expect(text).toContain('from "pi" to "codex"')
-    expect(text).toContain('from "pi" to "claude"')
+    expect(text).toContain('To keep Claude Code:')
+    expect(text).toContain('CLAUDE_PATH')
+    expect(text).toContain('from "claude" to "codex"')
+    expect(text).not.toContain('from "claude" to "claude"')
     expect(text.match(/\$ jig review/g)).toHaveLength(1)
     expect(text).toContain(options.retryCommand)
     expect(text).not.toContain('--yes')
@@ -220,7 +220,7 @@ describe('read-only review Agent setup diagnostics', () => {
         { binding: 'model', declaration: 'bindings/model.ts', slot: 'native' },
         { binding: 'assistant', declaration: 'bindings/assistant.ts', slot: 'agent' },
       ],
-      alternatives: ['claude', 'pi'],
+      alternatives: ['claude'],
       observedRefusals: 2,
     })
     const text = renderReviewAgentSetup({ ...report([value]), observedIssues: 2 }, options)
@@ -245,16 +245,16 @@ describe('read-only review Agent setup diagnostics', () => {
   })
 
   test('non-executable causes never display alternative installations', () => {
-    const text = renderReviewAgentSetup(report([issue({ code: 'PROJECT_ACP_PI_MODEL' })]), options)
+    const text = renderReviewAgentSetup(report([issue({ code: 'PROJECT_ACP_CLAUDE_MODEL' })]), options)
     expect(text).toContain('model configuration is missing or invalid')
-    expect(text).toContain('To keep Pi:')
+    expect(text).toContain('To keep Claude Code:')
     expect(text).not.toContain('Detected alternatives')
     expect(text).not.toContain('To use Codex')
   })
 
   test('zero alternatives retains repair and manual selection guidance without claiming no installation', () => {
     const text = renderReviewAgentSetup(report([issue({ alternatives: [] })]), options)
-    expect(text).toContain('To keep Pi:')
+    expect(text).toContain('To keep Claude Code:')
     expect(text).toContain('no alternative executable was detected')
     expect(text).not.toContain('uninstalled')
     expect(text).not.toContain('Detected alternatives')
@@ -290,8 +290,8 @@ describe('read-only review Agent setup diagnostics', () => {
       uncheckedResources: 3,
     }
     const text = renderReviewAgentSetup(value, { ...options, details: true })
-    expect(text).toContain('Pi is selected')
-    expect(text).toContain('PROJECT_ACP_PI_EXECUTABLE')
+    expect(text).toContain('Claude Code is selected')
+    expect(text).toContain('PROJECT_ACP_CLAUDE_EXECUTABLE')
     expect(text).toContain('4 observed source policy groups are omitted')
     expect(text).toContain('3 remaining selected ACP checks were not completed')
     expect(text).toContain('omitted facts cannot be recovered by --details')
@@ -340,7 +340,7 @@ describe('read-only review Agent setup diagnostics', () => {
       expect(text).toContain('\\u000aProject ready')
       const plain = privateCliHumanText(text, false, 32)
       expect(plain).not.toContain('\u001b')
-      expect(plain).toContain('PROJECT_ACP_PI_EXECUTABLE')
+      expect(plain).toContain('PROJECT_ACP_CLAUDE_EXECUTABLE')
       expect(plain).toContain(`$ ${options.retryCommand}`)
     }
   })
@@ -393,10 +393,10 @@ describe('review-only client selection disclosure', () => {
 })
 
 test('known rejected override identifies the operator field without its private value', () => {
-  const text = renderReviewAgentSetup(report([issue({ rejectedOverride: 'PI_PATH' })]), options)
-  expect(text).toContain('PI_PATH was rejected')
+  const text = renderReviewAgentSetup(report([issue({ rejectedOverride: 'CLAUDE_PATH' })]), options)
+  expect(text).toContain('CLAUDE_PATH was rejected')
   expect(text).toContain('Operator PATH was not used')
-  expect(text).toContain('To keep Pi:')
+  expect(text).toContain('To keep Claude Code:')
 })
 
 test('authProfile pinned issue renders the profile name and suppresses --agent switching', () => {
@@ -407,12 +407,12 @@ test('authProfile pinned issue renders the profile name and suppresses --agent s
         sourceClient: 'codex',
         code: 'PROJECT_ACP_CODEX_AUTHENTICATION',
         policy: { kind: 'acp', client: 'codex', authProfile: 'work-account' },
-        alternatives: ['claude', 'pi'],
+        alternatives: ['claude'],
       }),
     ]),
     options,
   )
   expect(text).toContain('Authentication profile: "work-account".')
   expect(text).not.toContain('--agent claude')
-  expect(text).not.toContain('--agent pi')
+  expect(text).not.toContain('--agent claude')
 })

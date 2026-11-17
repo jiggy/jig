@@ -73,7 +73,7 @@ describe('private package-project portable lock projection', () => {
         ],
         grants: { shared: { kind: 'acp' as const, maxTurns: 2 } },
       }
-      const authored = linkPackageProject(input, undefined, 'pi')
+      const authored = linkPackageProject(input, undefined, 'claude')
       const effective = linkPackageProject(input, undefined, 'codex')
       const lock = createPrivateProjectLocalLock(effective, 'codex')
       const encoded = encodePrivateProjectLocalLock(lock)
@@ -110,19 +110,19 @@ describe('private package-project portable lock projection', () => {
             ...request,
             slots: {
               ...request.slots,
-              native: { ...request.slots.native, grant: { ...policy, client: 'pi' } },
+              native: { ...request.slots.native, grant: { ...policy, client: 'claude' } },
             },
           }),
         ).toThrow()
       }
       expect(createPrivateProjectLocalLock(authored).agentOverride).toBeUndefined()
-      expect(linkPackageProject(input, undefined, 'pi')).toEqual(authored)
+      expect(linkPackageProject(input, undefined, 'claude')).toEqual(authored)
       expect(() => linkPackageProject(input)).toThrow()
-      expect(() => createPrivateProjectLocalLock(effective, 'pi')).toThrow(
+      expect(() => createPrivateProjectLocalLock(effective, 'claude')).toThrow(
         'match at least one effective ACP policy',
       )
       expect(() => createPrivateProjectLocalLock(effective, 'unknown' as never)).toThrow(
-        'must be codex, claude or pi',
+        'must be codex or claude',
       )
     })
   })
@@ -201,25 +201,25 @@ describe('private package-project portable lock projection', () => {
           (value) => {
             value.agentOverride = malformed
           },
-          'must be codex, claude or pi',
+          'must be codex or claude',
         )
       expectInvalid(
         base,
         (value) => {
-          value.agentOverride = 'pi'
+          value.agentOverride = 'claude'
         },
         'match at least one effective ACP policy',
       )
       // Explicitly pinned clients need not equal the operator's default.
       const mixed = structuredClone(base)
-      mixed.bindings.second.slots.native.policy.client = 'pi'
+      mixed.bindings.second.slots.native.policy.client = 'claude'
       expect(decodePrivateProjectLocalLock(lockBytes(mixed)).bindings.second!.slots.native)
-        .toMatchObject({ policy: { client: 'pi' } })
+        .toMatchObject({ policy: { client: 'claude' } })
       expectInvalid(
         base,
         (value) => {
-          value.bindings.first.slots.native.policy.client = 'pi'
-          value.bindings.second.slots.native.policy.client = 'pi'
+          value.bindings.first.slots.native.policy.client = 'claude'
+          value.bindings.second.slots.native.policy.client = 'claude'
         },
         'match at least one effective ACP policy',
       )

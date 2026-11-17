@@ -200,9 +200,8 @@ Readiness records distinguish omitted source clients from explicit pins.
   system helper at the vendor bundle path. Keep bundled fallback off PATH to
   preserve Codex's vendor digest check.
 
-- Codex, Claude Code, and Pi inspect supported ELF metadata without executing
-  it. Codex and Claude also support the bounded declarative binary wrapper. Pi
-  retains its unwrapped standalone layout and project-excluded sibling assets.
+- Codex and Claude Code inspect supported ELF metadata without executing it.
+  Both support the bounded declarative binary wrapper.
   Resolve loader-owned libraries through the interpreter's canonical location.
   Retain individual executable, loader, and library files at installation paths.
   Identify them under the selected verification policy.
@@ -227,11 +226,11 @@ Readiness records distinguish omitted source clients from explicit pins.
 - A provider adapter may narrow common Agent authority, never widen it.
 
 - API-backed Agent behavior belongs to the ordinary Agent package and its exact
-  HTTP grant. Native Codex, Claude Code, and Pi retain constrained ACP launch
+  HTTP grant. Native Codex and Claude Code retain constrained ACP launch
   and authentication support. An endpoint, credential, provider, or model used
   in development must not become a product default.
 
-- Native Codex, Claude Code, and Pi use a snapshot of the operator environment
+- Native Codex and Claude Code use a snapshot of the operator environment
   captured before project loading. Absolute client overrides are authoritative.
   Otherwise search absolute PATH entries in order, excluding the actual project
   tree and ancestor dependency directories through every symlink hop. Review may
@@ -252,7 +251,7 @@ Readiness records distinguish omitted source clients from explicit pins.
 - Native installation regressions cover discovery, environment snapshots,
   missing/project-selected support, byte replacement, and credential expiry.
   `JIG_NATIVE_AGENT_STARTUP=1` with absolute `JIG_CODEX_STARTUP_PATH`,
-  `JIG_CLAUDE_STARTUP_PATH`, and `JIG_PI_STARTUP_PATH` enables
+  and `JIG_CLAUDE_STARTUP_PATH` enables
   `test/startup/native-agent-startup.test.ts` after building. It requires genuine
   clients to initialize and create a local session without network access using
   placeholder API keys. Missing selections fail instead of silently skipping.

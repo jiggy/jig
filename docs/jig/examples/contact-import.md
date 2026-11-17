@@ -78,7 +78,7 @@ See [Agent client troubleshooting](../reference/troubleshooting.md#agent-client-
 Mixed still requires its Agent route when a particular input takes its code branch.
 
 Use `jig review --agent CLIENT --allow-resolution-network` to propose another
-installed client (`codex`, `claude` or `pi`) for that review. Source stays
+installed client (`codex` or `claude`) for that review. Source stays
 unchanged. Repeat the flag on later reviews or edit the Binding for a lasting
 choice.
 

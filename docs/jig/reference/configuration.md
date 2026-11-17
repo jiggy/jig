@@ -16,7 +16,7 @@ Start with the setting that matches your task.
 | Startup verification | `--verification` on `run`, `review`, or `inspect`. `JIG_VERIFICATION` for a shell default |
 | Terminal appearance | `JIG_THEME`, `NO_COLOR`, and your terminal environment |
 | Agent client, model, and credentials | Inline policy in an ordinary Agent Binding and operator credentials. See [Agent settings](#agent-settings) |
-| ACP client for one reviewed proposal | `review --agent codex\|claude\|pi`. Source stays unchanged and later reviews start from source again |
+| ACP client for one reviewed proposal | `review --agent codex\|claude`. Source stays unchanged and later reviews start from source again |
 | Flows, Bindings, and application settings | `jig.ts`. See [Project settings](#project-settings) |
 | Dependency preparation count per review | `limits.dependencies.maxPreparations` in `jig.ts`, or `JIG_LIMITS_DEPENDENCIES_MAX_PREPARATIONS`. See [Limits and defaults](./limits.md#override-dependency-preparation-limits) |
 | Prepared runtime dependency capacity per package | `limits.dependencies` in `jig.ts`, or `JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES` and `JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES`. See [Limits and defaults](./limits.md) |
@@ -148,7 +148,7 @@ significant.
 | `--display MODE` | `run` | Select `auto` (TUI in suitable interactive terminals, ordinary output otherwise), `plain`, `tui`, or `web`. Operator-only |
 | `--json` | `run` | Emit machine-readable JSON or NDJSON even in a terminal. Redirected stdout already uses this format |
 | `--details` | `review` | Include unchanged policy and retained observed setup facts as context. Performs no additional checks |
-| `--agent codex\|claude\|pi` | `review` | Propose only the client field in every selected ACP policy before qualification. Source unchanged, no remembered preference |
+| `--agent codex\|claude` | `review` | Propose only the client field in every selected ACP policy before qualification. Source unchanged, no remembered preference |
 | `--yes` | `review` | Approve the displayed revision without an interactive prompt. Does not grant resource-authority changes or resolution-network permission |
 | `--allow-authority-changes` | `review` | Explicitly approve changed resource delegation alongside the revision |
 | `--generate-contracts` | `review` | Compile managed TypeSpec contracts before separate execution approval |

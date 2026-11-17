@@ -33,7 +33,7 @@
       }
     }
   };
-  const clients = { codex: 'Codex', claude: 'Claude Code', pi: 'Pi' };
+  const clients = { codex: 'Codex', claude: 'Claude Code' };
   const contextButtons = [...scene.querySelectorAll('[data-ka-select-context]')];
   const strategyButtons = [...scene.querySelectorAll('[data-ka-select-strategy]')];
   const clientButtons = [...scene.querySelectorAll('[data-ka-select-client]')];

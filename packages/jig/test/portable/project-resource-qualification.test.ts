@@ -53,7 +53,7 @@ const native: InvocationSlots = {
   native: {
     kind: 'native',
     native: 'finite-acp',
-    grant: { kind: 'acp', client: 'pi' },
+    grant: { kind: 'acp', client: 'claude' },
     contract: {
       id: FINITE_ACP_CONTRACT_ID,
       version: FINITE_ACP_CONTRACT_VERSION,
@@ -117,8 +117,8 @@ test('real missing native executable disables only exact selected dependents, in
   expect(failed.get('binding\0agent')?.cause).toEqual({
     kind: 'acp',
     slot: 'native',
-    client: 'pi',
-    diagnostic: 'PROJECT_ACP_PI_EXECUTABLE',
+    client: 'claude',
+    diagnostic: 'PROJECT_ACP_CLAUDE_EXECUTABLE',
   })
   expect(failed.get('binding\0mixed')?.cause).toEqual({
     kind: 'dependency',
@@ -185,10 +185,10 @@ test('constructor/display codes and arbitrary real wrapper failures never mint e
         throw new Error('private error')
       }),
     ),
-  ).rejects.toMatchObject({ code: 'PROJECT_ACP_PI_EXECUTABLE' })
+  ).rejects.toMatchObject({ code: 'PROJECT_ACP_CLAUDE_EXECUTABLE' })
   // Failure to locate the project is owner/input integrity, not an executable absence.
   try {
-    await resolvePrivateNativeAgentExecutable('pi', { PATH: '' }, join(f.root, 'absent-project'))
+    await resolvePrivateNativeAgentExecutable('claude', { PATH: '' }, join(f.root, 'absent-project'))
   } catch (error) {
     expect(isExpectedAcpRefusal(error)).toBeFalse()
   }
@@ -200,20 +200,20 @@ test('unsupported dispatcher and changed executable identity remain fatal throug
   await mkdir(bin)
   const shim = join(f.root, 'volta-shim')
   await writeFile(shim, 'dispatcher', { mode: 0o700 })
-  await symlink(shim, join(bin, 'pi'))
+  await symlink(shim, join(bin, 'claude'))
   await expect(
     qualify([request('agent', native)], f, async () => {
-      await resolvePrivateNativeAgentExecutable('pi', { PATH: bin }, f.project)
+      await resolvePrivateNativeAgentExecutable('claude', { PATH: bin }, f.project)
       throw new Error('unreachable')
     }),
-  ).rejects.toMatchObject({ code: 'PROJECT_ACP_PI_WRAPPER' })
+  ).rejects.toMatchObject({ code: 'PROJECT_ACP_CLAUDE_WRAPPER' })
 })
 
 test('allowlisted actual selected-executable observations are expected; arbitrary configuration predicates are not inferred', async () => {
   const f = await fixture()
   for (const selected of [join(f.root, 'missing'), 'relative', '']) {
     try {
-      await resolvePrivateNativeAgentExecutable('pi', { PI_PATH: selected }, f.project)
+      await resolvePrivateNativeAgentExecutable('claude', { CLAUDE_PATH: selected }, f.project)
     } catch (error) {
       expect(isExpectedAcpRefusal(error)).toBeTrue()
     }
@@ -232,7 +232,7 @@ test('allowlisted actual selected-executable observations are expected; arbitrar
 
 test('private readiness report uses captured named policy location and groups shared recipients without edit handles', async () => {
   const f = await fixture(),
-    policy = { kind: 'acp', client: 'pi', maxTurns: 2 } as const,
+    policy = { kind: 'acp', client: 'claude', maxTurns: 2 } as const,
     agent = request('agent', { native: { ...native.native!, grant: policy } }),
     second = request('second', { model: { ...native.native!, grant: policy } }),
     code = request('code'),
@@ -276,7 +276,7 @@ test('private readiness report uses captured named policy location and groups sh
   expect(report.observedPolicyGroups).toBe(1)
   expect(report.complete).toBeTrue()
   expect(report.uncheckedResources).toBe(0)
-  expect(report.primaryIssue?.code).toBe('PROJECT_ACP_PI_EXECUTABLE')
+  expect(report.primaryIssue?.code).toBe('PROJECT_ACP_CLAUDE_EXECUTABLE')
   expect(report.issues).toHaveLength(1)
   expect(report.issues[0]?.location).toEqual({
     path: 'policy/chosen.json',
@@ -294,8 +294,8 @@ test('private readiness report uses captured named policy location and groups sh
   expect(report.selections).toHaveLength(2)
   expect(report.selections[0]).toMatchObject({
     binding: 'agent',
-    sourceClient: 'pi',
-    effectiveClient: 'pi',
+    sourceClient: 'claude',
+    effectiveClient: 'claude',
     source: { path: 'policy/chosen.json', line: 3 },
   })
   expect(JSON.stringify(report)).not.toContain('bytes')
@@ -307,8 +307,8 @@ test('report keeps same-client inline policies separate and records unpinned sou
   const cause = {
     kind: 'acp',
     slot: 'native',
-    client: 'pi',
-    diagnostic: 'PROJECT_ACP_PI_MODEL',
+    client: 'claude',
+    diagnostic: 'PROJECT_ACP_CLAUDE_MODEL',
   } as const
   const failure = {
     state: 'unavailable',
@@ -324,7 +324,7 @@ test('report keeps same-client inline policies separate and records unpinned sou
     })),
     grants: {},
     grantFiles: {},
-    agentOverride: 'pi',
+    agentOverride: 'claude',
   } as unknown as PrivateRetainedPackageProject
   const report = await privateAgentReadinessReport({
     aggregate,
@@ -341,13 +341,13 @@ test('report keeps same-client inline policies separate and records unpinned sou
     'bindings/two.ts',
   ])
   expect(report.issues[0]).toMatchObject({
-    client: 'pi',
+    client: 'claude',
     sourceClient: 'default',
-    override: 'pi',
+    override: 'claude',
     alternatives: [],
   })
   expect(report.issues[0]?.location.kind).toBe('unlocated')
-  expect(report.selections[1]).toMatchObject({ sourceClient: 'default', effectiveClient: 'pi' })
+  expect(report.selections[1]).toMatchObject({ sourceClient: 'default', effectiveClient: 'claude' })
 })
 
 test('report discloses first-slot and feature-skipped checks without treating feature refusal as an ACP blocker', async () => {
@@ -356,8 +356,8 @@ test('report discloses first-slot and feature-skipped checks without treating fe
   const cause = {
     kind: 'acp',
     slot: 'a',
-    client: 'pi',
-    diagnostic: 'PROJECT_ACP_PI_EXECUTABLE',
+    client: 'claude',
+    diagnostic: 'PROJECT_ACP_CLAUDE_EXECUTABLE',
   } as const
   const aggregate = {
     bindings: [agent, skipped].map((r) => ({
@@ -366,9 +366,9 @@ test('report discloses first-slot and feature-skipped checks without treating fe
       evaluation: {
         value: {
           slots: {
-            a: { kind: 'acp', client: 'pi' },
-            b: { kind: 'acp', client: 'pi' },
-            native: { kind: 'acp', client: 'pi' },
+            a: { kind: 'acp', client: 'claude' },
+            b: { kind: 'acp', client: 'claude' },
+            native: { kind: 'acp', client: 'claude' },
           },
         },
       },
@@ -408,8 +408,8 @@ test('planning preserves the closed cause while a wrong native client or diagnos
     cause = {
       kind: 'acp',
       slot: 'native',
-      client: 'pi',
-      diagnostic: 'PROJECT_ACP_PI_EXECUTABLE',
+      client: 'claude',
+      diagnostic: 'PROJECT_ACP_CLAUDE_EXECUTABLE',
     } as const
   const disposition = {
     state: 'unavailable',
@@ -433,7 +433,7 @@ test('planning preserves the closed cause while a wrong native client or diagnos
           requestDigest: agent.digest,
           disposition: {
             ...disposition,
-            cause: { ...cause, diagnostic: 'PROJECT_ACP_PI_ARBITRARY' },
+            cause: { ...cause, diagnostic: 'PROJECT_ACP_CLAUDE_ARBITRARY' },
           },
         },
       ],
@@ -485,13 +485,13 @@ test('real Codex wrapping preserves absence provenance but never promotes owner/
     throw new Error('unreachable')
   })
   expect(invalidModel.get('binding\0agent')?.cause).toMatchObject({
-    diagnostic: 'PROJECT_ACP_PI_MODEL',
+    diagnostic: 'PROJECT_ACP_CLAUDE_MODEL',
   })
   await expect(
     qualify([request('agent', native)], f, async () => {
       throw new PrivateAcpSetupError('model')
     }),
-  ).rejects.toMatchObject({ code: 'PROJECT_ACP_PI_MODEL' })
+  ).rejects.toMatchObject({ code: 'PROJECT_ACP_CLAUDE_MODEL' })
 })
 
 test('strict retained Candidate and Plan reopen exact refusal causes and reject forged readiness', async () => {
@@ -517,7 +517,7 @@ test('strict retained Candidate and Plan reopen exact refusal causes and reject 
       agent: {
         packagePath: agent.packagePath,
         settings: {},
-        slots: { native: { kind: 'grant', policy: { kind: 'acp', client: 'pi' } } },
+        slots: { native: { kind: 'grant', policy: { kind: 'acp', client: 'claude' } } },
       },
       code: { packagePath: code.packagePath, settings: {}, slots: {} },
       mixed: { packagePath: mixed.packagePath, settings: {}, slots: { child: agent.target } },
@@ -610,7 +610,7 @@ test('strict retained Candidate and Plan reopen exact refusal causes and reject 
   ).toThrow('retained cause')
   expect(
     mutate((v) => {
-      v.targets[0].disposition.cause.diagnostic = 'PROJECT_ACP_PI_LOGIN'
+      v.targets[0].disposition.cause.diagnostic = 'PROJECT_ACP_CLAUDE_LOGIN'
     }),
   ).toThrow('diagnostic')
   expect(
@@ -646,7 +646,7 @@ test('report overflow preserves the typed selected ACP blocker, primary cause an
   }))
   const aggregate = {
     bindings,
-    grants: { chosen: { kind: 'acp', client: 'pi' } },
+    grants: { chosen: { kind: 'acp', client: 'claude' } },
     grantFiles: { chosen: { path: 'grants/chosen.json' } },
   } as unknown as PrivateRetainedPackageProject
   const report = await privateAgentReadinessReport({
@@ -657,7 +657,7 @@ test('report overflow preserves the typed selected ACP blocker, primary cause an
   })
   expect(report.complete).toBeFalse()
   expect(report.selectedAcpUnavailable).toBeTrue()
-  expect(report.primaryIssue).toMatchObject({ code: 'PROJECT_ACP_PI_EXECUTABLE', client: 'pi' })
+  expect(report.primaryIssue).toMatchObject({ code: 'PROJECT_ACP_CLAUDE_EXECUTABLE', client: 'claude' })
   expect(report.observedIssues).toBe(1)
   expect(report.observedPolicyGroups).toBe(1)
   expect(report.issues[0]?.omittedRecipients).toBeGreaterThan(0)
@@ -695,7 +695,7 @@ test('shared dependency diamonds stay bounded and choose one deterministic direc
 
 test('actual rejected executable override keeps only its closed name outside retained readiness', async () => {
   const f = await fixture()
-  for (const client of ['codex', 'claude', 'pi'] as const) {
+  for (const client of ['codex', 'claude'] as const) {
     const selected = request('agent', {
       native: { ...native.native!, grant: { kind: 'acp', client } },
     })

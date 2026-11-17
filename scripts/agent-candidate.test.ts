@@ -793,9 +793,6 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
   const claudeInstall = qualification.steps.find(
     (step: any) => step.name === 'Install current native Claude Code',
   )
-  const piInstall = qualification.steps.find(
-    (step: any) => step.name === 'Install the supported standalone Pi profile',
-  )
   const apiSteps = qualification.steps.filter((step: any) =>
     step.name?.startsWith('Qualify native '),
   )
@@ -826,17 +823,15 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
   expect(qualification.if).toBe("needs.scope.outputs.qualify == 'true'")
   expect(qualification.environment).toBe('native-agent-api')
   expect(qualification.permissions).toEqual({ actions: 'read', contents: 'read' })
-  expect(qualification.strategy['max-parallel']).toBe(3)
-  expect(matrix.map((entry: any) => entry.client)).toEqual(['codex', 'claude', 'pi'])
+  expect(qualification.strategy['max-parallel']).toBe(2)
+  expect(matrix.map((entry: any) => entry.client)).toEqual(['codex', 'claude'])
   expect(matrix.map((entry: any) => ({ client: entry.client, model: entry.model }))).toEqual([
     { client: 'codex', model: 'openrouter/free' },
     { client: 'claude', model: 'mistralai/ministral-8b-2512' },
-    { client: 'pi', model: 'mistralai/ministral-8b-2512' },
   ])
   expect(matrix.map((entry: any) => entry['test-file'])).toEqual([
     'packages/jig/test/live/root-agent-codex-responses.test.ts',
     'packages/jig/test/live/root-agent-claude.test.ts',
-    'packages/jig/test/live/root-agent-pi.test.ts',
   ])
   expect(apiSteps[0].env.JIG_NATIVE_API_TEST_FILE).toBe('${{ matrix.test-file }}')
   expect(apiSteps[0].run).toContain('test "$JIG_NATIVE_API_TEST_FILE"')
@@ -845,8 +840,6 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
   expect(codexInstall.run).toContain('@openai/codex@latest')
   expect(codexInstall.run).toContain('--version')
   expect(claudeInstall.run).toContain('@anthropic-ai/claude-code@latest')
-  expect(piInstall.run).toContain('pi_version=0.84.4')
-  expect(piInstall.run).toContain('SHA256SUMS')
   expect(apiSteps.map((step: any) => step.name)).toEqual([
     'Qualify native ${{ matrix.client }} API-key ACP with a reviewed provider profile',
   ])

@@ -609,7 +609,7 @@ Disabled capture must leave error objects uninspected.
 
 Root Agent live suites select one exact client and input contract per file.
 Codex subscription requires its native executable and CODEX_HOME.
-Codex Responses, Claude, and Pi require their executable, model, and provider key.
+Codex Responses and Claude require their executable, model, and provider key.
 Codex Responses accepts an OpenRouter fallback key only for the OpenRouter endpoint.
 The protected release workflow can select the documented first-party endpoints for Codex Responses and Claude.
 

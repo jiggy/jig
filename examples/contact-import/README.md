@@ -58,7 +58,7 @@ review checks the selected client even if you plan to run the code Binding.
 An unavailable selected client stops new approval. Mixed still requires its
 Agent route when a particular input takes its code branch.
 Use `jig review --agent CLIENT --allow-resolution-network` to propose another
-installed client (`codex`, `claude` or `pi`) for that review. Source stays
+installed client (`codex` or `claude`) for that review. Source stays
 unchanged; repeat the flag on later reviews or edit the Binding for a lasting choice.
 
 Now use different headings and a different column order:

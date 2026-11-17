@@ -4,7 +4,7 @@ import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep 
 import { markExpectedAcpRefusal, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 import { resolvePrivateCodexInstallation } from './codex-installation.js'
 
-type NativeClient = 'codex' | 'claude' | 'pi' | 'bwrap'
+type NativeClient = 'codex' | 'claude' | 'bwrap'
 
 export class PrivateNativeAgentExecutableUnavailableError extends Error {
   constructor(

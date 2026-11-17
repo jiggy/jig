@@ -62,7 +62,7 @@ It performs no additional checks.
 
 | Observation | Action |
 | --- | --- |
-| Rejected `CODEX_PATH`, `CLAUDE_PATH`, or `PI_PATH` | Correct or unset the override. Jig did not fall back to `PATH`. |
+| Rejected `CODEX_PATH` or `CLAUDE_PATH` | Correct or unset the override. Jig did not fall back to `PATH`. |
 | Installation files could not be verified | Follow [client installation requirements](../build/agents.md#local-clients) for your host and architecture. |
 | Codex sandbox helper check fails | Follow the host-specific [Codex setup](../build/agents.md#codex). |
 | `PROJECT_ACP_CODEX_LOGIN_LAYOUT` | Use a Jig version that supports your Codex authentication layout. Keep the authentication file intact. Do not remove metadata or reset login to change its layout. |

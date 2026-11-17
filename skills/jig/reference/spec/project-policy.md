@@ -937,9 +937,9 @@ the client uses a named authentication profile.
 
 After capturing and validating source, Jig links the candidate. If a bound
 ACP resource lacks a client, interactive review asks the operator for
-`codex`, `claude` or `pi`. A previous approved choice may be suggested,
+`codex` or `claude`. A previous approved choice may be suggested,
 but is not silently reused. Declining the prompt leaves approval unchanged.
-Noninteractive review and `--yes` must supply `--agent codex|claude|pi`
+Noninteractive review and `--yes` must supply `--agent codex|claude`
 or receive `PROJECT_AGENT_SELECTION_REQUIRED` at the Binding slot.
 
 The choice binds only existing unpinned ACP grant routes. Optional recovery
@@ -1422,10 +1422,11 @@ On Linux it does not receive the host environment, network, host process tree, w
 cgroup controls, general devices, inherited descriptors, project source,
 `.jig`, or host-control channels.
 
-The native resource is a separate bounded process running Codex,
-Claude Code, or Pi through the constrained finite ACP mechanism. Jig supplies no
+The native resource is a separate bounded process running Codex
+or Claude Code through the constrained finite ACP mechanism. Jig supplies no
 default model. Native executable, model, authentication and launch policy are
 operator configuration, not powers supplied by the calling Flow.
+
 An API-backed Agent is an ordinary Flow with reviewed model and wire-format
 settings and an exact HTTP resource grant. It runs in the ordinary keyless Flow envelope and
 requests only its explicitly granted resources. Selecting that Flow through a
@@ -1436,13 +1437,15 @@ ordinary channels instead of a hidden host Agent method.
 Among native Agent workload processes, only the selected Agent scope receives its bounded
 credential projection and inherited network access. The parent Flow remains
 network-isolated and keyless. A native client starts with an empty work
-directory; Jig advertises no ACP filesystem, terminal, or MCP client
+directory. Jig advertises no ACP filesystem, terminal, or MCP client
 capability, supplies no MCP servers, and grants no permission request. Fixed
-Claude and Pi profiles additionally disable native tools and ambient extensions.
+Claude profiles additionally disable native tools and ambient extensions.
+
 Codex retains its constrained native tool environment with no-network workspace
-policy and protected authentication projection; it is not a universal tools-off
-profile. See [exact native profiles](finite-acp.md#native-client-profiles). Selected
-FLOW skills become bounded instruction text only. No Agent implementation can
+policy and protected authentication projection. It retains access to constrained tools. See [exact native profiles](finite-acp.md#native-client-profiles). Selected
+FLOW skills become bounded instruction text only.
+
+No Agent implementation can
 widen the Flow's exact admitted child slots, and none creates a public provider
 registry or SPI.
 

@@ -20,7 +20,7 @@ These links locate module rules. All selected domain requirements still apply.
 The default ACP grant omits `client` to delegate the choice to the operator
 at review. It is source policy data, not an executable client. Interactive
 review prompts after source capture and before qualification, while
-noninteractive review requires `--agent codex|claude|pi`. The effective
+noninteractive review requires `--agent codex|claude`. The effective
 client is recorded in the lock and never selected again at Run time.
 Unpinned grants cannot specify a model or native retention. Explicit pins
 remain supported and are not rewritten by a review default.

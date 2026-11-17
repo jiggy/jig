@@ -366,7 +366,7 @@ export async function resolveTriggerSource({ client, repository, triggerRunId, s
   for (const artifact of artifacts) {
     if (
       !new RegExp(
-        `^native-(qualification|inputs)-(codex|claude|pi)-[0-9a-f]{40}-r${run.id}-a${run.run_attempt}$`,
+        `^native-(qualification|inputs)-(codex|claude)-[0-9a-f]{40}-r${run.id}-a${run.run_attempt}$`,
       ).test(artifact.name ?? '')
     )
       continue
@@ -576,10 +576,10 @@ export async function releaseReadiness({
         client,
         repository,
         run,
-        ['codex', 'claude', 'pi'].map((profile) => `${profile} — Ubuntu 24.04`),
+        ['codex', 'claude'].map((profile) => `${profile} — Ubuntu 24.04`),
       )),
     )
-    for (const profile of ['codex', 'claude', 'pi']) {
+    for (const profile of ['codex', 'claude']) {
       const artifact = await artifactFor(
         client,
         repository,

@@ -6,7 +6,7 @@ import { flowSdkDirectory, flowSdkRuntimeDirectory } from './flow-dependency'
 /** Install the unchanged built Agent Flow and authorize only its selected native profile. */
 export async function writeOrdinaryAcpAgent(
   root: string,
-  client: 'codex' | 'claude' | 'pi',
+  client: 'codex' | 'claude',
   maxTurns?: number,
 ): Promise<void> {
   const method = join(root, 'flows/agent')

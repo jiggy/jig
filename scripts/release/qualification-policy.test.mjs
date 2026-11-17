@@ -44,7 +44,7 @@ const snapshot = {
   sourceRevision: source,
   candidate: { receiptSha256: 'c'.repeat(64) },
   runs: Array(4).fill(expected),
-  artifacts: Array(6).fill({}),
+  artifacts: Array(5).fill({}),
 }
 const job = { id: 41, name: 'codex', run_attempt: 2, status: 'completed', conclusion: 'success' }
 

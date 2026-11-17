@@ -13,7 +13,7 @@ function binding(properties: string): string {
   return `${ordinaryImport}export default defineBinding({ package: 'npm:@jigging/agent-acp', ${properties} })`
 }
 
-function locate(source: string, client = 'pi') {
+function locate(source: string, client = 'claude') {
   return privateAgentSourceLocations(path, encoder.encode(source), { native: client }).native!
 }
 
@@ -30,13 +30,13 @@ describe('captured Agent source locations', () => {
       'export default defineBinding({',
       "  package: 'npm:@jigging/agent-acp',",
       '  slots: {',
-      "    native: { kind: 'acp', client: 'pi', maxTurns: 2 },",
+      "    native: { kind: 'acp', client: 'claude', maxTurns: 2 },",
       "    'alternate': { kind: 'acp', client: 'claude' },",
       '  },',
       '})',
     ].join('\r\n')
     const facts = privateAgentSourceLocations(path, encoder.encode(source), {
-      native: 'pi',
+      native: 'claude',
       alternate: 'claude',
       absent: 'codex',
     })
@@ -52,23 +52,23 @@ describe('captured Agent source locations', () => {
     const source =
       ordinaryImport +
       "// decoy client: 'claude'\u2028" +
-      "export default defineBinding({ package: '😀', slots: { native: { kind: 'acp', client: 'pi' } } })"
+      "export default defineBinding({ package: '😀', slots: { native: { kind: 'acp', client: 'claude' } } })"
     const fact = locate(source)
     expect(fact.kind).toBe('client-literal')
     expect(fact.line).toBe(3)
-    expect(textAt(source, fact, 4)).toBe("'pi'")
+    expect(textAt(source, fact, 4)).toBe("'claude'")
   })
 
   test('never treats comments, strings, another property or a mismatched client as the selected literal', () => {
     for (const source of [
-      "/* export default defineBinding({ slots: { native: { kind: 'acp', client: 'pi' } } }) */\n" +
+      "/* export default defineBinding({ slots: { native: { kind: 'acp', client: 'claude' } } }) */\n" +
         binding('slots: {}'),
       binding('settings: { note: "slots: { native: { client: \'pi\' } }" }, slots: {}'),
-      binding("settings: { client: 'pi' }, slots: { other: { kind: 'acp', client: 'pi' } }"),
+      binding("settings: { client: 'claude' }, slots: { other: { kind: 'acp', client: 'claude' } }"),
     ])
       expect(locate(source)).toEqual({ path, kind: 'unlocated' })
     const source = binding("slots: { native: { kind: 'acp', client: 'codex' } }")
-    const fact = locate(source, 'pi')
+    const fact = locate(source, 'claude')
     expect(fact.kind).toBe('selection-context')
     expect(textAt(source, fact, 1)).toBe('{')
     expect(JSON.stringify(fact)).not.toContain('codex')
@@ -76,14 +76,14 @@ describe('captured Agent source locations', () => {
 
   test('retains honest slot expression context only through the ordinary trusted import', () => {
     const sources = [
-      binding("slots: { native: { ...shared, kind: 'acp', client: 'pi' } }"),
-      binding("slots: { native: { kind: 'acp', client: 'codex', client: 'pi' } }"),
-      binding("slots: { native: { kind: 'acp', ['client']: 'pi' } }"),
+      binding("slots: { native: { ...shared, kind: 'acp', client: 'claude' } }"),
+      binding("slots: { native: { kind: 'acp', client: 'codex', client: 'claude' } }"),
+      binding("slots: { native: { kind: 'acp', ['client']: 'claude' } }"),
       binding("slots: { native: { kind: 'acp', client: selected } }"),
-      binding("slots: { native: { kind: 'acp', client: 'pi' as const } }"),
-      binding("slots: { native: { kind: 'acp', client: 'pi' } as Policy }"),
+      binding("slots: { native: { kind: 'acp', client: 'claude' as const } }"),
+      binding("slots: { native: { kind: 'acp', client: 'claude' } as Policy }"),
       binding('slots: { native: makePolicy() }'),
-      binding("settings: readSettings(), slots: { native: { kind: 'acp', client: 'pi' } }"),
+      binding("settings: readSettings(), slots: { native: { kind: 'acp', client: 'claude' } }"),
       binding("slots: { native: { kind: 'acp', client: '\\u0070i' } }"),
     ]
     for (const source of sources) {
@@ -96,36 +96,36 @@ describe('captured Agent source locations', () => {
 
   test('uses file-only fallback when the originating slot expression is ambiguous', () => {
     const sources = [
-      binding("slots: { native: { kind: 'acp', client: 'pi' } }").replace(
+      binding("slots: { native: { kind: 'acp', client: 'claude' } }").replace(
         "'@jigging/jig'\n",
         "'@jigging/jig' ",
       ),
       "import { shared } from './shared.ts'\n" + binding('slots: { native: shared }'),
-      "const selected = 'pi'\n" + binding("slots: { native: { kind: 'acp', client: 'pi' } }"),
-      binding("slots: { native: { kind: 'acp', client: 'pi' } }") + ' as const',
-      binding("slots: { native: { kind: 'acp', client: 'pi' } }") + '; mutate() ',
-      binding("slots: { native: { kind: 'acp', client: 'pi' } }").replace(' })', ' }, other)'),
-      binding("slots: { native: { kind: 'acp', client: 'pi' } }, ...override"),
-      binding("...base, slots: { native: { kind: 'acp', client: 'pi' } }"),
-      binding("slots: {}, slots: { native: { kind: 'acp', client: 'pi' } }"),
-      binding("slots: { native: { kind: 'acp', client: 'pi' }, ...override }"),
-      binding("slots: { native: {}, native: { kind: 'acp', client: 'pi' } }"),
-      binding("slots: { ['native']: { kind: 'acp', client: 'pi' } }"),
+      "const selected = 'claude'\n" + binding("slots: { native: { kind: 'acp', client: 'claude' } }"),
+      binding("slots: { native: { kind: 'acp', client: 'claude' } }") + ' as const',
+      binding("slots: { native: { kind: 'acp', client: 'claude' } }") + '; mutate() ',
+      binding("slots: { native: { kind: 'acp', client: 'claude' } }").replace(' })', ' }, other)'),
+      binding("slots: { native: { kind: 'acp', client: 'claude' } }, ...override"),
+      binding("...base, slots: { native: { kind: 'acp', client: 'claude' } }"),
+      binding("slots: {}, slots: { native: { kind: 'acp', client: 'claude' } }"),
+      binding("slots: { native: { kind: 'acp', client: 'claude' }, ...override }"),
+      binding("slots: { native: {}, native: { kind: 'acp', client: 'claude' } }"),
+      binding("slots: { ['native']: { kind: 'acp', client: 'claude' } }"),
       binding('slots: sharedSlots'),
       "import { defineBinding as bind } from '@jigging/jig'\n" +
-        "export default bind({ slots: { native: { kind: 'acp', client: 'pi' } } })",
-      "const value = defineBinding({ slots: { native: { kind: 'acp', client: 'pi' } } })\n" +
+        "export default bind({ slots: { native: { kind: 'acp', client: 'claude' } } })",
+      "const value = defineBinding({ slots: { native: { kind: 'acp', client: 'claude' } } })\n" +
         "value.slots.native.client = 'codex'\nexport default value",
       "export { default } from './another.ts'",
-      "export default { slots: { native: { kind: 'acp', client: 'pi' } } }",
-      binding("slots: { native: { kind: 'acp', client: 'pi' } }") + '\nexport default another',
+      "export default { slots: { native: { kind: 'acp', client: 'claude' } } }",
+      binding("slots: { native: { kind: 'acp', client: 'claude' } }") + '\nexport default another',
     ]
     for (const source of sources) expect(locate(source)).toEqual({ path, kind: 'unlocated' })
   })
 
   test('never locates an ignored argument of a local defineBinding lookalike', () => {
     const decoy =
-      "export default defineBinding({ slots: { native: { kind: 'acp', client: 'pi' } } })"
+      "export default defineBinding({ slots: { native: { kind: 'acp', client: 'claude' } } })"
     const sources = [
       "const defineBinding = (ignored) => ({ slots: { native: { kind: 'acp', client: 'codex' } } })\n" +
         decoy,
@@ -134,7 +134,7 @@ describe('captured Agent source locations', () => {
       "import { defineBinding } from './lookalike.ts'\n" + decoy,
     ]
     for (const source of sources)
-      for (const client of ['codex', 'pi'])
+      for (const client of ['codex', 'claude'])
         expect(locate(source, client)).toEqual({ path, kind: 'unlocated' })
   })
 
@@ -142,27 +142,27 @@ describe('captured Agent source locations', () => {
     const source =
       binding("slots: { native: { kind: 'acp', client: 'codex' } }") +
       " ? { kind: 'package', package: 'npm:@jigging/agent-acp', settings: {}, " +
-      "slots: { native: { kind: 'acp', client: 'pi' } } } : null"
-    for (const client of ['codex', 'pi'])
+      "slots: { native: { kind: 'acp', client: 'claude' } } } : null"
+    for (const client of ['codex', 'claude'])
       expect(locate(source, client)).toEqual({ path, kind: 'unlocated' })
   })
 
   test('the supplied captured bytes determine coordinates despite later source edits', () => {
-    let visibleSource = binding("slots: { native: { kind: 'acp', client: 'pi' } }")
+    let visibleSource = binding("slots: { native: { kind: 'acp', client: 'claude' } }")
     const captured = encoder.encode(visibleSource)
     visibleSource = '\n\n' + binding("slots: { native: { kind: 'acp', client: 'codex' } }")
-    const fact = privateAgentSourceLocations(path, captured, { native: 'pi' }).native!
+    const fact = privateAgentSourceLocations(path, captured, { native: 'claude' }).native!
     expect(fact.kind).toBe('client-literal')
     expect(fact.line).toBe(2)
-    expect(textAt(new TextDecoder().decode(captured), fact, 4)).toBe("'pi'")
-    expect(locate(visibleSource, 'pi').kind).toBe('selection-context')
+    expect(textAt(new TextDecoder().decode(captured), fact, 4)).toBe("'claude'")
+    expect(locate(visibleSource, 'claude').kind).toBe('selection-context')
   })
 
   test('malformed, unsupported and bounded-out input degrades without inventing coordinates', () => {
     const malformed = [
       new Uint8Array([0xc3, 0x28]),
-      encoder.encode(binding("slots: { native: { kind: 'acp', client: 'pi' } }").slice(0, -1)),
-      encoder.encode(binding("slots: { native: /client: 'pi'/ }")),
+      encoder.encode(binding("slots: { native: { kind: 'acp', client: 'claude' } }").slice(0, -1)),
+      encoder.encode(binding("slots: { native: /client: 'claude'/ }")),
       encoder.encode(binding('slots: { native: `client: pi` }')),
       encoder.encode("'unterminated"),
       encoder.encode('/* unterminated'),
@@ -171,7 +171,7 @@ describe('captured Agent source locations', () => {
       encoder.encode('('.repeat(65) + ')'.repeat(65)),
     ]
     for (const bytes of malformed)
-      expect(privateAgentSourceLocations(path, bytes, { native: 'pi' }).native).toEqual({
+      expect(privateAgentSourceLocations(path, bytes, { native: 'claude' }).native).toEqual({
         path,
         kind: 'unlocated',
       })
@@ -192,7 +192,7 @@ describe('captured named ACP policy locations', () => {
 
   test('supports valid JSON escaping while pointing to the actual captured token', () => {
     const source = '{"kind":"acp","\\u0063lient":"\\u0070i"}'
-    const fact = privateAgentGrantSourceLocation(grantPath, encoder.encode(source), 'pi')
+    const fact = privateAgentGrantSourceLocation(grantPath, encoder.encode(source), 'claude')
     expect(fact.kind).toBe('client-literal')
     expect(textAt(source, fact, 9)).toBe('"\\u0070i"')
   })

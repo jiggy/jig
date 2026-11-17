@@ -1,6 +1,6 @@
 /**
  * Executable raw ACP transport peer for direct contained-resource tests.
- * This is not a Codex, Claude or Pi adapter and must never be installed as one.
+ * This is not a Codex or Claude adapter and must never be installed as one.
  */
 export function rawFiniteAcpPeerProgram(
   failBeforePrompt = false,
