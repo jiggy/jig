@@ -270,21 +270,16 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
 ## Orchestration diagnostics
 
-- Dispatch `ci-orchestration-probe.yml` on main to observe real queued-sibling cancellation.
-  Its controller has Actions write access only to dispatch and cancel its diagnostic child.
-
-  The child deliberately fails its Ubuntu monitor after thirty seconds.
-  Reserve the `jig-ci-probe-never-allocate` self-hosted label without assigning it to a runner.
-  Unexpected assignment fails the probe. The child runs no repository code and receives no credentials.
-
-  The controller requires observed queueing and cancellation within sixty seconds of monitor completion.
-  The observation allowance is three minutes. Cleanup requests cancellation of unfinished children.
-  Failure summaries name the observation phase and link only verified diagnostic children.
-  Cleanup reports request acknowledgement separately from settlement and refuses unverified child identities.
-  A cleanup conflict succeeds only after a fresh observation confirms that the exact child completed.
-
-  GitHub controls allocation and cancellation settlement. Probe results grant no host or release qualification.
-  The child is expected to appear red. The controller owns the diagnostic verdict.
+- This experiment branch replaces `ci-orchestration-probe.yml` with a manual,
+  public synthetic artifact-contention control on two standard Ubuntu runners.
+  Its GitHub authority is read-only. It uses no Macs, private data or providers.
+- Both candidates upload one shared immutable name with overwrite disabled.
+  The verifier requires one finalized artifact and binds its contents to the
+  actual allocated job, source, run and attempt. It checks absent, ambiguous,
+  expired and wrong-job refusal.
+- The losing upload log must independently confirm the service conflict cause.
+  Missing or unavailable evidence fails the control. No result creates native
+  or release qualification. This temporary workflow must not merge into main.
 
 ## Work Guidance
 

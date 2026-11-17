@@ -426,6 +426,11 @@ They consume frozen package exports with tracked test helpers and installed
 
   Retries never substitute a version, mirror or client.
 
+- `artifact-claim-service-control.mjs` is temporary tooling for this experiment
+  branch's manual Ubuntu contention control. It records actual allocation and
+  upload outcomes, verifies immutable service artifacts, and rejects unavailable
+  or ambiguous evidence. It never creates host or release qualification.
+
 ## Diagnostic observations
 
 - `orchestration-probe.mjs` dispatches one isolated main-only child and observes actual queued-sibling cancellation.

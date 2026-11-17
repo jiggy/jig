@@ -1,30 +1,73 @@
-name: CI orchestration probe
+# Temporary experiment branch only. No native or release qualification.
+name: Artifact first-claim service control
 on:
-  workflow_dispatch: null
+  workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
-  probe:
-    if: github.ref == 'refs/heads/main'
+  candidates:
+    name: Claim candidate — ${{ matrix.candidate }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      actions: write
+    timeout-minutes: 6
+    strategy:
+      fail-fast: false
+      matrix:
+        candidate: [alpha, beta]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: '24'
-      - name: Observe real queueing and matrix cancellation
+          node-version: "24"
+      - name: Bind actual allocated job and rendezvous before contention
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/ci/orchestration-probe.mjs
-      - name: Cancel any unfinished diagnostic child
-        if: always()
+          CANDIDATE: ${{ matrix.candidate }}
+        run: node scripts/ci/artifact-claim-service-control.mjs prepare
+      - name: Upload competing immutable claim
+        id: claim
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: claim-service-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/claim-control/CLAIM.json
+          overwrite: false
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve actual upload outcome without qualification claims
+        env:
+          UPLOAD_OUTCOME: ${{ steps.claim.outcome }}
+          ARTIFACT_ID: ${{ steps.claim.outputs.artifact-id }}
+        run: node scripts/ci/artifact-claim-service-control.mjs outcome
+      - name: Retain candidate observation
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: claim-outcome-${{ matrix.candidate }}-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/claim-outcome/OUTCOME.json
+          if-no-files-found: error
+          retention-days: 1
+  verify:
+    name: Verify finalized claim and fail-closed refusal
+    needs: candidates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+      - name: Verify actual immutable winner and all candidate executions
         env:
           GH_TOKEN: ${{ github.token }}
-          PROBE_CANCEL_ONLY: '1'
-        run: node scripts/ci/orchestration-probe.mjs
+        run: node scripts/ci/artifact-claim-service-control.mjs verify
+      - name: Retain platform-only control report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: claim-control-report-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/claim-control-report/REPORT.json
+          if-no-files-found: error
+          retention-days: 1
