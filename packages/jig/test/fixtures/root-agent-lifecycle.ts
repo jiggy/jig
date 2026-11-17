@@ -430,7 +430,7 @@ export async function writeRepairWorkspace(
     model: 'local-fixed-response',
   })
   // Replace the application's selected Agent Binding, not its default map or
-  // method source. Leaving the original Pi grant would still require that client.
+  // method source. Leaving the original pinned grant would still require that client.
   await rename(join(project, 'bindings/method.ts'), join(project, 'bindings/agent.ts'))
   await writeFile(
     join(root, 'package.json'),

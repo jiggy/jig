@@ -397,7 +397,7 @@ export async function writeQualificationReceipt({
   if (
     !['ci', 'linux', 'macos', 'native'].includes(kind) ||
     (kind === 'macos' && profile !== 'arm64') ||
-    (kind === 'native' && !['codex', 'claude', 'pi'].includes(profile))
+    (kind === 'native' && !['codex', 'claude'].includes(profile))
   )
     throw new Error('Invalid qualification profile')
   if (!['inputs', 'qualification'].includes(stage) || (stage === 'inputs' && kind !== 'native'))

@@ -43,7 +43,7 @@ Exercise the same publication path before merging release changes.
   Rehearsal accepts only an explicit IPv4 loopback registry and refuses ambient credential variables.
   Its local authentication uses a disposable registry account with a random test-only password.
   The registry permits publication requests up to 64 MiB, including archive encoding overhead. It creates no qualification receipts.
-- Host snapshots contain four workflow runs and six artifacts.
+- Host snapshots contain four workflow runs and five artifacts.
   Test the actual readiness collector output against the shared publisher guard.
 - Every group preflights all existing bytes and channels before ordered publication.
   Revalidate authorization before mutations. Preserve exact-byte retry and prohibit channel downgrades.

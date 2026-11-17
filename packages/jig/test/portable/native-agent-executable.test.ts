@@ -12,7 +12,7 @@ async function fixture() {
   const first = join(root, 'operator', 'bin')
   const second = join(root, 'another', 'bin')
   await Promise.all([project, first, second].map((path) => mkdir(path, { recursive: true })))
-  for (const client of ['codex', 'claude', 'pi']) {
+  for (const client of ['codex', 'claude']) {
     for (const directory of [first, second]) {
       await writeFile(join(directory, client), 'native test fixture\n', { mode: 0o700 })
     }
@@ -23,7 +23,7 @@ afterEach(async () => {
   await Promise.all(temporary.splice(0).map((path) => rm(path, { recursive: true, force: true })))
 })
 describe('operator native Agent executable discovery', () => {
-  for (const [suiteCaseIndex, suiteCaseValue] of (['codex', 'claude', 'pi'] as const).entries()) {
+  for (const [suiteCaseIndex, suiteCaseValue] of (['codex', 'claude'] as const).entries()) {
     test('%s follows PATH order and explicit overrides' + ` (case ${suiteCaseIndex + 1})`, () =>
       Reflect.apply(
         async (client) => {
@@ -47,7 +47,7 @@ describe('operator native Agent executable discovery', () => {
       ),
     )
   }
-  for (const client of ['codex', 'claude', 'pi'] as const) {
+  for (const client of ['codex', 'claude'] as const) {
     test(`${client}: an unsupported Volta installation is refused without selecting another installation`, async () => {
       const { root, project, first, second } = await fixture()
       const shim = join(root, 'volta-shim')

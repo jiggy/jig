@@ -92,7 +92,7 @@ test('paths and unchanged context recede while changes and approval consequences
     expect(privateCliHumanText(line, true)).toBe(`\u001b[90m${line}\u001b[39m`)
     expect(privateCliHumanText(line, false)).toBe(line)
   }
-  const setup = '  Unavailable: Pi, API endpoint. Setup: jig review --details.'
+  const setup = '  Unavailable: Claude Code, API endpoint. Setup: jig review --details.'
   const ansiEnvironment = { TERM: 'xterm', JIG_THEME: 'one-dark' }
   expect(privateCliHumanText(setup, true, undefined, ansiEnvironment)).toContain(
     '\u001b[1;36mjig\u001b[0m',

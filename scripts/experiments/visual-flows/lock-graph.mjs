@@ -220,7 +220,7 @@ export function projectGraph(lock, { root } = {}) {
   ) {
     fail('MALFORMED_INPUT', 'Entrypoint must be a bounded string.')
   }
-  if (own(lock, 'agentOverride') && !['codex', 'claude', 'pi'].includes(lock.agentOverride)) {
+  if (own(lock, 'agentOverride') && !['codex', 'claude'].includes(lock.agentOverride)) {
     fail('MALFORMED_INPUT', 'Agent override has an unsupported client.')
   }
 

@@ -26,7 +26,7 @@ export interface PrivateAgentReadinessIssue {
   readonly override?: NativeAcpClient
   readonly policy: AcpGrant
   readonly code: string
-  readonly rejectedOverride?: 'CODEX_PATH' | 'CLAUDE_PATH' | 'PI_PATH'
+  readonly rejectedOverride?: 'CODEX_PATH' | 'CLAUDE_PATH'
   readonly recipients: readonly PrivateAgentGrantRecipient[]
   readonly omittedRecipients: number
   readonly observedRefusals: number

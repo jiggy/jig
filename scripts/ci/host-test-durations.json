@@ -284,8 +284,6 @@
       "packages/jig/test/portable/package-paths.test.ts": 1,
       "packages/jig/test/portable/package-project.test.ts": 4,
       "packages/jig/test/portable/package-result-admission.test.ts": 1,
-      "packages/jig/test/portable/pi-acp-failure.test.ts": 3,
-      "packages/jig/test/portable/pi-agent-provider.test.ts": 3,
       "packages/jig/test/portable/prepared-attempt-store.test.ts": 1,
       "packages/jig/test/portable/private-acp-resources.test.ts": 1,
       "packages/jig/test/portable/private-finite-acp-contract.test.ts": 1,

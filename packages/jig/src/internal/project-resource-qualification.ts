@@ -262,8 +262,7 @@ export async function privateAgentReadinessReport(input: {
           ? {
               rejectedOverride: `${cause.client.toUpperCase()}_PATH` as
                 | 'CODEX_PATH'
-                | 'CLAUDE_PATH'
-                | 'PI_PATH',
+                | 'CLAUDE_PATH',
             }
           : {}),
         recipients: Object.freeze([]),
@@ -360,7 +359,7 @@ export async function privateDetectedAgentAlternatives(
   selected: readonly NativeAcpClient[],
 ): Promise<readonly NativeAcpClient[]> {
   const detected: NativeAcpClient[] = []
-  for (const client of ['claude', 'codex', 'pi'] as const) {
+  for (const client of ['claude', 'codex'] as const) {
     if (selected.includes(client)) continue
     try {
       await resolvePrivateNativeAgentExecutable(client, environment, project)

@@ -79,9 +79,7 @@ These links locate module rules. All selected domain requirements still apply.
 
   Only its matching native `turn/started` event makes that turn interruptible.
   Preserve early completion and either event/reply ordering without retries or
-  synthetic settlement. Pi ACP invokes Jig’s private launcher through the
-  verified Bun interpreter, preserves RPC rejection and authoritative assistant
-  stop reasons, and disposes sessions cleanly on `session/close`. Never infer success or failure from answer length.
+  synthetic settlement. Never infer success or failure from answer length.
   Update the notice and adapter regression when changing its patch. Each patch
   has a same-basename `.md` note explaining the defect, verification, concrete
   removal conditions, and known upstream issue or pull-request links.
@@ -174,7 +172,7 @@ These links locate module rules. All selected domain requirements still apply.
   screen/input restoration. Refusal alone cannot qualify these positive
   behaviors.
 
-- Mac qualification requires genuine native Codex, Claude and Pi session
+- Mac qualification requires genuine native Codex and Claude session
   creation through their installed ACP profiles, followed by confirmed fencing
   and cleanup. Unsupported Codex refusal cannot satisfy startup qualification.
   Offline placeholder credentials establish local startup, not subscription

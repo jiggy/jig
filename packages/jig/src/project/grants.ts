@@ -105,7 +105,7 @@ export type GrantPolicy =
   | ({ readonly kind: 'command' } & ProjectCommand)
   | ({ readonly kind: 'evaluation' } & ProjectEvaluation)
   | AcpGrant
-export type NativeAcpClient = 'codex' | 'claude' | 'pi'
+export type NativeAcpClient = 'codex' | 'claude'
 
 /** An omitted client delegates native-client choice to review. */
 export interface AcpGrant {
@@ -146,7 +146,7 @@ export function normalizeGrant(value: unknown): GrantPolicy {
           policy.authProfile.length > 64 ||
           !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(policy.authProfile))) ||
       (policy.client !== undefined &&
-        !['codex', 'claude', 'pi'].includes(policy.client as string)) ||
+        !['codex', 'claude'].includes(policy.client as string)) ||
       ('model' in policy &&
         (typeof policy.model !== 'string' ||
           !/^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}(?![\s\S])/.test(policy.model)))

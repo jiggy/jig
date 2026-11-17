@@ -232,7 +232,8 @@ They consume frozen package exports with tracked test helpers and installed
   Workflow tests reject fork, PR, failed and non-main events at each native checkout boundary.
 
   Only eligible generated releases start automatically. Explicit manual dispatch on main retains diagnostic qualification for nonrelease sources.
-  Omission emits no native receipt and cannot satisfy publication. All three fresh clients and existing candidate and Linux lineage checks remain mandatory.
+  Omission emits no native receipt and cannot satisfy publication.
+  Both native clients must qualify with verified candidate and Linux lineage.
 
   Codex stops after its first failing case. A successful file still requires its complete inventory, including the installed conversation case.
 
@@ -253,7 +254,7 @@ They consume frozen package exports with tracked test helpers and installed
   Required CI job names match the current workflow, including Python reporting.
   Candidate acquisition imports readiness validators statically so the CLI cannot deadlock on a circular dynamic import.
 
-  The collector-to-publisher regression requires four runs and six artifacts from the actual readiness output.
+  The collector-to-publisher regression requires four runs and five artifacts from the actual readiness output.
   Missing or extra artifacts refuse publication.
   Snapshots bind successful runs/jobs/attempts and artifact identities so the
   isolated trusted publisher can revalidate after queueing and before mutation.
@@ -444,8 +445,8 @@ They consume frozen package exports with tracked test helpers and installed
   accounting prerequisites. Hosted mode rejects target drift before native
   compilation and source builds. Failed target checks retain the observed tuple.
   Prerequisites start no package work and never establish backend qualification.
-- `install-macos-test-clients.ts` extracts digest-pinned native Codex, Claude
-  and Pi archives into a fresh runner-owned directory for offline startup
+- `install-macos-test-clients.ts` extracts digest-pinned native Codex and Claude
+  archives into a fresh runner-owned directory for offline startup
   qualification. It neither executes clients nor provisions consumer machines.
   Acquisition allows three attempts with a two-minute deadline per request/body
   and one-/two-second backoff. HTTP status and attempt diagnostics go to stderr.
@@ -497,9 +498,9 @@ They consume frozen package exports with tracked test helpers and installed
 
   Expired artifacts require a new candidate and fresh requalification. Never mix
   an old native or host receipt with a rebuilt candidate from the same source.
-- Mac qualification runs unprivileged without host provisioning. Require all
-  three genuine native client paths for full qualification and the installed
-  consumer shard. Missing prerequisites fail explicitly. Codex, Claude and Pi
+- Mac qualification runs unprivileged without host provisioning. Require both
+  genuine native client paths for full qualification and the installed
+  consumer shard. Missing prerequisites fail explicitly. Codex and Claude
   must create genuine native sessions and confirm fencing and cleanup.
   Unsupported Codex refusal is not a passing alternative.
 

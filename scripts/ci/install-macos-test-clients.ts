@@ -61,13 +61,6 @@ async function install() {
         'ITjFPYB8riu9tbxbrWArokiZ/90w/NDrYbtEvyr3ScilVtu1iupkComxkhvbUxoyT4JRDpKsdw/ZOfwSl/pkpA==',
       executable: 'claude',
     },
-    {
-      name: 'pi',
-      algorithm: 'sha256',
-      url: `https://github.com/earendil-works/pi/releases/download/v0.84.4/pi-darwin-${arch}.tar.gz`,
-      digest: 'c68e3ac4d05b4e282aaab2e6c76f161d3e9e68f19a22e38913cbfaadb6c800f0',
-      executable: 'pi',
-    },
   ]
   for (const archive of archives) {
     const bytes = await downloadClientArchive(archive)

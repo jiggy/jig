@@ -88,8 +88,7 @@ authored examples, not independent consumer evidence or promoted Starters.
   Use a named JSON grant for intentionally shared or independently managed
   policy. Discover grants only when selected policies need them.
 
-  Review never edits ACP source. `jig review --agent CLIENT` (`codex`, `claude`,
-  or `pi`) proposes one client for every selected ACP policy through normal
+  Review never edits ACP source. `jig review --agent CLIENT` (`codex` or `claude`) proposes one client for every selected ACP policy through normal
   qualification and approval. It preserves turn allowances and refuses
   cross-client model pins or incompatible retention. Source stays unchanged:
   repeat the argument on each review or edit the Binding for a lasting choice. A

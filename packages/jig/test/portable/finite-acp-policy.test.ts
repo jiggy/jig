@@ -104,7 +104,7 @@ function deniesAndCloses(policy: PrivateFiniteAcpPolicy, action: () => unknown):
 
 describe('finite ACP authority policy', () => {
   test('configuration replies require v2 configId on every native client', () => {
-    for (const client of ['openai-codex', 'pi']) {
+    for (const client of ['openai-codex', 'claude']) {
       const policy = new PrivateFiniteAcpPolicy(
         {
           configuration: [{ configId: 'model', value: 'reviewed-model' }],
@@ -175,8 +175,8 @@ describe('finite ACP authority policy', () => {
     expect(policy.hasProducedTurnOutput).toBeTrue()
   })
 
-  test('Pi chunks require native message IDs before projection', () => {
-    const policy = new PrivateFiniteAcpPolicy({}, 'pi')
+  test('Native chunks require native message IDs before projection', () => {
+    const policy = new PrivateFiniteAcpPolicy({}, 'claude')
     initialize(policy)
     policy.fromAdapter(request(2, 'session/new', { cwd: '/work', mcpServers: [] }))
     policy.fromClient(reply(2, { sessionId: 'owned-session' }))
@@ -760,7 +760,7 @@ describe('finite ACP authority policy', () => {
     )
   }
   for (const [suiteCaseIndex, suiteCaseValue] of [
-    { cwd: '/tmp/pi-agent', mcpServers: [] },
+    { cwd: '/tmp/native-agent', mcpServers: [] },
     { cwd: '/work', mcpServers: [{ name: 'evil', command: '/bin/sh', args: [] }] },
     { cwd: '/work', mcpServers: [], _meta: { claudeCode: { options: { tools: ['Bash'] } } } },
     { cwd: '/work', mcpServers: [], additionalDirectories: ['/tmp'] },

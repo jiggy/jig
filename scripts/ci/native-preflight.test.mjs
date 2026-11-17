@@ -126,7 +126,7 @@ test('live PR workflow is manual, guarded, protected and creates no qualificatio
   assert.equal(workflow.jobs.diagnostic.environment, 'native-agent-api')
   assert.deepEqual(
     workflow.jobs.diagnostic.strategy.matrix.include.map(({ client }) => client),
-    ['codex', 'claude', 'pi'],
+    ['codex', 'claude'],
   )
   const steps = workflow.jobs.diagnostic.steps
   const acquire = steps.findIndex(({ run }) => run?.includes('native-preflight.mjs acquire'))

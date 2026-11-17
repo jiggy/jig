@@ -219,7 +219,7 @@ describe('private package-project linker', () => {
         { kind: 'grant', name: 'shared', policy: { kind: 'acp', maxTurns: 2 } },
       ])
       expect(() => buildPrivateActivationRequests(inspected)).toThrow('package-project linker')
-      for (const client of ['codex', 'claude', 'pi'] as const) {
+      for (const client of ['codex', 'claude'] as const) {
         const selected = linkPackageProject(input, undefined, client)
         expect(selected.bindings.map((binding) => binding.slots.native)).toEqual([
           { kind: 'grant', policy: { kind: 'acp', client, maxTurns: 3 } },
@@ -255,7 +255,7 @@ describe('private package-project linker', () => {
         binding('bindings/inline.ts', {
           package: 'flows/native',
           settings: { revision: 2 },
-          slots: { ...slots, native: { kind: 'acp', client: 'pi', maxTurns: 3 } },
+          slots: { ...slots, native: { kind: 'acp', client: 'claude', maxTurns: 3 } },
         }),
         ...['named', 'shared'].map((id) =>
           binding(`bindings/${id}.ts`, {
@@ -267,7 +267,7 @@ describe('private package-project linker', () => {
       ]
       const grants = {
         shared: { kind: 'acp' as const, maxTurns: 2 },
-        unused: { kind: 'acp' as const, client: 'pi' as const, model: 'provider/pinned' },
+        unused: { kind: 'acp' as const, client: 'claude' as const, model: 'provider/pinned' },
       }
       const input = { flows, bindings, grants }
       const original = structuredClone({ bindings, grants })
@@ -277,7 +277,7 @@ describe('private package-project linker', () => {
       for (const selected of effective.bindings) {
         expect(selected.slots.api).toMatchObject({ policy: { kind: 'http' } })
         expect(selected.slots.helper).toEqual({ kind: 'flow', path: 'flows/worker' })
-        const client = selected.id === 'inline' ? 'pi' : 'codex'
+        const client = selected.id === 'inline' ? 'claude' : 'codex'
         const maxTurns = selected.id === 'inline' ? 3 : 2
         expect(selected.slots.native).toEqual({
           kind: 'grant',
@@ -300,7 +300,7 @@ describe('private package-project linker', () => {
       expectCode(
         () =>
           linkPackageProject(
-            { flows, bindings: [], grants: { unused: { kind: 'acp', client: 'pi' } } },
+            { flows, bindings: [], grants: { unused: { kind: 'acp', client: 'claude' } } },
             undefined,
             'codex',
           ),
@@ -308,14 +308,14 @@ describe('private package-project linker', () => {
       )
       expect(() =>
         linkPackageProject({ flows, bindings: [] }, undefined, 'unknown' as never),
-      ).toThrow('must be codex, claude or pi')
+      ).toThrow('must be codex or claude')
     })
     await withFlows(nativeAgentTrees(), (flows) => {
       for (const policy of [
         { kind: 'acp', client: 'unknown' },
-        { kind: 'acp', client: 'pi', maxTurns: 9 },
-        { kind: 'acp', client: 'pi', retainSessions: true },
-        { kind: 'acp', client: 'pi', model: 'bad\nmodel' },
+        { kind: 'acp', client: 'claude', maxTurns: 9 },
+        { kind: 'acp', client: 'claude', retainSessions: true },
+        { kind: 'acp', client: 'claude', model: 'bad\nmodel' },
       ])
         expectCode(
           () =>
@@ -343,7 +343,7 @@ describe('private package-project linker', () => {
                 binding('bindings/native.ts', {
                   package: 'flows/native',
                   settings: { revision: 'bad' },
-                  slots: { native: { kind: 'acp', client: 'pi' } },
+                  slots: { native: { kind: 'acp', client: 'claude' } },
                 }),
               ],
             },
@@ -397,7 +397,7 @@ describe('private package-project linker', () => {
           }),
         ],
       }
-      const selected = linkPackageProject(input, undefined, 'pi')
+      const selected = linkPackageProject(input, undefined, 'claude')
       expect(selected.bindings.find((value) => value.id === 'pinned')!.slots.native).toEqual({
         kind: 'grant',
         name: 'pinned',
@@ -405,10 +405,10 @@ describe('private package-project linker', () => {
       })
       expect(selected.bindings.find((value) => value.id === 'default')!.slots.native).toEqual({
         kind: 'grant',
-        policy: { kind: 'acp', client: 'pi', maxTurns: 2 },
+        policy: { kind: 'acp', client: 'claude', maxTurns: 2 },
       })
       expectCode(
-        () => linkPackageProject({ ...input, bindings: [input.bindings[0]!] }, undefined, 'pi'),
+        () => linkPackageProject({ ...input, bindings: [input.bindings[0]!] }, undefined, 'claude'),
         'PROJECT_AGENT_OVERRIDE_UNUSED',
       )
       expect(input.grants.pinned).toEqual(pinned)
@@ -446,9 +446,9 @@ describe('private package-project linker', () => {
         () => linkPackageProject({ flows, bindings: [recoveryBinding] }),
         'PROJECT_AGENT_SELECTION_REQUIRED',
       )
-      const selected = linkPackageProject({ flows, bindings: [recoveryBinding] }, undefined, 'pi')
+      const selected = linkPackageProject({ flows, bindings: [recoveryBinding] }, undefined, 'claude')
       const slots = selected.bindings[0]!.slots
-      expect(slots.native).toMatchObject({ policy: { client: 'pi', maxTurns: 2 } })
+      expect(slots.native).toMatchObject({ policy: { client: 'claude', maxTurns: 2 } })
       expect(slots.backup1).toMatchObject({ policy: { client: 'codex', authProfile: 'secondary' } })
       const onlyPinned = binding('bindings/recovery.ts', {
         package: 'flows/recovery',
@@ -460,7 +460,7 @@ describe('private package-project linker', () => {
       )
       expect(pinned.bindings[0]!.slots).not.toHaveProperty('backup1')
       expectCode(
-        () => linkPackageProject({ flows, bindings: [onlyPinned] }, undefined, 'pi'),
+        () => linkPackageProject({ flows, bindings: [onlyPinned] }, undefined, 'claude'),
         'PROJECT_AGENT_OVERRIDE_UNUSED',
       )
     })

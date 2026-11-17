@@ -17,7 +17,7 @@ jig run
 
 To propose a different installed client for this review, use
 `jig review --agent CLIENT --allow-resolution-network`, where `CLIENT` is
-`codex`, `claude`, or `pi`. Review shows the effective client before approval;
+`codex` or `claude`. Review shows the effective client before approval;
 it leaves the Binding unchanged. Repeat `--agent CLIENT` on later reviews, or
 edit the Binding for a lasting choice. Without the argument, later review
 proposes the source client again. Normal `jig run` uses the approved client and

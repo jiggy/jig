@@ -139,8 +139,8 @@ function normalizeLock(value: unknown): PrivateProjectLocalLock {
   const packages = normalizePackages(root.packages)
   const bindings = normalizeBindings(root.bindings)
   if (root.agentOverride !== undefined) {
-    if (!['codex', 'claude', 'pi'].includes(root.agentOverride as string))
-      throw new TypeError('lock Agent override must be codex, claude or pi')
+    if (!['codex', 'claude'].includes(root.agentOverride as string))
+      throw new TypeError('lock Agent override must be codex or claude')
     const policies = Object.values(bindings).flatMap((binding) =>
       Object.values(binding.slots).flatMap((route) =>
         route.kind === 'grant' && route.policy.kind === 'acp' ? [route.policy] : [],

@@ -149,7 +149,7 @@ export default defineBinding({
 Select `defaultProviders: { 'https://jig.md/contracts/agent-run': 'binding:agent' }`
 in `jig.ts` with `bindings: discover('./bindings')` for matching callers, or use
 an explicit slot. With one eligible provider the mapping is optional.
-The example's client is a choice, not a Jig default; `codex`, `claude` and `pi`
+The example's client is a choice, not a Jig default; `codex` and `claude`
 use the same grant interface. The operator configures the native installation, model and
 authentication described in [Choose an Agent](https://jig.md/build/agents).
 

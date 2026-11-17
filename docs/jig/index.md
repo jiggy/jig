@@ -250,7 +250,7 @@ Design the method. Choose its Agents. Keep the execution foundation.
 | Your Agent | Your choice, connected through ACP. This is separate from the method. |
 | Inside your Flow | The authored method and its internal procedure. |
 
-The illustration offers Codex, Claude Code, and Pi as independent Agent choices.
+The illustration offers Codex and Claude Code as independent Agent choices.
 [Explore ACP clients](./build/agents.md#local-clients).
 
 Three application examples each offer a specialist, a review loop, and a specialist team.

@@ -25,7 +25,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Never check out PR source in the protected job. Recheck approval immediately before the credential-bearing step.
   Candidate archives enter only through the existing bounded Agent credential channel.
 
-  All three clients reuse the qualification test files. No diagnostic result creates a release qualification receipt.
+  Both clients reuse the qualification test files. No diagnostic result creates a release qualification receipt.
   Branch updates, changed merge revisions and producer retries require a new selection.
 - `npm-publish.yml` also accepts manual authentication diagnostics through its existing protected npm environment.
   Package-specific OIDC exchange retains only acceptance and HTTP status. It publishes nothing and establishes no provenance.
@@ -53,12 +53,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   Pending changesets, feature sources and stale plans omit live calls and create no qualification receipts.
   Explicit manual dispatch on `main` retains diagnostics for nonrelease main revisions using that revision's successful push-run host artifacts.
-  Selection grants no publication readiness. Every release still requires all three fresh native clients against the exact canonical candidate.
+  Selection grants no publication readiness.
+  Both native clients must qualify against the exact canonical candidate for every release.
 
-  The workflow qualifies Codex and Claude Code from `@latest` and the
-  supported Pi 0.84.4 standalone profile. Without additional protected
-  configuration, Codex uses OpenRouter's free Responses routing and Claude
-  and Pi use Mistral BYOK through their native protocols. OpenRouter limits
+  The workflow qualifies Codex and Claude Code from `@latest`. Without additional protected configuration,
+  Codex uses OpenRouter's free Responses routing and Claude uses Mistral BYOK. OpenRouter limits
   free requests, and non-Anthropic Claude Code gateway compatibility is
   not guaranteed.
 
@@ -67,7 +66,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Claude (Anthropic Messages). A partial pair refuses execution. These are
   potentially billed API calls and never inferred from an unrelated secret.
   A qualifying native client sees only its selected credential and fixed
-  endpoint. No substitution changes the full three-client requirement or
+  endpoint. No substitution changes the two-client requirement or
   counts unsupported provider responses as passing evidence.
 
   Codex failure diagnostics retain only the closed native category and an
@@ -76,7 +75,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Native failures still block publication and require fresh complete qualification.
 
   Codex stops its test file after the first failure to avoid repeating the failed initial provider turn.
-  Successful qualification still requires both cases and all three clients.
+  Successful qualification requires both Codex cases and both clients.
 
   After a failed Codex test command, that same protected step performs one
   fixed-input probe of the existing free Responses route. The probe has a
@@ -446,7 +445,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Manual reconciliation accepts a full main-push
   source revision. FLOW uses complete CI evidence independently of host
   readiness. Agent/Jig also require all current-attempt Linux shards, Apple Silicon
-  and all three native clients against the same canonical
+  and both native clients against the same canonical
   candidate and verified Linux lineage. Native descendant workflow SHA is
   metadata, not the tested source revision.
 
@@ -471,8 +470,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   mutations. FLOW and host mutation queues are independent. Waiting for host
   qualification holds no runner or registry mutation lock.
 
-  Host snapshots contain six artifacts: the canonical candidates, Linux receipt,
-  Apple Silicon receipt, and three native-client receipts. All four workflow runs remain required.
+  Host snapshots contain five artifacts.
+  They include the canonical candidates, Linux receipt, Apple Silicon receipt, and two native client receipts.
+  All four workflow runs remain required.
   Test the collector's actual snapshot against the protected publisher's admission guard before registry access.
 
   The protected publisher searches native supersession from the live authorized

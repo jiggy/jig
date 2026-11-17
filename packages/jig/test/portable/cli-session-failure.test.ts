@@ -295,13 +295,13 @@ test('interactive review asks for an unpinned Agent only when no explicit operan
   const project = await mkdtemp(join(tmpdir(), 'jig-review-agent-choice-'))
   try {
     for (const options of [
-      { args: ['review'], interactive: true, choice: 'pi', expected: 'pi' },
-      { args: ['review', '--agent', 'claude'], interactive: true, choice: 'pi', expected: undefined },
-      { args: ['review', '--yes'], interactive: true, choice: 'pi', expected: undefined },
+      { args: ['review'], interactive: true, choice: 'claude', expected: 'claude' },
+      { args: ['review', '--agent', 'claude'], interactive: true, choice: 'claude', expected: undefined },
+      { args: ['review', '--yes'], interactive: true, choice: 'claude', expected: undefined },
     ] as const) {
       const prompts: string[] = []
       const selected: string[] = []
-      let choose: (() => Promise<'codex' | 'claude' | 'pi' | undefined>) | undefined
+      let choose: (() => Promise<'codex' | 'claude' | undefined>) | undefined
       const session: ProjectSession = {
         async plan() {
           if (choose !== undefined) {
@@ -464,10 +464,10 @@ const blockedAgent: PrivateAgentReadinessReport = {
     location: { path: 'bindings/model.ts', line: 5, column: 33, kind: 'client-literal' },
     declaration: 'bindings/model.ts',
     slot: 'native',
-    client: 'pi',
-    sourceClient: 'pi',
-    policy: { kind: 'acp', client: 'pi' },
-    code: 'PROJECT_ACP_PI_EXECUTABLE',
+    client: 'claude',
+    sourceClient: 'claude',
+    policy: { kind: 'acp', client: 'claude' },
+    code: 'PROJECT_ACP_CLAUDE_EXECUTABLE',
     recipients: [{ binding: 'model', declaration: 'bindings/model.ts', slot: 'native' }],
     omittedRecipients: 0,
     observedRefusals: 1,
@@ -499,9 +499,9 @@ for (const closeFails of [false, true]) {
       expect(result.text).toContain('Cleanup could not be confirmed')
       expect(result.text).toContain(recovery)
       expect(result.text).not.toContain('$ jig review')
-      expect(result.text).not.toContain('Pi executable not found')
+      expect(result.text).not.toContain('Claude Code executable not found')
     } else {
-      expect(result.text).toContain('Pi executable not found')
+      expect(result.text).toContain('Claude Code executable not found')
       expect(result.text).not.toContain('$ jig review --agent codex')
       expect(result.text).toContain('$ jig review')
       expect(result.text).not.toContain('JIG_CLEANUP_FAILED')
@@ -522,7 +522,7 @@ const failedTerminals: Extract<RootRunTerminal, { status: 'failed' }>[] = [
     message: 'The selected target is unavailable.',
     details: {
       code: 'RUN_TARGET_UNAVAILABLE',
-      availability: { cause: { diagnostic: 'PROJECT_ACP_PI_EXECUTABLE' } },
+      availability: { cause: { diagnostic: 'PROJECT_ACP_CLAUDE_EXECUTABLE' } },
     },
     diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
   },

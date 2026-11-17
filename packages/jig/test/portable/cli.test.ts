@@ -226,7 +226,7 @@ test('installed greeting and Agent initialization create ordinary editable files
   const current = JSON.parse(
     await readFile(join(root, 'node_modules/@jigging/jig/package.json'), 'utf8'),
   )
-  for (const client of [undefined, 'codex', 'claude', 'pi']) {
+  for (const client of [undefined, 'codex', 'claude']) {
     const project = join(root, client ?? 'greeting')
     const result = await invoke(['init', project, ...(client ? ['--agent', client] : [])])
     expect(result.code).toBe(0)

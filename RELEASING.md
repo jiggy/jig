@@ -14,8 +14,7 @@ Changesets then generate package versions and maintain one release PR.
 3. Configure npm trusted publishing for `@jigging/agent-method`, `@jigging/agent-acp`, and `@jigging/jig`.
    Use repository `jiggy/jig`, workflow `npm-publish.yml`, and protected environment `npm`.
    No npm token is required.
-4. Keep `OPENROUTER_API_KEY` in the protected `native-agent-api` environment for Pi
-   and for the existing Codex/Claude OpenRouter qualification routes.
+4. Keep `OPENROUTER_API_KEY` in the protected `native-agent-api` environment when qualifying Codex or Claude through OpenRouter.
 
    For reliable first-party qualification, the environment may explicitly
    configure either or both key/model pairs below. These are **opt-in paid
@@ -30,8 +29,8 @@ Changesets then generate package versions and maintain one release PR.
 
    A missing half of either pair fails qualification before executing an
    Agent. Each native client receives only the selected key, model and
-   fixed HTTPS endpoint. Pi continues using the existing OpenRouter credential.
-   Release readiness still requires **all three** live native clients, the
+   fixed HTTPS endpoint.
+   Release readiness still requires **both** live native clients, the
    full Mac/Linux host gates, and the exact candidate archives.
 
 ### Optional: automatic PR checks and merge
@@ -161,7 +160,7 @@ model. A native-session `limit` diagnostic does not identify the underlying
 provider cause. Inspect provider availability and quota without exposing secrets.
 OpenRouter's free routing has account-wide request limits. Claude Code gateway
 compatibility is guaranteed by OpenRouter only for Anthropic first-party models;
-non-Anthropic BYOK models can fail even when Pi succeeds with the same endpoint.
+non-Anthropic BYOK models can fail at startup.
 Use the opt-in protected first-party key/model pairs above to qualify those
 clients on their native APIs. The operator owns any resulting API charges.
 
