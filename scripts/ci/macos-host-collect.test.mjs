@@ -306,6 +306,56 @@ test('PR collector finishes on fixed winners while the other OS is still queued'
   assert.equal(result.jobs.find(({ id }) => id === loser.id).status, 'queued')
 })
 
+test('PR collector waits for a queued retry of a failed winner and uses its new decision', async () => {
+  const original = decisionRow(0)
+  const replacement = decisionRow(0, 2)
+  replacement.job = job(0, 2, 200)
+  replacement.selectorJob = { ...selector(0, 2), id: 601 }
+  replacement.decision.jobId = replacement.job.id
+  replacement.decision.selectorJobId = replacement.selectorJob.id
+  replacement.artifact.id = 401
+  const failed = { ...original.job, conclusion: 'failure' }
+  const queued = {
+    ...replacement.job,
+    status: 'queued',
+    conclusion: null,
+    started_at: null,
+    completed_at: null,
+    runner_id: 0,
+    runner_name: '',
+    steps: [],
+  }
+  let observations = 0
+  let clock = 0
+  const result = await waitForMacPrWinners({
+    context: decisionContext,
+    shards: [0],
+    deadline: 1000,
+    now: () => clock,
+    observe: async () => {
+      const waiting = observations++ === 0
+      return {
+        artifacts: waiting ? [original.artifact] : [original.artifact, replacement.artifact],
+        jobs: [
+          failed,
+          original.selectorJob,
+          waiting ? queued : replacement.job,
+          replacement.selectorJob,
+        ],
+      }
+    },
+    readDecision: async (selected) =>
+      selected.id === original.artifact.id ? original : replacement,
+    sleep: async () => {
+      clock += 100
+    },
+    report: () => {},
+  })
+  assert.equal(observations, 2)
+  assert.equal(result.selected[0].job.id, replacement.job.id)
+  assert.equal(result.selected[0].decision.attempt, 2)
+})
+
 test('PR collector refuses a failed fixed winner and bounds missing-decision observation', async () => {
   const winner = decisionRow(0)
   await assert.rejects(
