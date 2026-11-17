@@ -80,7 +80,6 @@ function compile(mode) {
         ]
         if (binary.endsWith('.dylib'))
           flags.push('-dynamiclib', '-Wl,-install_name,@rpath/macos-descriptor-bridge.dylib')
-        if (source.endsWith('.m')) flags.push('-fobjc-arc', '-framework', 'Foundation')
         run('clang', ...flags, input, '-o', output)
         slices.push(output)
       }

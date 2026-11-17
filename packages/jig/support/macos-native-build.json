@@ -8,7 +8,7 @@
   "deploymentTarget": "14.4",
   "architectures": ["x86_64", "arm64"],
   "sha256": {
-    "scripts/native-support.mjs": "f77b11b7fc084b90937c2b737c868553d84a3f07744a98112777a8633c1b598f",
+    "scripts/native-support.mjs": "8f183c2937f32a36a2b516116f9f0f0163d6603642fc1768859b92578baa5c49",
     "support/macos-exec.c": "8ae6ca1481a073c24c94176dc4ed7a0cf7db2fefa9bc72b7023654fea03993a2",
     "support/macos-exec-universal": "f352edf1384bbfe6c9276fde288905b7b37ac9e6e3cf4137cf4b7bf90a0133d6",
     "support/macos-descriptor-bridge.c": "405091f7b18f259cd95466a0360524c776c7975131611d65bf88a62f89cca8b0",
