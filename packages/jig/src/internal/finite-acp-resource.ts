@@ -269,7 +269,7 @@ export async function runPrivateFiniteAcpResource(
         if (
           !Array.isArray(result.authMethods) ||
           !result.authMethods.some(
-            (value) => object(value).id === runtime.authentication!.request.methodId,
+            (value) => object(value).methodId === runtime.authentication!.request.methodId,
           )
         )
           invalid('Native ACP authentication is unavailable')

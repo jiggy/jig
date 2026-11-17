@@ -1376,7 +1376,7 @@ describe('finite ACP authority policy', () => {
       second.fromClient(
         reply(1, {
           protocolVersion: 2,
-          authMethods: [{ id: 'dangerous' }],
+          authMethods: [{ methodId: 'dangerous', type: 'agent', name: 'Private method' }],
           _meta: { private: true },
           capabilities: { session: {}, loadSession: true, mcpCapabilities: { http: true } },
           info: { name: 'peer', version: '2' },
