@@ -110,9 +110,11 @@ export class SourceIndex {
 
   site(node: ts.Node): SourceSite {
     const file = node.getSourceFile()
+    const position = file.getLineAndCharacterOfPosition(node.getStart(file))
     return {
       path: this.implementation + '/' + file.fileName.slice(root.length),
-      line: file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1,
+      line: position.line + 1,
+      column: position.character + 1,
     }
   }
 }

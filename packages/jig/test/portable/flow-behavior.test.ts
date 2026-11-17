@@ -265,6 +265,99 @@ test('the diagram attaches an unresolved callee condition to each affected compl
   expect(rendered).toContain('### Consequences')
 })
 
+test('a shared child keeps the inputs and continuations of its configured callers', () => {
+  const child = method(
+    handlerSource(`
+    if (run.input.mode === 'audit') return {outcome:'blocked', output:{reason:'Review'}}
+    return {outcome:'done', output:{status:'ready'}}
+  `),
+  )
+  const input = snapshot(
+    child,
+    method(
+      handlerSource(`
+    const child = await run.call({slot:'converter', operationId:'convert', input:run.settings})
+    if (child.outcome === 'blocked') return {outcome:'done', output:{status:'refused'}}
+    return await run.call({slot:'exporter', operationId:'export', input:child.output})
+  `),
+    ),
+  )
+  const root = input.targets[0]!
+  const code = { ...root, settings: { mode: 'code' } }
+  const audit = { ...root, id: 'binding:audit', settings: { mode: 'audit' } }
+  const inspect = (focus: string) =>
+    renderFlowBehavior(
+      analyzeFlowBehavior({
+        ...input,
+        focus,
+        targets: [code, audit, ...input.targets.slice(1)],
+        visible: [...input.visible, audit.id],
+      }),
+    )
+  const section = (output: string, caller: string) =>
+    output.split('### converter in ' + caller + '\n')[1]?.split('\n### ')[0] ?? ''
+  const codeMap = inspect(code.id)
+  const auditMap = inspect(audit.id)
+  expect(section(codeMap, code.id)).toContain('mode = "code"')
+  expect(section(codeMap, code.id)).toMatch(/Back in binding:code[^\n]+Call exporter/)
+  expect(section(auditMap, audit.id)).toContain('mode = "audit"')
+  expect(section(auditMap, audit.id)).toMatch(/Back in binding:audit[^\n]+status = "refused"/)
+  const link = codeMap.match(/\[converter\]\(#(call-converter-[^)]+)\)/)?.[1]
+  expect(link).toBeDefined()
+  expect(codeMap).toContain('<a id="' + link + '"></a>')
+  expect(auditMap).not.toContain('<a id="' + link + '"></a>')
+})
+
+test('two uses of a slot on one source line have distinct expansion anchors', () => {
+  const worker = method(handlerSource(`return {outcome:'done', output:{status:run.input.mode}}`))
+  const input = snapshot(
+    worker,
+    method(
+      handlerSource(`
+    const first = await run.call({slot:'converter', operationId:'first', input:{mode:'first'}}); const second = await run.call({slot:'converter', operationId:'second', input:{mode:'second'}});
+    return second
+  `),
+    ),
+  )
+  const rendered = renderFlowBehavior(analyzeFlowBehavior(input))
+  const anchors = [...rendered.matchAll(/\[converter\]\(#(call-converter-[^)]+)\)/g)].map(
+    (match) => match[1],
+  )
+  expect(new Set(anchors).size).toBe(2)
+  for (const anchor of anchors) expect(rendered).toContain('<a id="' + anchor + '"></a>')
+  expect(rendered).toContain('mode = "first"')
+  expect(rendered).toContain('mode = "second"')
+})
+
+test('a guard before a child write labels the incoming edge and later guards stay after the write', () => {
+  const child = method(`
+    import { handle } from '@jigging/flow'
+    import { writeFile } from 'node:fs/promises'
+    await handle(async run => {
+      if (!run.input.allow) throw new Error('No write allowed')
+      await writeFile('preview.json', 'sample')
+      if (!run.input.valid) throw new Error('Metadata rejected')
+      return {outcome:'done', output:{status:'ready'}}
+    })
+  `)
+  const root = method(
+    handlerSource(
+      `return await run.call({slot:'converter', operationId:'convert', input:run.input})`,
+    ),
+  )
+  const rendered = renderFlowBehavior(analyzeFlowBehavior(snapshot(child, root)))
+  const chart = rendered.match(/```mermaid[\s\S]+?```/)?.[0] ?? ''
+  const writeLine = chart.split('\n').find((line) => line.includes('Attempts writeFile'))
+  expect(writeLine).toContain('!run.input.allow')
+  expect(writeLine).not.toContain('!run.input.valid')
+  expect(chart).toMatch(/!run\.input\.valid[^\n]+converter (returns|failed)/)
+  const expansion = rendered.split('### converter in binding:code')[1] ?? ''
+  expect(expansion).toMatch(
+    /Child path[^\n]+run\.input\.allow[^\n]+writeFile[^\n]+run\.input\.valid/,
+  )
+  expect(expansion).toContain('Metadata rejected')
+})
+
 test('a child write remains visible before a later child failure', () => {
   const child = method(`
     import { handle } from '@jigging/flow'

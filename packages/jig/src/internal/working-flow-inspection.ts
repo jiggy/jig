@@ -57,6 +57,7 @@ export function inspectWorkingFlowBehavior(
           revision: String(selection.snapshot.revision),
           focus: selection.focus,
           inventory: [],
+          childPaths: [],
           scopes: [],
           unavailable: 'This view exceeds the presentation limits. Inspect a smaller target.',
         }

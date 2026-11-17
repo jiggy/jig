@@ -970,7 +970,12 @@ Routes retain known effects before an opaque continuation and carry inherited as
 The focused view summarizes selected route consequences and evidence.
 The main diagram projects supported calls and file writes within a fixed display bound.
 An unresolved check travels with the affected branch, including through a child return.
+Checks preceding a projected file write appear on its incoming edge.
+Call links open retained child paths for the displayed caller and configuration, with bounded input facts.
+Each contextual path identifies the continuation of its own caller.
+
 Separate details show caller reactions to hypothetical contract outcomes and call failures.
+The view discloses where bounds omit child paths or call sites.
 The outcome name alone does not establish an admitted result or a delivered artifact.
 
 Reporting projections require a recognized local installed implementation.

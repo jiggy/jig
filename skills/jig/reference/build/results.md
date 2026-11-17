@@ -304,7 +304,8 @@ jig inspect --flow --all --behavior
 
 Start with the consequences for the selected target, including the calls, requested progress, and attempted file writes.
 The diagram labels unresolved checks on the affected connections. Source details point to the checks and publications.
-Select another target to read its behavior and caller continuations.
+Follow a call link to see the inputs, supported child path, and continuation for that call.
+Select another target to inspect it independently.
 The configured inventory lists declared outcomes, attachments, and artifact results.
 
 For example, a converted preview can return `needs_mapping` with outcome `done`.
