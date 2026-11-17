@@ -330,11 +330,24 @@ available, it uses the installation's matching `codex-resources/bwrap`. You do
 not need that bundled directory when your package supplies Bubblewrap
 separately. `JIG_BWRAP_PATH` configures only Jig's outer containment tool.
 
-Native Codex is currently unavailable on Mac. Its preference synchronization
-observer has no qualified Apple Silicon implementation, so Jig refuses selection
-with a preference-compatibility diagnostic. Keep managed settings intact and
-choose another qualified native client. Installing another executable cannot qualify the missing
-observer. Startup checks retain the explicit refusal alongside the other clients.
+On native Apple Silicon Macs, Codex uses `/usr/bin/sandbox-exec` and an
+explicitly checked preference observer. Before selection and each launch,
+including restoration, Jig refreshes host policy and refuses configured managed
+preferences or unavailable observation. Keep managed settings intact. A missing
+or unverifiable observer requires repairing the complete Jig installation.
+
+The check is a prelaunch snapshot. Jig does not continuously monitor policy
+changes introduced after that snapshot.
+
+Mac release qualification requires genuine native session creation and confirmed
+cleanup on macOS 15 and macOS 26. An unsupported-client refusal cannot satisfy
+that check. Offline startup with placeholder credentials establishes neither
+subscription authentication nor endpoint access or model execution.
+
+The contained profile may receive narrow preference-change notifications while
+preference values and writes remain denied. Native canary checks do not prove
+the private notification-page layout. Actual forced-policy refusal and expiry
+during a genuinely stalled framework call remain separate qualification gaps.
 
 The current adapter reads a file-backed login from `$CODEX_HOME/auth.json`,
 defaulting to `~/.codex/auth.json`. Configure Codex with

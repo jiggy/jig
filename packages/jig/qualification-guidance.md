@@ -174,10 +174,18 @@ These links locate module rules. All selected domain requirements still apply.
   screen/input restoration. Refusal alone cannot qualify these positive
   behaviors.
 
-- Native Codex remains refused on Mac because its preference observer lacks an
-  independently qualified ARM implementation. Genuine offline startup tests
-  assert this refusal instead of skipping it. Claude and Pi keep their complete
-  native startup checks. Linux Codex API and subscription paths stay unchanged.
+- Mac qualification requires genuine native Codex, Claude and Pi session
+  creation through their installed ACP profiles, followed by confirmed fencing
+  and cleanup. Unsupported Codex refusal cannot satisfy startup qualification.
+  Offline placeholder credentials establish local startup, not subscription
+  authentication, endpoint access or model execution.
+
+  The ARM Codex preference observer must refresh real host state and refuse
+  configured forced policy, unavailable observation and inherited sandboxes.
+  Actual native canaries check denied preference reads and writes plus bounded
+  read-only notification mappings. They do not prove private page layout.
+  Refusal with actual forced policy and expiry during a genuinely stalled
+  framework call need separate native observations.
 
 - Complete hosted Mac qualification preserves the full test inventory and
   fresh installed consumers across separate native ARM hosts. Every executing

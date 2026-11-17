@@ -253,14 +253,15 @@ Readiness records distinguish omitted source clients from explicit pins.
   missing/project-selected support, byte replacement, and credential expiry.
   `JIG_NATIVE_AGENT_STARTUP=1` with absolute `JIG_CODEX_STARTUP_PATH`,
   `JIG_CLAUDE_STARTUP_PATH`, and `JIG_PI_STARTUP_PATH` enables
-  `test/native-agent-startup.test.ts` after building. It tests genuine native
-  ACP startup on the real selected clients. Authentication and subscription evidence
-  require actual operator-provided credentials through the ordinary private configuration.
-  Never record those credentials or substitute dummy login success.
+  `test/startup/native-agent-startup.test.ts` after building. It requires genuine
+  clients to initialize and create a local session without network access using
+  placeholder API keys. Missing selections fail instead of silently skipping.
+  This establishes startup behavior, separate from live model calls and the hostile-host gate.
 
-  Codex subscription startup separately checks the in-memory login handshake.
-  missing selections fail instead of silently skipping. This is startup
-  evidence, separate from live model calls and the hostile-host gate.
+  Authentication and subscription evidence require actual operator-provided
+  credentials through the ordinary private configuration and separately
+  authorized qualification. Never record those credentials or substitute dummy
+  login success.
 
 - Finite ACP failures report their private preparation, sealing, admission,
   protocol, settlement or cleanup phase through the existing closed host-test

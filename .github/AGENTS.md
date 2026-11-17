@@ -379,7 +379,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Intel execution support is retired.
 
   Scope freezes a source-bound plan before requesting Macs. Measured durations choose useful shards within the checked-in capacity limit.
-  Each host runs the native enforcement baseline, then its sequential assigned files. The installed owner also runs genuine offline-client checks.
+  Each host runs the complete native enforcement and Codex preference-boundary baseline, then its sequential assigned files. The installed owner also runs genuine offline-client checks.
   A matrix allows three concurrent jobs. Worker count and runner labels remain separate from test membership.
 
   Different observed patch builds may contribute coverage within one required major.

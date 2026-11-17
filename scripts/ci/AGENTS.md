@@ -310,9 +310,11 @@ They consume frozen package exports with tracked test helpers and installed
   Exact allocations belong to `.github/AGENTS.md` and the workflow.
 - `macos-host-test-shards.mjs` obtains full Mac membership from the shared suite
   catalog, retaining portable files until a separate audit proves host
-  neutrality. Eight native prerequisite files run on every worker and genuine
-  installed startup runs separately on the final shard. Every other selected
+  neutrality. Eleven native prerequisite files run on every worker, including
+  the genuine Codex preference observer and its inherited-sandbox and payload
+  boundaries. Installed startup runs separately on the final shard. Every other selected
   file runs once in a fresh sequential process, without name filters.
+
   `.node.mjs` files use verified Node. Other files use Bun. Both runtimes retain
   exact file identities in their JUnit reports.
 
@@ -469,15 +471,17 @@ They consume frozen package exports with tracked test helpers and installed
   an old native or host receipt with a rebuilt candidate from the same source.
 - Mac qualification runs unprivileged without host provisioning. Require all
   three genuine native client paths for full qualification and the installed
-  consumer shard. Missing prerequisites fail explicitly. Claude and Pi must complete offline startup.
-  Codex must return the explicit unsupported-preferences refusal on Apple Silicon.
-  The selected client path remains genuine and the case never skips.
+  consumer shard. Missing prerequisites fail explicitly. Codex, Claude and Pi
+  must create genuine native sessions and confirm fencing and cleanup.
+  Unsupported Codex refusal is not a passing alternative.
 
-  Qualification passes that expected outcome through
-  `JIG_CODEX_MACOS_STARTUP_EXPECTATION`. The test independently checks the
-  actual architecture before accepting it. Include the trusted preference
-  observer in host residue comparisons. No model credentials or online model
-  calls are part of this host check.
+  The ARM Codex helper must use real framework calls and preserve forced-policy
+  and inherited-sandbox refusals. Include its actual native boundary canaries
+  and authenticated helper checks on macOS 15 and 26. Record the trusted
+  observer in residue comparisons. Offline placeholder credentials do not prove
+  subscription authentication, endpoint access or model execution.
+  Actual forced-policy refusal and stalled-framework alarm expiry remain
+  separate native evidence obligations. No injected result can satisfy them.
 - Use `sudo` only while provisioning the disposable runner. Jig and package code
   run unprivileged.
 - Keep fetched host tools version- and digest-pinned.
@@ -556,9 +560,9 @@ They consume frozen package exports with tracked test helpers and installed
   whole-file profile assignment and balanced scheduling using synthetic weights
   and out-of-file costs. It does not freeze measured timing hints. Workflow role
   checks parse YAML and inspect commands, conditions and evidence contexts
-  rather than indentation, scalar quoting or step names. Exact Codex
-  startup/refusal host selection without running native clients, and that every
-  Linux hostile test file enters provisioned host conformance.
+  rather than indentation, scalar quoting or step names. Policy tests check
+  required genuine Codex startup without claiming native execution. They also
+  require every Linux hostile test file in provisioned host conformance.
 - `node --test scripts/ci/macos-host-collect.test.mjs` checks complete generated matrices and original-run retry lineage.
   It rejects changed inputs, failed latest executions, missing shards, and stale qualification sessions.
 - `node --test scripts/ci/macos-host-profiles.test.mjs` checks behavioral prerequisites, pinned runtimes, unsupported architecture refusal, and bounded evidence. Ordinary input records establish no native qualification.
