@@ -99,7 +99,6 @@ jobs:
       actions: read
     env:
       JIG_MACOS_MAJOR: ${{ matrix.major }}
-      JIG_MACOS_TEST_PLAN_FILE: ${{ runner.temp }}/macos-host-artifacts/PLAN.json
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJSON(needs.scope.outputs.max_parallel) }}
@@ -129,6 +128,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/mac-evidence"
+          printf 'JIG_MACOS_TEST_PLAN_FILE=%s\n' "$RUNNER_TEMP/macos-host-artifacts/PLAN.json" >> "$GITHUB_ENV"
           git rev-parse HEAD > "$RUNNER_TEMP/mac-evidence/source.txt"
           uname -a > "$RUNNER_TEMP/mac-evidence/host.txt"
           sw_vers >> "$RUNNER_TEMP/mac-evidence/host.txt"
