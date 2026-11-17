@@ -389,13 +389,14 @@ export async function writeQualificationReceipt({
   kind,
   profile = '',
   upstreamReceipt,
+  coverageSummary,
   checkedOutRevision,
   stage = 'qualification',
   env = process.env,
 }) {
   if (
     !['ci', 'linux', 'macos', 'native'].includes(kind) ||
-    (kind === 'macos' && !['x64', 'arm64'].includes(profile)) ||
+    (kind === 'macos' && profile !== 'arm64') ||
     (kind === 'native' && !['codex', 'claude', 'pi'].includes(profile))
   )
     throw new Error('Invalid qualification profile')
@@ -425,6 +426,32 @@ export async function writeQualificationReceipt({
     validateProducer(linux.consumer)
     upstream = { receiptSha256: digest(await readFile(upstreamReceipt)), receipt: linux }
   }
+  let coverage
+  if (kind === 'macos') {
+    const { validateMacCoverage } = await import('./macos-qualification.mjs')
+    if (!coverageSummary)
+      throw new Error('Mac qualification requires its validated coverage summary')
+    const summary = await readMetadata(coverageSummary)
+    if (
+      summary.qualified !== true ||
+      summary.revision !== receipt.sourceRevision ||
+      !Array.isArray(summary.errors) ||
+      summary.errors.length ||
+      summary.failures !== 0 ||
+      summary.skipped_reports !== 0 ||
+      !Number.isSafeInteger(summary.executed) ||
+      summary.executed <= 0 ||
+      !Number.isSafeInteger(summary.files) ||
+      summary.files <= 0 ||
+      summary.files !== summary.planned_files
+    )
+      throw new Error('Mac qualification summary did not pass')
+    coverage = validateMacCoverage(summary.coverage, {
+      source: receipt.sourceRevision,
+      majors: consumer.event === 'pull_request' ? [26] : undefined,
+      ...(consumer.event !== 'pull_request' ? { attempt: consumer.runAttempt } : {}),
+    })
+  }
   const qualification = {
     schemaVersion: 1,
     stage,
@@ -433,6 +460,7 @@ export async function writeQualificationReceipt({
     candidate,
     consumer,
     ...(upstream ? { upstream } : {}),
+    ...(coverage ? { coverage } : {}),
   }
   await writeFile(output, `${JSON.stringify(qualification, null, 2)}\n`, { flag: 'wx' })
   return qualification
@@ -479,6 +507,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         kind: options.kind,
         profile: options.profile,
         upstreamReceipt: options['upstream-receipt'],
+        coverageSummary: options['coverage-summary'],
         checkedOutRevision,
         stage: positional[0],
       })

@@ -115,17 +115,16 @@ These links locate module rules. All selected domain requirements still apply.
   Ordinary installed users receive bun/npm installation recovery, never repository build instructions.
 
 - The installed launcher checks OS/CPU pairs before selecting the pinned
-  runtime: Linux x86_64 and Darwin x86_64/arm64 only. npm's independent OS and
-  CPU allowlists cannot exclude Linux arm64 while admitting both Mac
-  architectures. The README exposes this installation limitation. Refuse
+  runtime: Linux x86_64 and Darwin arm64 only. npm's independent OS and
+  CPU allowlists cannot express these two OS/CPU pairs. The README exposes this installation limitation. Refuse
   unsupported pairs with supported-host guidance, not a missing-installation
   repair instruction.
 
 ## Verification
 
 - `just jig::check` builds and runs Jig and display-package source tests, then
-  runs all discovered Mac-specific regression files on an exact supported native
-  Mac. Root `just preflight` also includes quick tooling and the other portable
+  runs all discovered Mac-specific regression files on a capable native ARM
+  macOS 15+ host. Root `just preflight` also includes quick tooling and the other portable
   packages. The native pass needs ordinary local launchd/disk-image access. An
   enclosing execution sandbox may refuse it. It requires no native Agent clients
   or model calls and does not replace complete hosted qualification. Other hosts
@@ -175,19 +174,18 @@ These links locate module rules. All selected domain requirements still apply.
   screen/input restoration. Refusal alone cannot qualify these positive
   behaviors.
 
-- Mac Codex preference qualification uses
-  `test/macos-23E224/macos-preferences-observer.test.ts` and
-  `test/macos/macos-preferences-boundary.test.ts` with
-  `JIG_MACOS_PROCESS_TEST=1`. Actual-observer positive cases require native
-  Intel 23E224 without configured Codex MDM. They prove
-  closed decisions, inherited sandbox refusal and parent-loss expiry, not
-  installed MDM consumption. Policy refusal requires actual native policy, never an injected observer result.
+- Native Codex remains refused on Mac because its preference observer lacks an
+  independently qualified ARM implementation. Genuine offline startup tests
+  assert this refusal instead of skipping it. Claude and Pi keep their complete
+  native startup checks. Linux Codex API and subscription paths stay unchanged.
 
-  The raw boundary test checks populated test
-  preferences, read-only counters, inherited rights and cleanup. Genuine startup
-  is qualified separately by `test/startup/native-agent-startup.test.ts`. Other
-  Mac profiles must explicitly refuse Codex selection while retaining their
-  independent client checks.
+- Complete hosted Mac qualification preserves the full test inventory and
+  fresh installed consumers across separate native ARM hosts. Every executing
+  host first passes the native prerequisite baseline and confirms residue
+  cleanup. Before release, macOS 15 and macOS 26 each require the complete
+  host-dependent and installed-consumer suite for the same candidate. OS build
+  provenance is retained per host. Different builds may satisfy the same
+  behavior contract without claiming uniform build certification.
 
 ### test host markdown-worker tests
 

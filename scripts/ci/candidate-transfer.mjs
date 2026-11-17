@@ -125,7 +125,7 @@ export async function acquisitionExpectation(sourceRevision, env = process.env) 
   return {
     repository: context.repository,
     workflowPath: '.github/workflows/ci.yml',
-    event: pr ? 'pull_request' : 'push',
+    event: pr ? 'pull_request' : context.event === 'schedule' ? 'schedule' : 'push',
     headBranch: pr ? context.headBranch : 'main',
     ...(manual ? { allowedEvents: ['push', 'workflow_dispatch'] } : {}),
     headRepository: pr ? context.headRepository : context.repository,

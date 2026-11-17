@@ -40,7 +40,7 @@ test('fixed native and installed work consumes capacity before ordinary files', 
 test('unknown lifecycle files receive a conservative estimate without losing membership', () => {
   const host = 'packages/jig/test/host/future.test.ts'
   const portable = 'packages/jig/test/portable/future.test.ts'
-  for (const profile of ['linux', 'x64', 'arm64']) {
+  for (const profile of ['linux', 'arm64']) {
     assert.equal(hostTestSeconds(host, profile), 60)
     assert.equal(hostTestSeconds(portable, profile), 2)
     const plan = balanceWholeFiles([host, portable], 2, (file) => hostTestSeconds(file, profile))

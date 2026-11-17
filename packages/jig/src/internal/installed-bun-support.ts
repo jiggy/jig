@@ -1,13 +1,12 @@
-import { privateMacosKernelPlatform, type PrivateMacosPlatform } from './macos-process-controls.js'
 import { constants } from 'node:fs'
 import { access, lstat, realpath } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-
 import type { JsonValue } from '../json.js'
 import { privateDomainDigest } from './identity.js'
 import { privateInstallationFileDigest } from './installation-verification.js'
 import { resolvePrivateLinuxHostLoader } from './linux-host-paths.js'
 import type { PrivateLinuxReadOnlyMount } from './linux-rootless-backend.js'
+import { type PrivateMacosPlatform, privateMacosKernelPlatform } from './macos-process-controls.js'
 
 const ELF_INTERPRETER = '/lib64/ld-linux-x86-64.so.2'
 const LIBRARIES = Object.freeze([
@@ -22,7 +21,7 @@ const PREPARATION_WORKER_DESTINATION = '/jig-preparation-worker.js'
 const HTTP_WORKER_DESTINATION = '/jig-http-worker.js'
 const MARKDOWN_RUNTIME_DESTINATION = '/jig-markdown-runtime.js'
 const LINUX_BUN_PACKAGE = join('@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
-const MACOS_BUN_PACKAGE = join('@oven', 'bun-darwin-x64-baseline', 'bin', 'bun')
+const MACOS_BUN_PACKAGE = join('@oven', 'bun-darwin-aarch64', 'bin', 'bun')
 const LINUX_BUN = Object.freeze({
   version: '1.4.4',
   revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
@@ -31,7 +30,7 @@ const LINUX_BUN = Object.freeze({
 const MACOS_BUN = Object.freeze({
   version: '1.4.4',
   revision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
-  digest: 'sha256:c35307c7d45d65c5a385a58c4a6cb0bb9499e4e626abdee207c177a77ba666ab',
+  digest: 'sha256:0a2237cdcfa0d16ef501d9acca9f0026309ef348bea7393a64e8d1e3609565cc',
 })
 const authenticSupports = new WeakSet<object>()
 
@@ -86,15 +85,7 @@ export async function openPrivateInstalledBunSupport(
   location: PrivateInstalledBunLocation,
 ): Promise<PrivateInstalledBunSupport> {
   const platform = installedPlatform()
-  const runtime =
-    platform === 'linux-x64-glibc'
-      ? LINUX_BUN
-      : process.arch === 'arm64'
-        ? {
-            ...MACOS_BUN,
-            digest: 'sha256:0a2237cdcfa0d16ef501d9acca9f0026309ef348bea7393a64e8d1e3609565cc',
-          }
-        : MACOS_BUN
+  const runtime = platform === 'linux-x64-glibc' ? LINUX_BUN : MACOS_BUN
   const releaseRoot = await installedDirectory(location.releaseRoot, 'installed Jig release')
   if (releaseRoot !== location.releaseRoot) throw new PrivateInstalledBundleError()
   const executablePath = await installedRegularFile(
@@ -366,12 +357,7 @@ async function resolveInstalledBun(
   releaseRoot: string,
   platform: PrivateInstalledBunPlatform,
 ): Promise<string> {
-  const packagePath =
-    platform === 'linux-x64-glibc'
-      ? LINUX_BUN_PACKAGE
-      : process.arch === 'arm64'
-        ? join('@oven', 'bun-darwin-aarch64', 'bin', 'bun')
-        : MACOS_BUN_PACKAGE
+  const packagePath = platform === 'linux-x64-glibc' ? LINUX_BUN_PACKAGE : MACOS_BUN_PACKAGE
   const candidates = [
     join(releaseRoot, 'node_modules', packagePath),
     join(releaseRoot, '..', '..', packagePath),

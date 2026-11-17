@@ -20,7 +20,13 @@ export function hostTestSeconds(file, profile, durations = HOST_TEST_DURATIONS) 
   return /^packages\/jig\/test\/(?:host|linux-host)\//.test(file) ? 60 : 2
 }
 
-export function balanceWholeFiles(files, count, secondsForFile, initialSeconds = []) {
+export function balanceWholeFiles(
+  files,
+  count,
+  secondsForFile,
+  initialSeconds = [],
+  { allowEmptyShards = false } = {},
+) {
   if (!Number.isInteger(count) || count < 1 || files.length < count)
     throw new Error('Whole-file scheduling requires nonempty shards')
   if (new Set(files).size !== files.length) throw new Error('Whole-file inventory repeats a file')
@@ -44,7 +50,7 @@ export function balanceWholeFiles(files, count, secondsForFile, initialSeconds =
     target.groups.push(group)
     target.estimatedSeconds += group.estimatedSeconds
   }
-  if (shards.some((shard) => shard.groups.length === 0))
+  if (!allowEmptyShards && shards.some((shard) => shard.groups.length === 0))
     throw new Error('Whole-file scheduling leaves an empty shard')
   return shards
 }

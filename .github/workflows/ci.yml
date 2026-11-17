@@ -5,6 +5,8 @@ on:
     branches:
       - main
   workflow_dispatch: null
+  schedule:
+    - cron: "13 3 * * *"
 permissions:
   contents: read
 concurrency:

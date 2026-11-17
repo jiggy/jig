@@ -158,8 +158,10 @@ provisioned Ubuntu 24.04 x86_64. This host needs:
 - A systemd user manager supporting transient scopes with `Delegate=yes`.
 - Unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
 
-On Mac, Jig selects Intel Darwin 23.4.0 build 23E224, Intel/Apple Silicon Darwin 24.6.0 build 24G830, and Apple Silicon Darwin 24.6.0 build 24H232.
-Each released profile requires complete native qualification. Other kernel builds are unsupported.
+On Mac, Jig requires native Apple Silicon and macOS 15 or newer. It checks the
+required kernel mechanisms on the running host and refuses missing enforcement.
+Intel Macs and Rosetta execution are unsupported. Exact OS patch builds are
+recorded for diagnosis rather than used as a support allowlist.
 
 Install through the same npm command above. npm selects the matching pinned Bun runtime. No privileged
 helper, managed execution account, separate Bun installation, or `sudo` is
@@ -169,11 +171,11 @@ CPU, memory, and process use can briefly exceed the requested ceiling before
 Jig terminates the scope. See the [security boundary](https://github.com/jiggy/jig/blob/main/SECURITY.md)
 when deciding whether this tradeoff fits your workload.
 
-Linux and Apple Silicon checks must pass before a release is published. Intel
-Mac support has complete nightly compatibility checks, so a new release can
-contain an Intel regression before the next check. See the
-[Intel compatibility policy](https://github.com/jiggy/jig/blob/main/RELEASING.md#intel-mac-compatibility)
-for the tested versions, results and manual checks.
+Linux and Apple Silicon checks must pass before a release is published. Mac
+release qualification requires complete native and installed-consumer checks
+on macOS 15 and macOS 26 against the same candidate. Per-host prerequisite
+probes do not certify every other OS build. See the
+[Mac qualification policy](https://github.com/jiggy/jig/blob/main/RELEASING.md#mac-qualification).
 
 Jig's host-tool lookup currently uses `/usr/bin`, `/bin`, and
 `/run/current-system/sw/bin`, not your shell's `PATH`.

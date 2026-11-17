@@ -20,7 +20,6 @@ import {
   resolvePrivateLinuxHostPath,
 } from '../../src/internal/linux-host-paths.js'
 import { PrivateMacosBackend } from '../../src/internal/macos-native-backend.js'
-import { privateMacosKernelPlatform } from '../../src/internal/macos-process-controls.js'
 import { openPrivatePiAgentProvider } from '../../src/internal/pi-agent-provider.js'
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 
@@ -69,9 +68,7 @@ async function qualifyMacosStartup(
           JIG_AGENT_WORK: '/work',
         },
         network: 'isolated',
-        ...(runtime.macosCodexPreferenceNotifications
-          ? { macosCodexPreferenceNotifications: true as const }
-          : {}),
+
         maxOutputBytes: 1024 * 1024,
         storageBytes: 512 * 1024 * 1024,
       },
@@ -185,8 +182,7 @@ for (const client of ['codex', 'claude', 'pi'] as const) {
           root,
         )
       if (client === 'codex' && process.platform === 'darwin') {
-        const expected =
-          privateMacosKernelPlatform() === 'darwin-x64-23.4.0-23E224' ? 'startup' : 'unsupported'
+        const expected = 'unsupported'
         const configured = process.env.JIG_CODEX_MACOS_STARTUP_EXPECTATION
         if (configured !== undefined && configured !== expected)
           throw new Error('Codex startup expectation differs from the actual Mac profile')

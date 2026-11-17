@@ -72,7 +72,7 @@ EXTERNAL RUNTIME DEPENDENCY — NOT INCLUDED
 
 `@jigging/jig` declares exact, platform-selected optional dependencies on
 `@oven/bun-linux-x64-baseline@1.4.4` and
-`@oven/bun-darwin-x64-baseline@1.4.4`. Package managers obtain the matching
+`@oven/bun-darwin-aarch64@1.4.4`. Package managers obtain the matching
 package separately; its bytes are not included or bundled in the Jig archive.
 
 Bun and the third-party components contained in Bun are governed by their

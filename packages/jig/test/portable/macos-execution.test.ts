@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readPrivateMacosOwner } from '../../src/internal/macos-owner-state.js'
 import {
+  privateMacosDeploymentVersionFor,
   privateMacosOwnerIsFromPriorBoot,
   privateMacosPlatformFor,
   recoverPrivateMacosCoalition,
@@ -14,19 +15,45 @@ import {
 import { runMacosFixture } from '.././fixtures/macos-launchd.js'
 import { terminalJoinFailureFixture } from '.././macos-execution.fixture.js'
 
-test('Mac candidate tuples preserve exact architecture, kernel and build identity', () => {
-  const candidates = new Map([
-    ['x64/23.4.0/23E224', 'darwin-x64-23.4.0-23E224'],
-    ['x64/24.6.0/24G830', 'darwin-x64-24.6.0-24G830'],
-    ['arm64/24.6.0/24G830', 'darwin-arm64-24.6.0-24G830'],
-    ['arm64/24.6.0/24H232', 'darwin-arm64-24.6.0-24H232'],
+test('Mac platform captures observed ARM host identity without build allowlists', () => {
+  for (const [kernel, build] of [
+    ['24.6.0', '24G830'],
+    ['25.0.0', '25A100'],
+    ['26.1.0', '26B321'],
   ])
-  for (const architecture of ['x64', 'arm64', 'ia32'])
-    for (const kernel of ['23.4.0', '24.6.0', '24.6.1', '25.0.0'])
-      for (const build of ['23E224', '23E225', '24G830', '24H232', '24H233'])
-        expect(privateMacosPlatformFor(architecture, kernel, build)).toBe(
-          candidates.get(`${architecture}/${kernel}/${build}`),
-        )
+    expect(privateMacosPlatformFor('arm64', kernel, build)).toBe(`darwin-arm64-${kernel}-${build}`)
+  for (const [arch, kernel, build] of [
+    ['x64', '24.6.0', '24G830'],
+    ['arm64', '23.6.0', '23G100'],
+    ['arm64', 'invalid', '24G830'],
+    ['arm64', '25.0.0', 'bad-build'],
+    ['arm64', '25.0.0', '25A100\\n'],
+  ])
+    expect(privateMacosPlatformFor(arch, kernel, build)).toBeUndefined()
+})
+
+test('Mach-O deployment ceiling follows the actual macOS product version, including 26', () => {
+  for (const [version, expected] of [
+    ['15.6', 0x000f0600],
+    ['26.0', 0x001a0000],
+    ['26.1.2', 0x001a0102],
+    ['27.10.3', 0x001b0a03],
+  ] as const)
+    expect(privateMacosDeploymentVersionFor(version)).toBe(expected)
+  for (const version of [
+    '14.6',
+    '15',
+    '26',
+    '26.1.2.3',
+    '026.1',
+    '26.-1',
+    '26.100',
+    '100.1',
+    'latest',
+    '26.1\\n',
+    '26.1  ',
+  ])
+    expect(() => privateMacosDeploymentVersionFor(version)).toThrow('unavailable')
 })
 
 test('constructs Mac launcher terminal-join failure while retaining the actual owner and native producer', async () => {

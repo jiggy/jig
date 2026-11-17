@@ -63,7 +63,6 @@
     "libexec/linux-rootless-supervisor.js",
     "libexec/macos-native-supervisor.js",
     "libexec/macos-exec",
-    "libexec/macos-codex-preferences",
     "libexec/macos-descriptor-bridge.dylib",
     "libexec/evaluator/project-evaluator-worker.js",
     "libexec/evaluator/project-evaluator-sdk.bundle.js",
@@ -91,7 +90,6 @@
     "THIRD_PARTY_NOTICES"
   ],
   "optionalDependencies": {
-    "@oven/bun-darwin-x64-baseline": "1.4.4",
     "@oven/bun-darwin-aarch64": "1.4.4",
     "@oven/bun-linux-x64-baseline": "1.4.4"
   },

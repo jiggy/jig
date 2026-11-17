@@ -52,6 +52,10 @@ execution evidence.
 - A descriptor-byte change must reconcile its documented digest, host allowlist,
   fixtures, lock constants, and published exact bytes.
 - Current exclusions must match the implementation and guide claims.
+- Mac admission requires native ARM macOS 15+ mechanisms, with observed OS builds
+  retained as identity rather than an allowlist. Release evidence covers complete
+  native and installed suites on macOS 15 and 26. Native Codex remains refused
+  until its ARM preference observer is independently qualified.
 - Browser composition maps project the exact admitted Run generation without source evaluation or new execution authority.
   Available connections remain distinct from observed invocations and application decisions.
   Missing or conflicting correspondence stays explicit.

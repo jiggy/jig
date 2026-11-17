@@ -95,7 +95,6 @@ try {
     code: 'ENOENT',
   })
   assert.deepEqual(installedManifest.optionalDependencies, {
-    '@oven/bun-darwin-x64-baseline': '1.4.4',
     '@oven/bun-darwin-aarch64': '1.4.4',
     '@oven/bun-linux-x64-baseline': '1.4.4',
   })

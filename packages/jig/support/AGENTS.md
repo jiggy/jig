@@ -13,7 +13,7 @@ setup or package-held authority.
 - `macos-exec.c` owns the private Darwin pre-exec boundary. The private host
   owns profile generation, durable admission, supervision, recovery and
   assembly.
-- `macos-exec-universal` contains the Intel and Apple Silicon launcher slices
+- `macos-exec-universal` contains the compiler-produced universal launcher slices
   compiled from that source with the Apple toolchain. Assembly copies it into
   the release. Installed consumers do not compile it.
 - `macos-descriptor-bridge.c` and its universal `.dylib` supply fixed-signature
@@ -22,16 +22,6 @@ setup or package-held authority.
   errno through an explicit output buffer, with `readdir` clearing errno inside
   the native call. The SDK compiler owns Darwin's variadic ABI. Descriptor code
   verifies the packaged bridge digest before loading it.
-- `macos-codex-preferences.m` and its universal executable supply a bounded,
-  trusted, value-free managed-policy observation. Synchronize the Codex domain.
-  Check both native managed keys and every forced key in the public suite search
-  list. Return only absence, unsupported policy, or unavailable observation.
-  Never change preferences or expose keys/values. Ordinary preferences need not
-  be empty.
-
-  The payload cannot read them. Its native deadline survives parent loss. Only
-  native Intel execution is qualified. Reject Rosetta and arm64.
-
 ## Local Contracts
 
 - Never execute package bytes before applying the selected profile and consuming
@@ -40,7 +30,7 @@ setup or package-held authority.
 - Clear registered and exception Mach rights and every unspecified descriptor
   through spawn attributes. Retain bootstrap only for the explicitly selected
   service-enabled profile. The profile must still restrict Mach service lookup
-  to selected DNS or Codex notification services. Other isolated scopes retain
+  to the selected DNS service. Other isolated scopes retain
   no bootstrap port. Include `EXC_MASK_CRASH` and `EXC_MASK_CORPSE_NOTIFY`
   explicitly: the SDK's `EXC_MASK_ALL` excludes them. Child exit and
   remaining-coalition settlement are separate observations, including after
@@ -52,7 +42,8 @@ setup or package-held authority.
 - This helper is unprivileged. It does not install services, create accounts,
   grant admission, or claim that a child exit proves descendant cleanup.
 - Compile development fixtures with the Apple toolchain. The qualified installed
-  Mac host uses packaged universal support and requires no consumer compiler.
+  ARM Mac host uses packaged support and requires no consumer compiler.
+  Universal asset slices do not authorize Intel or Rosetta execution.
 
 ## Work Guidance
 
@@ -79,12 +70,6 @@ setup or package-held authority.
 - `bun test packages/jig/test/native-support-build.test.ts` checks independent
   source, recipe, binary and runtime-pin corruption refusal, plus a nonzero
   LC_UUID in both slices of each binary (required by newer Darwin loaders).
-- `macos-preferences-observer.test.ts` exercises the actual observer asset on
-  native Intel 23E224: caller-sandbox refusal, synthetic forced-policy and sync
-  failures, and expiry after parent loss. Injection never changes operator
-  preferences and is not actual MDM qualification. Cleanup uses the live
-  post-exec PID version, with evidence retained if settlement is unconfirmed.
-
 - `JIG_MACOS_PROCESS_TEST=1 bun test packages/jig/test/macos-execution.test.ts`
   uses the candidate native Bun on the qualified Mac, outside an enclosing
   sandbox. It compiles with warnings as errors and checks admission, inherited

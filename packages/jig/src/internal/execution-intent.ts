@@ -29,8 +29,6 @@ export interface PrivateExecutionIntent {
   readonly relocatedEnvironment?: Readonly<Record<string, string>>
   readonly network?: 'isolated' | 'inherited'
   readonly nestedUserNamespaces?: boolean
-  /** Closed, verified Codex-only macOS notification access; never preference values. */
-  readonly macosCodexPreferenceNotifications?: true
   readonly capturedInputs?: readonly {
     readonly input: PrivateCapturedInput
     readonly destination: string

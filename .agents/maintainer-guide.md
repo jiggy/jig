@@ -367,10 +367,12 @@ supervised resource accounting and termination with explicit overshoot
 limitations instead of Linux-equivalent aggregate hard quotas. Exact admission,
 authority isolation, complete descendant ownership and truthful cleanup remain
 required. The installed Mac path needs no `sudo`, privileged helper
-installation, or managed execution accounts. Exact qualified kernels and their
-evidence belong in the host implementation and public guidance.
+installation, or managed execution accounts.
+Host capabilities and retained qualification evidence belong in the implementation and public guidance.
 
-New kernel profiles require their own qualification before support expands.
+Mac admission uses native architecture and behavioral prerequisites. Patch builds remain observations rather than an exact-build allowlist.
+Full release qualification covers the oldest and current claimed macOS majors.
+Every executing worker must prove enforcement and cleanup. Unobserved versions receive no independent certification.
 
 ### Composition
 
@@ -698,9 +700,13 @@ bound to the verified remote head.
 
 Batch related outcomes into a useful review milestone. Keep distinct stable
 commits where they help review, but do not make every commit a separate PR or
-owner checkpoint. Use `just preflight` before pushing: it builds, runs quick
-tooling and portable source checks, and automatically includes Mac-specific
-regression files on an exact supported native Mac. Other hosts report the
+owner checkpoint.
+
+Use `just preflight` before pushing.
+It builds and runs quick tooling and portable source checks.
+On supported Apple Silicon Macs, it also includes Mac regression files.
+
+Other hosts report the
 coverage left to CI. Unsupported Macs refuse. This local regression pass is not
 complete host qualification.
 

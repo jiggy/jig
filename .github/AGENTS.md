@@ -209,7 +209,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   Keep these checks and `test` in merge policy. There are no test-name selection
   modes, temporary benchmark predicates or
-  compact witnesses. Intel compatibility has its own nightly and manual workflow.
+  compact witnesses. Apple Silicon is the supported Mac architecture.
 
 - Model and web/TUI display packages enter dependency ownership, source and host
   test inventories, and frozen standalone artifact gates. Their
@@ -266,7 +266,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - The CI site job checks documentation metadata, local links, source anchors,
   changed technical paragraphs, and the rendered Jig site before recording success.
   PR style checks use the base SHA. Push checks use the previous SHA.
-  Manual checks use the checked revision's parent. Missing baselines fail.
+  Manual and scheduled checks use the checked revision's parent. Missing baselines fail.
 
 ## Orchestration diagnostics
 
@@ -292,7 +292,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Wait at least five minutes before rechecking remote CI status. Repository CI suites are extensive and take time to finish.
 - Preserve zero-residue checks around provisioned Jig host tests. Mac snapshots
   retain explicit lowercase `jig-` paths and automatic `/Volumes/Jig-` volume
-  names. The self-hosted workflow uses the same qualifier. These are
+  names. These are
   observations, not process, mount or filesystem cleanup authority.
 - Acquire the original canonical CI bundle once, then run the complete Linux
   suite in independent shards on separately provisioned hosts. Every shard
@@ -372,154 +372,43 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   Frozen archives are test inputs, never embedded dependencies.
 
-- `workflows/macos-host-conformance.yml` qualifies the rootless candidate only
-  on a self-hosted Intel runner labeled `jig-macos-23E224`. Keep manual dispatch
-  restricted to this repository's main or mac-support branch and the protected
-  `macos-host-conformance` environment. Never run arbitrary PR code on this
-  runner. Configure absolute native executable paths through the environment's
-  `JIG_CODEX_STARTUP_PATH`, `JIG_CLAUDE_STARTUP_PATH`, and `JIG_PI_STARTUP_PATH`
-  variables. This candidate workflow does not replace Linux publication gates or
-  claim live model/API qualification.
-- `workflows/macos-hosted-candidates.yml` requires complete Apple Silicon
-  qualification on `macos-15` for applicable PRs, generated main releases, uncertain sources, and manual runs. `affected-macos`
-  reconciles only this architecture. Linux and Apple Silicon remain release
-  gates. Intel evidence never grants publication readiness.
+- `workflows/macos-hosted-candidates.yml` qualifies Apple Silicon using a generated, bounded whole-file shard matrix.
+  Applicable PRs test the current macOS major. Releases, manual runs, and nightly diagnostics test both macOS 15 and macOS 26.
+  Every required major retains complete host-dependent, portable, installed-consumer, and cleanup coverage.
 
-  Scope validates the exact main push and release metadata before automatic Mac acquisition.
-  Linux main qualification remains complete, preserving upstream proof for manual native diagnostics.
-  Selected main and manual-main ARM jobs use one of two fixed concurrency lanes, selected by
-  workflow run-number parity. Each lane permits one running native job.
-  This bounds main native execution at two jobs. PR runs also advance that
-  number, so successive main jobs can select the same lane.
+  Intel execution support is retired.
 
-  Lane assignment does not balance load or guarantee both lanes are occupied.
-  PR branches retain their cancellation groups. Their five independent workers
-  have distinct concurrency keys. At most two native workers execute concurrently.
-  Each worker receives its role without waiting for another worker to start.
+  Scope freezes a source-bound plan before requesting Macs. Measured durations choose useful shards within the checked-in capacity limit.
+  Each host runs the native enforcement baseline, then its sequential assigned files. The installed owner also runs genuine offline-client checks.
+  A matrix allows three concurrent jobs. Worker count and runner labels remain separate from test membership.
 
-  Each lane uses GitHub's `queue: max` to retain up to 100 pending jobs.
-  GitHub cancels submissions beyond that limit, which cannot qualify publication.
-  Running main jobs are never cancelled by a newer source. Runner availability
-  can still delay either lane. Protected publication keeps its separate serialization.
+  Different observed patch builds may contribute coverage within one required major.
+  This union establishes the ARM behavior contract, rather than independently certifying each observed build.
 
-  Linux and required hosted Mac acquisition wait for the exact canonical
-  `candidate-build` job before starting the artifact transfer bound. PR retries
-  select its latest successful execution within that run. Main/manual runs
-  require current-attempt success. Producer readiness permits 1,800 seconds,
-  including runner queues. Failed or invalid producer jobs refuse immediately.
+  One Ubuntu preparation job acquires canonical inputs after Quick checks pass. Every worker downloads that artifact by immutable ID.
+  Workers verify canonical provenance before execution and compare archive hashes afterward.
+  Complete reports, confirmed cleanup, and unchanged input identity remain mandatory.
 
-  One Ubuntu preparation job acquires canonical inputs, retains them, and verifies allocator readiness before requesting Mac runners.
-  Quick checks must pass before preparation succeeds.
+  Every worker has a 25-minute execution ceiling. Optional startup profiling retains its separate manual allowance.
+  Queue time remains visible separately.
 
-  A queued Ubuntu allocator consumes the preparation allowance, not the active readiness record allowance.
-  The three-minute readiness record allowance starts when the exact allocator is observed running.
-  It cannot extend the preparation deadline.
-  Each executing worker downloads the preparation artifact by immutable ID and verifies canonical provenance before native qualification.
-  That download allows two minutes on PR workers and ten minutes on main/manual complete hosts.
+  Standard hosted capacity is best effort and supplies no queue guarantee.
 
-  Acquisition requires the producer's latest `Quick development checks` success.
-  Main/manual runs require current-attempt Quick success. Transfer permits 300 seconds on Linux or 600 seconds on Mac.
-  Acquisition jobs allow 40 and 45 minutes respectively, including setup and
-  settlement. Exact profiles, frozen archive identities, complete coverage and
-  zero-residue checks stay mandatory.
+  The collector validates every shard for every required major. It records original execution IDs, attempts, timestamps, and immutable artifact identities.
+  Within one original PR workflow run, failed-job retries may retain verified successful shard receipts for unchanged inputs and plan.
+  The latest actual execution wins.
 
-  Each assigned PR Mac worker has 25 minutes, including 120 seconds for cleanup and evidence.
-  Anchor execution to its current-attempt job start, verified through Actions metadata against the repository, run, PR head, and job identity.
-  Require an assigned runner and executed steps. Queued placeholder timestamps do not establish execution.
+  A later failed, active, unknown, or incomplete execution cannot inherit earlier success.
+  Retained receipts never resume a Jig Run or reuse an installation, owner, or mutable fixture.
+  Main and release qualification remain fresh and complete for their current attempt.
+  Expired or rebuilt inputs require fresh complete qualification.
 
-  Queue time does not consume native execution time. Queues have a separate 60-minute infrastructure ceiling.
-  Preparation allows 45 minutes, coordination allows 90 minutes, and each final evidence job allows five minutes.
-  These overlapping ceilings bound phases independently. The earlier applicable limit still wins.
+  The final gate always reports. Optional bounded GitHub diagnostics identify confirmed runner nonallocation without changing the qualification verdict.
+  Native test and cleanup failures remain distinct from allocation failures.
+  No allocator, spare-worker pool, exact-build matching, or external scheduler participates.
 
-  A fresh full native rerun receives fresh job allowances and must produce all current-attempt execution and cleanup evidence.
-  Partial reruns cannot reuse previous native execution. Earlier failed attempts remain failed.
-  Retain original creation and current-attempt start times for turnaround reporting, without claiming a 25-minute total when queues prevent it.
-
-  Bound child process groups and native steps by the remaining allowance.
-  Integer-minute step limits round up the remaining work plus bounded termination grace.
-  The Node wrapper owns the exact work deadline. The GitHub timer is a later backstop.
-
-  Late, failed, cancelled or incomplete work cannot produce a passing final gate.
-  A separate read-only Ubuntu deadline guard runs beside the PR worker matrix.
-  Its allocation does not consume either native matrix slot.
-
-  The guard requires every current-attempt worker to succeed within its assigned execution allowance.
-  It polls at most once per minute and rejects excessive queues, changed assignments, and copied prior-attempt execution.
-  Its failure refuses qualification through the allocator, architecture collector and final gate.
-  The monitor has no cancellation authority.
-
-  Native worker failures retain matrix fail-fast cancellation.
-
-  Step summaries distinguish the Ubuntu monitor, worker assignments and aggregate proof.
-  The monitor runs no native steps and distinguishes worker execution limits from queue and coordination limits.
-  Timing summaries report original-run and current-attempt turnaround, explicitly identifying totals above the 25-minute target.
-  Worker summaries identify assigned roles or unassigned surplus workers.
-  The aggregate links each selected role to its executing job and reports verified file and case counts.
-
-  Guard failure and cancelled work cannot qualify execution.
-  GitHub controls guard allocation and cancellation settlement, so terminal timing remains subject to those services. Report breaches explicitly.
-
-  Manual startup profiling remains optional and non-gating.
-
-  The Apple Silicon pool admits exact Darwin 24.6.0 builds 24G830 and 24H232.
-  The hosted probe rejects other tuples before compilation or dependency setup.
-
-  PRs use five workers and three logical roles per exact observed profile.
-  With two admitted profiles, five workers contain at least three matching hosts.
-  One Ubuntu allocator assigns roles from unique worker announcements. The preparation
-  gate verifies the running allocator before workers can occupy Mac runners.
-  Each worker receives its role independently, without waiting for another Mac
-  worker to start. Artifact names carry records without providing a lock.
-
-  Allow up to 60 seconds for the allocator's own active job record to become visible before publishing readiness.
-  Missing or queued observations may wait. Duplicate, replaced, terminal, or foreign job identities fail immediately.
-  Idle allocation polls use 60-second intervals, returning to five seconds for one minute after a new worker announcement.
-
-  Retry only immutable coordination reads, within four attempts and 30 seconds, clipped to the caller's remaining phase allowance.
-  Retry transient transport failures and explicitly retryable HTTP statuses, honoring rate-limit waits that fit the allowance.
-  Keep artifact identity, size, digest, ZIP, and record validation mandatory. Never replay ownership writes or whole claims.
-
-  The allocator and workers copy the isolated artifact-client manifest and generated Bun lock into runner scratch.
-  Install with `--frozen-lockfile --ignore-scripts` to retain exact dependency versions and integrity checks.
-
-  Within each exact profile, dispatch roles in the fixed order 2, 0, 1.
-  The earliest matching host receives role 2 and its installed-consumer tail.
-  Role 0 retains native prerequisites. Role 1 retains its source files.
-  Ledger replay verifies that issuance order. Complete qualification still requires all three logical roles.
-
-  Require preparation, the allocator, deadline guard, and all five current-attempt worker jobs to succeed.
-  Reconcile announcements, assignments and the final allocator ledger, rejecting
-  duplicate or ambiguous records. Verify every executing role,
-  including an incomplete minority profile, against the canonical archives and
-  full source-pinned reports. Surplus workers retain prerequisite and assignment
-  receipts without execution credit. Select one complete matching three-role set.
-  Roles from different builds cannot combine into qualification.
-
-  Main and manual runs keep one complete host. Their allocator succeeds without assigning roles, and preparation acquires canonical inputs.
-  Aggregate evidence names the
-  observed architecture, kernel, build and pinned Bun revision in either plan.
-
-  The complete ARM job retains main's 60-minute allocation, or 90 minutes with
-  optional profiling. Individual test and product deadlines stay unchanged.
-  Node material files run under verified Node, with complete per-file JUnit
-  evidence alongside Bun files.
-- `workflows/macos-intel-nightly.yml` checks the published Jig `alpha` source and
-  exact archives, then distinct main source, daily at 02:23 UTC. Its four Intel
-  shards retain the complete suite and native/installed/client obligations.
-  Two Intel jobs run concurrently to leave capacity for feature checks.
-
-  Dispatch this workflow from main with an optional open PR number. Hosted PR
-  execution has no protected model credentials. The self-hosted Intel workflow
-  remains manual and never executes arbitrary PR source.
-
-  Verified scheduled-main input mirrors retain exact bytes across CI artifact
-  expiry. Manual PR runs cannot supply these mirrors.
-  Published Jig archive bytes must match npm integrity. Missing or mismatched
-  inputs fail. Rebuilding does not establish published compatibility.
-
-  Nightly failures and last passing published versions remain visible separately
-  from
-  release readiness. Qualified nightly receipts cannot replace main-push proof.
+  CI creates fresh scheduled canonical inputs nightly. Scheduled Mac diagnostics select those exact-source scheduled inputs.
+  Scheduled receipts cannot replace main-push release evidence. Manual startup profiling remains optional and non-gating.
 
 - Release completion events from CI, Linux, hosted Mac and native Agent
   workflows each run a short read-only readiness check. Duplicate and

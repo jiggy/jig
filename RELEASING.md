@@ -59,9 +59,9 @@ The merged release must pass CI, complete Linux and Apple Silicon qualification,
 and native Agent qualification. Automatic native qualification runs only for exact eligible generated release sources after successful Linux qualification.
 Explicit manual dispatch on main retains diagnostics for other sources. Omitted automatic calls create no qualification evidence.
 
-Intel Mac compatibility runs nightly and on
-manual request. An Intel regression can reach a release before the next nightly
-check. It does not block publication.
+Apple Silicon release qualification covers complete macOS 15 and macOS 26 host inventories, installed consumers, and cleanup.
+PRs retain the complete current-major inventory across parallel workers. Each worker runs native enforcement checks.
+Intel execution support is retired. Patch-build observations remain evidence without becoming exact-build admission rules.
 
 The publisher then publishes the exact tested archives, followed by source tags and GitHub prereleases.
 Current releases use `alpha`. Installation uses `@alpha`, not `@latest`.
@@ -105,31 +105,21 @@ The existing npm workflow and environment perform package-specific OIDC exchange
 Results contain only acceptance and HTTP status. Returned tokens are never written or displayed.
 This check publishes nothing and does not establish provenance or release readiness.
 
-## Intel Mac compatibility
+## Mac qualification
 
-**Intel Mac compatibility** runs daily at 02:23 UTC from `main`. It selects the
-current public Jig `alpha` version first, then the workflow's exact
-`main` source if different. Each source retains all four Intel shards, native
-containment and recovery, installed consumers, genuine offline clients and
-zero-residue checks. At most two Intel runners execute concurrently.
+The hosted Mac workflow generates a complete shard plan within a bounded capacity setting.
+Whole files run sequentially on isolated Mac workers. The current capacity cap is three concurrent workers.
+This cap can grow with measured workload and available concurrency. It does not change test membership.
 
-Published checks require the exact public npm archive, verified against its
-registry integrity, and its source-bound canonical bundle. The workflow retains
-verified input mirrors for 14 days and refreshes them after acquisition. It never
-rebuilds a release to claim published-byte compatibility. A release without
-retained canonical evidence, including a version from before this qualification
-pipeline, reports incomplete compatibility until
-exact retained inputs become available or a newer release is published.
+Nightly diagnostics test both supported qualification majors against fresh scheduled canonical inputs.
+They discover compatibility regressions but cannot replace fresh main-push release evidence.
+Hosted runner queues and allocation failures remain visible. A queue does not establish test execution or cleanup.
 
-The run summary separates each tested version and source from the last recorded
-passing published version. Failures make this workflow red but cannot qualify or
-block a release. Missing evidence is a failure, not an Intel pass. Use the
-workflow's manual `pull_request` input to check an open PR's exact merge source.
-Leave it empty to check the published version and `main`.
-
-The self-hosted Intel 23E224 workflow remains manual and protected. Hosted Intel
-results do not qualify that distinct native profile. Performance profiling stays
-manual and outside release readiness.
+After a PR workflow settles, **Re-run failed jobs** may retain verified successful shards within that original run.
+Source, canonical artifact identity, runtime policy, and complete plan must remain unchanged.
+A later actual failure cannot inherit earlier success. Unknown or incomplete execution remains blocking.
+These receipts never resume a Jig Run or reuse a consumer installation.
+Main and release qualification require a fresh complete workflow rerun.
 
 ## If a release stops
 

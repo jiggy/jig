@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import {
+  createFrozenMacPlan,
   INSTALLED_STARTUP_TEST,
   NATIVE_PREREQUISITE_TESTS,
-  planMacHostTests,
 } from './macos-host-test-shards.mjs'
 import { parseBunTranscript, readMacReports } from './test-reports.mjs'
 
@@ -102,7 +102,7 @@ test('installed scripts contribute no cases and require one exact declared compl
     }),
   )
 })
-function fixture(architecture) {
+function fixture(architecture = 'arm64') {
   const root = mkdtempSync(join(tmpdir(), 'jig-mac-whole-report-'))
   roots.push(root)
   execFileSync('git', ['-C', root, 'init', '--quiet'])
@@ -117,7 +117,6 @@ function fixture(architecture) {
     'packages/jig/test/host/root-agent-repair.test.ts',
     'packages/jig/test/host/root-agent-http-composition.test.ts',
     'packages/jig/test/host/root-agent-composition.test.ts',
-    // Exercise all four Intel shards despite the installed-consumer reservation.
     'packages/jig/test/host/root-agent-fences-specialist.test.ts',
     ...['replacement', 'commentary', 'budget', 'refused-successor'].map(
       (scenario) => `packages/jig/test/host/installed-incident-brief-${scenario}.test.ts`,
@@ -142,7 +141,13 @@ function fixture(architecture) {
   const directories = []
   const xml = (owned) =>
     `<testsuites tests="${owned.length}">${owned.map((file) => `<testcase file="${file}" classname="suite" name="complete ${file}"/>`).join('')}</testsuites>`
-  const shards = planMacHostTests(files, architecture)
+  const frozen = createFrozenMacPlan(files, architecture, {
+    source,
+    policy: { targetSeconds: 1200, minShards: 3, maxShards: 3 },
+  })
+  const planFile = join(root, 'PLAN.json')
+  writeFileSync(planFile, JSON.stringify(frozen))
+  const shards = frozen.shards
   for (const shard of shards) {
     const directory = join(evidence, `macos-prerequisites-${architecture}-${shard.index}-${source}`)
     mkdirSync(directory, { recursive: true })
@@ -163,7 +168,7 @@ function fixture(architecture) {
         shardCount: shards.length,
         installed: shard.index === shards.length - 1,
         groups: shard.groups,
-        nativeFiles: shard.index === 0 ? NATIVE_PREREQUISITE_TESTS : [],
+        nativeFiles: NATIVE_PREREQUISITE_TESTS,
       }),
     )
     for (const [index, group] of shard.groups.entries()) {
@@ -171,187 +176,92 @@ function fixture(architecture) {
       writeFileSync(path, xml([group.file]))
       reports.push(path)
     }
-    if (shard.index === 0)
-      writeFileSync(join(directory, 'native-tests.xml'), xml(NATIVE_PREREQUISITE_TESTS))
+    writeFileSync(join(directory, 'native-tests.xml'), xml(NATIVE_PREREQUISITE_TESTS))
     if (shard.index === shards.length - 1)
       writeFileSync(join(directory, 'installed-startup.xml'), xml([INSTALLED_STARTUP_TEST]))
   }
-  return { root, source, evidence, reports, directories, files, architecture }
+  return { root, source, evidence, reports, directories, files, architecture, planFile, shards }
 }
-test('both full Mac architecture readers own every report once including native and installed startup', () => {
-  for (const arch of ['x64', 'arm64']) {
-    const f = fixture(arch)
-    const original = readFileSync(f.reports[0], 'utf8')
-    const owningFile = /<testcase file="([^"]+)"/.exec(original)[1]
-    writeFileSync(
-      f.reports[0],
-      original
-        .replace('tests="1"', 'tests="2"')
-        .replace(
-          '</testsuites>',
-          `<testcase file="${owningFile}" classname="suite" name="second case"/></testsuites>`,
-        ),
-    )
-    const options = {
-      repository: f.root,
-      source: f.source,
-      targetId: `macos-${arch}`,
-      evidenceDirectory: f.evidence,
-    }
-    assert.deepEqual(readMacReports(options), {
-      count: f.files.length + 1,
-      skipped: 0,
-      filtered: 0,
-      skippedCases: [],
-      basis: 'test-cases',
-    })
-    const detailed = readMacReports({ ...options, detailed: true })
-    assert.equal(detailed.executed, f.files.length + 1)
-    assert.equal(detailed.files, f.files.length)
-    assert.equal(detailed.planned_files, f.files.length)
-    assert.equal(
-      detailed.shards.reduce((total, row) => total + row.files, 0),
-      f.files.length,
-    )
-    const planned = planMacHostTests(f.files, arch)
-    assert.deepEqual(
-      detailed.shards.map((row) => row.files),
-      planned.map(
-        (shard) =>
-          shard.groups.length +
-          (shard.index === 0 ? NATIVE_PREREQUISITE_TESTS.length : 0) +
-          (shard.index === planned.length - 1 ? 1 : 0),
-      ),
-    )
+function options(f, extra = {}) {
+  return {
+    repository: f.root,
+    source: f.source,
+    targetId: 'macos-arm64',
+    evidenceDirectory: f.evidence,
+    planFile: f.planFile,
+    ...extra,
   }
-})
-test('full Mac reports require the exact current host prerequisites from every shard', () => {
-  for (const architecture of ['x64', 'arm64']) {
-    const f = fixture(architecture)
-    const path = join(f.directories.at(-1), 'prerequisites.json')
-    const read = () =>
-      readMacReports({
-        repository: f.root,
-        source: f.source,
-        targetId: `macos-${architecture}`,
-        evidenceDirectory: f.evidence,
-      })
-    for (const change of [
-      { kind: 'macos-host-prerequisites/2' },
-      { arch: architecture === 'x64' ? 'arm64' : 'x64' },
-      { kernel: '24.7.0' },
-      { build: architecture === 'arm64' ? '24H233' : '24H232' },
-      { bun: '1.4.3' },
-      { revision: 'different' },
-      { backendQualified: true },
-      { processIdentityBytes: 55 },
-      { coalitionIdentityBytes: 39 },
-      { coalitionUsageBytes: 288 },
-      { pidVersion: -1 },
-    ]) {
-      writeFileSync(path, JSON.stringify({ ...prerequisites(architecture), ...change }))
-      assert.throws(read, /Mac host prerequisites/)
-    }
-    writeFileSync(path, JSON.stringify({ ...prerequisites(architecture), pidVersion: 0 }))
-    assert.equal(read().count, f.files.length)
-    writeFileSync(path, 'not JSON')
-    assert.throws(read, SyntaxError)
-    rmSync(path)
-    assert.throws(read, /ENOENT/)
-  }
-})
-test('one complete ARM host qualifies only its observed admitted build', () => {
-  for (const build of ['24G830', '24H232']) {
-    const f = fixture('arm64')
-    assert.equal(f.directories.length, 1)
-    writeFileSync(
-      join(f.directories[0], 'prerequisites.json'),
-      JSON.stringify({ ...prerequisites('arm64'), build }),
-    )
-    const result = readMacReports({
-      repository: f.root,
-      source: f.source,
-      targetId: 'macos-arm64',
-      evidenceDirectory: f.evidence,
-      detailed: true,
-    })
-    assert.equal(result.executed, f.files.length)
-    assert.equal(result.shards.length, 1)
-    assert.deepEqual(result.hostProfile, {
-      arch: 'arm64',
-      kernel: '24.6.0',
-      build,
-      bun: '1.4.4',
-      revision: prerequisites('arm64').revision,
-    })
-  }
-})
-test('the complete ARM role requires both native and installed reports on its single host', () => {
-  for (const missing of ['native-tests.xml', 'installed-startup.xml']) {
-    const f = fixture('arm64')
-    rmSync(join(f.directories[0], missing))
-    assert.throws(
-      () =>
-        readMacReports({
-          repository: f.root,
-          source: f.source,
-          targetId: 'macos-arm64',
-          evidenceDirectory: f.evidence,
-        }),
-      /ENOENT/,
-    )
-  }
-})
-test('a partial ARM shard plan cannot qualify the complete single-host role', () => {
-  const f = fixture('arm64')
-  const path = join(f.directories[0], 'test-plan.json')
-  const plan = JSON.parse(readFileSync(path, 'utf8'))
-  plan.shardCount = 2
-  plan.installed = false
-  plan.groups = plan.groups.slice(0, Math.ceil(plan.groups.length / 2))
-  writeFileSync(path, JSON.stringify(plan))
-  assert.throws(
-    () =>
-      readMacReports({
-        repository: f.root,
-        source: f.source,
-        targetId: 'macos-arm64',
-        evidenceDirectory: f.evidence,
-      }),
-    /Mac command plan differs from its pinned source inventory/,
+}
+test('complete generated ARM shards reconcile unique files and repeated native execution', () => {
+  const f = fixture()
+  const result = readMacReports(options(f, { detailed: true }))
+  assert.equal(result.files, f.files.length)
+  assert.equal(result.planned_files, f.files.length)
+  assert.equal(
+    result.executed,
+    f.files.length + (f.shards.length - 1) * NATIVE_PREREQUISITE_TESTS.length,
   )
+  assert.equal(result.hostProfiles.length, f.shards.length)
+  assert.equal(result.shards.length, f.shards.length)
+  assert.equal(readMacReports(options(f)).count, result.executed)
 })
-test('full Mac reader rejects reordered plans even when every matching report remains complete', () => {
-  for (const architecture of ['x64', 'arm64']) {
-    const f = fixture(architecture)
-    const shards = planMacHostTests(f.files, architecture)
-    const shard = shards.find((item) => item.groups.length > 1)
-    assert.ok(shard)
-    const directory = join(
-      f.evidence,
-      `macos-prerequisites-${architecture}-${shard.index}-${f.source}`,
-    )
-    const path = join(directory, 'test-plan.json')
-    const plan = JSON.parse(readFileSync(path, 'utf8'))
-    const originalFirst = readFileSync(join(directory, `shard-${shard.index}-group-0.xml`))
-    const originalSecond = readFileSync(join(directory, `shard-${shard.index}-group-1.xml`))
-    ;[plan.groups[0], plan.groups[1]] = [plan.groups[1], plan.groups[0]]
-    writeFileSync(path, JSON.stringify(plan))
-    writeFileSync(join(directory, `shard-${shard.index}-group-0.xml`), originalSecond)
-    writeFileSync(join(directory, `shard-${shard.index}-group-1.xml`), originalFirst)
-    assert.throws(
-      () =>
-        readMacReports({
-          repository: f.root,
-          source: f.source,
-          targetId: `macos-${architecture}`,
-          evidenceDirectory: f.evidence,
-        }),
-      /Mac command plan differs from its pinned source inventory/,
-    )
+test('union coverage permits patch drift while each host retains validated native prerequisites', () => {
+  const f = fixture()
+  const path = join(f.directories.at(-1), 'prerequisites.json')
+  writeFileSync(
+    path,
+    JSON.stringify({ ...prerequisites('arm64'), kernel: '25.6.0', build: '25G332' }),
+  )
+  const report = readMacReports(options(f, { detailed: true }))
+  assert.equal(report.hostProfiles.at(-1).build, '25G332')
+  assert.throws(() => readMacReports(options(f, { macosMajor: 15 })), /major differs/)
+  for (const change of [
+    { arch: 'x64' },
+    { bun: '1.4.3' },
+    { revision: 'different' },
+    { backendQualified: true },
+    { processIdentityBytes: 55 },
+    { coalitionIdentityBytes: 39 },
+    { coalitionUsageBytes: 288 },
+    { pidVersion: -1 },
+  ]) {
+    writeFileSync(path, JSON.stringify({ ...prerequisites('arm64'), ...change }))
+    assert.throws(() => readMacReports(options(f)), /Mac host prerequisites/)
   }
 })
-test('full Mac reports reject skipped, duplicated, truncated and foreign cases without name or line exceptions', () => {
+test('every executing shard requires complete native baseline and the installed owner requires startup', () => {
+  for (const [index, missing] of [
+    [0, 'native-tests.xml'],
+    [1, 'native-tests.xml'],
+    [2, 'native-tests.xml'],
+    [2, 'installed-startup.xml'],
+  ]) {
+    const f = fixture()
+    rmSync(join(f.directories[index], missing))
+    assert.throws(() => readMacReports(options(f)), /ENOENT/)
+  }
+})
+test('frozen source inventory and command order cannot change after planning', () => {
+  for (const mutation of [
+    (p) => p.groups.reverse(),
+    (p) => p.groups.pop(),
+    (p) => p.nativeFiles.pop(),
+    (p) => p.shardCount++,
+  ]) {
+    const f = fixture()
+    const path = join(f.directories[0], 'test-plan.json')
+    const plan = JSON.parse(readFileSync(path, 'utf8'))
+    mutation(plan)
+    writeFileSync(path, JSON.stringify(plan))
+    assert.throws(() => readMacReports(options(f)), /Mac command plan differs/)
+  }
+  const f = fixture()
+  const frozen = JSON.parse(readFileSync(f.planFile, 'utf8'))
+  frozen.source = 'a'.repeat(40)
+  writeFileSync(f.planFile, JSON.stringify(frozen))
+  assert.throws(() => readMacReports(options(f)), /Frozen Mac plan differs/)
+})
+test('reports reject skipped, duplicated, truncated and foreign cases', () => {
   for (const mutation of [
     (xml) => xml.replace('/>', '><skipped/></testcase>'),
     (xml) => xml.replace('tests="1"', 'tests="2"'),
@@ -361,25 +271,10 @@ test('full Mac reports reject skipped, duplicated, truncated and foreign cases w
         .replace('name="complete', 'name="changed')
         .replace('/>', '/><testcase file="foreign" name="invented"/>'),
   ]) {
-    const f = fixture('x64')
-    const report = f.reports[0]
-    writeFileSync(report, mutation(readFileSync(report, 'utf8')))
-    assert.throws(() =>
-      readMacReports({
-        repository: f.root,
-        source: f.source,
-        targetId: 'macos-x64',
-        evidenceDirectory: f.evidence,
-      }),
-    )
+    const f = fixture()
+    writeFileSync(f.reports[0], mutation(readFileSync(f.reports[0], 'utf8')))
+    assert.throws(() => readMacReports(options(f)))
   }
-  const f = fixture('arm64')
-  assert.throws(() =>
-    readMacReports({
-      repository: f.root,
-      source: f.source,
-      targetId: 'macos-arm64-witness',
-      evidenceDirectory: f.evidence,
-    }),
-  )
+  const f = fixture()
+  assert.throws(() => readMacReports(options(f, { targetId: 'macos-x64' })))
 })

@@ -567,25 +567,12 @@ editable Flow cannot change those profiles or request additional authority. Sele
 FLOW skills are rendered into the call instructions as bounded read-only text;
 they are not exposed as a client filesystem or native skill installation.
 
-On Intel macOS 14.4.1 (Darwin 23.4.0 build 23E224), the verified Codex profile
-also receives exact preference-service lookup and read-only access to the
-daemon/current-UID invalidation-counter pages required for configuration
-synchronization. It receives no permission to read or write host preference
-values. The pages contain counters, including change activity across domains;
-they do not contain preference dictionaries. Other scopes receive none of this
-access, and offline execution gains no network authority.
-
-A fresh trusted observation synchronizes `com.openai.codex` before selection
-and each native launch, including restoration. It checks the native
-`config_toml_base64` and `requirements_toml_base64` forced inputs plus forced
-keys in the public suite search list. Configured managed policy or unavailable
-observation refuses the contained profile with a value-free diagnostic.
-Ordinary nonforced preferences may exist and remain unreadable. This qualifies
-the observed absence of managed policy, not continuous enforcement of policy
-introduced after the check. Managed-policy consumption, other macOS profiles,
-and changed native preference interfaces require separate qualification.
-Rosetta and Apple Silicon are refused for this Codex path. The observer also
-refuses an inherited sandbox and has its own deadline even if the host exits.
+Native Codex selection on Mac is refused because its preference observer has
+no qualified Apple Silicon implementation. Neither ordinary executable discovery
+nor a successful process probe establishes preference synchronization. The host
+must preserve this refusal before selection and native launch. Managed settings
+remain intact. Linux Codex and the independently qualified Mac clients retain
+their separate paths.
 
 Native workers have ordinary inherited network access rather than
 endpoint-filtered egress; their exact trusted bytes and configuration, not a

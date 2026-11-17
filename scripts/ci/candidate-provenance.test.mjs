@@ -24,6 +24,12 @@ import {
   verifyArtifactMetadata,
 } from './candidate-transfer.mjs'
 import {
+  createFrozenMacPlan,
+  INSTALLED_STARTUP_TEST,
+  NATIVE_PREREQUISITE_TESTS,
+} from './macos-host-test-shards.mjs'
+import { macJobName } from './macos-qualification.mjs'
+import {
   CI_QUALIFICATION_JOBS,
   LINUX_QUALIFICATION_JOBS,
   MACOS_QUALIFICATION_JOBS,
@@ -570,6 +576,36 @@ function readinessFixture() {
     headBranch: 'main',
     headRepository: repository,
   })
+  const macPlan = createFrozenMacPlan(
+    [
+      ...NATIVE_PREREQUISITE_TESTS,
+      INSTALLED_STARTUP_TEST,
+      'packages/jig/test/host/a.test.ts',
+      'packages/jig/test/host/b.test.ts',
+      'packages/jig/test/host/c.test.ts',
+    ],
+    'arm64',
+    { source, policy: { targetSeconds: 1200, minShards: 2, maxShards: 2 } },
+  )
+  const macCoverage = {
+    plan: macPlan,
+    majors: [15, 26],
+    executions: [15, 26]
+      .flatMap((major) =>
+        macPlan.shards.map(({ index: shard }) => ({
+          major,
+          shard,
+          name: macJobName(major, shard),
+        })),
+      )
+      .map((row, index) => ({
+        ...row,
+        jobId: 3001 + index,
+        runAttempt: 1,
+        artifactId: 5000 + index,
+        artifactDigest: `sha256:${'e'.repeat(64)}`,
+      })),
+  }
   const qualify = (kind, profile, entry) => ({
     schemaVersion: 1,
     stage: 'qualification',
@@ -577,23 +613,18 @@ function readinessFixture() {
     profile,
     candidate: { ...candidate },
     consumer: consumer(entry),
+    ...(kind === 'macos' ? { coverage: structuredClone(macCoverage) } : {}),
   })
   const linuxReceipt = qualify('linux', '', linux)
   const linuxDigest = digest(`${JSON.stringify(linuxReceipt, null, 2)}\n`)
   const receipts = new Map([
     [2000, linuxReceipt],
-    [3000, qualify('macos', 'x64', mac)],
     [3001, qualify('macos', 'arm64', mac)],
   ])
   const artifacts = new Map([
     [100, [canonical]],
     [200, [artifact(2000, `linux-qualification-${source}-r200-a1`, linux)]],
-    [
-      300,
-      ['x64', 'arm64'].map((arch, i) =>
-        artifact(3000 + i, `macos-qualification-${arch}-${source}-r300-a1`, mac),
-      ),
-    ],
+    [300, [artifact(3001, `macos-qualification-arm64-${source}-r300-a1`, mac)]],
     [
       400,
       ['codex', 'claude', 'pi'].map((client, i) => {
@@ -607,7 +638,7 @@ function readinessFixture() {
   const names = new Map([
     [100, [...CI_QUALIFICATION_JOBS, 'candidate-build']],
     [200, [...LINUX_QUALIFICATION_JOBS]],
-    [300, [...MACOS_QUALIFICATION_JOBS]],
+    [300, [...MACOS_QUALIFICATION_JOBS, ...macCoverage.executions.map((row) => row.name)]],
     [400, ['codex', 'claude', 'pi'].map((client) => `${client} — Ubuntu 24.04`)],
   ])
   const jobs = new Map(
@@ -716,6 +747,7 @@ test('readiness accepts complete canonical qualification even when native descen
       1 +
       LINUX_QUALIFICATION_JOBS.length +
       MACOS_QUALIFICATION_JOBS.length +
+      fixture.receipts.get(3001).coverage.executions.length +
       3,
   )
   assert.deepEqual(
@@ -805,15 +837,38 @@ test('complete qualification cannot publish feature, pending or stale versioned 
   }
 })
 
-test('Intel health is separate from publication and cannot replace required ARM qualification', async () => {
+test('Mac release receipts require both complete major lanes and exact executed identities', async () => {
+  for (const mutate of [
+    (receipt) => {
+      delete receipt.coverage
+    },
+    (receipt) => {
+      receipt.coverage.majors = [26]
+    },
+    (receipt) => {
+      receipt.coverage.executions.pop()
+    },
+    (receipt) => {
+      receipt.coverage.executions[0].runAttempt = 2
+    },
+    (receipt) => {
+      receipt.coverage.executions[0].jobId = 999
+    },
+    (receipt) => {
+      receipt.coverage.plan.policy.maxShards = 3
+    },
+  ]) {
+    const fixture = readinessFixture()
+    mutate(fixture.receipts.get(3001))
+    const result = await fixture.check()
+    assert.equal(result.readyFlow, true)
+    assert.equal(result.readyHost, false)
+  }
+})
+
+test('unrelated workflow evidence cannot replace required ARM compatibility qualification', async () => {
   const fixture = readinessFixture()
-  fixture.receipts.delete(3000)
-  fixture.artifacts.set(
-    300,
-    fixture.artifacts.get(300).filter((entry) => entry.id !== 3000),
-  )
-  assert.equal((await fixture.check()).readyHost, true)
-  fixture.receipts.get(3001).consumer.workflowPath = '.github/workflows/macos-intel-nightly.yml'
+  fixture.receipts.get(3001).consumer.workflowPath = '.github/workflows/ci.yml'
   const changed = await fixture.check()
   assert.equal(changed.readyFlow, true)
   assert.equal(changed.readyHost, false)
@@ -966,9 +1021,7 @@ test('wrong source, producer run/attempt, fork origin or expired canonical artif
 })
 
 test('failed, cancelled, skipped, missing or stale host evidence blocks Jig while FLOW remains ready', async () => {
-  const armShard = MACOS_QUALIFICATION_JOBS.find((name) =>
-    name.startsWith('Native host shard — arm64 / '),
-  )
+  const armShard = macJobName(26, 0)
   assert.ok(armShard)
   const mutations = [
     (f) => {
@@ -1359,4 +1412,79 @@ test('readiness CLI leaves a blocked summary when verification cannot start', as
   } finally {
     await rm(temporary, { recursive: true, force: true })
   }
+})
+
+test('Mac qualification writer refuses missing, partial or failed coverage before issuing its receipt', async () => {
+  await bundleFixture(async ({ root, receipt, temporary }) => {
+    await writeFile(
+      join(root, 'ARTIFACT.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        repository,
+        sourceRevision: source,
+        runId: 100,
+        runAttempt: 1,
+        artifactId: 1000,
+        artifactDigest: `sha256:${'c'.repeat(64)}`,
+        receiptSha256: receipt.receiptSha256,
+      }),
+    )
+    const env = {
+      GITHUB_REPOSITORY: repository,
+      GITHUB_RUN_ID: '300',
+      GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_SHA: source,
+      GITHUB_REF: 'refs/heads/main',
+      GITHUB_EVENT_NAME: 'push',
+      GITHUB_WORKFLOW_REF: `${repository}/.github/workflows/macos-hosted-candidates.yml@refs/heads/main`,
+    }
+    const output = join(temporary, 'mac-qualification.json')
+    await assert.rejects(
+      writeQualificationReceipt({ root, output, kind: 'macos', profile: 'arm64', env }),
+      /coverage summary/,
+    )
+    const summaryPath = join(temporary, 'summary.json')
+    const coverage = readinessFixture().receipts.get(3001).coverage
+    const summary = {
+      revision: source,
+      qualified: true,
+      errors: [],
+      failures: 0,
+      skipped_reports: 0,
+      files: 12,
+      planned_files: 12,
+      executed: 48,
+      coverage,
+    }
+    for (const change of [
+      { qualified: false },
+      { skipped_reports: 1 },
+      { errors: ['refused'] },
+      { files: 11 },
+      { coverage: { ...coverage, majors: [26] } },
+    ]) {
+      await writeFile(summaryPath, JSON.stringify({ ...summary, ...change }))
+      await assert.rejects(
+        writeQualificationReceipt({
+          root,
+          output,
+          kind: 'macos',
+          profile: 'arm64',
+          env,
+          coverageSummary: summaryPath,
+        }),
+      )
+    }
+    await writeFile(summaryPath, JSON.stringify(summary))
+    const qualified = await writeQualificationReceipt({
+      root,
+      output,
+      kind: 'macos',
+      profile: 'arm64',
+      env,
+      coverageSummary: summaryPath,
+    })
+    assert.deepEqual(qualified.coverage, coverage)
+    assert.equal(qualified.candidate.artifactId, 1000)
+  })
 })

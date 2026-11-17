@@ -17,7 +17,7 @@ fail() {
 
 unsupported_host() {
   fail 'This operating system and CPU combination is not supported.' \
-    'Use qualified Linux x86_64 or an Intel or Apple Silicon Mac.' \
+    'Use qualified Linux x86_64 or an Apple Silicon Mac with macOS 15+.' \
     'https://jig.md/start/#supported-host.'
 }
 
@@ -76,7 +76,6 @@ entry=$release/libexec/installed-cli.js
 case $($uname_command -s 2>/dev/null) in
   Darwin)
     case $($uname_command -m 2>/dev/null) in
-      x86_64) runtime_package=bun-darwin-x64-baseline ;;
       arm64) runtime_package=bun-darwin-aarch64 ;;
       *) unsupported_host ;;
     esac ;;

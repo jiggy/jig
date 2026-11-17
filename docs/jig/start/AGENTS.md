@@ -7,6 +7,8 @@ Teach the first useful run and application call.
 ## Ownership
 
 `index.md` owns installation, supported hosts, review, and the greeting.
+Mac guidance distinguishes capability admission on native ARM macOS 15+ from
+complete macOS 15/26 release qualification. Intel and Rosetta remain unsupported.
 `application.md` invokes that same accepted method through the public client.
 `review-run.diagram.json` and its SVG explain review and execution.
 
