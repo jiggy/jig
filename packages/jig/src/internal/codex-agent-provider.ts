@@ -14,6 +14,7 @@ import {
   markExpectedAcpRefusal,
   PrivateAcpSetupError,
 } from './acp-setup-diagnostics.js'
+import { privateMacosKernelPlatform } from './macos-process-controls.js'
 import {
   PrivateNativeAgentExecutableUnavailableError,
   resolvePrivateNativeAgentExecutable,
@@ -82,6 +83,8 @@ export interface PrivateCodexAgentSupport {
   readonly certificatesPath: string
   /** Exact Linux managed constraints containing PRIVATE_CODEX_REQUIREMENTS. */
   readonly requirementsPath: string
+  /** Exact packaged observer, outside the contained native client. */
+  readonly macosPreferencesObserverPath?: string
 }
 
 export interface PrivateCodexSubscriptionAgentConfiguration extends PrivateCodexAgentSupport {
@@ -101,11 +104,13 @@ export interface PrivateCodexOpenAIApiAgentConfiguration extends PrivateCodexAge
   readonly baseURL?: string
 }
 
-// Native Codex preference synchronization has no qualified ARM observer yet.
-// Keep discovery diagnostics, but fail closed without narrowing platform
-// control flow for the other native runtime branches.
 function requireQualifiedMacCodexPreferences(): void {
-  if (process.platform === 'darwin') throw new PrivateAcpSetupError('preferences')
+  if (process.platform !== 'darwin') return
+  try {
+    privateMacosKernelPlatform()
+  } catch {
+    throw new PrivateAcpSetupError('preferences')
+  }
 }
 
 /**
@@ -146,8 +151,6 @@ export async function openPrivateCodexAgentProvider(
       cause: error,
     })
   }
-  // Preserve executable/installation discovery diagnostics before refusing an
-  // unqualified notification-page layout.
   requireQualifiedMacCodexPreferences()
   const nativeBubblewrap =
     process.platform === 'darwin'
@@ -190,6 +193,9 @@ export async function openPrivateCodexAgentProvider(
     runtimeMounts: Object.freeze([...mounts.values()]),
     certificatesPath: await ordinaryFile(HOST_CERTIFICATES_PATH, 'host certificate bundle'),
     requirementsPath: join(releaseRoot, 'libexec', 'agent', 'codex-requirements.toml'),
+    ...(process.platform === 'darwin'
+      ? { macosPreferencesObserverPath: join(releaseRoot, 'libexec', 'macos-codex-preferences') }
+      : {}),
   })
   const apiKey = environment[OPENAI_API_KEY]
   const apiModel = environment[OPENAI_MODEL]
@@ -324,6 +330,9 @@ export async function createPrivateCodexSubscriptionAgentProvider(
   const model = value.model
   return await createPrivateAcpAgentProvider({
     client: CODEX_CLIENT,
+    ...(value.macosPreferencesObserverPath === undefined
+      ? {}
+      : { macosCodexPreferencesObserverPath: value.macosPreferencesObserverPath }),
     ...(value.authProfile === undefined ? {} : { authProfile: value.authProfile }),
     model: model ?? CLIENT_DEFAULT_MODEL,
     credentialMode: 'openai-subscription',
@@ -380,6 +389,9 @@ export async function createPrivateCodexOpenAIApiAgentProvider(
   await requireManagedRequirements(value.requirementsPath)
   return await createPrivateAcpAgentProvider({
     client: CODEX_CLIENT,
+    ...(value.macosPreferencesObserverPath === undefined
+      ? {}
+      : { macosCodexPreferencesObserverPath: value.macosPreferencesObserverPath }),
     ...(value.authProfile === undefined ? {} : { authProfile: value.authProfile }),
     model: value.model,
     credentialMode: 'openai-responses-api-key',

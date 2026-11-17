@@ -67,12 +67,23 @@ Delivery inspection verifies that raster reservations cannot consume the separat
   by Linux and Mac.
 - `linux-host/` owns delegated rootless Linux admission, enforcement and
   recovery.
+- Native ARM Codex preference candidates require the actual authenticated helper,
+  inherited-sandbox refusal and real ordinary canaries before startup can qualify.
+  Fixed Codex keys must be absent before fixture writes and remain nonforced.
+  Preserve any preexisting settings. Scan bounded shared mappings without logging
+  their bytes.
+
+  This verifies canary absence, not a private counter layout.
+  Forced-policy and stalled-framework expiry claims require separate native
+  observations. Do not replace framework calls or policy results for those claims.
+
 - `macos/` owns native ARM Mac enforcement and recovery. Whole-file coverage
   uses one capability-based inventory. OS patch builds do not select cases.
   Every executing host runs the native prerequisite baseline. macOS 15 and 26
   require complete host-dependent and installed coverage before release.
-- `startup/` owns real offline native client startup in the installed
-  qualification step.
+- `startup/` owns real offline native client initialization and new-session
+  creation in the installed qualification step. Placeholder API keys establish
+  local startup behavior, never authentication, subscription, or inference success.
 - `live/` owns separately authorized subscription, API and restoration
   qualifications.
 - `experimental/image-preview.test.ts` owns the explicitly opted-in, unqualified

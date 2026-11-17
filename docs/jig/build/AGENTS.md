@@ -25,7 +25,8 @@ Start with prerequisites, complete setup, expected results, and a contextual tro
 Introduce optional controls only when the task needs them.
 Centralize Agent setup in `agents.md`.
 
-Native Mac Codex setup must preserve the unavailable ARM observer diagnostic.
+Native Mac Codex setup requires genuine session qualification and preserves
+forced-policy and unavailable-observation diagnostics.
 Keep result semantics and required safety conditions beside their actions.
 Link repair procedures to the shared troubleshooting guide instead of duplicating them.
 Keep portable method semantics with FLOW and exact host requirements in `../spec/`.

@@ -70,6 +70,12 @@ try {
     await readFile(join(installed, 'package.json'), 'utf8'),
   ) as Record<string, unknown>
   assert.deepEqual(installedFiles, expectedInstalledFiles)
+  const preferenceObserver = join(installed, 'libexec/macos-codex-preferences')
+  assert.deepEqual(
+    await readFile(preferenceObserver),
+    await readFile(join(packageRoot, 'support/macos-codex-preferences-universal')),
+  )
+  assert.ok((await stat(preferenceObserver)).mode & 0o111)
   await stat(
     join(installed, 'libexec/authoring/node_modules/@jigging/flow-authoring/dist/index.js'),
   )

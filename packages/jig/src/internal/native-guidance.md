@@ -208,10 +208,26 @@ These links locate module rules. All selected domain requirements still apply.
 - `macos-sandbox-profile.ts` grants read-only system libraries and Unicode data
   under `/usr/share/icu` for JavaScriptCore's lazy locale operations. Writable
   projections cannot overlap these runtime roots. Host control remains excluded.
-  Native Codex is unavailable on ARM Mac because preference synchronization
-  lacks an independently qualified observer. Provider selection preserves the
-  closed preference-compatibility refusal. No preference-service or shared-page
-  grants remain in payload profiles.
+
+- The authenticated ARM Codex observer refreshes the real preference domain
+  before provider selection and every native launch or restoration. Forced
+  policy, unavailable observation and inherited sandboxes must refuse execution.
+  Its closed result contains no preference values. Revalidate its exact bytes
+  outside installation caches and keep its internal deadline before framework
+  calls. The caller also bounds and joins the observer process.
+
+  Only this verified Codex profile may contact the exact preference services
+  and read bounded daemon/current-UID notification mappings. Never grant
+  preference-value reads, writes, unrelated IPC or broader shared-memory access.
+  Ordinary isolated scopes receive none of these grants. Actual native canaries
+  and genuine Codex session creation must pass on ARM macOS 15 and 26.
+  Startup includes confirmed fencing and cleanup, not an unsupported-refusal
+  alternative. Placeholder credentials do not qualify authentication or models.
+
+  Canary absence and denied writes do not establish a private shared-page layout.
+  Actual forced-policy refusal and expiry during a genuinely stalled framework
+  call still need separate native observations. Never use interposition or
+  substituted policy results to establish those claims.
 
 - [`../../support/macos-exec.c`](../../support/macos-exec.c) is the native
   pre-exec boundary. Clear inherited Mach rights and descriptors, apply the

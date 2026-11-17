@@ -567,12 +567,29 @@ editable Flow cannot change those profiles or request additional authority. Sele
 FLOW skills are rendered into the call instructions as bounded read-only text;
 they are not exposed as a client filesystem or native skill installation.
 
-Native Codex selection on Mac is refused because its preference observer has
-no qualified Apple Silicon implementation. Neither ordinary executable discovery
-nor a successful process probe establishes preference synchronization. The host
-must preserve this refusal before selection and native launch. Managed settings
-remain intact. Linux Codex and the independently qualified Mac clients retain
-their separate paths.
+On native ARM Macs, Codex selection and each native launch or restoration
+require a fresh authenticated preference observation outside the payload sandbox.
+The observer must refresh host state and refuse configured forced policy,
+unavailable synchronization and inherited sandbox uncertainty. It returns no
+preference values. It must retain its own deadline after caller loss, while the
+caller bounds and joins ordinary observation.
+
+This establishes a prelaunch policy snapshot. It does not continuously monitor
+policy changes introduced after the check.
+
+Only the verified Codex profile may contact the exact preference services and
+read the bounded daemon/current-UID notification mappings. Preference-value
+reads and writes, unrelated IPC and broader shared-memory grants remain denied.
+Other scopes receive none of this access. No observation authorizes ignoring
+managed settings or changing operator policy.
+
+Mac release qualification requires genuine Codex session creation, containment,
+fencing and cleanup on macOS 15 and macOS 26. Unsupported refusal cannot count
+as successful startup. Offline placeholder credentials do not establish
+subscription authentication, endpoint availability or model execution.
+Actual canary absence does not establish private notification-page layout.
+Refusal under actual forced policy and expiry during a genuinely stalled
+framework call remain separate native qualification gaps.
 
 Native workers have ordinary inherited network access rather than
 endpoint-filtered egress; their exact trusted bytes and configuration, not a
