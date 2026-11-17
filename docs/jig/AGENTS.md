@@ -32,8 +32,8 @@ use-case and orchestration hypotheses.
   `examples/` teach implemented behavior and recommended practice,
   with installation prerequisites centralized in `start/index.md`. Describe
   current behavior, not comparisons with superseded alpha releases.
-  Its platform guidance distinguishes required Linux/Apple Silicon release
-  checks from complete nightly Intel compatibility and its regression window.
+  Its platform guidance records native Apple Silicon macOS 15+ admission and
+  requires complete macOS 15/26 candidate qualification before release.
 - `build/agents.md` owns API and native setup, operator selection, resource
   configuration, review checks, and current adapter
   limits. Setup instructions belong here. Other guides link to the relevant

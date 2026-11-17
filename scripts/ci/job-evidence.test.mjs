@@ -315,7 +315,7 @@ test('Mac summary requires completed source-bound canonical validation', async (
   const good = {
     qualified: true,
     revision: source,
-    architecture: 'x64',
+    architecture: 'arm64',
     failures: 0,
     errors: [],
     executed: 2,
@@ -326,18 +326,18 @@ test('Mac summary requires completed source-bound canonical validation', async (
     ],
   }
   const summary = await f.put('summary.json', good)
-  assert.equal((await observedCount({ summary, source, targetId: 'macos-x64' })).count, 2)
+  assert.equal((await observedCount({ summary, source, targetId: 'macos-arm64' })).count, 2)
   for (const changed of [
     { ...good, qualified: false },
     { ...good, qualified: undefined },
     { ...good, revision: '2'.repeat(40) },
-    { ...good, architecture: 'arm64' },
+    { ...good, architecture: 'x64' },
     { ...good, failures: 1 },
     { ...good, errors: ['missing shard'] },
   ]) {
     await f.put('summary.json', changed)
     await assert.rejects(
-      () => observedCount({ summary, source, targetId: 'macos-x64' }),
+      () => observedCount({ summary, source, targetId: 'macos-arm64' }),
       /Failed or stale/,
     )
   }

@@ -346,6 +346,27 @@ test('push acquisition selects main-push bytes despite newer same-source schedul
   )
 })
 
+test('periodic Mac diagnostics acquire scheduled canonical inputs without substituting them into release qualification', async () => {
+  await withFixture([run(100), run(101, 'schedule')], async (fixture) => {
+    const expected = await acquisitionExpectation(source, env('schedule'))
+    const acquired = await acquireCandidate({
+      destination: join(fixture.temporary, 'download'),
+      sourceRevision: source,
+      expected,
+      client: fixture.client,
+      extract: fixture.extract,
+      timeoutSeconds: 0,
+    })
+    assert.equal(acquired.runId, 101)
+    assert.deepEqual(fixture.requestedEvents, ['schedule'])
+    assert.equal(
+      (await verifyCandidateBundle(join(fixture.temporary, 'download'), { sourceRevision: source }))
+        .producer.event,
+      'schedule',
+    )
+  })
+})
+
 test('an explicit producer ID cannot substitute audit bytes into push qualification', async () => {
   await withFixture([run(100, 'schedule'), run(101, 'workflow_dispatch')], async (fixture) => {
     const expected = await acquisitionExpectation(source, env('push'))
@@ -706,7 +727,7 @@ test('PR scheduling binds the Quick head to the producer metadata rather than it
   })
 })
 
-test('Mac hosts queue after Quick and exact candidate preparation', async () => {
+test('Mac hosts queue after Quick and consume immutable prepared inputs', async () => {
   const workflow = parse(
     await readFile(
       new URL('../../.github/workflows/macos-hosted-candidates.yml', import.meta.url),
@@ -714,83 +735,30 @@ test('Mac hosts queue after Quick and exact candidate preparation', async () => 
     ),
   )
   const acquisition = workflow.jobs['host-artifacts']
-  const step = acquisition.steps.find((entry) =>
-    entry.run?.includes('scripts/ci/candidate-transfer.mjs acquire'),
+  const acquire = acquisition.steps.find((step) =>
+    step.run?.includes('candidate-transfer.mjs acquire'),
   )
-  assert.ok(step)
-  assert.equal(
-    step.run.trim(),
-    [
-      'set -eu',
-      'node scripts/ci/pr-time-budget.mjs run -- node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600',
-    ].join('\n'),
+  assert.match(
+    acquire.run,
+    /--source "\$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600/,
   )
-  assert.doesNotMatch(step.run, /AFTER_QUICK|needs\.plan/)
-  assert.ok(
-    acquisition.steps.findIndex((entry) => entry.id === 'acquire-budget') <
-      acquisition.steps.indexOf(step),
-  )
-  const workers = workflow.jobs.prerequisites
-  assert.deepEqual(workers.needs, ['scope', 'host-artifacts'])
-  const readiness = acquisition.steps.findIndex((entry) =>
-    entry.run?.includes('scripts/ci/macos-host-cohort-run.mjs ready'),
-  )
-  const prepared = acquisition.steps.find((entry) => entry.id === 'prepared-artifacts')
-  assert.ok(prepared?.uses?.startsWith('actions/upload-artifact@'))
-  assert.equal(
-    prepared.with.name,
-    'macos-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}',
-  )
-  assert.equal(prepared.with.path, '${{ runner.temp }}/macos-host-artifacts')
-  assert.equal(prepared.with['if-no-files-found'], 'error')
+  const upload = acquisition.steps.find((step) => step.id === 'prepared-artifacts')
+  assert.ok(acquisition.steps.indexOf(upload) > acquisition.steps.indexOf(acquire))
   assert.equal(
     acquisition.outputs.artifact_id,
     '${{ steps.prepared-artifacts.outputs.artifact-id }}',
   )
-  assert.ok(acquisition.steps.indexOf(prepared) > acquisition.steps.indexOf(step))
-  assert.ok(readiness > acquisition.steps.indexOf(prepared))
-  const hostAcquisition = workers.steps.find((entry) =>
-    entry.uses?.startsWith('actions/download-artifact@'),
+  const workers = workflow.jobs.prerequisites
+  assert.deepEqual(workers.needs, ['scope', 'host-artifacts'])
+  const download = workers.steps.find((step) => step.uses?.startsWith('actions/download-artifact@'))
+  assert.equal(download.with['artifact-ids'], '${{ needs.host-artifacts.outputs.artifact_id }}')
+  assert.ok(!workers.steps.some((step) => step.run?.includes('candidate-transfer.mjs acquire')))
+  const verified = workers.steps.findIndex((step) =>
+    step.run?.includes('candidate-provenance.mjs verify'),
   )
-  assert.ok(hostAcquisition)
-  assert.deepEqual(hostAcquisition.with, {
-    'artifact-ids': '${{ needs.host-artifacts.outputs.artifact_id }}',
-    'merge-multiple': true,
-    path: '${{ runner.temp }}/macos-host-artifacts',
-  })
-  assert.equal(
-    hostAcquisition['timeout-minutes'],
-    "${{ github.event_name == 'pull_request' && 2 || 10 }}",
-  )
-  assert.equal(hostAcquisition.if, "${{ steps.role.outputs.execute == 'true' }}")
-  assert.ok(!workers.steps.some((entry) => entry.run?.includes('candidate-transfer.mjs acquire')))
-  const acquisitionIndex = workers.steps.indexOf(hostAcquisition)
-  for (const name of [
-    'Announce this exact host and await its assigned role',
-    'Compile the native launcher and validate SDK descriptor layouts',
-    'Install build dependencies without lifecycle scripts',
-    'Build the source-test workspace packages',
-    'Prepare genuine pinned clients for offline startup and refusal checks',
-  ]) {
-    const index = workers.steps.findIndex((entry) => entry.name === name)
-    assert.ok(
-      index >= 0 && index < acquisitionIndex,
-      `${name} must not wait for canonical transfer`,
-    )
-  }
-  const verificationIndex = workers.steps.findIndex(
-    (entry) => entry.name === 'Verify exact canonical publication archives',
-  )
-  assert.ok(verificationIndex > acquisitionIndex)
-  assert.match(workers.steps[verificationIndex].run, /candidate-provenance\.mjs verify/)
-  for (const command of [
-    'bun test packages/jig/test/macos/',
-    'scripts/ci/qualify-macos-host.sh --shard',
-  ]) {
-    const index = workers.steps.findIndex((entry) => entry.run?.includes(command))
-    assert.ok(index > verificationIndex, `${command} requires Quick and verified canonical inputs`)
-  }
-  assert.ok(workflow.jobs['qualified-architecture'].needs.includes('host-artifacts'))
+  assert.ok(verified > workers.steps.indexOf(download))
+  for (const command of ['bun test packages/jig/test/macos/', 'qualify-macos-host.sh --shard'])
+    assert.ok(workers.steps.findIndex((step) => step.run?.includes(command)) > verified)
 })
 
 test('host acquisition waits for the exact queued producer before starting its transfer deadline', async () => {

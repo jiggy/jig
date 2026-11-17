@@ -137,7 +137,7 @@ These links locate module rules. All selected domain requirements still apply.
   It must retire guardian journals before recording completion. Report
   supervised sampling and possible resource overshoot explicitly. Never project
   Linux cgroup or hard-quota claims. Installed support selects this backend only
-  on exact qualified native Mac kernels.
+  on native ARM macOS 15+ after the required kernel mechanisms are verified.
 
 #### macos-sandbox-profile
 
@@ -208,23 +208,10 @@ These links locate module rules. All selected domain requirements still apply.
 - `macos-sandbox-profile.ts` grants read-only system libraries and Unicode data
   under `/usr/share/icu` for JavaScriptCore's lazy locale operations. Writable
   projections cannot overlap these runtime roots. Host control remains excluded.
-  Only the verified Codex profile may select exact preference-service lookup and
-  read-only daemon/current-UID notification-counter pages. This grants no
-  preference reads, writes, other IPC or networking. Preserve the flag through
-  intent lowering, sealing and guardian message validation.
-
-  On Intel build 23E224 the pages are qualified as 16 KiB invalidation counters,
-  including cross-domain change activity. Other OS profiles need independent
-  qualification. `macos-codex-preferences.ts` runs the authenticated installed
-  observer in a fresh bounded process during provider selection and each
-  launch/restoration, outside resource/installation caches. Forced policy or
-  unavailable observation refuses execution with a closed actionable cause. This
-  is an observation boundary, not continuous MDM enforcement. Codex HOME
-  relocates to private tmp.
-
-  Reject Rosetta and arm64 in the universal observer, and retain its native
-  self-deadline after coordinator loss. Inherited sandbox uncertainty also
-  refuses observation. Missing observer support is an installation failure.
+  Native Codex is unavailable on ARM Mac because preference synchronization
+  lacks an independently qualified observer. Provider selection preserves the
+  closed preference-compatibility refusal. No preference-service or shared-page
+  grants remain in payload profiles.
 
 - [`../../support/macos-exec.c`](../../support/macos-exec.c) is the native
   pre-exec boundary. Clear inherited Mach rights and descriptors, apply the
@@ -482,14 +469,22 @@ These links locate module rules. All selected domain requirements still apply.
   `../../support/AGENTS.md` owns the canonical rebuild and exact-toolchain byte
   comparison. Never refresh only one pin.
 
-- Native Mac profiles select Intel Darwin 23.4.0 build 23E224, Intel/Apple Silicon Darwin 24.6.0 build 24G830, and Apple Silicon Darwin 24.6.0 build 24H232.
-  Each new profile requires complete native and installed qualification before release.
-  Hosted qualification binds every shard to its architecture's exact selected build.
-  A shared Darwin version or prerequisite structure sizes never establish qualification.
-  Select architecture-native Bun and Mach-O slices. Never treat Rosetta execution as Apple Silicon qualification.
+- Native Mac execution requires ARM macOS 15+ (Darwin 24+) and available
+  process identity, coalition accounting, descriptor, sandbox and launchd
+  mechanisms. Preserve exact observed OS/boot/PID-version identities inside
+  runtime ownership. OS patch builds are not a CI admission allowlist.
+  Each actual CI worker runs the complete native prerequisite baseline before
+  its sequential shard. Structure sizes alone never establish qualification.
+  Aggregate shard coverage proves the common behavior contract, not complete
+  qualification of every observed build.
 
-- The SDK-compiled descriptor bridge selects Intel and Apple Silicon's native
-  stat and directory ABIs. Coalition CPU ledger values are Mach ticks: convert
+- Before release, run the complete
+  host-dependent and installed-candidate suite on macOS 15 and macOS 26.
+  Select architecture-native Bun and Mach-O slices. Intel and Rosetta execution
+  are unsupported.
+
+- The SDK-compiled descriptor bridge uses Apple Silicon's native stat and
+  directory ABIs. Coalition CPU ledger values are Mach ticks: convert
   with the kernel's `mach_timebase_info` ratio before comparing nanosecond
   limits or recording evidence. Per-process rusage units stay unchanged.
 
@@ -497,7 +492,7 @@ These links locate module rules. All selected domain requirements still apply.
   than calling variadic libc through FFI. Verify its exact digest before dlopen
   and bind it into installed-support identity. No consumer compiler is required.
 
-- On the qualified Intel macOS kernel, `JIG_MACOS_PROCESS_TEST=1` enables
+- On a capable native ARM Mac, `JIG_MACOS_PROCESS_TEST=1` enables
   `macos-process-controls.test.ts` and `macos-execution.test.ts` with the
   candidate native runtime outside an enclosing sandbox. They use finite
   user-domain launchd jobs, exact cleanup and an unrelated-process sentinel. The

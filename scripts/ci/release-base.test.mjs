@@ -77,7 +77,7 @@ test('missing, changed, or unsupported workflow identities cannot select a basel
     /Workflow checkout changed/,
   )
   assert.throws(
-    () => releaseBase({ ...f, env: { ...f.env, GITHUB_EVENT_NAME: 'schedule' } }),
+    () => releaseBase({ ...f, env: { ...f.env, GITHUB_EVENT_NAME: 'unsupported' } }),
     /requires a pull request, push, or manual workflow event/,
   )
   assert.throws(
@@ -166,7 +166,18 @@ test('manual checks use the source first parent and fail for an initial commit',
   f.git(['checkout', '--quiet', '--detach', f.initial])
   assert.throws(
     () => releaseBase({ repository: f.repository, env: { ...env, GITHUB_SHA: f.initial } }),
-    /Manual release checks require a source parent/,
+    /Manual and scheduled release checks require a source parent/,
+  )
+})
+
+test('scheduled canonical diagnostics use the exact checked source parent', (t) => {
+  const f = fixture(t)
+  assert.equal(
+    releaseBase({
+      repository: f.repository,
+      env: { GITHUB_EVENT_NAME: 'schedule', GITHUB_SHA: f.source },
+    }),
+    f.base,
   )
 })
 

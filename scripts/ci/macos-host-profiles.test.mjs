@@ -1,11 +1,14 @@
+import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
-import { readMacHostPrerequisites } from './macos-host-profiles.mjs'
-import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { MAC_HOST_PROFILES, requireMacHostPrerequisites } from './macos-host-profiles.mjs'
+import {
+  MAC_HOST_POLICY,
+  readMacHostPrerequisites,
+  requireMacHostPrerequisites,
+} from './macos-host-profiles.mjs'
 
 function evidence(architecture, build) {
   return {
@@ -23,54 +26,32 @@ function evidence(architecture, build) {
   }
 }
 
-test('hosted candidate pool keeps only its three exact native tuples', () => {
-  assert.ok(Object.isFrozen(MAC_HOST_PROFILES))
-  assert.deepEqual(Object.keys(MAC_HOST_PROFILES), ['x64', 'arm64'])
-  assert.deepEqual(
-    Object.entries(MAC_HOST_PROFILES).flatMap(([architecture, profiles]) => {
-      assert.ok(Object.isFrozen(profiles))
-      return profiles.map((profile) => {
-        assert.ok(Object.isFrozen(profile))
-        return `${architecture}/${profile.kernel}/${profile.build}/${profile.bun}/${profile.revision}`
-      })
-    }),
-    [
-      'x64/24.6.0/24G830/1.4.4/38afee6c84fcf48c0edb2466aa4b27d287a59c30',
-      'arm64/24.6.0/24G830/1.4.4/38afee6c84fcf48c0edb2466aa4b27d287a59c30',
-      'arm64/24.6.0/24H232/1.4.4/38afee6c84fcf48c0edb2466aa4b27d287a59c30',
-    ],
-  )
-})
-
-test('prerequisites admit both exact ARM pool builds without claiming qualification', () => {
-  for (const [architecture, build] of [
-    ['x64', '24G830'],
-    ['arm64', '24G830'],
-    ['arm64', '24H232'],
+test('ARM admission records differing OS builds and pins the executable runtime', () => {
+  assert.ok(Object.isFrozen(MAC_HOST_POLICY))
+  assert.deepEqual(MAC_HOST_POLICY.releaseMajors, [15, 26])
+  for (const [kernel, build] of [
+    ['24.6.0', '24G830'],
+    ['24.6.1', '24H233'],
+    ['25.6.0', '25G332'],
   ]) {
-    const observed = evidence(architecture, build)
-    assert.equal(requireMacHostPrerequisites(observed, architecture), observed)
+    const observed = { ...evidence('arm64', build), kernel }
+    assert.equal(requireMacHostPrerequisites(observed, 'arm64'), observed)
     assert.equal(observed.backendQualified, false)
   }
-})
-
-test('kernel, architecture and toolchain neighbors cannot widen the hosted pool', () => {
-  for (const architecture of ['x64', 'arm64', 'ia32', '__proto__'])
-    for (const kernel of ['24.6.0', '24.6.1'])
-      for (const build of ['24G830', '24H232', '24H233'])
-        for (const bun of ['1.4.4', '1.4.5'])
-          for (const revision of ['38afee6c84fcf48c0edb2466aa4b27d287a59c30', 'changed']) {
-            const observed = { ...evidence(architecture, build), kernel, bun, revision }
-            const admitted =
-              ['x64', 'arm64'].includes(architecture) &&
-              kernel === '24.6.0' &&
-              (build === '24G830' || (architecture === 'arm64' && build === '24H232')) &&
-              bun === '1.4.4' &&
-              revision === '38afee6c84fcf48c0edb2466aa4b27d287a59c30'
-            if (admitted)
-              assert.equal(requireMacHostPrerequisites(observed, architecture), observed)
-            else assert.throws(() => requireMacHostPrerequisites(observed, architecture))
-          }
+  for (const change of [
+    { arch: 'x64' },
+    { kernel: '23.6.0' },
+    { kernel: '24.6' },
+    { kernel: '24.6.0\n' },
+    { build: 'invalid' },
+    { build: '24G830\n' },
+    { bun: '1.4.5' },
+    { revision: 'changed' },
+  ])
+    assert.throws(() =>
+      requireMacHostPrerequisites({ ...evidence('arm64', '24G830'), ...change }, 'arm64'),
+    )
+  assert.throws(() => requireMacHostPrerequisites(evidence('arm64', '24G830'), 'x64'))
 })
 
 test('candidate identity never substitutes for complete native prerequisite evidence', () => {
@@ -95,7 +76,7 @@ test('candidate identity never substitutes for complete native prerequisite evid
   assert.throws(() => requireMacHostPrerequisites(null, 'arm64'))
 })
 
-test('descriptor-bound prerequisites accept exact ARM builds and refuse unsafe files', () => {
+test('descriptor-bound prerequisites accept observed ARM builds and refuse unsafe files', () => {
   const root = mkdtempSync(join(tmpdir(), 'jig-profile-reader-'))
   try {
     const path = join(root, 'prerequisites.json')

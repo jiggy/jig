@@ -65,8 +65,8 @@ operational baselines, and public-site assembly.
   pages. Site assembly copies canonical bytes. It never regenerates contracts.
 - `preflight.ts` owns local pre-push regression checks. `just preflight` builds
   Jig and its dependencies. It runs quick tooling and portable source checks. On
-  an exact selected unprivileged Mac candidate with qualified Bun, it then runs every
-  applicable `test/macos/` and exact observer suite sequentially. It uses the
+  an unprivileged Apple Silicon Mac with supported behavioral prerequisites with qualified Bun, it then runs every
+  applicable `test/macos/` suite sequentially. It uses the
   hosted prerequisite order, excludes ambient credentials and live-client
   opt-ins, checks ownership residue, and stops at the first failure. Other hosts
   report portable-only coverage.
@@ -82,7 +82,7 @@ operational baselines, and public-site assembly.
   availability before building. Before local tests, resolve the selected real
   Node 22+ executable.
 
-  Apple Silicon Darwin 24.6.0 build 24H232 is an exact qualification candidate.
+  Release qualification covers macOS 15 and macOS 26.
   Full native, installed and residue checks must pass before release.
 
   Verify it. Supply compiler paths even when PATH uses a version-manager shim.
@@ -209,7 +209,7 @@ operational baselines, and public-site assembly.
   `finishOperationalBaseline` removes only successful fixtures. It retains
   failed private state and the bounded memory command transcript.
 - `profile-installed-startup.ts` is an opt-in diagnostic on selected Ubuntu
-  24.04 x86-64 and exact Intel/Apple Silicon Mac hosts. It uses the exact frozen
+  24.04 x86-64 and supported Apple Silicon Mac hosts. It uses the exact frozen
   Jig and FLOW SDK archives and a deterministic three-Flow conversation. It
   excludes package/fixture setup, records one warmup plus five fresh-project
   trials, and preserves bounded failure evidence. It makes no provider calls and
@@ -314,8 +314,8 @@ operational baselines, and public-site assembly.
 
 - Run the changed script against a fresh temporary destination and exercise at
   least one expected failure path.
-- `profile-installed-startup.ts` refuses hosts outside the exact Linux and Mac
-  qualification profiles. Validate that refusal and obtain timing evidence from
+- `profile-installed-startup.ts` refuses hosts outside the Linux and Apple Silicon
+  qualification prerequisites. Validate that refusal and obtain timing evidence from
   the opt-in host workflow steps.
 - `node --test scripts/release/*.test.mjs` exercises real npm publication through Verdaccio and shared qualification policy.
   `just test-release-rehearsal` also generates versions, builds complete candidate archives and installs the ordinary CLI.
@@ -348,7 +348,7 @@ operational baselines, and public-site assembly.
   Bun tooling checks follow only after successful policy execution.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector
   diagnostics and failure-preserving teardown without a containment host.
-- `bun test scripts/preflight.test.ts` checks exact host refusal, exhaustive
+- `bun test scripts/preflight.test.ts` checks unsupported host refusal, exhaustive
   native inventory, real compiler selection, environment isolation and
   failure-preserving residue checks. It also verifies source-stage option
   forwarding and early interpreter refusal. Execute `just preflight` on a

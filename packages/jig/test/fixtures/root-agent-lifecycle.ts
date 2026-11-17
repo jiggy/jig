@@ -207,7 +207,7 @@ export async function writeInstalledFixture(root: string): Promise<PrivateInstal
       'libexec/agent',
       'libexec/evaluator',
       'libexec/preparation',
-      `node_modules/@oven/${process.platform === 'darwin' ? (process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline') : 'bun-linux-x64-baseline'}/bin`,
+      `node_modules/@oven/${process.platform === 'darwin' ? 'bun-darwin-aarch64' : 'bun-linux-x64-baseline'}/bin`,
     ].map((path) => mkdir(join(root, path), { recursive: true })),
   )
   await Promise.all(files.map((path) => copyFile(join(source, path), join(root, path))))
@@ -216,7 +216,7 @@ export async function writeInstalledFixture(root: string): Promise<PrivateInstal
     executablePath,
     join(
       root,
-      `node_modules/@oven/${process.platform === 'darwin' ? (process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline') : 'bun-linux-x64-baseline'}/bin/bun`,
+      `node_modules/@oven/${process.platform === 'darwin' ? 'bun-darwin-aarch64' : 'bun-linux-x64-baseline'}/bin/bun`,
     ),
   )
   return Object.freeze({

@@ -838,9 +838,6 @@ async function sealPlan(
     ...(value.files.evaluationWorkspace === undefined
       ? {}
       : { evaluationWorkspace: Object.freeze({ ...value.files.evaluationWorkspace }) }),
-    ...(value.files.codexPreferenceNotifications === undefined
-      ? {}
-      : { codexPreferenceNotifications: value.files.codexPreferenceNotifications }),
   })
   privateMacosSandboxProfile(files)
   const storage = value.storage === undefined ? undefined : Object.freeze({ ...value.storage })

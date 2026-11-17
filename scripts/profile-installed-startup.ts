@@ -5,6 +5,7 @@ import { arch, platform, release } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { fileURLToPath } from 'node:url'
+import { privateMacosPlatformFor } from '../packages/jig/src/internal/macos-process-controls.js'
 import { normalizePrivateProfileFailure } from '../packages/jig/src/internal/private-profile.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -864,9 +865,7 @@ function requireProfileEnvironment() {
       : undefined
   const macHost =
     platform() === 'darwin' &&
-    ((arch() === 'x64' && release() === '23.4.0' && macBuild === '23E224') ||
-      (['x64', 'arm64'].includes(arch()) && release() === '24.6.0' && macBuild === '24G830') ||
-      (arch() === 'arm64' && release() === '24.6.0' && macBuild === '24H232')) &&
+    privateMacosPlatformFor(arch(), release(), macBuild ?? '') !== undefined &&
     Bun.version === '1.4.4' &&
     Bun.revision === '38afee6c84fcf48c0edb2466aa4b27d287a59c30'
   if (
@@ -875,7 +874,7 @@ function requireProfileEnvironment() {
     process.execPath !== process.env.JIG_CI_BUN
   ) {
     throw new Error(
-      'installed startup profiling requires an exact supported Linux or Mac host and Bun',
+      'installed startup profiling requires a supported Linux or native ARM macOS 15+ host and qualified Bun',
     )
   }
   const runnerTemp = requiredAbsolute('RUNNER_TEMP')

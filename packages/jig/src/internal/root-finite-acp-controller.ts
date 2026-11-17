@@ -18,8 +18,8 @@ import { PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 import {
   allocatePrivateRootChildOwner,
   claimPrivateNativeSession,
-  discardClaimedPrivateNativeSession,
   closePrivateRootChildOwner,
+  discardClaimedPrivateNativeSession,
   listPrivateRootChildOwners,
   type PrivateNativeSessionSnapshot,
   type PrivateRootChildOwnerLifecycle,
@@ -952,9 +952,7 @@ function agentExecutionIntent(
     },
     ...(retainSession ? { output: true } : {}),
     network: 'inherited',
-    ...(acp.macosCodexPreferenceNotifications
-      ? { macosCodexPreferenceNotifications: true as const }
-      : {}),
+
     ...(acp.nestedUserNamespaces ? { nestedUserNamespaces: true } : {}),
     maxOutputBytes: 64 * 1024 * 1024,
     storageBytes: 512 * 1024 * 1024,

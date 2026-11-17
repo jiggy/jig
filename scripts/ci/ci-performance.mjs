@@ -2,7 +2,9 @@ import { execFileSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { PR_BUDGET_SECONDS } from './pr-time-budget.mjs'
+
+// End-to-end response target, independent of per-job execution timeouts.
+const PR_BUDGET_SECONDS = 25 * 60
 
 export const PERFORMANCE_WORKFLOWS = Object.freeze([
   '.github/workflows/ci.yml',

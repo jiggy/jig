@@ -14,7 +14,7 @@
     {
       "id": "jig-portable",
       "roots": ["packages/jig/test/portable/"],
-      "profiles": ["portable", "portable-linux", "macos-24G830", "macos-24H232", "macos-23E224"]
+      "profiles": ["portable", "portable-linux", "macos-arm64"]
     },
     {
       "id": "linux-platform",
@@ -29,17 +29,12 @@
     {
       "id": "macos-native",
       "roots": ["packages/jig/test/macos/"],
-      "profiles": ["macos-24G830", "macos-24H232", "macos-23E224"]
-    },
-    {
-      "id": "macos-observer",
-      "roots": ["packages/jig/test/macos-23E224/"],
-      "profiles": ["macos-23E224"]
+      "profiles": ["macos-arm64"]
     },
     {
       "id": "jig-host",
       "roots": ["packages/jig/test/host/"],
-      "profiles": ["linux", "macos-24G830", "macos-24H232", "macos-23E224"]
+      "profiles": ["linux", "macos-arm64"]
     },
     {
       "id": "live-clients",
@@ -54,38 +49,17 @@
     {
       "id": "display-model",
       "roots": ["packages/display-model/test/"],
-      "profiles": [
-        "portable",
-        "portable-linux",
-        "linux",
-        "macos-24G830",
-        "macos-24H232",
-        "macos-23E224"
-      ]
+      "profiles": ["portable", "portable-linux", "linux", "macos-arm64"]
     },
     {
       "id": "display-web",
       "roots": ["packages/display-web/test/"],
-      "profiles": [
-        "portable",
-        "portable-linux",
-        "linux",
-        "macos-24G830",
-        "macos-24H232",
-        "macos-23E224"
-      ]
+      "profiles": ["portable", "portable-linux", "linux", "macos-arm64"]
     },
     {
       "id": "display-tui",
       "roots": ["packages/display-tui/test/"],
-      "profiles": [
-        "portable",
-        "portable-linux",
-        "linux",
-        "macos-24G830",
-        "macos-24H232",
-        "macos-23E224"
-      ]
+      "profiles": ["portable", "portable-linux", "linux", "macos-arm64"]
     },
     {
       "id": "agent",
@@ -115,12 +89,12 @@
     {
       "id": "filesystem",
       "roots": ["packages/jig/test/filesystem/"],
-      "profiles": ["portable-linux", "linux", "macos-24G830", "macos-24H232", "macos-23E224"]
+      "profiles": ["portable-linux", "linux", "macos-arm64"]
     },
     {
       "id": "native-startup",
       "roots": ["packages/jig/test/startup/"],
-      "profiles": ["macos-24G830", "macos-24H232", "macos-23E224"]
+      "profiles": ["macos-arm64"]
     }
   ],
   "targets": [
@@ -243,26 +217,6 @@
       "requiresResidue": true
     },
     {
-      "id": "macos-x64",
-      "scope": "macos-intel",
-      "kind": "native-and-installed",
-      "profiles": ["macos-24G830/x64/bun-1.4.4"],
-      "suiteIds": [
-        "jig-portable",
-        "macos-native",
-        "jig-host",
-        "display-model",
-        "display-web",
-        "display-tui",
-        "filesystem",
-        "native-startup",
-        "macos-observer"
-      ],
-      "inventoryProfile": "macos-24G830",
-      "requiresArtifacts": true,
-      "requiresResidue": true
-    },
-    {
       "id": "macos-arm64",
       "scope": "macos",
       "kind": "native-and-installed",
@@ -275,10 +229,9 @@
         "display-web",
         "display-tui",
         "filesystem",
-        "native-startup",
-        "macos-observer"
+        "native-startup"
       ],
-      "inventoryProfile": "macos-24H232",
+      "inventoryProfile": "macos-arm64",
       "requiresArtifacts": true,
       "requiresResidue": true
     }

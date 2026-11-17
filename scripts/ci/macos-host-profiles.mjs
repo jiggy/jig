@@ -1,41 +1,29 @@
 import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs'
 import QUALIFIED_BUN from './qualified-bun.json' with { type: 'json' }
 
-// Exact hosted candidates. Prerequisites never establish native qualification.
-export const MAC_HOST_PROFILES = Object.freeze({
-  x64: Object.freeze([
-    Object.freeze({
-      kernel: '24.6.0',
-      build: '24G830',
-      bun: QUALIFIED_BUN.version,
-      revision: QUALIFIED_BUN.revision,
-    }),
-  ]),
-  arm64: Object.freeze([
-    Object.freeze({
-      kernel: '24.6.0',
-      build: '24G830',
-      bun: QUALIFIED_BUN.version,
-      revision: QUALIFIED_BUN.revision,
-    }),
-    Object.freeze({
-      kernel: '24.6.0',
-      build: '24H232',
-      bun: QUALIFIED_BUN.version,
-      revision: QUALIFIED_BUN.revision,
-    }),
-  ]),
+// Admission records observed builds; complete native tests establish behavior.
+export const MAC_HOST_POLICY = Object.freeze({
+  architecture: 'arm64',
+  minimumDarwinMajor: 24,
+  releaseMajors: Object.freeze([15, 26]),
+  bun: QUALIFIED_BUN.version,
+  revision: QUALIFIED_BUN.revision,
 })
 
 export function requireMacHostPrerequisites(evidence, architecture) {
-  const expected = MAC_HOST_PROFILES[architecture]
+  const kernel = typeof evidence?.kernel === 'string' && /^(\d+)\.\d+\.\d+$/.exec(evidence.kernel)
   if (
-    !Object.hasOwn(MAC_HOST_PROFILES, architecture) ||
+    architecture !== MAC_HOST_POLICY.architecture ||
     evidence?.kind !== 'macos-host-prerequisites/1' ||
     evidence.arch !== architecture ||
-    !expected.some((profile) =>
-      Object.entries(profile).every(([key, value]) => evidence[key] === value),
-    ) ||
+    !kernel ||
+    kernel[0] !== evidence.kernel ||
+    Number(kernel[1]) < MAC_HOST_POLICY.minimumDarwinMajor ||
+    typeof evidence.build !== 'string' ||
+    evidence.build.trim() !== evidence.build ||
+    !/^[0-9]{2}[A-Z][0-9A-Za-z]{2,15}$/.test(evidence.build) ||
+    evidence.bun !== MAC_HOST_POLICY.bun ||
+    evidence.revision !== MAC_HOST_POLICY.revision ||
     evidence.processIdentityBytes !== 56 ||
     evidence.coalitionIdentityBytes !== 40 ||
     evidence.coalitionUsageBytes !== 296 ||
@@ -44,7 +32,7 @@ export function requireMacHostPrerequisites(evidence, architecture) {
     evidence.backendQualified !== false
   )
     throw new Error(
-      'Mac host prerequisites do not match the exact hosted architecture, kernel, build and Bun target',
+      'Mac host prerequisites require native ARM macOS 15+ accounting capabilities and the qualified Bun runtime',
     )
   return evidence
 }

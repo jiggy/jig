@@ -19,7 +19,7 @@ import {
   validateWorkflowRun,
   verifyArtifactMetadata,
 } from './candidate-transfer.mjs'
-import { MAC_HOST_SHARDS } from './macos-host-test-shards.mjs'
+import { macQualificationJobNames, validateMacCoverage } from './macos-qualification.mjs'
 
 const WORKFLOWS = Object.freeze({
   ci: '.github/workflows/ci.yml',
@@ -57,13 +57,7 @@ export const LINUX_QUALIFICATION_JOBS = Object.freeze([
     'installed-evidence',
   ].map((suite) => `Linux host — ${suite}`),
 ])
-export const MACOS_QUALIFICATION_JOBS = Object.freeze([
-  'Native host qualification — arm64',
-  ...Array.from(
-    { length: MAC_HOST_SHARDS.arm64 },
-    (_, shard) => `Native host shard — arm64 / ${shard}`,
-  ),
-])
+export const MACOS_QUALIFICATION_JOBS = Object.freeze(['Native host qualification — arm64'])
 
 function mainExpectation(repository, workflowPath, source) {
   return {
@@ -171,6 +165,11 @@ export function verifyQualification(
     !same(receipt.candidate, candidate)
   )
     throw new Error('Qualification candidate or profile mismatch')
+  if (kind === 'macos')
+    validateMacCoverage(receipt.coverage, {
+      source: candidate.sourceRevision,
+      attempt: run.run_attempt,
+    })
   const consumer = validateProducer(receipt.consumer)
   if (
     consumer.runId !== run.id ||
@@ -560,6 +559,16 @@ export async function releaseReadiness({
       hostArtifacts.push(artifact)
       const { receipt } = await qualificationFromArtifact(client, artifact)
       verifyQualification(receipt, { kind: 'macos', profile, candidate, run: mac, repository })
+      const executed = await requireJobs(
+        client,
+        repository,
+        mac,
+        macQualificationJobNames(receipt.coverage),
+      )
+      for (const row of receipt.coverage.executions)
+        if (!executed.some((job) => job.name === row.name && job.jobId === row.jobId))
+          throw new Error('Mac qualification receipt does not match its actual executed job')
+      result.obligations.push(...executed)
     }
     const run = nativeMatch
     result.obligations.push(
