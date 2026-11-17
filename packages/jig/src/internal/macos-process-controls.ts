@@ -430,11 +430,17 @@ export function privateMacosKernelPlatform(): PrivateMacosPlatform {
   return platform
 }
 
-/** Mach-O deployment ceiling from the already qualified host's kernel, never PATH. */
-export function privateMacosDeploymentVersion(): number {
-  const version = kernelString(calls(), 'kern.osproductversion')
-  if (!/^(14|15)\.[0-9]{1,2}(?:\.[0-9]{1,2})?$/.test(version))
+/** Bound the Mach-O minimum-OS comparison to the observed product version.
+ * This is an encoding check, not an allowlist of supported runner images.
+ * Native sandbox/process capabilities are qualified independently. */
+export function privateMacosDeploymentVersionFor(version: string): number {
+  if (!/^(1[4-9]|[2-9][0-9])\.[0-9]{1,2}(?:\.[0-9]{1,2})?$/.test(version))
     throw new Error('native macOS product version is unavailable')
   const [major = 0, minor = 0, patch = 0] = version.split('.').map(Number)
   return major * 65536 + minor * 256 + patch
+}
+
+/** Mach-O deployment ceiling from the already qualified host's kernel, never PATH. */
+export function privateMacosDeploymentVersion(): number {
+  return privateMacosDeploymentVersionFor(kernelString(calls(), 'kern.osproductversion'))
 }

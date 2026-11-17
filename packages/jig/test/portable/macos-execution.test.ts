@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readPrivateMacosOwner } from '../../src/internal/macos-owner-state.js'
 import {
+  privateMacosDeploymentVersionFor,
   privateMacosOwnerIsFromPriorBoot,
   privateMacosPlatformFor,
   recoverPrivateMacosCoalition,
@@ -28,6 +29,20 @@ test('Mac platform captures observed ARM host identity without build allowlists'
     ['arm64', '25.0.0', 'bad-build'],
     ['arm64', '25.0.0', '25A100\\n'],
   ]) expect(privateMacosPlatformFor(arch, kernel, build)).toBeUndefined()
+})
+
+test('Mach-O deployment ceiling follows the actual macOS product version, including 26', () => {
+  for (const [version, expected] of [
+    ['14.4.1', 0x000e0401],
+    ['15.6', 0x000f0600],
+    ['26.0', 0x001a0000],
+    ['26.1.2', 0x001a0102],
+    ['27.10.3', 0x001b0a03],
+  ] as const) expect(privateMacosDeploymentVersionFor(version)).toBe(expected)
+  for (const version of [
+    '13.6', '14', '26', '26.1.2.3', '026.1', '26.-1', '26.100',
+    '100.1', 'latest', '26.1\\n', '26.1  ',
+  ]) expect(() => privateMacosDeploymentVersionFor(version)).toThrow('unavailable')
 })
 
 test('constructs Mac launcher terminal-join failure while retaining the actual owner and native producer', async () => {
