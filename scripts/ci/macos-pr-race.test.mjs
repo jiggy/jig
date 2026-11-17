@@ -12,6 +12,7 @@ import {
   decisionName,
   NOOP_STEP_NAMES,
   offerName,
+  readMacApiJson,
   readMacDecisionArtifact,
   readMacOfferArtifact,
   retainedMacPrDecision,
@@ -704,4 +705,235 @@ test('a live verified readiness offer is selected without waiting for the other 
     },
   )
   assert.equal(row.ready.jobId, 150)
+})
+
+function githubReadError(status) {
+  return Object.assign(new Error(`gh: read failed (HTTP ${status})`), {
+    stderr: Buffer.from(`gh: read failed (HTTP ${status})`),
+  })
+}
+
+test('a listed immutable artifact with a transient archive404 remains pending then validates real bytes', async (t) => {
+  const s = await store(t),
+    artifact = await s.offer()
+  let downloads = 0
+  const delayed = {
+    ...s.client,
+    download: async (...args) => {
+      if (downloads++ === 0) throw githubReadError(404)
+      return s.client.download(...args)
+    },
+  }
+  await assert.rejects(readMacOfferArtifact(delayed, artifact, context, { jobs: [job()], now }), {
+    code: 'MAC_RACE_PENDING',
+  })
+  const row = await readMacOfferArtifact(delayed, artifact, context, { jobs: [job()], now })
+  assert.equal(row.ready.jobId, 150)
+  assert.equal(downloads, 2)
+  for (const error of [
+    githubReadError(503),
+    Object.assign(new Error('connection reset'), { code: 'ECONNRESET' }),
+  ])
+    await assert.rejects(
+      readMacOfferArtifact(
+        {
+          ...s.client,
+          download: async () => {
+            throw error
+          },
+        },
+        artifact,
+        context,
+        { jobs: [job()], now },
+      ),
+      { code: 'MAC_RACE_PENDING' },
+    )
+  for (const status of [401, 403])
+    await assert.rejects(
+      readMacOfferArtifact(
+        {
+          ...s.client,
+          download: async () => {
+            throw githubReadError(status)
+          },
+        },
+        artifact,
+        context,
+        { jobs: [job()], now },
+      ),
+      (error) => error.code !== 'MAC_RACE_PENDING',
+    )
+})
+
+test('referenced readiness metadata404 is pending but authorization and malformed evidence stay fatal', async (t) => {
+  const s = await store(t),
+    result = await s.decision(),
+    jobs = [job(), selector()]
+  let reads = 0
+  const delayed = {
+    ...s.client,
+    api: async (...args) => {
+      if (reads++ === 0) throw githubReadError(404)
+      return s.client.api(...args)
+    },
+  }
+  await assert.rejects(readMacDecisionArtifact(delayed, result.artifact, context, { jobs, now }), {
+    code: 'MAC_RACE_PENDING',
+  })
+  assert.equal(
+    (await readMacDecisionArtifact(delayed, result.artifact, context, { jobs, now })).decision
+      .jobId,
+    150,
+  )
+  await assert.rejects(
+    readMacDecisionArtifact(
+      {
+        ...s.client,
+        api: async () => {
+          throw githubReadError(403)
+        },
+      },
+      result.artifact,
+      context,
+      { jobs, now },
+    ),
+    (error) => error.code !== 'MAC_RACE_PENDING',
+  )
+  await assert.rejects(
+    readMacDecisionArtifact({ ...s.client, api: async () => ({}) }, result.artifact, context, {
+      jobs,
+      now,
+    }),
+    /changed readiness/,
+  )
+  let downloads = 0
+  await assert.rejects(
+    readMacOfferArtifact(
+      {
+        ...s.client,
+        download: async () => {
+          downloads++
+          throw githubReadError(404)
+        },
+      },
+      { ...result.offerArtifact, expired: true },
+      context,
+      { jobs, now },
+    ),
+    (error) => error.code !== 'MAC_RACE_PENDING',
+  )
+  assert.equal(downloads, 0)
+  const malformed = await s.offer(ready, { entries: [['READY.json', '{']] })
+  await assert.rejects(
+    readMacOfferArtifact(s.client, malformed, context, { jobs, now }),
+    (error) => error instanceof SyntaxError && error.code !== 'MAC_RACE_PENDING',
+  )
+  await assert.rejects(
+    readMacOfferArtifact(
+      { ...s.client, download: async (_id, path) => writeFile(path, 'forged') },
+      result.offerArtifact,
+      context,
+      { jobs, now },
+    ),
+    /transport digest/,
+  )
+})
+
+test('API JSON reads retry only known transient transport,5xx or truncated API responses with a three-read bound', async () => {
+  const backoffs = []
+  let calls = 0
+  assert.deepEqual(
+    await readMacApiJson(
+      async () => {
+        calls++
+        if (calls === 1) throw githubReadError(502)
+        if (calls === 2) return '{"jobs":['
+        return '{"jobs":[]}'
+      },
+      { sleep: async (ms) => backoffs.push(ms) },
+    ),
+    { jobs: [] },
+  )
+  assert.equal(calls, 3)
+  assert.deepEqual(backoffs, [1000, 1000])
+  for (const error of [
+    githubReadError(401),
+    githubReadError(403),
+    new Error('identity mismatch'),
+  ]) {
+    let calls = 0
+    await assert.rejects(
+      readMacApiJson(
+        async () => {
+          calls++
+          throw error
+        },
+        { sleep: async () => assert.fail('fatal error must not back off') },
+      ),
+    )
+    assert.equal(calls, 1)
+  }
+  calls = 0
+  await assert.rejects(
+    readMacApiJson(
+      async () => {
+        calls++
+        throw Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' })
+      },
+      { sleep: async () => {} },
+    ),
+    /timed out/,
+  )
+  assert.equal(calls, 3)
+  calls = 0
+  await assert.rejects(
+    readMacApiJson(
+      async () => {
+        calls++
+        return '{bad json} '
+      },
+      { sleep: async () => assert.fail('malformed API JSON must not back off') },
+    ),
+    SyntaxError,
+  )
+  assert.equal(calls, 1)
+  calls = 0
+  await assert.rejects(
+    readMacApiJson(
+      async () => {
+        calls++
+        return '{"jobs":['
+      },
+      { sleep: async () => {} },
+    ),
+    SyntaxError,
+  )
+  assert.equal(calls, 3)
+})
+
+test('selection tries another readable live offer after archive visibility is pending, but never after invalid evidence', async (t) => {
+  const s = await store(t)
+  const first = await s.offer()
+  const second = await s.offer({ ...ready, major: 26, jobId: 260 }, { created: stamp(121) })
+  const delayed = {
+    ...s.client,
+    download: async (id, path) => {
+      if (id === first.id) throw githubReadError(404)
+      return s.client.download(id, path)
+    },
+  }
+  const options = { jobs: [job(), job(26)], artifacts: [first, second], now }
+  const selected = await chooseMacOffer(delayed, { ...context, shard: 0 }, options)
+  assert.equal(selected.ready.jobId, 260)
+  await assert.rejects(
+    chooseMacOffer(
+      s.client,
+      { ...context, shard: 0 },
+      {
+        ...options,
+        artifacts: [{ ...first, digest: `sha256:${'d'.repeat(64)}` }, second],
+      },
+    ),
+    /transport digest/,
+  )
 })
