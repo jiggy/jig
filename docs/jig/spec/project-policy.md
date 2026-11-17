@@ -1474,8 +1474,14 @@ owned coalition and confirm storage cleanup before reporting settlement.
 CPU, memory, and process limits use supervised sampling and termination rather
 than Linux cgroup hard quotas, so short overshoot is possible.
 
-The selected profiles are Intel Darwin 23.4.0 build 23E224, Intel/Apple Silicon Darwin 24.6.0 build 24G830, and Apple Silicon Darwin 24.6.0 build 24H232.
-Each profile requires complete native qualification before release. Other builds fail closed.
+Native Apple Silicon hosts require macOS 15 or newer and the required process
+identity, coalition accounting, descriptor and sandbox mechanisms. OS patch
+builds are retained as observed host identity, not an admission allowlist.
+Missing mechanisms fail closed. Intel Macs and Rosetta execution are unsupported.
+Release qualification requires the complete native lifecycle and installed
+consumer suites on both macOS 15 and macOS 26 against the same candidate.
+A passing probe alone does not establish complete qualification on another OS
+version or a future build.
 
 Containment and system-management executables default to `/usr/bin`, `/bin`, and the NixOS system profile
 `/run/current-system/sw/bin`. The operator may select Bubblewrap through an

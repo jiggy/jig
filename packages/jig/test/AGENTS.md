@@ -67,8 +67,10 @@ Delivery inspection verifies that raster reservations cannot consume the separat
   by Linux and Mac.
 - `linux-host/` owns delegated rootless Linux admission, enforcement and
   recovery.
-- `macos/` owns native Mac enforcement and recovery. `macos-23E224/` owns the
-  exact Intel preference observer profile.
+- `macos/` owns native ARM Mac enforcement and recovery. Whole-file coverage
+  uses one capability-based inventory. OS patch builds do not select cases.
+  Every executing host runs the native prerequisite baseline. macOS 15 and 26
+  require complete host-dependent and installed coverage before release.
 - `startup/` owns real offline native client startup in the installed
   qualification step.
 - `live/` owns separately authorized subscription, API and restoration
@@ -712,8 +714,10 @@ It uses fresh private readiness and bounded subprocess closure inside the
 existing case budget. It still requires name resolution, a positive connection
 count, ordinary client certificate refusal and zero HTTP requests. Peer
 handshake events cannot establish client trust. It does not establish successful
-public HTTPS. Run the whole HTTP lifecycle and packed HTTP Agent composition
-suites on Linux and both qualified Macs before release acceptance.
+public HTTPS.
+
+Before release, run the whole HTTP lifecycle and packed HTTP Agent composition
+suites on Linux and native ARM macOS 15 and 26.
 
 ## Verification
 

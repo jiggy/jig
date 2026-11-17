@@ -14,7 +14,6 @@ const installedPinPattern = /descriptorBridgeDigest !==\s*'sha256:[a-f0-9]{64}'/
 const assets = [
   ['macos-exec.c', 'macos-exec-universal'],
   ['macos-descriptor-bridge.c', 'macos-descriptor-bridge.dylib'],
-  ['macos-codex-preferences.m', 'macos-codex-preferences-universal'],
 ]
 const digest = (path) => createHash('sha256').update(readFileSync(path)).digest('hex')
 const run = (...args) => execFileSync('/usr/bin/xcrun', args, { encoding: 'utf8' }).trim()

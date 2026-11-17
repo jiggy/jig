@@ -56,7 +56,7 @@ test('whole-file profile ownership excludes inapplicable roles and gives compact
     'packages/jig/test/linux/pure.test.ts',
     'packages/jig/test/linux-host/authority.test.ts',
     'packages/jig/test/macos/native.test.ts',
-    'packages/jig/test/macos-23E224/observer.test.ts',
+    'packages/jig/test/macos/second.test.ts',
     'packages/jig/test/host/package-provider-observation.test.ts',
     'packages/jig/test/live/client.test.ts',
     'packages/jig/test/startup/native-agent-startup.test.ts',
@@ -71,16 +71,13 @@ test('whole-file profile ownership excludes inapplicable roles and gives compact
   assert.deepEqual(filesFor('source-protocol'), ['packages/agent-method/test/method.test.ts'])
   assert.ok(filesFor('linux').includes(files[2]))
   assert.ok(!filesFor('linux').includes(files[3]))
-  assert.ok(filesFor('macos-x64').includes(files[3]))
-  assert.ok(!filesFor('macos-x64').includes(files[4]))
-  assert.ok(filesFor('macos-x64', 'macos-23E224').includes(files[4]))
-  assert.ok(!filesFor('macos-x64').includes(files[6]))
-  assert.ok(filesFor('macos-x64').includes(files[7]))
-  assert.deepEqual(filesFor('macos-arm64'), filesFor('macos-x64'))
-  assert.deepEqual(filesFor('macos-arm64', 'macos-24H232'), filesFor('macos-x64', 'macos-24G830'))
+  assert.ok(filesFor('macos-arm64').includes(files[3]))
+  assert.ok(filesFor('macos-arm64').includes(files[4]))
+  assert.ok(!filesFor('macos-arm64').includes(files[6]))
+  assert.ok(filesFor('macos-arm64').includes(files[7]))
   assert.ok(filesFor('linux').includes(files[5]))
-  assert.ok(filesFor('macos-x64').includes(files[5]))
-  for (const target of ['source-portable', 'source-protocol', 'linux', 'macos-x64', 'macos-arm64'])
+  assert.ok(filesFor('macos-arm64').includes(files[5]))
+  for (const target of ['source-portable', 'source-protocol', 'linux', 'macos-arm64'])
     assert.ok(!filesFor(target).includes(files[10]))
   assert.equal(
     reconcileSuiteInventory(files, affectedManifest).ownership[files[10]],
@@ -108,7 +105,7 @@ test('Reporting additions retain distinct JavaScript and Python source owners', 
     files.slice(0, 2).sort(),
   )
   assert.deepEqual(filesForTarget(files, 'source-python', affectedManifest), files.slice(2).sort())
-  for (const target of ['source-portable', 'linux', 'macos-x64', 'macos-arm64'])
+  for (const target of ['source-portable', 'linux', 'macos-arm64'])
     assert.deepEqual(filesForTarget(files, target, affectedManifest), [])
   assert.match(
     reconcileSuiteInventory(

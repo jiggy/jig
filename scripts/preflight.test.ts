@@ -17,34 +17,25 @@ import {
 } from './preflight'
 
 const host = {
-  arch: 'x64',
-  kernel: '23.4.0',
-  build: '23E224',
+  arch: 'arm64',
+  kernel: '24.6.0',
+  build: '24G830',
   uid: 501,
   bunVersion: '1.4.4',
   bunRevision: '38afee6c84fcf48c0edb2466aa4b27d287a59c30',
 }
 
-test('native preflight accepts only exact unprivileged Mac qualification candidates', () => {
+test('native preflight admits ARM host versions without exact build equality', () => {
   expect(() => requireMacHost(host)).not.toThrow()
-  for (const arch of ['x64', 'arm64']) {
-    expect(() => requireMacHost({ ...host, arch, kernel: '24.6.0', build: '24G830' })).not.toThrow()
-  }
-  expect(() =>
-    requireMacHost({ ...host, arch: 'arm64', kernel: '24.6.0', build: '24H232' }),
-  ).not.toThrow()
-  for (const candidate of [
-    { arch: 'x64', kernel: '24.6.0', build: '24H232' },
-    { arch: 'arm64', kernel: '24.6.1', build: '24H232' },
-    { arch: 'arm64', kernel: '24.6.0', build: '24H233' },
-    { arch: 'arm64', kernel: '24.6.0', build: '24H232\n' },
-  ])
-    expect(() => requireMacHost({ ...host, ...candidate })).toThrow()
+  expect(() => requireMacHost({ ...host, kernel: '25.6.0', build: '25G332' })).not.toThrow()
+  expect(() => requireMacHost({ ...host, kernel: '24.6.1', build: '24H233' })).not.toThrow()
   for (const change of [
-    { arch: 'arm64' },
+    { arch: 'x64' },
     { arch: 'ia32' },
-    { kernel: '23.5.0' },
-    { build: '23E225' },
+    { kernel: '23.6.0' },
+    { kernel: '25.6.0\n' },
+    { build: '25G332\n' },
+    { build: 'invalid' },
     { uid: 0 },
     { uid: undefined },
     { bunVersion: '1.4.3' },
@@ -57,20 +48,15 @@ test('native inventory includes every discovered Mac file once, prerequisites fi
   const files = discoverRepositoryTests(resolve(import.meta.dir, '..'), manifest)
   const future = 'packages/jig/test/macos/future.test.ts'
   const planned = nativeTestFiles([...files, future])
-  expect(planned).toContain('packages/jig/test/macos-23E224/macos-preferences-observer.test.ts')
   expect(planned.slice(0, NATIVE_PREREQUISITE_TESTS.length)).toEqual(NATIVE_PREREQUISITE_TESTS)
   expect(new Set(planned).size).toBe(planned.length)
   expect([...planned].sort()).toEqual(
-    [...files.filter((file) => /\/macos(?:-23E224)?\//.test(file)), future].sort(),
+    [...files.filter((file) => /\/macos\//.test(file)), future].sort(),
   )
   expect(() =>
     nativeTestFiles(files.filter((file) => file !== NATIVE_PREREQUISITE_TESTS[0])),
   ).toThrow('is missing')
   expect(() => nativeTestFiles([...files, NATIVE_PREREQUISITE_TESTS[0]])).toThrow('Repeated')
-  expect(nativeTestFiles(files, '24G830')).not.toContain(
-    'packages/jig/test/macos-23E224/macos-preferences-observer.test.ts',
-  )
-  expect(nativeTestFiles(files, '24H232')).toEqual(nativeTestFiles(files, '24G830'))
   expect(() => nativeTestFiles([...files, 'packages/jig/test/unowned.test.ts'])).toThrow('Unowned')
 })
 
@@ -390,7 +376,7 @@ test('an automatic uppercase mount refuses clean credit and preserves an earlier
     expect(reports.join('\n')).not.toContain('passed')
   }
 })
-test('hosted and self-hosted Mac snapshot commands execute the same automatic-volume detection', async () => {
+test('qualifier and hosted Mac snapshot commands execute the same automatic-volume detection', async () => {
   const directory = await mkdtemp(resolve(tmpdir(), 'jig-mac-mount-evidence-'))
   try {
     const bin = resolve(directory, 'bin'),
@@ -429,12 +415,6 @@ test('hosted and self-hosted Mac snapshot commands execute the same automatic-vo
       expect(result.stderr).toBe('')
       expect(result.stdout.trimEnd().split('\n')).toEqual(expectedMountResidue)
     }
-    const selfHosted = await readFile(
-      resolve(import.meta.dir, '../.github/workflows/macos-host-conformance.yml'),
-      'utf8',
-    )
-    expect(selfHosted).toContain('run: scripts/ci/qualify-macos-host.sh --preflight')
-    expect(selfHosted).toContain('run: scripts/ci/qualify-macos-host.sh\n')
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

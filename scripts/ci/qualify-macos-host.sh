@@ -1,5 +1,5 @@
 #!/bin/bash
-# Rootless qualification on the exact candidate host; no host provisioning.
+# Rootless qualification of the observed ARM host; no host provisioning.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 mode=full
@@ -18,15 +18,11 @@ case "$#" in
     ;;
   *) echo 'Unexpected qualification arguments' >&2; exit 2 ;;
 esac
-case "$(uname -s):$(uname -m):$(uname -r):$(sw_vers -buildVersion)" in
-  Darwin:x86_64:23.4.0:23E224) codex_startup_expectation=startup; inventory_profile=macos-23E224 ;;
-  Darwin:x86_64:24.6.0:24G830|Darwin:arm64:24.6.0:24G830) codex_startup_expectation=unsupported; inventory_profile=macos-24G830 ;;
-  Darwin:arm64:24.6.0:24H232) codex_startup_expectation=unsupported; inventory_profile=macos-24H232 ;;
-  *) echo 'Qualification requires an exact selected native Mac candidate.' >&2; exit 2 ;;
+case "$(uname -s):$(uname -m)" in
+  Darwin:arm64) codex_startup_expectation=unsupported; inventory_profile=macos-arm64 ;;
+  *) echo 'Qualification requires a native Apple Silicon Mac.' >&2; exit 2 ;;
 esac
-if [[ "$mode" == shard ]]; then
-  bun scripts/ci/probe-macos-host.ts --hosted > /dev/null
-fi
+bun scripts/ci/probe-macos-host.ts --hosted > /dev/null
 if [[ "$EUID" == 0 ]]; then
   echo 'Qualification requires an unprivileged operator.' >&2
   exit 2
@@ -77,7 +73,7 @@ snapshot() {
   {
     launchctl list | awk 'NR > 1 && $3 ~ /^org\.jig\./ {print "job " $3}'
     mount | awk '/jig-| on \/Volumes\/Jig-/ {print "mount " $0}'
-    ps -axo pid=,command= | awk '/macos-native-supervisor|macos-exec|macos-codex-preferences|\/jig-guardian-/ && !/awk/ {print "process " $0}'
+    ps -axo pid=,command= | awk '/macos-native-supervisor|macos-exec|\/jig-guardian-/ && !/awk/ {print "process " $0}'
   } | LC_ALL=C sort
 }
 snapshot > "$scratch/before"
@@ -180,8 +176,7 @@ if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
   if [[ -n "${JIG_MACOS_TEST_TIMINGS_DIRECTORY:-}" ]]; then
     startup_options+=(--reporter=junit "--reporter-outfile=$JIG_MACOS_TEST_TIMINGS_DIRECTORY/installed-startup.xml")
   fi
-  # The genuine Codex path must start only on its qualified preference profile;
-  # other selected Mac hosts must prove explicit refusal, never skip the case.
+  # ARM Codex must prove its explicit preference-observer refusal, never skip.
   JIG_NATIVE_AGENT_STARTUP=1 JIG_CODEX_MACOS_STARTUP_EXPECTATION="$codex_startup_expectation" \
     bun test packages/jig/test/startup/native-agent-startup.test.ts "${startup_options[@]}"
   bun packages/display-model/test/package-smoke.ts

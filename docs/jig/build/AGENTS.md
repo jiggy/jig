@@ -24,6 +24,8 @@ It owns the pre-run explorer guide, explicit input and launch steps, supported i
 Start with prerequisites, complete setup, expected results, and a contextual troubleshooting link.
 Introduce optional controls only when the task needs them.
 Centralize Agent setup in `agents.md`.
+
+Native Mac Codex setup must preserve the unavailable ARM observer diagnostic.
 Keep result semantics and required safety conditions beside their actions.
 Link repair procedures to the shared troubleshooting guide instead of duplicating them.
 Keep portable method semantics with FLOW and exact host requirements in `../spec/`.

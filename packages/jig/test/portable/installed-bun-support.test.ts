@@ -75,11 +75,7 @@ describe('fixed installed Bun support', () => {
       root,
       'node_modules',
       '@oven',
-      macos
-        ? process.arch === 'arm64'
-          ? 'bun-darwin-aarch64'
-          : 'bun-darwin-x64-baseline'
-        : 'bun-linux-x64-baseline',
+      macos ? 'bun-darwin-aarch64' : 'bun-linux-x64-baseline',
       'bin',
       'bun',
     )

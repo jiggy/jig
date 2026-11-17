@@ -3,7 +3,9 @@
 ## Purpose
 
 Provide agency through exact approved execution and usable control. This package
-owns the public authoring API and installed Linux and qualified Mac hosts.
+owns the public authoring API and installed Linux and native ARM Mac hosts.
+Mac execution requires macOS 15+ capabilities. Release qualification covers
+macOS 15 and 26 with complete host-dependent and installed-candidate evidence.
 
 ## Ownership
 

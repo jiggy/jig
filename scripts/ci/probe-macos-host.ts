@@ -1,11 +1,11 @@
 import { dlopen, ptr } from 'bun:ffi'
 import { strict as assert } from 'node:assert'
 import { release } from 'node:os'
-import { MAC_HOST_PROFILES, requireMacHostPrerequisites } from './macos-host-profiles.mjs'
+import { requireMacHostPrerequisites } from './macos-host-profiles.mjs'
 
 // Candidate prerequisite evidence only; this does not authorize the host backend.
 assert.equal(process.platform, 'darwin')
-assert.ok(process.arch === 'x64' || process.arch === 'arm64')
+assert.equal(process.arch, 'arm64')
 assert.notEqual(process.getuid?.(), 0)
 assert.equal(Bun.version, '1.4.4')
 assert.ok(
@@ -37,21 +37,6 @@ try {
     revision: Bun.revision,
     backendQualified: false,
   }
-  if (process.argv[2] === '--hosted') {
-    const expected = MAC_HOST_PROFILES[process.arch as keyof typeof MAC_HOST_PROFILES]
-    if (
-      !expected.some((profile) =>
-        Object.entries(profile).every(
-          ([key, value]) => identity[key as keyof typeof identity] === value,
-        ),
-      )
-    ) {
-      console.log(JSON.stringify(identity, null, 2))
-      throw new Error(
-        `Hosted Mac runner drift: require ${process.arch} ${expected.map((profile) => `Darwin ${profile.kernel} build ${profile.build} and Bun ${profile.bun} (${profile.revision})`).join(' or ')}; observed Darwin ${identity.kernel} build ${identity.build} and Bun ${identity.bun} (${identity.revision}).`,
-      )
-    }
-  }
   const unique = Buffer.alloc(56),
     coalition = Buffer.alloc(40)
   assert.equal(library.symbols.proc_pidinfo(process.pid, 17, 0, ptr(unique), 56), 56)
@@ -74,7 +59,7 @@ try {
     pidVersion: unique.readUInt32LE(32),
   }
   console.log(JSON.stringify(evidence, null, 2))
-  if (process.argv[2] === '--hosted') requireMacHostPrerequisites(evidence, process.arch)
+  requireMacHostPrerequisites(evidence, process.arch)
 } finally {
   library.close()
 }

@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path'
 export const installedRuntime =
   process.platform === 'darwin'
     ? Object.freeze({
-        package: process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline',
+        package: 'bun-darwin-aarch64',
         version: '1.4.4',
         revision: '1.4.4+38afee6c8',
         sha256:
@@ -87,7 +87,6 @@ export const expectedInstalledFiles = [
   'libexec/linux-rootless-supervisor.js',
   'libexec/macos-native-supervisor.js',
   'libexec/macos-exec',
-  'libexec/macos-codex-preferences',
   'libexec/macos-descriptor-bridge.dylib',
   'package.json',
 ].sort()

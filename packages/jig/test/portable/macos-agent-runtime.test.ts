@@ -161,7 +161,9 @@ describe('bounded static Mach-O metadata', () => {
       [
         'newer platform',
         (b: Buffer) => {
-          b.writeUInt32LE(0x00100000, b.length - 12)
+          // The test must be newer than every admitted host, not just
+          // the former macOS 14/15 qualification images.
+          b.writeUInt32LE(0x00ff0000, b.length - 12)
           return b
         },
       ],

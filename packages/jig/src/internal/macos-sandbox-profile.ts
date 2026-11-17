@@ -11,7 +11,6 @@ export interface PrivateMacosSandboxFiles {
   /** Host control roots must be outside every payload data grant. */
   readonly protectedRoots: readonly string[]
   readonly network: 'isolated' | 'inherited'
-  readonly codexPreferenceNotifications?: true
   readonly evaluationWorkspace?: PrivateMacosEvaluationGrant
 }
 
@@ -73,7 +72,6 @@ export function privateMacosSandboxProfile(input: PrivateMacosSandboxFiles): Rea
       !path(evaluation.root).endsWith('/data/evaluation') ||
       !readOnlyTrees.includes(evaluation.root) ||
       input.network !== 'isolated' ||
-      input.codexPreferenceNotifications !== undefined ||
       ![...evaluationWrites, 'scratch'].every((name) =>
         writableTrees.includes(`${evaluation.root}/${name}`),
       ) ||
@@ -86,11 +84,6 @@ export function privateMacosSandboxProfile(input: PrivateMacosSandboxFiles): Rea
     throw new TypeError('invalid macOS evaluation grants')
   if (protectedRoots.length === 0 || !['isolated', 'inherited'].includes(input.network))
     throw new TypeError('macOS sandbox requires explicit control roots and network policy')
-  if (
-    input.codexPreferenceNotifications !== undefined &&
-    input.codexPreferenceNotifications !== true
-  )
-    throw new TypeError('invalid Codex preference notification policy')
   const grants = [...SYSTEM_TREES, ...readOnlyFiles, ...readOnlyTrees, ...writableTrees]
   if (input.network === 'inherited') grants.push(...RESOLVER_FILES)
   if (grants.some((grant) => protectedRoots.some((root) => intersects(grant, root))))
@@ -142,15 +135,6 @@ export function privateMacosSandboxProfile(input: PrivateMacosSandboxFiles): Rea
     // Optional global Codex configuration must appear absent, never be exposed.
     '(deny file-read* file-test-existence (with errno ENOENT) (subpath "/etc/codex") (subpath "/private/etc/codex"))',
   ]
-  if (input.codexPreferenceNotifications) {
-    const uid = process.getuid?.()
-    if (!Number.isSafeInteger(uid) || uid === undefined || uid <= 0)
-      throw new TypeError('Codex preference notifications require an unprivileged UID')
-    rules.push(
-      '(allow mach-lookup (global-name "com.apple.cfprefsd.agent") (global-name "com.apple.cfprefsd.daemon") (local-name "com.apple.cfprefsd.agent"))',
-      `(allow ipc-posix-shm-read* (ipc-posix-name "apple.cfprefs.daemonv1") (ipc-posix-name "apple.cfprefs.${uid}v1"))`,
-    )
-  }
   if (input.network === 'inherited')
     rules.push(
       '(allow network-outbound (remote ip "*:*"))',
@@ -163,7 +147,6 @@ export function privateMacosSandboxProfile(input: PrivateMacosSandboxFiles): Rea
     throw new TypeError('macOS sandbox profile exceeds its bound')
   return Object.freeze({
     text,
-    bootstrap:
-      input.network === 'inherited' || input.codexPreferenceNotifications ? 'services' : 'closed',
+    bootstrap: input.network === 'inherited' ? 'services' : 'closed',
   })
 }

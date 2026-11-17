@@ -56,12 +56,7 @@ beforeAll(async () => {
       filter: (path) => basename(path) !== 'node_modules' && basename(path) !== '.tmp',
     })
   }
-  const name =
-    process.platform === 'darwin'
-      ? process.arch === 'arm64'
-        ? 'bun-darwin-aarch64'
-        : 'bun-darwin-x64-baseline'
-      : 'bun-linux-x64-baseline'
+  const name = process.platform === 'darwin' ? 'bun-darwin-aarch64' : 'bun-linux-x64-baseline'
   const bin = join(release, 'node_modules/@oven', name, 'bin')
   await mkdir(bin, { recursive: true })
   await symlink(process.execPath, join(bin, 'bun'))

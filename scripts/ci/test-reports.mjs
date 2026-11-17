@@ -4,8 +4,8 @@ import { isAbsolute, join, normalize, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { readMacHostPrerequisites } from './macos-host-profiles.mjs'
 import {
+  createFrozenMacPlan,
   INSTALLED_STARTUP_TEST,
-  macHostShardCount,
   NATIVE_PREREQUISITE_TESTS,
   planMacHostTests,
 } from './macos-host-test-shards.mjs'
@@ -160,12 +160,19 @@ export function readJUnitCases(path) {
   )
 }
 
-function macReportPlan(repository, source, targetId, plan) {
-  if (!/^macos-(?:x64|arm64)$/.test(targetId ?? '') || !/^[0-9a-f]{40,64}$/.test(source ?? ''))
+function macReportPlan(repository, source, targetId, planFile) {
+  if (targetId !== 'macos-arm64' || !/^[0-9a-f]{40,64}$/.test(source ?? ''))
     throw new Error('Invalid Mac report source/profile identity')
   const architecture = targetId.slice(6)
   const files = filesForTarget(gitRepositoryTests(repository, source), targetId, manifest)
-  const shards = planMacHostTests(files, architecture, { plan })
+  let shards
+  if (planFile) {
+    const frozen = JSON.parse(readFileSync(planFile, 'utf8'))
+    const expected = createFrozenMacPlan(files, architecture, { source, policy: frozen.policy })
+    if (stableJson(frozen) !== stableJson(expected))
+      throw new Error('Frozen Mac plan differs from its pinned source inventory')
+    shards = expected.shards
+  } else shards = planMacHostTests(files, architecture)
   return { architecture, shards, plannedFiles: files.length }
 }
 
@@ -186,7 +193,14 @@ function readMacShard({
   shardCount,
   hostProfile,
   identities,
+  macosMajor,
 }) {
+  if (
+    macosMajor !== undefined &&
+    Number(hostProfile.kernel.split('.')[0]) !==
+      Number(macosMajor) + (Number(macosMajor) >= 26 ? -1 : 9)
+  )
+    throw new Error('Mac host major differs from the required compatibility lane')
   if (
     readFileSync(inertPath(directory, `shard-${shard.index}.complete`), 'utf8').trim() !==
     `${source} ${architecture} ${shard.index}`
@@ -199,16 +213,14 @@ function readMacShard({
     actual.shardCount !== shardCount ||
     actual.installed !== (shard.index === shardCount - 1) ||
     stableJson(actual.groups) !== stableJson(shard.groups) ||
-    stableJson(actual.nativeFiles) !==
-      stableJson(shard.index === 0 ? NATIVE_PREREQUISITE_TESTS : [])
+    stableJson(actual.nativeFiles) !== stableJson(NATIVE_PREREQUISITE_TESTS)
   )
     throw new Error('Mac command plan differs from its pinned source inventory')
   const reports = shard.groups.map((group, index) => ({
     path: `shard-${shard.index}-group-${index}.xml`,
     files: [group.file],
   }))
-  if (shard.index === 0)
-    reports.push({ path: 'native-tests.xml', files: NATIVE_PREREQUISITE_TESTS })
+  reports.push({ path: 'native-tests.xml', files: NATIVE_PREREQUISITE_TESTS })
   if (actual.installed)
     reports.push({ path: 'installed-startup.xml', files: [INSTALLED_STARTUP_TEST] })
   let executed = 0
@@ -219,7 +231,12 @@ function readMacShard({
       const file = repositoryPath(item.file)
       if (!report.files.includes(file) || typeof item.name !== 'string' || !item.name.trim())
         throw new Error('Mac case differs from its owning command')
-      const identity = stableJson({ file, classname: item.classname ?? '', name: item.name })
+      const identity = stableJson({
+        file,
+        classname: item.classname ?? '',
+        name: item.name,
+        ...(NATIVE_PREREQUISITE_TESTS.includes(file) ? { shard: shard.index } : {}),
+      })
       if (identities.has(identity))
         throw new Error('Mac case identity repeats within or across commands')
       identities.add(identity)
@@ -236,50 +253,21 @@ function readMacShard({
   }
 }
 
-// A complete role remains partial evidence. Only readMacReports can reconcile
-// every role on the same observed host profile into a qualification report.
-export function readMacRoleReport({
-  repository = process.cwd(),
-  source,
-  targetId,
-  evidenceDirectory,
-  role,
-  plan = 'complete',
-}) {
-  const { architecture, shards } = macReportPlan(repository, source, targetId, plan)
-  if (!Number.isInteger(role) || role < 0 || role >= shards.length)
-    throw new Error('Mac evidence role is outside the selected plan')
-  const observed = readMacShard({
-    architecture,
-    source,
-    directory: evidenceDirectory,
-    shard: shards[role],
-    shardCount: macHostShardCount(architecture, plan),
-    hostProfile: macHostProfile(evidenceDirectory, architecture),
-    identities: new Set(),
-  })
-  return {
-    architecture,
-    hostProfile: observed.hostProfile,
-    revision: source,
-    role,
-    files: observed.shard.files,
-    executed: observed.shard.executed,
-    skipped_reports: 0,
-    failures: 0,
-    shard: observed.shard,
-  }
-}
-
 export function readMacReports({
   repository = process.cwd(),
   source,
   targetId,
   evidenceDirectory,
   detailed = false,
-  plan = 'complete',
+  planFile = process.env.JIG_MACOS_TEST_PLAN_FILE,
+  macosMajor = process.env.JIG_MACOS_MAJOR,
 }) {
-  const { architecture, shards, plannedFiles } = macReportPlan(repository, source, targetId, plan)
+  const { architecture, shards, plannedFiles } = macReportPlan(
+    repository,
+    source,
+    targetId,
+    planFile,
+  )
   const shardEvidence = shards.map((shard) => {
     const directory = join(
       evidenceDirectory,
@@ -287,11 +275,6 @@ export function readMacReports({
     )
     return { shard, directory, hostProfile: macHostProfile(directory, architecture) }
   })
-  const hostProfile = shardEvidence[0].hostProfile
-  if (
-    shardEvidence.some((evidence) => stableJson(evidence.hostProfile) !== stableJson(hostProfile))
-  )
-    throw new Error('Mac qualification cannot combine different host profiles')
   const identities = new Set()
   const rows = shardEvidence.map(
     (evidence) =>
@@ -299,18 +282,21 @@ export function readMacReports({
         ...evidence,
         architecture,
         source,
-        shardCount: macHostShardCount(architecture, plan),
+        shardCount: shards.length,
         identities,
+        macosMajor,
       }).shard,
   )
   const count = rows.reduce((total, row) => total + row.executed, 0)
   if (detailed)
     return {
       architecture,
-      hostProfile,
+      hostProfiles: shardEvidence.map(({ hostProfile }) => hostProfile),
       revision: source,
       qualified: true,
-      files: rows.reduce((total, row) => total + row.files, 0),
+      files:
+        rows.reduce((total, row) => total + row.files, 0) -
+        (shards.length - 1) * NATIVE_PREREQUISITE_TESTS.length,
       planned_files: plannedFiles,
       executed: count,
       skipped_reports: 0,
@@ -333,7 +319,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
           targetId: `macos-${architecture}`,
           evidenceDirectory,
           detailed: true,
-          plan: process.env.JIG_MACOS_TEST_PLAN ?? 'complete',
         }),
       ),
     )

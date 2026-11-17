@@ -156,7 +156,7 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
     throw new Error('invalid macOS guardian configuration')
   object(
     record.files,
-    `readOnlyFiles,readOnlyTrees,writableTrees,protectedRoots,network${record.files !== null && typeof record.files === 'object' && Object.hasOwn(record.files, 'codexPreferenceNotifications') ? ',codexPreferenceNotifications' : ''}${record.files !== null && typeof record.files === 'object' && Object.hasOwn(record.files, 'evaluationWorkspace') ? ',evaluationWorkspace' : ''}`,
+    `readOnlyFiles,readOnlyTrees,writableTrees,protectedRoots,network${record.files !== null && typeof record.files === 'object' && Object.hasOwn(record.files, 'evaluationWorkspace') ? ',evaluationWorkspace' : ''}`,
   )
   privateMacosSandboxProfile(record.files as unknown as PrivateMacosSandboxFiles)
   const evaluation =

@@ -1,25 +1,43 @@
-import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { lstatSync, readFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { balanceWholeFiles, HOST_TEST_DURATIONS, hostTestSeconds } from './host-test-scheduling.mjs'
-import { MAC_PR_COHORT } from './macos-host-cohort.mjs'
 import { discoverRepositoryTests, filesForTarget, suiteTestFiles } from './suite-inventory.mjs'
 
-// Main and manual qualification retain their complete single ARM host.
-// PR roles qualify only when the cohort proves one complete exact profile.
-export const MAC_HOST_SHARDS = Object.freeze({ x64: 4, arm64: 1 })
-export function macHostShardCount(architecture, plan = 'complete') {
-  if (!Object.hasOwn(MAC_HOST_SHARDS, architecture))
-    throw new Error('Mac qualification requires x64 or arm64')
-  if (!['complete', 'pull-request'].includes(plan)) throw new Error('Unknown Mac host test plan')
-  if (plan === 'pull-request') {
-    if (architecture !== 'arm64') throw new Error('The PR cohort requires Apple Silicon')
-    return MAC_PR_COHORT.shards
-  }
-  return MAC_HOST_SHARDS[architecture]
+export const DEFAULT_MAC_SHARD_POLICY = Object.freeze({
+  targetSeconds: 1200,
+  minShards: 1,
+  maxShards: 3,
+})
+
+function requireArchitecture(architecture) {
+  if (architecture !== 'arm64') throw new Error('Mac qualification requires Apple Silicon arm64')
 }
+
+export function validateMacShardPolicy(policy) {
+  if (
+    !policy ||
+    Object.keys(policy).sort().join(',') !== 'maxShards,minShards,targetSeconds' ||
+    !Number.isInteger(policy.targetSeconds) ||
+    policy.targetSeconds < 1 ||
+    policy.targetSeconds > 86400 ||
+    !Number.isInteger(policy.minShards) ||
+    !Number.isInteger(policy.maxShards) ||
+    policy.minShards < 1 ||
+    policy.maxShards > 8 ||
+    policy.minShards > policy.maxShards
+  )
+    throw new Error('Invalid bounded Mac shard policy')
+  return {
+    targetSeconds: policy.targetSeconds,
+    minShards: policy.minShards,
+    maxShards: policy.maxShards,
+  }
+}
+
 export const INSTALLED_STARTUP_TEST = 'packages/jig/test/startup/native-agent-startup.test.ts'
 export const NATIVE_PREREQUISITE_TESTS = [
   'packages/jig/test/macos/macos-process-controls.test.ts',
@@ -32,26 +50,15 @@ export const NATIVE_PREREQUISITE_TESTS = [
   'packages/jig/test/macos/macos-guardian.test.ts',
 ]
 
-// Maximum successful whole-file observations from complete Linux/Mac runs live
+// Successful whole-file observations from complete native runs live
 // in the source-pinned timing catalog. They affect placement, never coverage.
 const WEIGHTS = new Map(
-  Object.keys(HOST_TEST_DURATIONS.fileSeconds.x64).map((file) => [
+  Object.keys(HOST_TEST_DURATIONS.fileSeconds.arm64).map((file) => [
     file,
     {
-      x64: HOST_TEST_DURATIONS.fileSeconds.x64[file],
       arm64: HOST_TEST_DURATIONS.fileSeconds.arm64[file],
     },
   ]),
-)
-const NATIVE_PREREQUISITE_WEIGHTS = Object.freeze(
-  Object.fromEntries(
-    ['x64', 'arm64'].map((arch) => [arch, HOST_TEST_DURATIONS.fixedSeconds[arch].native]),
-  ),
-)
-const INSTALLED_CONSUMER_WEIGHTS = Object.freeze(
-  Object.fromEntries(
-    ['x64', 'arm64'].map((arch) => [arch, HOST_TEST_DURATIONS.fixedSeconds[arch].installed]),
-  ),
 )
 const manifest = JSON.parse(readFileSync(new URL('./test-suites.json', import.meta.url), 'utf8'))
 const TEST_FILE = /(?:(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]sx?)|\.node\.mjs)$/
@@ -72,8 +79,8 @@ export function isHostTestFile(file) {
   )
 }
 
-export async function discoverHostTests(root, architecture = 'x64') {
-  macHostShardCount(architecture)
+export async function discoverHostTests(root, architecture = 'arm64') {
+  requireArchitecture(architecture)
   // Each architecture selects its exact full-role inventory. Preserve portable
   // cases on Mac until a separate classification audit proves host neutrality.
   return filesForTarget(discoverRepositoryTests(root, manifest), `macos-${architecture}`, manifest)
@@ -83,13 +90,15 @@ export function planMacHostTests(
   files,
   architecture,
   {
-    plan = 'complete',
+    policy = DEFAULT_MAC_SHARD_POLICY,
+    shardCount,
     weights = WEIGHTS,
-    nativePrerequisiteSeconds = NATIVE_PREREQUISITE_WEIGHTS[architecture],
-    installedConsumerSeconds = INSTALLED_CONSUMER_WEIGHTS[architecture],
+    nativePrerequisiteSeconds = HOST_TEST_DURATIONS.fixedSeconds.arm64.native,
+    installedConsumerSeconds = HOST_TEST_DURATIONS.fixedSeconds.arm64.installed,
   } = {},
 ) {
-  const count = macHostShardCount(architecture, plan)
+  requireArchitecture(architecture)
+  policy = validateMacShardPolicy(policy)
   const unique = new Set(files)
   if (unique.size !== files.length) {
     throw new Error('Mac host test inventory repeats a file')
@@ -103,18 +112,44 @@ export function planMacHostTests(
   const ordinary = files.filter(
     (file) => !NATIVE_PREREQUISITE_TESTS.includes(file) && file !== INSTALLED_STARTUP_TEST,
   )
-  const initialSeconds = Array.from(
-    { length: count },
-    (_, index) =>
-      (index === 0 ? nativePrerequisiteSeconds : 0) +
-      (index === count - 1 ? installedConsumerSeconds : 0),
+  const maximum = Math.min(policy.maxShards, ordinary.length)
+  if (policy.minShards > maximum)
+    throw new Error('Mac inventory cannot fill the requested shard capacity')
+  const candidates =
+    shardCount === undefined
+      ? Array.from(
+          { length: maximum - policy.minShards + 1 },
+          (_, index) => index + policy.minShards,
+        )
+      : [shardCount]
+  if (
+    candidates.some(
+      (count) => !Number.isInteger(count) || count < policy.minShards || count > maximum,
+    )
   )
-  const shards = balanceWholeFiles(
-    ordinary,
-    count,
-    (file) => weights.get(file)?.[architecture] ?? hostTestSeconds(file, architecture),
-    initialSeconds,
-  ).map((shard) => ({ ...shard, architecture }))
+    throw new Error('Mac shard count is outside the bounded policy')
+  let shards
+  for (const count of candidates) {
+    const initialSeconds = Array.from(
+      { length: count },
+      (_, index) =>
+        nativePrerequisiteSeconds + (index === count - 1 ? installedConsumerSeconds : 0),
+    )
+    shards = balanceWholeFiles(
+      ordinary,
+      count,
+      (file) => weights.get(file)?.[architecture] ?? hostTestSeconds(file, architecture),
+      initialSeconds,
+      { allowEmptyShards: true },
+    ).map((shard) => ({
+      ...shard,
+      architecture,
+      nativeFiles: [...NATIVE_PREREQUISITE_TESTS],
+      installed: shard.index === count - 1,
+    }))
+    if (Math.max(...shards.map(({ estimatedSeconds }) => estimatedSeconds)) <= policy.targetSeconds)
+      break
+  }
   // Expose primitive failures before long application scenarios without changing
   // LPT membership, weights or the order within either partition.
   const profile = manifest.targets.find(
@@ -126,7 +161,7 @@ export function planMacHostTests(
       ...shard.groups.filter(({ file }) => primitives.has(file)),
       ...shard.groups.filter(({ file }) => !primitives.has(file)),
     ]
-  if (shards.some((shard) => shard.groups.length === 0)) {
+  if (shards.some((shard) => shard.groups.length === 0 && !shard.installed)) {
     throw new Error('Mac host test inventory leaves an empty shard')
   }
   return shards
@@ -141,35 +176,123 @@ export function commandsForShard(shard, bun = 'bun', node = 'node') {
   )
 }
 
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
+  if (value && typeof value === 'object')
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+      .join(',')}}`
+  return JSON.stringify(value)
+}
+function digest(value) {
+  return createHash('sha256').update(stableJson(value)).digest('hex')
+}
+function gitSource(root) {
+  const source = execFileSync('git', ['rev-parse', '--verify', 'HEAD^{commit}'], {
+    cwd: root,
+    encoding: 'utf8',
+  }).trim()
+  if (
+    !/^[a-f0-9]{40}$/.test(source) ||
+    (process.env.GITHUB_SHA && process.env.GITHUB_SHA !== source)
+  )
+    throw new Error('Mac plan checkout does not match the exact Git source')
+  return source
+}
+
+export function createFrozenMacPlan(
+  files,
+  architecture,
+  { source, policy = DEFAULT_MAC_SHARD_POLICY } = {},
+) {
+  if (!/^[a-f0-9]{40}$/.test(source ?? '')) throw new Error('Mac plan requires an exact Git source')
+  policy = validateMacShardPolicy(policy)
+  const shards = planMacHostTests(files, architecture, { policy })
+  const plan = {
+    version: 1,
+    source,
+    architecture,
+    policy,
+    inventoryDigest: digest([...files].sort()),
+    estimatedSeconds: Math.max(...shards.map(({ estimatedSeconds }) => estimatedSeconds)),
+    withinTarget: shards.every(({ estimatedSeconds }) => estimatedSeconds <= policy.targetSeconds),
+    shards,
+  }
+  return { ...plan, digest: digest(plan) }
+}
+
+export async function readFrozenMacPlan(file, { root = process.cwd(), files, source } = {}) {
+  const metadata = lstatSync(file)
+  if (!metadata.isFile() || metadata.size > 1024 * 1024)
+    throw new Error('Invalid frozen Mac plan file')
+  const observed = JSON.parse(readFileSync(file, 'utf8'))
+  const expected = createFrozenMacPlan(files ?? (await discoverHostTests(root, 'arm64')), 'arm64', {
+    source: source ?? gitSource(root),
+    policy: observed.policy,
+  })
+  if (stableJson(observed) !== stableJson(expected))
+    throw new Error('Frozen Mac plan differs from its source, inventory or policy')
+  return expected
+}
+
+function environmentPolicy() {
+  return validateMacShardPolicy({
+    targetSeconds: Number(
+      process.env.JIG_MACOS_TARGET_SECONDS ?? DEFAULT_MAC_SHARD_POLICY.targetSeconds,
+    ),
+    minShards: Number(process.env.JIG_MACOS_MIN_SHARDS ?? DEFAULT_MAC_SHARD_POLICY.minShards),
+    maxShards: Number(process.env.JIG_MACOS_MAX_SHARDS ?? DEFAULT_MAC_SHARD_POLICY.maxShards),
+  })
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const mode = process.argv[2]
   const architecture = process.argv[3]
-  const planMode = process.env.JIG_MACOS_TEST_PLAN || 'complete'
-  const count = Object.hasOwn(MAC_HOST_SHARDS, architecture)
-    ? macHostShardCount(architecture, planMode)
-    : 0
-  const index = Number(process.argv[4])
-  if (mode === 'count' && count && process.argv.length === 4) {
+  if (mode === 'matrix' && process.argv.length === 4) {
+    const plan = await readFrozenMacPlan(architecture)
+    console.log(JSON.stringify({ include: plan.shards.map(({ index }) => ({ shard: index })) }))
+    process.exit(0)
+  }
+  requireArchitecture(architecture)
+  const files = await discoverHostTests(process.cwd(), architecture)
+  if (mode === 'freeze' && process.argv.length === 5) {
+    const plan = createFrozenMacPlan(files, architecture, {
+      source: gitSource(process.cwd()),
+      policy: environmentPolicy(),
+    })
+    await writeFile(process.argv[4], `${JSON.stringify(plan)}\n`, { flag: 'wx' })
+    console.log(
+      JSON.stringify({
+        digest: plan.digest,
+        shardCount: plan.shards.length,
+        estimatedSeconds: plan.estimatedSeconds,
+        withinTarget: plan.withinTarget,
+      }),
+    )
+    process.exit(0)
+  }
+  const frozen = process.env.JIG_MACOS_TEST_PLAN_FILE
+    ? await readFrozenMacPlan(process.env.JIG_MACOS_TEST_PLAN_FILE, { files })
+    : undefined
+  const shards =
+    frozen?.shards ?? planMacHostTests(files, architecture, { policy: environmentPolicy() })
+  const count = shards.length
+  if (mode === 'count' && process.argv.length === 4) {
     console.log(count)
     process.exit(0)
   }
+  const index = Number(process.argv[4])
   if (
     process.argv.length !== 5 ||
     !['plan', 'run'].includes(mode) ||
     !Number.isInteger(index) ||
     index < 0 ||
     index >= count
-  ) {
-    console.error(
-      'usage: node scripts/ci/macos-host-test-shards.mjs count x64|arm64 or plan|run x64|arm64 shard',
-    )
-    process.exit(2)
-  }
-  const shards = planMacHostTests(
-    await discoverHostTests(process.cwd(), architecture),
-    architecture,
-    { plan: planMode },
   )
+    throw new Error(
+      'usage: macos-host-test-shards.mjs freeze arm64 FILE | matrix FILE | count arm64 | plan|run arm64 INDEX',
+    )
   const shard = shards[index]
   const node = process.env.FLOW_NODE
   if (
@@ -183,9 +306,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     architecture,
     shard: index,
     shardCount: count,
-    installed: index === count - 1,
+    installed: shard.installed,
     groups: shard.groups,
-    nativeFiles: index === 0 ? NATIVE_PREREQUISITE_TESTS : [],
+    nativeFiles: shard.nativeFiles,
+    ...(frozen ? { planDigest: frozen.digest } : {}),
   }
   console.log(JSON.stringify(plan))
   if (mode === 'run') {

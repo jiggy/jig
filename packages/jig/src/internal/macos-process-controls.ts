@@ -6,7 +6,7 @@ import {
   requirePrivateMacosRecoveryOwner,
 } from './macos-owner-state.js'
 
-// Exact candidate profiles; each requires independent native qualification.
+// Native capability checks remain mandatory on each executing macOS host.
 const PROC_PIDUNIQIDENTIFIERINFO = 17
 const PROC_PIDCOALITIONINFO = 20
 const RESOURCE_USAGE_BYTES = 37 * 8
@@ -36,7 +36,7 @@ const authenticCoalitions = new WeakSet<object>()
 
 function calls(): Native {
   if (native !== undefined) return native
-  if (process.platform !== 'darwin' || !['x64', 'arm64'].includes(process.arch))
+  if (process.platform !== 'darwin' || process.arch !== 'arm64')
     throw new Error('macOS process controls are not qualified on this kernel')
   const ffi = createRequire(import.meta.url)('bun:ffi') as {
     ptr(bytes: Uint8Array): number
@@ -401,28 +401,28 @@ export function acquirePrivateMacosCoalition(): PrivateMacosCoalitionControl {
   return control
 }
 
-export type PrivateMacosPlatform =
-  | 'darwin-x64-23.4.0-23E224'
-  | 'darwin-x64-24.6.0-24G830'
-  | 'darwin-arm64-24.6.0-24G830'
-  | 'darwin-arm64-24.6.0-24H232'
+export type PrivateMacosPlatform = `darwin-arm64-${string}-${string}`
 
-/** Exact candidate tuples only; matching a Darwin release never proves qualification. */
+/** OS builds are recorded as observed provenance, not treated as a support allowlist.
+ * Actual kernel API availability and lifecycle enforcement are verified separately. */
 export function privateMacosPlatformFor(
   architecture: string,
   kernel: string,
   build: string,
 ): PrivateMacosPlatform | undefined {
-  if (architecture === 'x64' && kernel === '23.4.0' && build === '23E224')
-    return 'darwin-x64-23.4.0-23E224'
-  if (kernel === '24.6.0' && build === '24G830') {
-    if (architecture === 'x64') return 'darwin-x64-24.6.0-24G830'
-    if (architecture === 'arm64') return 'darwin-arm64-24.6.0-24G830'
-  }
-  if (architecture === 'arm64' && kernel === '24.6.0' && build === '24H232')
-    return 'darwin-arm64-24.6.0-24H232'
+  const version = /^(\d+)\.\d+\.\d+$/.exec(kernel)
+  if (
+    architecture !== 'arm64' ||
+    !version ||
+    version[0] !== kernel ||
+    Number(version[1]) < 24 ||
+    build.trim() !== build ||
+    !/^[0-9]{2}[A-Z][0-9A-Za-z]{2,15}$/.test(build)
+  )
+    return undefined
+  return `darwin-arm64-${kernel}-${build}`
 }
-/** Exact observed candidate identity, not a support-promotion claim. */
+/** Observed native kernel identity, not a claim about untested future hosts. */
 export function privateMacosKernelPlatform(): PrivateMacosPlatform {
   const platform = privateMacosPlatformFor(
     process.arch,
@@ -433,11 +433,20 @@ export function privateMacosKernelPlatform(): PrivateMacosPlatform {
   return platform
 }
 
-/** Mach-O deployment ceiling from the already qualified host's kernel, never PATH. */
-export function privateMacosDeploymentVersion(): number {
-  const version = kernelString(calls(), 'kern.osproductversion')
-  if (!/^(14|15)\.[0-9]{1,2}(?:\.[0-9]{1,2})?$/.test(version))
+/** Bound the Mach-O minimum-OS comparison to the observed product version.
+ * This is an encoding check, not an allowlist of supported runner images.
+ * Native sandbox/process capabilities are qualified independently. */
+export function privateMacosDeploymentVersionFor(version: string): number {
+  if (
+    version.trim() !== version ||
+    !/^(1[5-9]|[2-9][0-9])\.[0-9]{1,2}(?:\.[0-9]{1,2})?$/.test(version)
+  )
     throw new Error('native macOS product version is unavailable')
   const [major = 0, minor = 0, patch = 0] = version.split('.').map(Number)
   return major * 65536 + minor * 256 + patch
+}
+
+/** Mach-O deployment ceiling from the already qualified host's kernel, never PATH. */
+export function privateMacosDeploymentVersion(): number {
+  return privateMacosDeploymentVersionFor(kernelString(calls(), 'kern.osproductversion'))
 }

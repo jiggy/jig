@@ -16,8 +16,6 @@ const inputs = [
   'support/macos-exec-universal',
   'support/macos-descriptor-bridge.c',
   'support/macos-descriptor-bridge.dylib',
-  'support/macos-codex-preferences.m',
-  'support/macos-codex-preferences-universal',
   'src/internal/macos-descriptor-files.ts',
   'src/internal/installed-bun-support.ts',
 ]
@@ -59,11 +57,7 @@ for (const input of inputs.filter((path) => !path.endsWith('.json'))) {
     }
   })
 }
-for (const binary of [
-  'macos-exec-universal',
-  'macos-descriptor-bridge.dylib',
-  'macos-codex-preferences-universal',
-]) {
+for (const binary of ['macos-exec-universal', 'macos-descriptor-bridge.dylib']) {
   test(`both ${binary} slices retain the UUID required by newer Darwin loaders`, () => {
     const bytes = readFileSync(join(root, 'support', binary))
     expect(bytes.readUInt32BE(0)).toBe(0xcafebabe)

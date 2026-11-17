@@ -81,7 +81,7 @@ export function exampleInventory(root) {
   const sourceTargets = ['portable', 'portable-linux'].map(
     (profile) => new Set(filesForTarget(files, 'source-applications', manifest, profile)),
   )
-  const hostTargets = ['linux', 'macos-x64', 'macos-arm64'].map(
+  const hostTargets = ['linux', 'macos-arm64'].map(
     (target) => new Set(filesForTarget(files, target, manifest)),
   )
   requirePath(EXAMPLE_E2E_TEST)

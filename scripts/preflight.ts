@@ -2,9 +2,9 @@ import { spawnSync } from 'node:child_process'
 import { arch, platform, release } from 'node:os'
 import { isAbsolute, resolve } from 'node:path'
 import { NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
+import QUALIFIED_BUN from './ci/qualified-bun.json' with { type: 'json' }
 import { discoverRepositoryTests, suiteTestFiles } from './ci/suite-inventory.mjs'
 import manifest from './ci/test-suites.json'
-import QUALIFIED_BUN from './ci/qualified-bun.json' with { type: 'json' }
 
 const repository = resolve(import.meta.dir, '..')
 const timeoutMs = 10 * 60_000
@@ -17,32 +17,28 @@ export function requireMacHost(host: {
   bunVersion: string
   bunRevision: string
 }) {
+  const kernel = /^(\d+)\.\d+\.\d+$/.exec(host.kernel)
   const selected =
-    (host.arch === 'x64' && host.kernel === '23.4.0' && host.build === '23E224') ||
-    (['x64', 'arm64'].includes(host.arch) && host.kernel === '24.6.0' && host.build === '24G830') ||
-    (host.arch === 'arm64' && host.kernel === '24.6.0' && host.build === '24H232')
+    host.arch === 'arm64' &&
+    kernel &&
+    kernel[0] === host.kernel &&
+    Number(kernel[1]) >= 24 &&
+    host.build.trim() === host.build &&
+    /^[0-9]{2}[A-Z][0-9A-Za-z]{2,15}$/.test(host.build)
   if (!selected || host.uid === undefined || host.uid === 0) {
     throw Error(
-      'Native preflight requires an unprivileged operator on an exact selected Mac candidate. Use hosted Mac CI for other hosts.',
+      'Native preflight requires an unprivileged operator on native ARM macOS 15+. Use hosted Mac CI for other hosts.',
     )
   }
-  if (
-    host.bunVersion !== QUALIFIED_BUN.version ||
-    host.bunRevision !== QUALIFIED_BUN.revision
-  ) {
+  if (host.bunVersion !== QUALIFIED_BUN.version || host.bunRevision !== QUALIFIED_BUN.revision) {
     throw Error(
       `Native preflight requires the qualified Bun ${QUALIFIED_BUN.version} revision ${QUALIFIED_BUN.revision}.`,
     )
   }
 }
 
-export function nativeTestFiles(files: readonly string[], build = '23E224'): string[] {
-  const native = suiteTestFiles(
-    [...files],
-    ['macos-native', 'macos-observer'],
-    manifest,
-    build === '23E224' ? 'macos-23E224' : build === '24H232' ? 'macos-24H232' : 'macos-24G830',
-  )
+export function nativeTestFiles(files: readonly string[]): string[] {
+  const native = suiteTestFiles([...files], ['macos-native'], manifest, 'macos-arm64')
   if (new Set(native).size !== native.length)
     throw Error('Native preflight inventory repeats a test file')
   for (const prerequisite of NATIVE_PREREQUISITE_TESTS) {
@@ -247,12 +243,7 @@ async function main() {
       bunRevision: Bun.revision,
     })
   }
-  const files = mac
-    ? nativeTestFiles(
-        discoverRepositoryTests(repository, manifest),
-        capture('/usr/bin/sw_vers', ['-buildVersion']).trim(),
-      )
-    : []
+  const files = mac ? nativeTestFiles(discoverRepositoryTests(repository, manifest)) : []
   if (mode === 'all') {
     for (const tool of ['just', 'node', 'jq']) {
       if (!Bun.which(tool))
