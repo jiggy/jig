@@ -1,4 +1,5 @@
 import type { JsonValue } from '../../json.js'
+import type { BehaviorReturn } from './model.js'
 import type { LocalFunction } from './source.js'
 
 export type Value =
@@ -80,17 +81,25 @@ export function describe(value: Value): string {
   return value.kind
 }
 
-export function resultText(value: Value): string {
-  const outcome = field(value, 'outcome')
+export function returnFacts(value: Value): BehaviorReturn {
   const output = field(value, 'output')
-  const facts = ['outcome ' + describe(outcome)]
+  const fields: [string, string][] = []
   if (output.kind === 'object')
     for (const [name, item] of [...output.fields].slice(0, 5))
-      if (item.kind === 'literal' || item.kind === 'object')
-        facts.push(name + ' = ' + describe(item))
+      if (item.kind === 'literal' || item.kind === 'object') fields.push([name, describe(item)])
   const artifacts = field(value, 'artifactResults')
-  if (artifacts.kind === 'object')
-    for (const name of [...artifacts.fields.keys()].slice(0, 5))
-      facts.push('offers artifact ' + name)
-  return facts.join(', ')
+  return {
+    outcome: describe(field(value, 'outcome')),
+    fields,
+    artifacts: artifacts.kind === 'object' ? [...artifacts.fields.keys()].slice(0, 5) : [],
+  }
+}
+
+export function resultText(value: Value): string {
+  const { outcome, fields, artifacts } = returnFacts(value)
+  return [
+    'outcome ' + outcome,
+    ...fields.map(([name, result]) => name + ' = ' + result),
+    ...artifacts.map((name) => 'offers artifact ' + name),
+  ].join(', ')
 }

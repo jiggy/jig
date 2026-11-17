@@ -38,13 +38,21 @@ export interface BehaviorAssumption {
   readonly detail: string
 }
 
+export interface BehaviorGuard {
+  readonly site: SourceSite
+  readonly code: string
+  readonly taken: boolean
+  readonly unresolved: boolean
+}
+
+export interface BehaviorReturn {
+  readonly outcome: string
+  readonly fields: readonly (readonly [string, string])[]
+  readonly artifacts: readonly string[]
+}
+
 export type BehaviorStep =
-  | {
-      readonly kind: 'condition'
-      readonly site: SourceSite
-      readonly code: string
-      readonly taken: boolean
-    }
+  | ({ readonly kind: 'condition' } & BehaviorGuard)
   | {
       readonly kind: 'call'
       readonly site: SourceSite
@@ -52,10 +60,13 @@ export type BehaviorStep =
       readonly target: string
       readonly completion: 'source-return' | 'if-returned' | 'if-failed'
       readonly result: string
+      readonly returned?: BehaviorReturn
       readonly assumptions?: readonly BehaviorAssumption[]
+      readonly guards?: readonly BehaviorGuard[]
     }
   | {
       readonly kind: 'effect'
+      readonly owner: string
       readonly site: SourceSite
       readonly operation: string
       readonly detail: string
@@ -66,6 +77,7 @@ export type BehaviorStep =
       readonly site: SourceSite
       readonly completion: 'return' | 'throw' | 'unknown'
       readonly detail: string
+      readonly returned?: BehaviorReturn
     }
 
 export interface BehaviorReport {

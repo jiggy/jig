@@ -8,6 +8,7 @@ import {
 import {
   BEHAVIOR_LIMITS,
   type BehaviorAssumption,
+  type BehaviorGuard,
   type BehaviorInput,
   type BehaviorReport,
   type BehaviorStep,
@@ -15,7 +16,16 @@ import {
   type SourceSite,
 } from './model.js'
 import { SourceIndex } from './source.js'
-import { field, literal, object, resultText, toJson, type Value, unknown } from './values.js'
+import {
+  field,
+  literal,
+  object,
+  resultText,
+  returnFacts,
+  toJson,
+  type Value,
+  unknown,
+} from './values.js'
 
 type Scope = BehaviorReport['scopes'][number]
 type Route = Scope['routes'][number]
@@ -136,6 +146,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
                           ? 'Continuation unknown'
                           : 'Finishes without an explicit return',
                   site: terminal,
+                  ...(state.mode === 'return' ? { returned: returnFacts(state.value) } : {}),
                 },
               ]
         ;(isAlternative ? alternate : routes).set(JSON.stringify(route), route)
@@ -214,6 +225,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       result: string,
       prefix: readonly BehaviorStep[],
       assumptions: readonly BehaviorAssumption[],
+      guards: readonly BehaviorGuard[] = [],
     ): ChildResult => ({
       mode,
       value,
@@ -228,6 +240,8 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
         completion:
           mode === 'throw' ? 'if-failed' : assumptions.length ? 'if-returned' : 'source-return',
         ...(assumptions.length ? { assumptions } : {}),
+        ...(guards.length ? { guards } : {}),
+        ...(mode === 'next' ? { returned: returnFacts(value) } : {}),
       },
     })
     const newAssumption = (
@@ -239,12 +253,24 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     const states = callee ? evaluate(callee, argument, depth, active, budget, handoff) : []
     const pkg = callee && input.packages.get(callee.implementation)
     const values: ChildResult[] = []
-    const opaque: { steps: readonly BehaviorStep[]; assumptions: readonly BehaviorAssumption[] }[] =
-      []
-    if (states.length === 0) opaque.push({ steps: [], assumptions: [] })
+    const opaque: {
+      steps: readonly BehaviorStep[]
+      assumptions: readonly BehaviorAssumption[]
+      guards: readonly BehaviorGuard[]
+    }[] = []
+    if (states.length === 0) opaque.push({ steps: [], assumptions: [], guards: [] })
     const outcomes = new Set<string>()
 
     for (const state of states) {
+      const guards = state.steps
+        .flatMap((step) =>
+          step.kind === 'condition' && step.unresolved
+            ? [step]
+            : step.kind === 'call'
+              ? (step.guards ?? [])
+              : [],
+        )
+        .slice(0, 4)
       const prefix: BehaviorStep[] = state.steps.flatMap((step): BehaviorStep[] =>
         step.kind === 'effect'
           ? [step]
@@ -255,19 +281,19 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
               : [],
       )
       if (state.mode === 'unknown') {
-        opaque.push({ steps: prefix, assumptions: state.assumptions })
+        opaque.push({ steps: prefix, assumptions: state.assumptions, guards })
         continue
       }
       if (state.mode === 'throw') {
         values.push(
-          choice('throw', state.value, failureText(state.value), prefix, state.assumptions),
+          choice('throw', state.value, failureText(state.value), prefix, state.assumptions, guards),
         )
         continue
       }
       if (state.mode !== 'return') continue
       const outcome = field(state.value, 'outcome')
       if (outcome.kind === 'unknown') {
-        opaque.push({ steps: prefix, assumptions: state.assumptions })
+        opaque.push({ steps: prefix, assumptions: state.assumptions, guards })
         continue
       }
       if (
@@ -282,6 +308,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
             'source result has an invalid outcome',
             prefix,
             state.assumptions,
+            guards,
           ),
         )
         continue
@@ -301,6 +328,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
             'known result fails its declared schema',
             prefix,
             state.assumptions,
+            guards,
           ),
         )
         continue
@@ -312,7 +340,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       ])
       if (state.assumptions.every((fact) => fact.kind === 'opaque-return'))
         outcomes.add(outcome.value)
-      values.push(choice('next', returned, resultText(returned), prefix, state.assumptions))
+      values.push(choice('next', returned, resultText(returned), prefix, state.assumptions, guards))
     }
     for (const prefix of opaque) {
       const assumption = newAssumption(
@@ -335,6 +363,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
           callee ? 'outcome "done"; implementation incomplete' : 'result unknown',
           prefix.steps,
           facts,
+          prefix.guards,
         ),
       )
       if (
@@ -343,10 +372,17 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
         prefix.assumptions.every((fact) => fact.kind === 'opaque-return')
       )
         values.push(
-          choice('throw', unknown, 'call fails after the known prefix', prefix.steps, [
-            ...prefix.assumptions,
-            newAssumption('call-failure', 'opaque continuation fails after known prefix'),
-          ]),
+          choice(
+            'throw',
+            unknown,
+            'call fails after the known prefix',
+            prefix.steps,
+            [
+              ...prefix.assumptions,
+              newAssumption('call-failure', 'opaque continuation fails after known prefix'),
+            ],
+            prefix.guards,
+          ),
         )
     }
     if (allowSecondary) {

@@ -302,9 +302,10 @@ jig inspect --flow binding:code --behavior
 jig inspect --flow --all --behavior
 ```
 
-Read the selected target's routes alongside their source locations.
-The main diagram emphasizes calls and file writes. Route details show source checks and reporting.
-Declared boundaries list available outcome names, attachments, and artifact results.
+Start with the consequences for the selected target, including the calls, requested progress, and attempted file writes.
+The diagram labels unresolved checks on the affected connections. Source details point to the checks and publications.
+Select another target to read its behavior and caller continuations.
+The configured inventory lists declared outcomes, attachments, and artifact results.
 
 For example, a converted preview can return `needs_mapping` with outcome `done`.
 The caller's checks determine whether that preview reaches export.
