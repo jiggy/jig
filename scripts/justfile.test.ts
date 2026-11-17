@@ -45,7 +45,9 @@ test('startup profiler initializes its trace allowlist before execution and refu
   ])
   expect(code).not.toBe(0)
   expect(stdout).toBe('')
-  expect(stderr).toContain('requires an exact supported Linux or Mac host and Bun')
+  expect(stderr).toContain(
+    'requires a supported Linux or native ARM macOS 15+ host and qualified Bun',
+  )
   expect(stderr).not.toContain('before initialization')
 })
 
