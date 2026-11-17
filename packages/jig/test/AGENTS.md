@@ -84,6 +84,11 @@ Delivery inspection verifies that raster reservations cannot consume the separat
 - `startup/` owns real offline native client initialization and new-session
   creation in the installed qualification step. Placeholder API keys establish
   local startup behavior, never authentication, subscription, or inference success.
+  Separate Mac subscription cases use synthetic file-backed credentials to check
+  selection, credential handoff and native login during initialization, plus
+  expired-login refusal without API-key fallback. The handshake creates no session
+  and establishes neither real authentication nor subscription routing. Preserve
+  the source login bytes, native fencing and the full session-creation cases.
 - `live/` owns separately authorized subscription, API and restoration
   qualifications.
 - `experimental/image-preview.test.ts` owns the explicitly opted-in, unqualified
