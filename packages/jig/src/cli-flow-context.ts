@@ -55,7 +55,7 @@ function diagramIds(snapshot: Record<string, JsonValue>) {
     ]),
   )
 }
-export type FlowContextOptions = Readonly<{ target?: string }>
+export type FlowContextOptions = Readonly<{ target?: string; all?: boolean }>
 
 /** Configured topology only. No method interpretation or invocation history. */
 export function renderFlowContext(value: JsonValue, options: FlowContextOptions = {}): string {
@@ -87,7 +87,7 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
     ...(focus === undefined
       ? []
       : [`${options.target === undefined ? 'Root' : 'Focus'}: ${markdown(focus)}.`]),
-    ...(options.target !== undefined && entrypoint !== undefined
+    ...((options.target !== undefined || options.all) && entrypoint !== undefined
       ? [
           `Entrypoint: ${markdown(entrypoint)}${included.some((item) => item.target === entrypoint) ? '' : ' (outside this view)'}.`,
         ]
@@ -166,7 +166,9 @@ function selectFlowContext(value: JsonValue, options: FlowContextOptions) {
     const entry = parseProjectEntrypoint(snapshot.entrypoint).target
     entrypoint = entry.kind === 'binding' ? `binding:${entry.id}` : flowSelector(entry.path)
   }
-  const focus = options.target ?? entrypoint
+  if (options.all && options.target !== undefined)
+    throw new Error('Complete topology cannot have a target focus')
+  const focus = options.all ? undefined : options.target ?? entrypoint
   if (focus !== undefined && !byTarget.has(focus)) throw new Error('Configured target is missing')
   const allEdges = targets.flatMap((item) =>
     list(record(item.flow).routes)
