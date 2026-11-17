@@ -500,26 +500,24 @@ test('Mac qualification selects ARM by architecture and kernel capability, not b
   assert.match(qualification, /probe-macos-host\.ts --hosted/)
 })
 
-test('PR Mac smoke and release qualification run on the same current ARM image', async () => {
+test('every Mac source PR requires full native and installed ARM qualification', async () => {
   const workflow = parse(await readFile(
     resolve(import.meta.dirname, '../../.github/workflows/macos-hosted-candidates.yml'), 'utf8',
   ))
-  assert.equal(workflow.jobs['pr-smoke']['runs-on'], 'macos-26')
+  assert.equal(workflow.jobs['pr-smoke'], undefined)
   assert.equal(workflow.jobs.prerequisites['runs-on'], 'macos-26')
+  assert.deepEqual(workflow.jobs.prerequisites.needs, ['scope', 'host-artifacts'])
   assert.equal(workflow.jobs['cohort-allocator'], undefined)
   assert.equal(workflow.jobs['pr-deadline-guard'], undefined)
-  const probe = workflow.jobs.prerequisites.steps.find((step) => step.run?.includes('probe-macos-host.ts'))
-  assert.ok(probe)
-  const native = workflow.jobs.prerequisites.steps.find((step) => step.run?.includes('macos-process-controls.test.ts'))
-  assert.ok(native)
-})
-
-test('release Mac evidence is complete while PRs use independent native smoke', async () => {
-  const workflow = parse(await readFile(
-    resolve(import.meta.dirname, '../../.github/workflows/macos-hosted-candidates.yml'), 'utf8',
+  assert.ok(workflow.jobs['host-artifacts'].steps.some(
+    (step) => step.run?.includes('candidate-transfer.mjs acquire'),
   ))
-  assert.deepEqual(workflow.jobs['pr-smoke'].needs, ['scope'])
+  assert.ok(workflow.jobs.prerequisites.steps.some((step) => step.run?.includes('probe-macos-host.ts')))
+  assert.ok(workflow.jobs.prerequisites.steps.some((step) => step.run?.includes('macos-process-controls.test.ts')))
+  assert.ok(workflow.jobs.prerequisites.steps.some((step) => step.run?.includes('install-macos-test-clients.ts')))
+  assert.ok(workflow.jobs.prerequisites.steps.some((step) => step.run?.includes('qualify-macos-host.sh --shard')))
   assert.equal(workflow.jobs['qualified-architecture'].strategy.matrix.include[0].count, 1)
+  assert.equal(workflow.jobs['qualified-architecture'].env.JIG_MACOS_TEST_PLAN, 'complete')
   assert.ok(workflow.jobs['qualified-architecture'].steps.some(
     (step) => step.run?.includes('job-evidence.mjs --id'),
   ))

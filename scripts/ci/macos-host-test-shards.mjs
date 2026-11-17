@@ -7,8 +7,8 @@ import { balanceWholeFiles, HOST_TEST_DURATIONS, hostTestSeconds } from './host-
 import { MAC_PR_COHORT } from './macos-host-cohort.mjs'
 import { discoverRepositoryTests, filesForTarget, suiteTestFiles } from './suite-inventory.mjs'
 
-// Main and manual qualification retain their complete single ARM host.
-// PR roles qualify only when the cohort proves one complete exact profile.
+// The hosted workflow runs this complete single ARM host on all source PRs,
+// eligible main releases and manual diagnostics. No cohort is scheduled.
 export const MAC_HOST_SHARDS = Object.freeze({ x64: 4, arm64: 1 })
 export function macHostShardCount(architecture, plan = 'complete') {
   if (!Object.hasOwn(MAC_HOST_SHARDS, architecture))

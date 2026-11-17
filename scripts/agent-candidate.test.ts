@@ -126,25 +126,31 @@ test('the source gate refuses missing prerequisites before starting builds', asy
   }
 })
 
-test('PRs use one current ARM smoke while full qualification stays on trusted releases', async () => {
+test('PRs and releases require complete current ARM qualification with canonical inputs', async () => {
   const load = async (file: string) =>
     Bun.YAML.parse(await Bun.file(join(root, '.github/workflows', file)).text()) as any
   const mac = await load('macos-hosted-candidates.yml')
   const ci = await load('ci.yml')
   expect(Object.hasOwn(workflowTriggers(mac), 'pull_request')).toBeTrue()
   expect(workflowTriggers(mac).push.branches).toEqual(['main'])
-  expect(mac.jobs['pr-smoke']['runs-on']).toBe('macos-26')
+  expect(mac.jobs['pr-smoke']).toBeUndefined()
   expect(mac.jobs.prerequisites['runs-on']).toBe('macos-26')
   expect(mac.jobs['cohort-allocator']).toBeUndefined()
   expect(mac.jobs['pr-deadline-guard']).toBeUndefined()
   expect(mac.jobs['affected-macos'].needs).toEqual([
-    'scope', 'host-artifacts', 'pr-smoke', 'prerequisites', 'qualified-architecture',
+    'scope', 'host-artifacts', 'prerequisites', 'qualified-architecture',
   ])
   expect(mac.jobs['qualified-architecture'].strategy.matrix.include).toEqual([
     { arch: 'arm64', count: 1 },
   ])
+  expect(mac.jobs['qualified-architecture'].env.JIG_MACOS_TEST_PLAN).toBe('complete')
+  expect(mac.jobs.prerequisites.if).not.toContain("event_name != 'pull_request'")
+  expect(mac.jobs['qualified-architecture'].if).not.toContain("event_name != 'pull_request'")
   expect(mac.jobs.prerequisites.steps.some((step: any) =>
     step.run?.includes('scripts/ci/qualify-macos-host.sh --shard'),
+  )).toBeTrue()
+  expect(mac.jobs.prerequisites.steps.some((step: any) =>
+    step.run?.includes('install-macos-test-clients.ts'),
   )).toBeTrue()
   expect(workflowTriggers(ci).pull_request?.paths).toBeUndefined()
   expect(mac.concurrency['cancel-in-progress']).toContain("github.ref != 'refs/heads/main'")

@@ -273,7 +273,6 @@ test('automatic Mac hosts select eligible releases while Linux and manual diagno
   }
   const macJobs = (state) => ({
     scope: 'success',
-    'pr-smoke': 'skipped',
     'host-artifacts': state,
     prerequisites: state,
     'qualified-architecture': state,

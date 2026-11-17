@@ -706,14 +706,20 @@ test('PR scheduling binds the Quick head to the producer metadata rather than it
   })
 })
 
-test('Mac PR smoke does not wait for canonical candidate provisioning', async () => {
+test('Mac PR qualification requires the same canonical candidate as release qualification', async () => {
   const workflow = parse(
     await readFile(new URL('../../.github/workflows/macos-hosted-candidates.yml', import.meta.url), 'utf8'),
   )
-  assert.deepEqual(workflow.jobs['pr-smoke'].needs, ['scope'])
-  assert.match(workflow.jobs['host-artifacts'].if, /event_name != 'pull_request'/)
+  assert.equal(workflow.jobs['pr-smoke'], undefined)
+  assert.deepEqual(workflow.jobs['host-artifacts'].needs, ['scope'])
+  assert.deepEqual(workflow.jobs.prerequisites.needs, ['scope', 'host-artifacts'])
+  assert.match(workflow.jobs['host-artifacts'].if, /scope.outputs.required/)
+  assert.doesNotMatch(workflow.jobs['host-artifacts'].if, /event_name/)
   assert.ok(workflow.jobs['host-artifacts'].steps.some(
     (step) => step.run?.includes('candidate-transfer.mjs acquire'),
+  ))
+  assert.ok(workflow.jobs.prerequisites.steps.some(
+    (step) => step.run?.includes('candidate-provenance.mjs verify'),
   ))
 })
 

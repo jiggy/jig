@@ -120,25 +120,40 @@ test('installed Python jobs exactly cover the declared evidence profiles', async
   )
 })
 
-test('one current ARM runner separates PR smoke and full publication evidence', async () => {
+test('PRs and releases both require complete native ARM candidate qualification', async () => {
   const mac = parse(await readFile(new URL('macos-hosted-candidates.yml', workflows), 'utf8'))
-  assert.equal(mac.jobs['pr-smoke']['runs-on'], 'macos-26')
-  assert.equal(mac.jobs.prerequisites['runs-on'], 'macos-26')
-  assert.equal(mac.jobs.prerequisites.name, 'Native host shard — arm64 / 0')
-  assert.equal(mac.jobs['qualified-architecture'].name, 'Native host qualification — ${{ matrix.arch }}')
-  assert.equal(mac.jobs['pr-smoke'].needs[0], 'scope')
-  assert.match(mac.jobs['pr-smoke'].if, /pull_request/)
-  assert.match(mac.jobs.prerequisites.if, /event_name != 'pull_request'/)
-  assert.match(mac.jobs['qualified-architecture'].if, /event_name != 'pull_request'/)
+  assert.equal(mac.jobs['pr-smoke'], undefined)
   assert.equal(mac.jobs['cohort-allocator'], undefined)
   assert.equal(mac.jobs['pr-deadline-guard'], undefined)
+  assert.equal(mac.jobs.prerequisites['runs-on'], 'macos-26')
+  assert.equal(mac.jobs.prerequisites.name, 'Native host shard — arm64 / 0')
   assert.equal(mac.jobs.prerequisites.strategy, undefined)
-  assert.equal(mac.jobs['qualified-architecture'].strategy.matrix.include[0].arch, 'arm64')
-  assert.equal(mac.jobs['qualified-architecture'].strategy.matrix.include[0].count, 1)
-  assert.ok(mac.jobs['pr-smoke'].steps.some((step) => step.run?.includes('macos-process-controls.test.ts')))
+  assert.equal(mac.jobs['qualified-architecture'].name, 'Native host qualification — ${{ matrix.arch }}')
+  assert.deepEqual(mac.jobs['host-artifacts'].needs, ['scope'])
+  assert.deepEqual(mac.jobs.prerequisites.needs, ['scope', 'host-artifacts'])
+  assert.deepEqual(mac.jobs['qualified-architecture'].needs, ['scope', 'host-artifacts', 'prerequisites'])
+  assert.deepEqual(mac.jobs['affected-macos'].needs, [
+    'scope', 'host-artifacts', 'prerequisites', 'qualified-architecture',
+  ])
+  for (const id of ['host-artifacts', 'prerequisites', 'qualified-architecture']) {
+    assert.match(mac.jobs[id].if, /scope.outputs.required/)
+    assert.doesNotMatch(mac.jobs[id].if, /event_name/)
+  }
+  assert.deepEqual(mac.jobs['qualified-architecture'].strategy.matrix.include, [{ arch: 'arm64', count: 1 }])
+  assert.equal(mac.jobs['qualified-architecture'].env.JIG_MACOS_TEST_PLAN, 'complete')
+  assert.ok(mac.jobs['host-artifacts'].steps.some((step) => step.run?.includes('candidate-transfer.mjs acquire')))
+  assert.ok(mac.jobs.prerequisites.steps.some((step) => step.run?.includes('install-macos-test-clients.ts')))
+  assert.ok(mac.jobs.prerequisites.steps.some((step) => step.run?.includes('candidate-provenance.mjs verify')))
   assert.ok(mac.jobs.prerequisites.steps.some((step) => step.run?.includes('qualify-macos-host.sh --shard')))
+  assert.match(mac.jobs.prerequisites.steps.find((step) => step.name === 'Retain candidate prerequisite evidence').with.name, /macos-prerequisites-arm64-0/)
+  assert.ok(mac.jobs['qualified-architecture'].steps.some((step) => step.run?.includes('macos-host-summary.py')))
   assert.ok(mac.jobs['qualified-architecture'].steps.some((step) => step.run?.includes('candidate-provenance.mjs qualification')))
-  assert.deepEqual(mac.jobs['affected-macos'].needs, ['scope', 'host-artifacts', 'pr-smoke', 'prerequisites', 'qualified-architecture'])
+  for (const name of ['Download complete observed execution evidence', 'Require complete observed host qualification']) {
+    const step = mac.jobs['affected-macos'].steps.find((entry) => entry.name === name)
+    assert.ok(step)
+    assert.match(step.if, /scope.outputs.required/)
+    assert.doesNotMatch(step.if, /event_name/)
+  }
   assert.deepEqual(Object.keys(mac.on).sort(), ['pull_request', 'push', 'schedule', 'workflow_dispatch'])
   assert.deepEqual(mac.on.schedule, [{ cron: '23 3 * * *' }])
 })

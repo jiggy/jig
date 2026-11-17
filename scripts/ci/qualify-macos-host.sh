@@ -165,9 +165,8 @@ export JIG_MACOS_PROCESS_TEST=1
 if [[ -n "${JIG_MACOS_TEST_TIMINGS_DIRECTORY:-}" ]]; then
   export JIG_HOST_TEST_TIMING=1
 fi
-# Keep resource ownership tests sequential within each disposable host. The
-# hosted matrix distributes every file and all root lifecycle cases across
-# independent machines; the self-hosted qualification still runs them all.
+# Keep resource ownership tests sequential on the single disposable ARM host.
+# The complete source-pinned inventory runs before native evidence qualifies.
 if [[ "$mode" == shard ]]; then
   node scripts/ci/macos-host-test-shards.mjs run "$architecture" "$shard"
 else
