@@ -497,7 +497,7 @@ test('Mac qualification selects ARM by architecture and kernel capability, not b
   assert.match(qualification, /kernel_major/)
   assert.match(qualification, /codex_startup_expectation=unsupported/)
   assert.doesNotMatch(qualification, /Darwin:arm64:24\\.6\\.0:24H232/)
-  assert.match(qualification, /probe-macos-host\\.ts --hosted/)
+  assert.match(qualification, /probe-macos-host\.ts --hosted/)
 })
 
 test('PR Mac smoke and release qualification run on the same current ARM image', async () => {

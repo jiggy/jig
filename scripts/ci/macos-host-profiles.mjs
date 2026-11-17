@@ -69,7 +69,7 @@ export function requireCurrentMacHostPrerequisites(evidence, architecture) {
     evidence.pidVersion < 0 ||
     evidence.backendQualified !== false
   )
-    throw new Error('Mac host lacks the required native ARM process accounting prerequisites')
+    throw new Error('Mac host prerequisites lack required native ARM process accounting capabilities')
   return evidence
 }
 

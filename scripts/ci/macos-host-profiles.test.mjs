@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process'
 import { readMacHostPrerequisites } from './macos-host-profiles.mjs'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { MAC_HOST_PROFILES, requireMacHostPrerequisites } from './macos-host-profiles.mjs'
+import { MAC_HOST_PROFILES, requireMacHostPrerequisites, requireCurrentMacHostPrerequisites } from './macos-host-profiles.mjs'
 
 function evidence(architecture, build) {
   return {
@@ -93,6 +93,19 @@ test('candidate identity never substitutes for complete native prerequisite evid
     assert.throws(() => requireMacHostPrerequisites(observed, 'x64'))
   }
   assert.throws(() => requireMacHostPrerequisites(null, 'arm64'))
+})
+
+test('current ARM admission requires real primitives without pinning the OS build', () => {
+  const qualified = { ...evidence('arm64', '25G332'), kernel: '25.6.0' }
+  assert.equal(requireCurrentMacHostPrerequisites(qualified, 'arm64'), qualified)
+  for (const change of [
+    { arch: 'x64' }, { kernel: '22.6.0' }, { kernel: 'invalid' },
+    { build: 'bad build' }, { bun: '1.4.5' }, { revision: 'changed' },
+    { processIdentityBytes: 55 }, { coalitionIdentityBytes: 41 },
+    { coalitionUsageBytes: 295 }, { pidVersion: -1 }, { backendQualified: true },
+  ])
+    assert.throws(() => requireCurrentMacHostPrerequisites({ ...qualified, ...change }, 'arm64'))
+  assert.throws(() => requireCurrentMacHostPrerequisites(qualified, 'x64'))
 })
 
 test('descriptor-bound prerequisites accept exact ARM builds and refuse unsafe files', () => {

@@ -178,8 +178,8 @@ function fixture(architecture) {
   }
   return { root, source, evidence, reports, directories, files, architecture }
 }
-test('both full Mac architecture readers own every report once including native and installed startup', () => {
-  for (const arch of ['x64', 'arm64']) {
+test('full ARM Mac reader owns every report once including native and installed startup', () => {
+  for (const arch of ['arm64'] {
     const f = fixture(arch)
     const original = readFileSync(f.reports[0], 'utf8')
     const owningFile = /<testcase file="([^"]+)"/.exec(original)[1]
@@ -226,7 +226,7 @@ test('both full Mac architecture readers own every report once including native 
   }
 })
 test('full Mac reports require the exact current host prerequisites from every shard', () => {
-  for (const architecture of ['x64', 'arm64']) {
+  for (const architecture of ['arm64'] {
     const f = fixture(architecture)
     const path = join(f.directories.at(-1), 'prerequisites.json')
     const read = () =>
@@ -239,8 +239,8 @@ test('full Mac reports require the exact current host prerequisites from every s
     for (const change of [
       { kind: 'macos-host-prerequisites/2' },
       { arch: architecture === 'x64' ? 'arm64' : 'x64' },
-      { kernel: '24.7.0' },
-      { build: architecture === 'arm64' ? '24H233' : '24H232' },
+      { kernel: '22.7.0' },
+      { build: 'invalid-build' },
       { bun: '1.4.3' },
       { revision: 'different' },
       { backendQualified: true },
@@ -261,12 +261,12 @@ test('full Mac reports require the exact current host prerequisites from every s
   }
 })
 test('one complete ARM host qualifies only its observed admitted build', () => {
-  for (const build of ['24G830', '24H232']) {
+  for (const build of ['24G830', '24H232', '25G332']) {
     const f = fixture('arm64')
     assert.equal(f.directories.length, 1)
     writeFileSync(
       join(f.directories[0], 'prerequisites.json'),
-      JSON.stringify({ ...prerequisites('arm64'), build }),
+      JSON.stringify({ ...prerequisites('arm64'), build, kernel: build === '25G332' ? '25.6.0' : '24.6.0' }),
     )
     const result = readMacReports({
       repository: f.root,
@@ -279,7 +279,7 @@ test('one complete ARM host qualifies only its observed admitted build', () => {
     assert.equal(result.shards.length, 1)
     assert.deepEqual(result.hostProfile, {
       arch: 'arm64',
-      kernel: '24.6.0',
+      kernel: build === '25G332' ? '25.6.0' : '24.6.0',
       build,
       bun: '1.4.4',
       revision: prerequisites('arm64').revision,
@@ -322,7 +322,7 @@ test('a partial ARM shard plan cannot qualify the complete single-host role', ()
   )
 })
 test('full Mac reader rejects reordered plans even when every matching report remains complete', () => {
-  for (const architecture of ['x64', 'arm64']) {
+  for (const architecture of ['arm64'] {
     const f = fixture(architecture)
     const shards = planMacHostTests(f.files, architecture)
     const shard = shards.find((item) => item.groups.length > 1)
@@ -351,6 +351,16 @@ test('full Mac reader rejects reordered plans even when every matching report re
     )
   }
 })
+test('Intel evidence cannot qualify an ARM-only Mac release', () => {
+  const f = fixture('x64')
+  assert.throws(() => readMacReports({
+    repository: f.root,
+    source: f.source,
+    targetId: 'macos-x64',
+    evidenceDirectory: f.evidence,
+  }), /Mac host prerequisites/)
+})
+
 test('full Mac reports reject skipped, duplicated, truncated and foreign cases without name or line exceptions', () => {
   for (const mutation of [
     (xml) => xml.replace('/>', '><skipped/></testcase>'),
@@ -361,14 +371,14 @@ test('full Mac reports reject skipped, duplicated, truncated and foreign cases w
         .replace('name="complete', 'name="changed')
         .replace('/>', '/><testcase file="foreign" name="invented"/>'),
   ]) {
-    const f = fixture('x64')
+    const f = fixture('arm64')
     const report = f.reports[0]
     writeFileSync(report, mutation(readFileSync(report, 'utf8')))
     assert.throws(() =>
       readMacReports({
         repository: f.root,
         source: f.source,
-        targetId: 'macos-x64',
+        targetId: 'macos-arm64',
         evidenceDirectory: f.evidence,
       }),
     )

@@ -260,8 +260,8 @@ async function cohortFixture(run) {
   }
 }
 
-test('summary projects the single complete validator and optional timings on both architectures', async () => {
-  for (const arch of ['x64', 'arm64'])
+test('summary projects the complete ARM validator and optional timings', async () => {
+  for (const arch of ['arm64'])
     await fixture(arch, async (f) => {
       let result = await f.summarize()
       assert.equal(result.status, 0, result.stderr)
@@ -314,41 +314,49 @@ test('summary projects the single complete validator and optional timings on bot
     })
 })
 
+test('Intel reports cannot establish ARM release qualification', async () => {
+  await fixture('x64', async (f) => {
+    const result = await f.summarize()
+    assert.equal(result.status, 1)
+    assert.equal(result.report.qualified, false)
+  })
+})
+
 test('summary names only the build tested by the complete ARM host', async () => {
   await fixture('arm64', async (f) => {
     assert.equal(f.count, 1)
-    for (const build of ['24G830', '24H232']) {
+    for (const build of ['24G830', '24H232', '25G332']) {
       await writeFile(
         resolve(f.directories[0], 'prerequisites.json'),
-        JSON.stringify({ ...prerequisites('arm64'), build }),
+        JSON.stringify({ ...prerequisites('arm64'), build, kernel: build === '25G332' ? '25.6.0' : '24.6.0' }),
       )
       const result = await f.summarize()
       assert.equal(result.status, 0, result.stderr)
       assert.equal(result.report.executed, f.expectedCount)
       assert.deepEqual(result.report.hostProfile, {
         arch: 'arm64',
-        kernel: '24.6.0',
+        kernel: build === '25G332' ? '25.6.0' : '24.6.0',
         build,
         bun: '1.4.4',
         revision: prerequisites('arm64').revision,
       })
       assert.ok(
-        result.stdout.includes(`Tested host: \`arm64\` Darwin \`24.6.0\` build \`${build}\``),
+        result.stdout.includes(`Tested host: \`arm64\` Darwin \`${build === '25G332' ? '25.6.0' : '24.6.0'}\` build \`${build}\``),
       )
       assert.ok(!result.stdout.includes(build === '24G830' ? '24H232' : '24G830'))
     }
   })
 })
 
-test('summary refuses missing or unsupported kernel prerequisites despite complete reports', async () => {
-  for (const architecture of ['x64', 'arm64'])
+test('summary refuses missing or unsupported ARM kernel prerequisites despite complete reports', async () => {
+  for (const architecture of ['arm64'])
     await fixture(architecture, async (f) => {
       const path = resolve(f.directories.at(-1), 'prerequisites.json')
       await writeFile(
         path,
         JSON.stringify({
           ...prerequisites(architecture),
-          build: architecture === 'arm64' ? '24H233' : '24H232',
+          kernel: '22.6.0',
         }),
       )
       let result = await f.summarize()
