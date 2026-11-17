@@ -174,7 +174,7 @@ jobs:
           JIG_STARTUP_PROFILE_DIRECTORY: "${{ inputs.include_startup_profile && format('{0}/mac-startup-profile', runner.temp) || '' }}"
         run: |
           set -o pipefail
-          scripts/ci/qualify-macos-host.sh --shard "$MAC_HOST_ROLE" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/host-conformance.txt"
+          bash scripts/ci/qualify-macos-host.sh --shard "$MAC_HOST_ROLE" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/host-conformance.txt"
       -
         name: "Verify canonical candidate metadata is unchanged"
         if: always()
