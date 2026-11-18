@@ -70,6 +70,7 @@ export type PrivateProjectProjectionSource = Readonly<{
 export type PrivateProjectSelection = Readonly<{
   target: RunTargetIdentity
   approval: string
+  label: string
 }>
 
 type ProjectIdentity = (kind: string, ...parts: string[]) => string
@@ -117,9 +118,6 @@ function interfaceProjection(
     reason = 'This workflow was reviewed as unavailable. Correct its setup, then run jig review.'
   else if (contract.input === false)
     reason = 'This workflow declares that no input value is accepted.'
-  else if (attachments.some((attachment) => attachment.mode === 'read' && !attachment.bound))
-    reason =
-      'This workflow needs local input files. Run it with jig run --attach, or review a Binding that supplies those files.'
   else if (channels.some((channel) => channel.direction === 'receive' && channel.required))
     reason =
       'This workflow needs an incoming channel. Invoke it from a Flow that connects that channel.'
@@ -275,6 +273,7 @@ export class PrivateProjectProjection {
     revision: string,
     targetId: string,
     input: JsonValue,
+    suppliedPorts: readonly string[] = [],
   ): Promise<PrivateProjectSelection> {
     const result = await this.#read(targetId, undefined, revision, false)
     if (result.snapshot.state !== 'approved' || !result.selection)
@@ -285,6 +284,20 @@ export class PrivateProjectProjection {
     const launch = result.snapshot.selected!.launch
     if (launch.state !== 'available')
       throw new PrivateProjectProjectionError('TARGET_UNAVAILABLE', launch.reason)
+    const readPorts = result.snapshot.selected!.attachments.filter(
+      (attachment) => attachment.mode === 'read' && !attachment.bound,
+    )
+    if (suppliedPorts.some((port) => !readPorts.some((attachment) => attachment.name === port)))
+      throw new PrivateProjectProjectionError(
+        'INPUT_INVALID',
+        'Choose files only for an unbound read attachment.',
+      )
+    const missing = readPorts.find((attachment) => !suppliedPorts.includes(attachment.name))
+    if (missing)
+      throw new PrivateProjectProjectionError(
+        'INPUT_INVALID',
+        'Choose files for ' + missing.name + '.',
+      )
     const contract = result.snapshot.selected!.input
     const schema = compileEmbeddedSchema(contract.state === 'schema' ? contract.schema : true, {
       path: 'FLOW.contract.json',
@@ -426,7 +439,11 @@ export class PrivateProjectProjection {
         },
         this.#id,
       ),
-      selection: Object.freeze({ target: chosen.request.target, approval }),
+      selection: Object.freeze({
+        target: chosen.request.target,
+        approval,
+        label: labelFor(chosen.request.target),
+      }),
     }
   }
 }

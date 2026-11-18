@@ -1,8 +1,14 @@
-import type { DisplaySnapshotEnvelope, WebAssets } from '@jigging/display-model'
+import {
+  type DisplayProjectRunEvidence,
+  type DisplaySnapshotEnvelope,
+  validateDisplayProjectRunEvidence,
+  type WebAssets,
+} from '@jigging/display-model'
 import { createTui, prepareTui, type TuiDisplay, type TuiTheme } from '@jigging/display-tui'
 import { createInlineDisplay, type InlineDisplay } from '@jigging/display-tui/inline'
 import { webAssets } from '@jigging/display-web/assets'
 import type { Reference } from '@jigging/reporting'
+import type { PrivateRunComposition } from './cli-composition.js'
 import { PrivateDisplayProjection } from './cli-display-projection.js'
 import {
   privateCliHeading,
@@ -17,7 +23,6 @@ import {
   privateUpdateText as privateUpdateTextForProgress,
 } from './cli-reporting.js'
 import type { PrivateArtifactCapture } from './cli-run-model.js'
-import type { PrivateRunComposition } from './cli-composition.js'
 import {
   type PrivateAttention,
   type PrivateCallEvent,
@@ -50,7 +55,7 @@ export interface PrivateProgressLifetime {
   readonly createTui?: typeof createTui
   /** Trusted installed explorer handoff, separate from all observer snapshots. */
   readonly onWebDisplay?: (url: string) => Promise<void>
-  readonly onRunSettled?: () => Promise<void>
+  readonly onRunSettled?: (evidence?: DisplayProjectRunEvidence) => Promise<void>
 }
 
 const SCREEN_ENTER = '\u001b[?1049h\u001b[?25l\u001b[H\u001b[2J'
@@ -778,7 +783,8 @@ export class PrivateCliProgress {
     if (r.cleanup === undefined && r.status !== 'lost') {
       // This method is entered only after the ordinary Run has joined project
       // closure and retired file authority. A lost handoff cannot alter it.
-      await this.lifetime.onRunSettled?.().catch(() => {})
+      if (this.lifetime.onRunSettled)
+        await this.lifetime.onRunSettled(this.#explorerEvidence()).catch(() => {})
     }
     if (!this.#cancelled && this.#web?.active) {
       this.#armDeadline()
@@ -1161,6 +1167,55 @@ export class PrivateCliProgress {
       return this.#projection.capture(revision)
     } catch {
       return this.#projection.incomplete(revision)
+    }
+  }
+
+  #explorerEvidence(): DisplayProjectRunEvidence | undefined {
+    const snapshot = this.#displaySnapshot()
+    const facts = snapshot.kind === 'snapshot' ? snapshot.workspace.facts : undefined
+    if (snapshot.kind !== 'snapshot' || !facts || snapshot.workspace.phase !== 'settled') return
+    const progress = snapshot.views
+      .filter((view) => view.sourceId === snapshot.rootSourceId)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .flatMap((view) => view.value.sections.flatMap((section) => section.blocks))
+      .find((block) => block.kind === 'progress')
+    const artifacts = snapshot.artifacts
+    try {
+      return validateDisplayProjectRunEvidence({
+        execution: facts.execution.value,
+        outcome: facts.application.value,
+        ...(progress === undefined
+          ? {}
+          : {
+              progress: {
+                completed: progress.completed,
+                ...(progress.total === undefined ? {} : { total: progress.total }),
+              },
+            }),
+        calls: snapshot.calls.slice(0, 8).map(({ slot, state, outcome }) => ({
+          slot,
+          state,
+          ...(outcome === undefined ? {} : { outcome }),
+        })),
+        callsOmitted: Math.min(
+          Number.MAX_SAFE_INTEGER,
+          snapshot.omissions.calls + Math.max(0, snapshot.calls.length - 8),
+        ),
+        delivery: facts.delivery.value,
+        ...(artifacts.phase === 'ready' && artifacts.provenance === 'verified-delivery'
+          ? {
+              files: {
+                total: artifacts.files.length,
+                paths: artifacts.files
+                  .filter((file) => [...file.path].length <= 128)
+                  .slice(0, 8)
+                  .map((file) => file.path),
+              },
+            }
+          : {}),
+      })
+    } catch {
+      return undefined
     }
   }
 

@@ -85,7 +85,10 @@ test('project replacement rejects private fields, inconsistent identity and inve
     { ...fixture, selected: { ...selected, input: { state: 'schema', schema: false } } },
     {
       ...fixture,
-      selected: { ...selected, attachments: [{ name: 'evidence', mode: 'read', bound: false }] },
+      selected: {
+        ...selected,
+        attachments: [{ name: 'evidence', mode: 'read-write', bound: true }],
+      },
     },
     { ...fixture, selected: { ...selected, receives: [{ name: 'progress', required: true }] } },
     { ...fixture, selected: { ...selected, input: { state: 'unconstrained', schema: {} } } },
@@ -113,10 +116,9 @@ test('project replacement rejects private fields, inconsistent identity and inve
       selected: {
         ...selected,
         attachments: [{ name: 'evidence', mode: 'read', bound: false }],
-        launch: { state: 'unavailable', reason: 'Supply files through the CLI.' },
       },
     }).selected!.launch.state,
-  ).toBe('unavailable')
+  ).toBe('available')
 })
 
 test('project schemas and catalogue are complete bounded inert data', () => {

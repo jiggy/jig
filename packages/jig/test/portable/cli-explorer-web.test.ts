@@ -1,11 +1,11 @@
 import { afterEach, expect, test } from 'bun:test'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { connect } from 'node:net'
 import { webAssets } from '@jigging/display-web/assets'
 import { PrivateExploreSession } from '../../src/cli-explore.js'
-import { PrivateWebExplorer, type PrivateExplorerRunEvent } from '../../src/cli-explorer-web.js'
+import { type PrivateExplorerRunEvent, PrivateWebExplorer } from '../../src/cli-explorer-web.js'
 
 const owners: { root: string; server: PrivateWebExplorer }[] = []
 afterEach(async () => {
@@ -23,7 +23,7 @@ async function explorer() {
     project: (targetId) => session.project(targetId),
     session: (requestId) =>
       requestId === undefined ? session.snapshot() : session.requestSnapshot(requestId),
-    run: (request) => session.run(request),
+    run: (request, upload) => session.run(request, upload),
     onClose: () => session.close(),
   })
   session.bindBridge((event) => server.registerRunBridge(event))
@@ -115,6 +115,36 @@ test('strict JSON and route validation refuse ambiguous input before real select
     await response.body?.cancel()
   }
   expect(owner.session.snapshot()).toEqual({ state: 'idle' })
+  expect(await readdir(owner.root)).toEqual([])
+})
+
+test('bounded multipart accepts the same binary input once and refuses changed bytes for the same request', async () => {
+  const owner = await explorer()
+  const send = (value: number, duplicate = false) => {
+    const form = new FormData()
+    form.append(
+      '_intent',
+      new Blob(['{"requestId":"files","revision":"none","targetId":"none","input":{}}']),
+      'intent.json',
+    )
+    form.append('evidence', new File([new Uint8Array([0, value, 255])], 'report.bin'))
+    if (duplicate) form.append('evidence', new File(['other'], 'report.bin'))
+    return fetch(owner.server.origin + '/api/run', {
+      method: 'POST',
+      headers: { ...owner.headers, Origin: owner.server.origin },
+      body: form,
+    })
+  }
+  const invalid = await send(1, true)
+  expect(invalid.status).toBe(400)
+  await invalid.body?.cancel()
+  expect(owner.session.snapshot()).toEqual({ state: 'idle' })
+  const first = await send(1)
+  expect(first.status).toBe(200)
+  const refusal = await first.json()
+  expect(refusal.reason).toContain('jig review')
+  expect(await (await send(1)).json()).toEqual(refusal)
+  expect((await (await send(2)).json()).reason).toContain('different input')
   expect(await readdir(owner.root)).toEqual([])
 })
 

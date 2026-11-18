@@ -37,7 +37,7 @@ import {
   privateCliStyleEnabled,
   privateCliDiagnostic as renderDiagnostic,
 } from './cli-presentation.js'
-import { PrivateCliProgress } from './cli-progress.js'
+import { PrivateCliProgress, type PrivateProgressLifetime } from './cli-progress.js'
 import { renderReviewAgentSelections, renderReviewAgentSetup } from './cli-review-agent-setup.js'
 import { PrivateCliRunPresentation, privateCliInvalidInputText } from './cli-run-presentation.js'
 import { privateSavedResultPlain } from './cli-saved-result-presentation.js'
@@ -452,7 +452,7 @@ export interface PrivateCliOptions {
   /** The installed launcher supplies a fresh ordinary command for each explorer Run. */
   readonly exploreLaunch?: PrivateExploreLaunch
   readonly onWebDisplay?: (url: string) => Promise<void>
-  readonly onRunSettled?: () => Promise<void>
+  readonly onRunSettled?: PrivateProgressLifetime['onRunSettled']
   readonly webAssets?: WebAssets
   readonly presentationDeadline?: number | undefined
   readonly dashboardInputStream?: typeof process.stdin

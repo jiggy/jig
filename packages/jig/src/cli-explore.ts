@@ -1,10 +1,11 @@
-import { createHash } from 'node:crypto'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
 import type {
   DisplayProjectRun,
   DisplayProjectRunRequest,
   DisplayProjectSnapshot,
   WebAssets,
 } from '@jigging/display-model'
+import type { PrivateExploreFiles, PrivateExploreUpload } from './cli-explore-files.js'
 import type {
   PrivateExploreLaunch,
   PrivateExploreProcessResult,
@@ -30,6 +31,7 @@ type Entry = {
   readonly digest: string
   status: Exclude<DisplayProjectRun, { state: 'idle' }>
   viewerUrl?: string
+  comparison?: Readonly<{ revision: string; label: string; inputId: string }>
 }
 type Child = {
   readonly entry: Entry
@@ -81,6 +83,7 @@ export function parsePrivateExploreArguments(arguments_: readonly string[]): Rea
 export class PrivateExploreSession {
   readonly #projection: PrivateProjectProjection
   readonly #entries = new Map<string, Entry>()
+  readonly #inputKey = randomBytes(32)
   #current: DisplayProjectRun = { state: 'idle' }
   #uncertainty: (DisplayProjectRun & { readonly state: 'uncertain' }) | undefined
   #child: Child | undefined
@@ -121,9 +124,13 @@ export class PrivateExploreSession {
     return this.#entries.get(requestId)?.status
   }
 
-  async run(request: DisplayProjectRunRequest): Promise<DisplayProjectRun> {
+  async run(
+    request: DisplayProjectRunRequest,
+    upload?: PrivateExploreUpload,
+  ): Promise<DisplayProjectRun> {
+    const fileIdentity = upload?.identity ?? ''
     const bytes = canonicalJson(request as unknown as JsonValue)
-    const digest = createHash('sha256').update(bytes).digest('hex')
+    const digest = createHash('sha256').update(fileIdentity).update(bytes).digest('hex')
     bytes.fill(0)
     const existing = this.#entries.get(request.requestId)
     if (existing) {
@@ -166,7 +173,7 @@ export class PrivateExploreSession {
     this.#entries.set(request.requestId, entry)
     if (busy) return entry.status
     this.#current = entry.status
-    const pending = this.#start(request, entry, previous)
+    const pending = this.#start(request, entry, previous, upload?.files, fileIdentity)
     this.#pending = pending
     try {
       return await pending
@@ -197,6 +204,9 @@ export class PrivateExploreSession {
         requestId,
         targetId,
         ...(entry.viewerUrl === undefined ? {} : { viewerUrl: entry.viewerUrl }),
+        ...(entry.comparison === undefined || event.evidence === undefined
+          ? {}
+          : { comparison: { ...entry.comparison, evidence: event.evidence } }),
       })
     }
   }
@@ -205,6 +215,8 @@ export class PrivateExploreSession {
     request: DisplayProjectRunRequest,
     entry: Entry,
     previous?: Child,
+    files?: PrivateExploreFiles,
+    fileIdentity = '',
   ): Promise<DisplayProjectRun> {
     const { requestId, targetId } = request
     let bridge: PrivateExplorerRunBridge | undefined
@@ -214,7 +226,21 @@ export class PrivateExploreSession {
         request.revision,
         request.targetId,
         request.input,
+        files === undefined ? [] : [...files.keys()],
       )
+      const inputBytes = canonicalJson(request.input)
+      try {
+        entry.comparison = {
+          label: selection.label,
+          revision: request.revision,
+          inputId: createHmac('sha256', this.#inputKey)
+            .update(JSON.stringify(['jig-explorer-input/1', fileIdentity]))
+            .update(inputBytes)
+            .digest('hex'),
+        }
+      } finally {
+        inputBytes.fill(0)
+      }
       if (this.options.launch === undefined || this.#registerBridge === undefined)
         throw new Error('The installed explorer launcher is unavailable')
       if (this.#closing) throw new Error('The explorer is closing')
@@ -232,6 +258,7 @@ export class PrivateExploreSession {
         target: selection.target,
         approval: selection.approval,
         input: request.input,
+        ...(files === undefined ? {} : { files }),
         timeoutMs: this.options.timeoutMs,
         ...(this.options.verification === undefined
           ? {}
@@ -274,7 +301,14 @@ export class PrivateExploreSession {
         result.exitCode === 1 ||
         (child.interrupted && result.exitCode === 2))
     )
-      this.#set(child.entry, { state: 'settled', requestId, targetId })
+      this.#set(child.entry, {
+        state: 'settled',
+        requestId,
+        targetId,
+        ...(child.entry.status.comparison === undefined
+          ? {}
+          : { comparison: child.entry.status.comparison }),
+      })
     else
       this.#set(child.entry, {
         state: 'uncertain',
@@ -381,7 +415,7 @@ export async function privateExecuteExplore(
     },
     session: (requestId) =>
       requestId === undefined ? session.snapshot() : session.requestSnapshot(requestId),
-    run: (request) => session.run(request),
+    run: (request, files) => session.run(request, files),
     onClose: () => session.close(),
   })
   session.bindBridge((event) => server.registerRunBridge(event))

@@ -22,6 +22,10 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
   let activeKey = ''
   let filter = ''
   let inputOpen = false
+  let fileRevision: string | undefined
+  let previousInput: string | undefined
+  let comparisonOpen = false
+  const files = new Map<string, readonly File[]>()
   let draftNotice = ''
   let theme = document.documentElement.dataset.theme ?? 'system'
   let viewport: HTMLElement | undefined
@@ -174,6 +178,16 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
 
   function draw(): void {
     const draft = selectedDraft()
+    const revision = client?.project?.revision
+    if (fileRevision !== revision) {
+      files.clear()
+      previousInput = undefined
+      fileRevision = revision
+    }
+    const readPorts =
+      client?.project?.selected?.attachments.filter(
+        (attachment) => attachment.mode === 'read' && !attachment.bound,
+      ) ?? []
     render(
       h(ExplorerPage, {
         project: client?.project,
@@ -181,15 +195,22 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
         projectError: client?.projectError ?? '',
         projectNotice: client?.projectNotice ?? '',
         run: client?.run,
+        recent: client?.recent ?? [],
+        comparisonOpen,
+        onComparisonToggle(open: boolean) {
+          comparisonOpen = open
+        },
         runCurrent: client?.runCurrent ?? false,
         runError: client?.runError ?? '',
         requestError: client?.requestError ?? '',
         sending: client?.sending ?? false,
         unresolved: !!client?.unresolvedRequest,
-        canLaunch: client?.canLaunch ?? false,
+        canLaunch: !!client?.canLaunch && readPorts.every((port) => files.has(port.name)),
         closing: client?.closing ?? false,
         filter,
         input: draft.input,
+        previousInput,
+        files,
         inputOpen,
         inputTouched: draft.touched,
         draftNotice,
@@ -225,6 +246,30 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
           draft.touched = true
           redraw()
         },
+        onFiles(port: string, selected: readonly File[]) {
+          const next = new Map(files)
+          next.delete(port)
+          const retained = [...next.values()].flat()
+          const size = retained.reduce((sum, file) => sum + file.size, 0)
+          if (retained.length + selected.length > 64) {
+            draftNotice =
+              'Select up to 64 files for this approval. Clear another selection to make room.'
+            redraw()
+            return
+          }
+          if (
+            size + selected.reduce((sum, file) => sum + file.size, 0) >
+            DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT
+          ) {
+            draftNotice = 'Selected files exceed 16 MiB. Choose fewer or smaller files.'
+            redraw()
+            return
+          }
+          draftNotice = ''
+          if (selected.length) files.set(port, selected)
+          else files.delete(port)
+          redraw()
+        },
         onInputOpen() {
           rememberViewport()
           inputOpen = true
@@ -245,11 +290,20 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
             redraw()
             return
           }
-          void client?.launch(draft.input, crypto.randomUUID())
+          if (readPorts.some((port) => !files.has(port.name))) return
+          const submitted = new Map(
+            readPorts.flatMap((port) => {
+              const selection = files.get(port.name)
+              return selection === undefined ? [] : [[port.name, selection] as const]
+            }),
+          )
+          previousInput = draft.input
+          void client?.launch(draft.input, crypto.randomUUID(), submitted)
         },
         async onClose() {
           if (await client?.close()) {
             drafts.clear()
+            files.clear()
             inputOpen = false
             redraw()
           }
@@ -335,7 +389,7 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
     }
   }
 
-  function escape(event: KeyboardEvent): void {
+  function handleEscape(event: KeyboardEvent): void {
     if (
       event.key !== 'Escape' ||
       event.defaultPrevented ||
@@ -358,7 +412,7 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
       focusComponent()
     }
   }
-  document.addEventListener('keydown', escape)
+  document.addEventListener('keydown', handleEscape)
   function focusChanged(event: FocusEvent): void {
     if (!(event.target instanceof Element)) return
     mapFocused = !!event.target.closest('.composition-main')
@@ -379,7 +433,7 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
       client?.stop()
       drafts.clear()
       releaseViewport()
-      document.removeEventListener('keydown', escape)
+      document.removeEventListener('keydown', handleEscape)
       root.removeEventListener('focusin', focusChanged)
       render(null, root)
     },

@@ -49,6 +49,8 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   Keep schema and unavailable launch reasons beside the input editor.
   Retain at most sixteen drafts within sixteen MiB, evicting older drafts with visible feedback.
   Preserve an oversized current edit until selection changes, without clipping it.
+- File selections use browser File values shared by attachment name within one approval.
+  File bytes travel only on explicit launch. Keep comparison evidence for two settled Runs in tab memory.
 - Retain one snapshot task, bounded SSE reader/retry owner and active preview.
   Equal revisions acknowledge freshness without replacing semantic data.
 - Validate incoming snapshot shape before atomic replacement. Incomplete/stale

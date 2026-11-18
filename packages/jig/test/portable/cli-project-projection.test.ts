@@ -89,7 +89,6 @@ test('browser launch limitations follow the retained interface without hiding th
   const cases: readonly [Record<string, JsonValue>, string][] = [
     [{ availability: { state: 'unavailable' } }, 'reviewed as unavailable'],
     [{ contract: { input: false } }, 'no input value'],
-    [{ attachments: { evidence: 'read' } }, 'local input files'],
     [
       { contract: { channels: { requests: { direction: 'receive', required: true } } } },
       'incoming channel',
@@ -121,6 +120,12 @@ test('browser launch limitations follow the retained interface without hiding th
     { name: 'evidence', mode: 'read', bound: true },
     { name: 'result', mode: 'read-write', bound: false },
   ])
+  const supplied = projectPrivateProjectSnapshot(
+    source({ attachments: { evidence: 'read' } }),
+    identity,
+  )
+  expect(supplied.selected!.launch.state).toBe('available')
+  expect(supplied.selected!.attachments).toEqual([{ name: 'evidence', mode: 'read', bound: false }])
 })
 
 test('projection refuses a catalogue/schema admission mismatch and does not guess across revisions', () => {

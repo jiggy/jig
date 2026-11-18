@@ -1,7 +1,9 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { DisplayProjectRunEvidence } from '@jigging/display-model'
+import { type PrivateExploreFiles, stageExplorerFiles } from './cli-explore-files.js'
 import type { PrivateExplorerRunBridge, PrivateExplorerRunEvent } from './cli-explorer-web.js'
 import { canonicalJson, type JsonValue } from './json.js'
 import type { RunTargetRef } from './project/author.js'
@@ -29,6 +31,7 @@ export type PrivateExploreLaunch = (
     target: RunTargetRef
     approval: string
     input: JsonValue
+    files?: PrivateExploreFiles
     timeoutMs: number
     verification?: string
     bridge: Pick<PrivateExplorerRunBridge, 'url' | 'capability'>
@@ -61,7 +64,7 @@ function handoff(value: unknown): Readonly<{ url: string; capability: string }> 
 export function privateExploreHandoff(environment: Readonly<NodeJS.ProcessEnv> = process.env):
   | Readonly<{
       onWebDisplay(url: string): Promise<void>
-      onRunSettled(): Promise<void>
+      onRunSettled(evidence?: DisplayProjectRunEvidence): Promise<void>
     }>
   | undefined {
   const encoded = environment[HANDOFF]
@@ -95,8 +98,8 @@ export function privateExploreHandoff(environment: Readonly<NodeJS.ProcessEnv> =
       viewerUrl(url)
       await send({ event: 'viewer', url })
     },
-    async onRunSettled() {
-      await send({ event: 'settled' })
+    async onRunSettled(evidence?: DisplayProjectRunEvidence) {
+      await send({ event: 'settled', ...(evidence === undefined ? {} : { evidence }) })
     },
   })
 }
@@ -130,6 +133,8 @@ export function privateInstalledExploreLaunch(
     try {
       const path = join(directory, 'input.json')
       await writeFile(path, bytes, { flag: 'wx', mode: 0o600 })
+      const attachments =
+        input.files === undefined ? [] : await stageExplorerFiles(directory, input.files)
       const environment = { ...process.env }
       // An explorer never lends another command's coordinator, file owner or approval.
       for (const name of Object.keys(environment))
@@ -150,6 +155,7 @@ export function privateInstalledExploreLaunch(
         `${input.timeoutMs}ms`,
         '--display',
         'web',
+        ...attachments,
         ...(input.verification === undefined ? [] : ['--verification', input.verification]),
       ]
       // Fresh work crosses the public installed launcher again, including the
