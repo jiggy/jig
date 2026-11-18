@@ -26,6 +26,11 @@ It uses the existing contained evaluator and linker, never the review planner or
 Installed npm sources require declared dependencies, canonical package identity and protected-state refusal.
 No dependency install, contract generation, provider readiness, recipe preparation or project-state write is permitted.
 
+`flow-import-boundary.ts` locates a provable relative import boundary from captured
+source. Review uses the execution file set for refusal, including assembled reuse.
+Working-tree inspection relates the authored boundary to configured targets independently
+of interpreted paths. The check reads inert bytes without installed resolution or module execution.
+
 Project requirement failures preserve only validated exact Jig versions and trusted recovery text.
 The two closed `PROJECT_JIG_*` diagnostics survive project planning without rendering authored exceptions or arbitrary dependency requests.
 Version metadata is checked before evaluation and reverified before capture completes.

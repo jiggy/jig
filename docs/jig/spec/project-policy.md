@@ -443,6 +443,11 @@ regular-file records.
 
 ### Prepared execution and limits
 
+Review rejects a known missing relative runtime import outside a local Flow package
+with `PACKAGE_FLOW_IMPORT_OUTSIDE_CAPTURE`. The bounded check follows eager, explicit
+relative source imports from `FLOW.ts` and uses the captured execution files.
+Type-only imports and unexamined module resolution remain outside this check.
+
 The admitted target pins the separately retained prepared Package/0 while the
 portable lock continues to identify the reviewed source Package/0. Generated
 `bun.lock` bytes live only in the retained execution package, not visible
