@@ -294,21 +294,25 @@ Inspection checks the project's declared Jig version before evaluating declarati
 
 ## Inspect source behavior
 
-Use the behavior view to investigate what a caller checks after a child returns.
+Prepare the application map before changing a conditional route.
 
 ```sh
+jig inspect --flow --all --behavior > before.md
 jig inspect --flow --behavior
 jig inspect --flow binding:code --behavior
-jig inspect --flow --all --behavior
 ```
 
-Start with the consequences for the selected target, including the calls, requested progress, and attempted file writes.
+The application overview lists its entrypoint, independent direct Flows, and configured Bindings.
+Follow an overview link to see a Flow chart or a specific configured use.
+Each configured use keeps its own conditions, child results, and caller continuations.
+
+The consequences list calls, requested progress, and attempted file writes.
 The diagram labels unresolved checks on the affected connections. Source details point to the checks and publications.
 Follow a call link to see the inputs, supported child path, and continuation for that call.
 Select another target to inspect it independently.
 The configured inventory lists declared outcomes, attachments, and artifact results.
 
-After an edit, inspect the affected target again.
+After an edit, prepare the map again to see the current revision.
 The result contract checks point out known undeclared outcomes and concrete results that fail the schema.
 Other analyzed results can remain readable when the diagram reaches its display limit.
 

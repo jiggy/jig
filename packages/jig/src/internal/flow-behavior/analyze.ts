@@ -997,7 +997,7 @@ export class Interpreter {
         return this.invokeChild(
           slot.value,
           field(request, 'input'),
-          this.source.site(e),
+          this.source.callSite(e),
           depth + 1,
           s.assumptions,
         ).map((child) => {

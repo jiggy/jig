@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { posix } from 'node:path'
 import ts from 'typescript-parser'
 import type { BehaviorPackage, SourceSite } from './model.js'
@@ -34,6 +35,8 @@ export class SourceIndex {
   readonly #program: ts.Program
   readonly #checker: ts.TypeChecker
   readonly #reporting: ReadonlySet<string>
+  readonly #callIdentities = new Map<ts.CallExpression, string>()
+  readonly #indexedCalls = new Set<ts.SourceFile>()
   readonly entry: ts.SourceFile | undefined
 
   constructor(
@@ -116,5 +119,41 @@ export class SourceIndex {
       line: position.line + 1,
       column: position.character + 1,
     }
+  }
+
+  callSite(node: ts.CallExpression): SourceSite {
+    const file = node.getSourceFile()
+    if (!this.#indexedCalls.has(file)) {
+      this.#indexedCalls.add(file)
+      const occurrences = new Map<string, number>()
+      const visit = (candidate: ts.Node): void => {
+        if (ts.isCallExpression(candidate)) {
+          const receiver = unwrap(candidate.expression)
+          if (ts.isPropertyAccessExpression(receiver) && receiver.name.text === 'call') {
+            const scanner = ts.createScanner(
+              ts.ScriptTarget.ES2022,
+              true,
+              ts.LanguageVariant.Standard,
+              candidate.getText(file),
+            )
+            const hash = createHash('sha256')
+            for (
+              let token = scanner.scan();
+              token !== ts.SyntaxKind.EndOfFileToken;
+              token = scanner.scan()
+            )
+              hash.update(JSON.stringify([token, scanner.getTokenText()]))
+            const spelling = hash.digest('hex')
+            const occurrence = (occurrences.get(spelling) ?? 0) + 1
+            occurrences.set(spelling, occurrence)
+            this.#callIdentities.set(candidate, spelling + '-' + occurrence)
+          }
+        }
+        ts.forEachChild(candidate, visit)
+      }
+      visit(file)
+    }
+    const identity = this.#callIdentities.get(node)
+    return { ...this.site(node), ...(identity === undefined ? {} : { identity }) }
   }
 }

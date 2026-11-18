@@ -595,3 +595,55 @@ test('an overbound scope is explicit and another target still has its source res
     1,
   )
 })
+
+test('an application map keeps configured continuations separate under one chart per Flow', () => {
+  const project = snapshot(
+    method(handlerSource(`return {outcome:'done', output:{status:'ready'}}`)),
+    method(
+      handlerSource(`
+      if (run.settings.audit) return {outcome:'done', output:{status:'audit'}}
+      return await run.call({slot:'converter', operationId:'convert', input:{}})
+    `),
+    ),
+  )
+  const [main, ...direct] = project.targets
+  if (!main) throw Error('Expected a configured entrypoint')
+  const audit = { ...main, id: 'binding:audit', settings: { audit: true } }
+  const targets = [main, audit, ...direct]
+  const captured = (shift: string) =>
+    renderFlowBehavior(
+      analyzeFlowBehavior({
+        ...project,
+        focus: undefined,
+        entrypoint: main.id,
+        visible: targets.map((target) => target.id),
+        targets,
+        packages: new Map([
+          ...project.packages,
+          [
+            main.implementation,
+            method(shift + project.packages.get(main.implementation)?.sources.get('FLOW.ts')),
+          ],
+        ]),
+      }),
+    )
+  const before = captured('')
+  const after = captured('// A change before the handler\n')
+  const mainChart = before.split('## Flow flows/import\n')[1]?.split('\n## Flow ')[0] ?? ''
+  const auditSection = mainChart.split('### binding:audit\n')[1] ?? ''
+  expect(before.match(/^## Flow flows\/import$/gm)).toHaveLength(1)
+  expect(before).toContain('Project entrypoint')
+  expect(before).toMatch(/flow:flows\/export[^\n]+Direct Flow[^\n]+exported/)
+  expect(mainChart.match(/```mermaid/g)).toHaveLength(1)
+  expect(mainChart).toContain('["binding:audit"]')
+  expect(auditSection).toContain('status = "audit"')
+  expect(auditSection).not.toContain('### converter in')
+  expect(before).toContain('[Configured child](#target-')
+  const anchors = [...before.matchAll(/<a id="([^"]+)"><\/a>/g)].map((m) => m[1])
+  const links = [...before.matchAll(/\]\(#([a-z0-9-]+)\)/g)].map((m) => m[1])
+  expect(new Set(anchors).size).toBe(anchors.length)
+  for (const link of links) expect(anchors).toContain(link)
+  const call = before.match(/<a id="(call-converter-[a-f0-9]+)"><\/a>/)?.[1]
+  expect(call).toBeDefined()
+  expect(after).toContain('<a id="' + call + '"></a>')
+})

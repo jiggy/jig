@@ -19,6 +19,8 @@ Proven data-only formatting can exhaust its own allowance while the caller remai
 
 Linked child paths preserve configured callers, distinct call sites, and guards before file writes.
 Known result refusals retain prior effects in standalone and child paths.
+The application map links independent targets and distinct configured uses to shared Flow charts.
+An unrelated line insertion preserves the call link.
 
 `portable/package-project.test.ts` checks source-only linking and refusal to create activation requests.
 Unpinned Agent resources remain unselected for inspection and still require an operator choice for review.

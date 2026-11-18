@@ -4,6 +4,7 @@ import type {
   BehaviorReport,
   BehaviorReturn,
   BehaviorStep,
+  BehaviorTarget,
   SourceSite,
 } from './internal/flow-behavior/model.js'
 
@@ -38,13 +39,18 @@ function site(location: SourceSite): string {
   return location.path + ':' + location.line
 }
 
+function idFor(kind: string, value: string): string {
+  return kind + '-' + createHash('sha256').update(value).digest('hex').slice(0, 16)
+}
+
 function callAnchor(call: Call): string {
-  const key = JSON.stringify([call.caller, call.site, call.slot])
+  const { path, line, column, identity } = call.site
+  const key = JSON.stringify([call.caller, path, identity ?? [line, column], call.slot])
   const slot = call.slot
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, '-')
     .slice(0, 32)
-  return 'call-' + slot + '-' + createHash('sha256').update(key).digest('hex').slice(0, 16)
+  return idFor('call-' + slot, key)
 }
 
 function guardLabel(guard: BehaviorGuard): string {
@@ -84,9 +90,9 @@ function writesFile(step: BehaviorStep): step is Extract<BehaviorStep, { kind: '
   return step.kind === 'effect' && step.operation === 'writeFile'
 }
 
-function diagram(routes: readonly Route[]): string[] {
+function diagramBody(routes: readonly Route[], prefix: string, start: string): string[] {
   const nodes = new Map<string, number>()
-  const lines = ['flowchart TD', '  n0["Start"]']
+  const lines = [`  ${prefix}0["${diagramText(start)}"]`]
   for (const route of routes) {
     let previous = 0
     let pending: BehaviorGuard[] = []
@@ -120,12 +126,17 @@ function diagram(routes: readonly Route[]): string[] {
         if (id > 32) return []
         nodes.set(key, id)
         const arrow = edge ? '-->|"' + diagramText(edge) + '"|' : '-->'
-        lines.push(`  n${previous} ${arrow} n${id}["${diagramText(label(step))}"]`)
+        lines.push(`  ${prefix}${previous} ${arrow} ${prefix}${id}["${diagramText(label(step))}"]`)
       }
       previous = id
     }
   }
-  return ['```mermaid', ...lines, '```', '']
+  return lines
+}
+
+function diagram(routes: readonly Route[]): string[] {
+  const body = diagramBody(routes, 'n', 'Start')
+  return body.length ? ['```mermaid', 'flowchart TD', ...body, '```', ''] : []
 }
 
 function progress(route: Route, target: string): string {
@@ -259,9 +270,11 @@ function renderCallDetails(
   report: BehaviorReport,
   details: CallDetails,
   omitted: number,
+  application = false,
 ): string[] {
   if (!details.size) return []
-  const lines = ['## Calls in context', '']
+  const lines = [application ? '#### Calls in context' : '## Calls in context', '']
+  const targets = new Set(report.inventory.map((target) => target.id))
   for (const [anchor, variants] of details) {
     const cases = [...variants.values()]
     const first = cases[0]
@@ -269,7 +282,7 @@ function renderCallDetails(
     const { call } = first
     lines.push(
       '<a id="' + anchor + '"></a>',
-      '### ' + text(call.slot + ' in ' + call.caller),
+      (application ? '##### ' : '### ') + text(call.slot + ' in ' + call.caller),
       '',
       text(
         call.target +
@@ -279,6 +292,8 @@ function renderCallDetails(
       ),
       '',
     )
+    if (application && targets.has(call.target))
+      lines.push('[Configured child](#' + idFor('target', call.target) + ')', '')
     for (const { call, after, index } of cases.slice(0, callCaseLimit)) {
       const path = call.childPath === undefined ? undefined : report.childPaths[call.childPath]
       lines.push('- <a id="' + anchor + '-path-' + index + '"></a>**' + text(label(call)) + '**')
@@ -447,6 +462,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   ]
   if (report.unavailable !== undefined) return [...lines, text(report.unavailable), ''].join('\n')
   const { focus, inventory, scopes } = report
+  if (focus === undefined) return [...lines, ...applicationMap(report)].join('\n') + '\n'
   const selected = scopes.find((scope) => scope.target === focus)
   if (selected) {
     lines.push('## ' + text(selected.target), '')
@@ -512,27 +528,129 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       '',
     )
   for (const target of inventory) {
-    const facts = ['outcomes ' + brief(target.outcomes)]
-    const routes = [...target.slots].map(([slot, to]) => slot + ' → ' + to)
-    if (routes.length) facts.push(brief(routes))
-    const ports = Object.entries(target.attachments ?? {})
-    if (ports.length)
-      facts.push('attachments ' + brief(ports.map(([name, mode]) => name + ' (' + mode + ')')))
-    if (target.artifactResults?.length)
-      facts.push('artifact results ' + brief(target.artifactResults))
-    const settings = JSON.stringify(target.settings)
-    if (settings !== '{}')
-      facts.push(
-        'settings ' +
-          (Buffer.byteLength(settings) <= 512 ? text(settings) : '(details in topology)'),
-      )
     lines.push(
-      '- ' + text(target.id + ' uses ' + target.implementation) + ' · ' + facts.join(' · '),
+      '- ' + text(target.id + ' uses ' + target.implementation) + ' · ' + boundaryFacts(target),
     )
   }
   if (inventory.some((target) => target.id !== focus))
     lines.push('', 'Supply an exact target to inspect its behavior and callers.')
   return lines.join('\n') + '\n'
+}
+
+function boundaryFacts(target: BehaviorTarget): string {
+  const facts = ['outcomes ' + brief(target.outcomes)]
+  const routes = [...target.slots].map(([slot, to]) => slot + ' → ' + to)
+  if (routes.length) facts.push(brief(routes))
+  const ports = Object.entries(target.attachments ?? {})
+  if (ports.length)
+    facts.push('attachments ' + brief(ports.map(([name, mode]) => name + ' (' + mode + ')')))
+  if (target.artifactResults?.length)
+    facts.push('artifact results ' + brief(target.artifactResults))
+  const settings = JSON.stringify(target.settings)
+  if (settings !== '{}')
+    facts.push(
+      'settings ' + (Buffer.byteLength(settings) <= 512 ? text(settings) : '(details in topology)'),
+    )
+  return facts.join(' · ')
+}
+
+function applicationMap(report: BehaviorReport): string[] {
+  const lines = [
+    '<a id="application-overview"></a>',
+    '## Application overview',
+    '',
+    'Use the configured target links to follow the same routes in each Flow chart.',
+    'Source routes are conditional. Contract and failure alternatives appear beside their configured use.',
+    'Run results supply observed execution.',
+    '',
+  ]
+  if (!report.inventory.length)
+    return [...lines, 'The captured project has no configured targets.', '']
+  const groups = new Map<string, BehaviorTarget[]>()
+  const scopes = new Map(report.scopes.map((scope) => [scope.target, scope]))
+  const selections = new Map(report.scopes.map((scope) => [scope.target, selectRoutes(scope)]))
+  lines.push(
+    '| Configured target | Flow | Role | Supported continuations |',
+    '| --- | --- | --- | --- |',
+  )
+  for (const target of report.inventory) {
+    const group = groups.get(target.implementation) ?? []
+    group.push(target)
+    groups.set(target.implementation, group)
+    const role =
+      target.id === report.entrypoint
+        ? 'Project entrypoint'
+        : target.id.startsWith('flow:')
+          ? 'Direct Flow'
+          : 'Binding'
+    const routes = selections.get(target.id) ?? []
+    const summaries = new Set<string>()
+    for (const route of routes) {
+      const terminal = route.at(-1)
+      if (terminal?.kind !== 'end') continue
+      const handoffs = route.flatMap((step) => (step.kind === 'call' ? [label(step)] : []))
+      summaries.add((handoffs.length ? brief(handoffs) + ' → ' : '') + text(label(terminal)))
+    }
+    const continuation = [...summaries].slice(0, 2).join('<br>') || 'Unavailable'
+    lines.push(
+      `| [${text(target.id)}](#${idFor('target', target.id)}) | [${text(target.implementation)}](#${idFor('flow', target.implementation)}) | ${role} | ${continuation}${summaries.size > 2 ? '<br>See more routes below.' : ''} |`,
+    )
+  }
+  lines.push('')
+  // The graph and its expansions use the same selected routes for each configured target.
+  for (const [implementation, configurations] of groups) {
+    lines.push(
+      '<a id="' + idFor('flow', implementation) + '"></a>',
+      '## Flow ' + text(implementation),
+      '',
+    )
+    const views = configurations.map((target) => {
+      const scope = scopes.get(target.id)
+      const routes = selections.get(target.id) ?? []
+      const prefix = idFor('use', target.id).replace('-', '_') + '_'
+      const body = routes.length ? diagramBody(routes, prefix, target.id) : []
+      return { target, scope, routes, body }
+    })
+    const graph = views.flatMap((view) => view.body)
+    if (graph.length) lines.push('```mermaid', 'flowchart TD', ...graph, '```', '')
+    for (const { target, scope, routes, body } of views) {
+      lines.push(
+        '<a id="' + idFor('target', target.id) + '"></a>',
+        '### ' + text(target.id),
+        '',
+        boundaryFacts(target),
+        '',
+        '[Application overview](#application-overview)',
+        '',
+      )
+      if (!scope) {
+        lines.push('This configured target exceeds the analysis limit. Inspect it directly.', '')
+        continue
+      }
+      if (routes.length && !body.length)
+        lines.push('This configured target exceeds the diagram limit.', '')
+      const details = callDetails([...routes, ...scope.alternatives])
+      lines.push(...contractChecks(scope))
+      if (routes.length) lines.push(...consequences(scope, routes, details.shown))
+      if (scope.routes.length > routes.length)
+        lines.push(
+          scope.routes.length -
+            routes.length +
+            ' additional analyzed variants omitted from the chart.',
+          '',
+        )
+      lines.push(...otherResults(scope.routes, routes), ...alternatives(scope))
+      if (scope.gaps.length) {
+        lines.push('#### Coverage gaps', '')
+        for (const gap of scope.gaps)
+          lines.push('- ' + text(gap.reason) + ' (' + text(site(gap)) + ')')
+        lines.push('')
+      }
+      lines.push(...evidence(routes))
+      lines.push(...renderCallDetails(report, details.shown, details.omitted, true))
+    }
+  }
+  return lines
 }
 
 function brief(items: readonly string[]): string {

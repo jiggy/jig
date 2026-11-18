@@ -19,7 +19,8 @@ If it is unavailable, follow its [canonical design guidance](https://flow.jig.md
 Keep portable method guidance with FLOW and host configuration with Jig.
 
 For conditional handoffs, child outcomes, or shared methods, check whether the installed CLI supports `--behavior`.
-Use `jig inspect --flow <target> --behavior` when available.
+Use `jig inspect --flow --all --behavior` to prepare the application map when available.
+Follow configured target and call links to locate affected paths.
 Verify the affected conditions in source and test the alternatives that must remain.
 See [source behavior inspection](reference/build/results.md#inspect-source-behavior).
 Complete this step when the outcome, existing project state, and execution prerequisites are clear.
