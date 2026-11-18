@@ -1,5 +1,5 @@
 import type { JsonValue } from '../../json.js'
-import type { BehaviorReturn } from './model.js'
+import type { BehaviorReturn, SourceSite } from './model.js'
 import type { ErrorClass, LocalFunction } from './source.js'
 
 export type FileHandleValue = { readonly kind: 'file-handle'; readonly path: string }
@@ -14,7 +14,12 @@ export type Value =
   | { readonly kind: 'array' | 'set'; readonly items: readonly Value[] }
   | { readonly kind: 'path'; readonly suffix: string }
   | { readonly kind: 'function'; readonly node: LocalFunction }
-  | { readonly kind: 'error'; readonly type: ErrorClass; readonly message: Value }
+  | {
+      readonly kind: 'error'
+      readonly type: ErrorClass
+      readonly message: Value
+      readonly origin?: SourceSite
+    }
 
 export const unknown: Value = { kind: 'unknown' }
 export const missing: Value = { kind: 'undefined' }

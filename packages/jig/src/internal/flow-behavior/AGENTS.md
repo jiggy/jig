@@ -30,6 +30,7 @@ Explain conditional behavior from a captured Jig project without running its met
 - Interpret spreads of small, known scalar sets and literal numeric products.
 - Carry file-open, metadata, read, and close attempts with their conditional continuations.
 - Carry possible UTF-8 and JSON validation failures without reading file data.
+  Keep the original source reference when a handler rethrows the same modeled error.
 - Mark successful continuation of unresolved data mappings as conditional.
 - Keep contextual presentation records outside semantic path deduplication.
 - Analyze the application within a shared work allowance while preserving each configured use.
