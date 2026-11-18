@@ -23,6 +23,7 @@ import {
   literal,
   missing,
   object,
+  resultText,
   truth,
   unknown,
   type Value,
@@ -297,7 +298,24 @@ export class Interpreter {
     // Keep room for continuations as well as already established exits.
     const capacity = BEHAVIOR_LIMITS.variants - 1
     const continuing = states.filter((state) => state.mode === 'next')
-    const completed = states.filter((state) => state.mode !== 'next')
+    const differentExits = new Map<string, State>()
+    const otherExits: State[] = []
+    for (const state of states) {
+      if (state.mode === 'next') continue
+      const last = state.steps.at(-1)
+      const result =
+        state.mode === 'return'
+          ? resultText(state.value)
+          : state.value.kind === 'error'
+            ? describe(state.value.message)
+            : last?.kind === 'end'
+              ? last.detail
+              : describe(state.value)
+      const key = JSON.stringify([state.mode, state.site, result])
+      if (differentExits.has(key)) otherExits.push(state)
+      else differentExits.set(key, state)
+    }
+    const completed = [...differentExits.values(), ...otherExits]
     const keep = Math.min(
       continuing.length,
       Math.max(Math.floor(capacity / 2), capacity - completed.length),

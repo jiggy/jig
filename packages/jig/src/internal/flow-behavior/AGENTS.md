@@ -22,6 +22,7 @@ Explain conditional behavior from a captured Jig project without running its met
 - Keep unresolved checks attached to their conditional continuations.
 - Retain bounded child paths from the call evaluation that supplied the displayed result.
 - At an analysis cutoff, keep established paths and identify omitted alternatives.
+- Retain distinct exits before further variants of the same exit.
 - Interpret finite literal-array loops and empty error subclasses without executing source.
 - Evaluate small inert array transformations through proven data-only callbacks.
 - Mark successful continuation of unresolved data mappings as conditional.

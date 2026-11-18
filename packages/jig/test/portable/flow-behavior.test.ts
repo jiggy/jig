@@ -617,6 +617,34 @@ test('a route limit preserves the established handoff and keeps omissions visibl
   )
 })
 
+test('repeated failures do not hide a distinct return at the alternatives limit', () => {
+  const split = Array.from({ length: 5 }, (_, i) => `if (run.input.field${i}) {}`).join('\n')
+  const result = snapshot(
+    method(
+      handlerSource(`
+        if (run.input.unavailable) {
+          ${split}
+          throw new Error('Unavailable')
+        } else {
+          return {outcome:'done', output:{status:'ready'}}
+        }
+      `),
+    ),
+  )
+  const scope = analyzeFlowBehavior({ ...result, focus: 'flow:flows/convert' }).scopes[0]!
+  expect(scope.routes.flat()).toContainEqual(
+    expect.objectContaining({
+      kind: 'end',
+      completion: 'return',
+      detail: 'outcome "done", status = "ready"',
+    }),
+  )
+  expect(scope.routes.flat()).toContainEqual(
+    expect.objectContaining({ kind: 'end', completion: 'throw', detail: 'Throws: Unavailable' }),
+  )
+  expect(scope.gaps.some((gap) => gap.reason.includes('limit on alternatives'))).toBe(true)
+})
+
 test('a finite array repeats the same call site and an early return skips later iterations', () => {
   const child = method(
     handlerSource(`
