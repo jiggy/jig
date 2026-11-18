@@ -4,6 +4,7 @@ export interface SourceSite {
   readonly path: string
   readonly line: number
   readonly column?: number
+  readonly identity?: string
 }
 
 export interface BehaviorPackage {
@@ -28,6 +29,7 @@ export interface BehaviorTarget {
 export interface BehaviorInput {
   readonly revision: string
   readonly focus: string | undefined
+  readonly entrypoint?: string
   readonly targets: readonly BehaviorTarget[]
   readonly visible: readonly string[]
   readonly packages: ReadonlyMap<string, BehaviorPackage>
@@ -95,6 +97,7 @@ export interface BehaviorReport {
   readonly unavailable?: string
   readonly revision: string
   readonly focus: string | undefined
+  readonly entrypoint?: string
   readonly inventory: readonly BehaviorTarget[]
   readonly childPaths: readonly BehaviorChildPath[]
   readonly scopes: readonly {

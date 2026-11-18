@@ -1,7 +1,6 @@
 import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { type FlowContextOptions, selectFlowContext } from './flow-inspection-scope.js'
 import { invalid } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
 import { captureOpenedPackageDirectory } from '../package/capture.js'
@@ -17,15 +16,16 @@ import { type CapturedFlowMember, captureOpenedFlowSource } from '../project/flo
 import { captureGrantSource } from '../project/grant-source.js'
 import { resolveInvocationSlots } from '../project/invocation-slots.js'
 import { captureProjectJigRequirement } from '../project/jig-version.js'
+import type { PackageProjectValue } from '../project/package-project.js'
 import { inspectPackageProject } from '../project/package-project.js'
 import { flowSelector, npmPackageName } from '../project/package-selector.js'
 import { isProtectedProjectPath } from '../project/paths.js'
 import { retainFlowSourcePackages } from '../project/retained-flow.js'
 import { openPrivateProjectRoot } from '../project/root.js'
+import type { BehaviorReport } from './flow-behavior/model.js'
+import { type FlowContextOptions, selectFlowContext } from './flow-inspection-scope.js'
 import { privateDomainDigest } from './identity.js'
 import { PRIVATE_FLOW_CONTEXT_LIMITS } from './inspection-policy.js'
-import type { BehaviorReport } from './flow-behavior/model.js'
-import type { PackageProjectValue } from '../project/package-project.js'
 
 /** Capture and link current authoring with the ordinary resolver. Never opens admission state. */
 export function inspectWorkingFlow(
@@ -67,6 +67,7 @@ export function inspectWorkingFlowBehavior(
         resolve(project),
         String(selection.snapshot.revision),
         selection.focus,
+        selection.entrypoint,
         selection.included.map((item) => String(item.target)),
         linked,
         members,

@@ -46,11 +46,12 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   const childPaths: BehaviorChildPath[] = []
   const childKeys = new Map<string, number>()
   let childSteps = 0
-  const { focus, revision } = input
-  if (focus === undefined) return { revision, focus, inventory, scopes, childPaths }
+  const { focus, entrypoint, revision } = input
 
-  const primary = new AnalysisBudget(signal)
-  const visible = [focus, ...input.visible.filter((id) => id !== focus)]
+  const primary = new AnalysisBudget(signal, focus === undefined ? 72_000 : BEHAVIOR_LIMITS.steps)
+  const first = focus ?? entrypoint
+  const visible =
+    first === undefined ? input.visible : [first, ...input.visible.filter((id) => id !== first)]
   // Finish all primary analysis before spending work on secondary alternatives.
   for (const id of visible) {
     signal?.throwIfAborted()
@@ -70,27 +71,36 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       })
       break
     }
-    scopes.push(inspect(target, primary))
+    scopes.push(inspect(target, new AnalysisBudget(signal, BEHAVIOR_LIMITS.steps, primary)))
   }
-  const index = scopes.findIndex((scope) => scope.target === focus)
-  const scope = scopes[index]
-  if (scope) {
+  const secondary = new AnalysisBudget(signal, 96_000)
+  for (const [index, scope] of scopes.entries()) {
+    if (focus !== undefined && scope.target !== focus) continue
+    const target = targets.get(scope.target)!
     const seeds = new Map<string, Handoff>()
-    for (const candidate of scopes)
-      for (const route of candidate.routes)
-        for (const step of route)
-          if (step.kind === 'call')
-            seeds.set(JSON.stringify([step.caller, step.slot, step.site]), step)
+    const visitedPaths = new Set<number>()
+    function collect(route: Route): void {
+      for (const step of route) {
+        if (step.kind !== 'call') continue
+        seeds.set(JSON.stringify([step.caller, step.slot, step.site]), step)
+        const id = step.childPath
+        if (id === undefined || visitedPaths.has(id)) continue
+        visitedPaths.add(id)
+        const child = childPaths[id]
+        if (child) collect(child.steps)
+      }
+    }
+    for (const route of scope.routes) collect(route)
     const alternatives = new Map<string, Route>()
     const gaps = new Map(scope.gaps.map((gap) => [JSON.stringify(gap), gap]))
     for (const seed of [...seeds.values()].slice(0, 8)) {
       // Keep the work allowance for each handoff independent.
-      const conditional = inspect(targets.get(focus)!, new AnalysisBudget(signal, 6_000), seed)
+      const conditional = inspect(target, new AnalysisBudget(signal, 6_000, secondary), seed)
       for (const route of conditional.alternatives) alternatives.set(JSON.stringify(route), route)
       for (const gap of conditional.gaps) gaps.set(JSON.stringify(gap), gap)
     }
     if (seeds.size > 8) {
-      const site = location(targets.get(focus)!)
+      const site = location(target)
       gaps.set('secondary-limit', {
         ...site,
         reason: 'Some handoffs exceed the conditional analysis limit.',
@@ -98,7 +108,14 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     }
     scopes[index] = { ...scope, alternatives: [...alternatives.values()], gaps: [...gaps.values()] }
   }
-  return { revision, focus, inventory, scopes, childPaths }
+  return {
+    revision,
+    focus,
+    ...(entrypoint === undefined ? {} : { entrypoint }),
+    inventory,
+    scopes,
+    childPaths,
+  }
 
   function retainChild(argument: string, steps: Route): number | undefined {
     const key = JSON.stringify([argument, steps])

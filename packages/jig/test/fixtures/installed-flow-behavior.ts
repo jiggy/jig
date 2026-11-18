@@ -1,5 +1,5 @@
 import { expect } from 'bun:test'
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 type Command = (argv: string[], cwd: string) => Promise<{ stdout: string; stderr: string }>
@@ -97,7 +97,14 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
   expect(alternative.stdout).toContain('Other configured uses of this implementation: binding:code')
   expect(alternative.stdout).toContain('Unsupported statement: SwitchStatement')
   expect(alternative.stdout).toContain('status = "refused"')
-  expect((await inspect('--all')).stdout).toContain('flow:flows/opaque')
+  const application = await inspect('--all')
+  expect(application.stdout).toContain('## Application overview')
+  expect(application.stdout).toMatch(/binding:code[^\n]+Project entrypoint[^\n]+attention/)
+  expect(application.stdout).toMatch(/flow:flows\/export[^\n]+Direct Flow[^\n]+exported/)
+  expect(application.stdout.match(/^## Flow flows\/import$/gm)).toHaveLength(1)
+  expect(application.stdout).toContain('["binding:code"]')
+  expect(application.stdout).toContain('["binding:manual"]')
+  expect(application.stdout).toContain('flow:flows/opaque')
   expect((await readdir(project)).sort()).toEqual(['bindings', 'flows', 'jig.ts'])
 
   await command([cli, 'review', '--yes', '--allow-resolution-network'], project)

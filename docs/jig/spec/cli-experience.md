@@ -959,9 +959,22 @@ It writes literal Markdown to stdout, including through a pipe.
 
 The declared entrypoint selects the default focus.
 An exact target retains its configured context, including other uses of its implementation and callers.
-Without a focus, including with `--all`, the view lists configured targets for subsequent inspection.
+With `--all`, the document shows the project entrypoint and includes every configured target within the topology limits.
+A project without a declared entrypoint also opens this application view.
+
+The overview links each target to a Flow chart and to the details for that configured use.
+Each chart keeps its configured uses separate and shares the same route selections as their details.
+Direct Flows appear even when no other target calls them.
+Each contextual call links to its configured child when that target is in the map.
+Targets that exceed the analysis allowance remain visible with a coverage notice.
+
 Each analyzed route keeps its own conditions, call results, effects, and continuation.
 Source references identify the captured implementation and line.
+
+Flow and configured target links derive from their selectors.
+An unchanged call retains its link when unrelated lines move around it.
+Identically spelled calls in one file use their occurrence order.
+Reinspect the working tree after edits to refresh the application map and its revision.
 
 The analyzer covers a subset of local TypeScript.
 Unsupported operations, opaque dependencies, and analysis bounds leave visible gaps.

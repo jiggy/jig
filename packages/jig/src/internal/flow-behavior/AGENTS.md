@@ -7,7 +7,7 @@ Explain conditional behavior from a captured Jig project without running its met
 ## Ownership
 
 - `captured-input.ts` borrows source and interface facts from working-tree inspection.
-- `source.ts` resolves parsed source inside one captured package.
+- `source.ts` resolves parsed source and call identities inside one captured package.
 - `analyze.ts` evaluates a bounded TypeScript subset through inert values.
 - `data.ts` checks which data computations can safely lose value precision.
 - `compose.ts` owns configured handoffs, caller continuations, and coverage.
@@ -22,6 +22,7 @@ Explain conditional behavior from a captured Jig project without running its met
 - Keep unresolved checks attached to their conditional continuations.
 - Retain bounded child paths from the call evaluation that supplied the displayed result.
 - Keep contextual presentation records outside semantic path deduplication.
+- Analyze the application within a shared work allowance while preserving each configured use.
 - Apply the same known-return contract checks at standalone and child boundaries.
 - Bound proven data-only reporting work within the enclosing analysis allowance.
 - Source analysis grants no admission, execution, or retry authority.
