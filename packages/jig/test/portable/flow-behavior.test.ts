@@ -410,11 +410,15 @@ test('strict decoding and parsing preserve distinct failures before effects', ()
             const file = await open('catalogue.json', 'r')
             const bytes = await file.readFile()
             await file.close()
-            const text = ${decoder}.decode(bytes)
-            const input = JSON.parse(text)
-            if (!Array.isArray(input)) throw new TypeError('Expected an array')
-            await writeFile('approved.json', text)
-            return { outcome: 'done', output: {} }
+            try {
+              const text = ${decoder}.decode(bytes)
+              const input = JSON.parse(text)
+              if (!Array.isArray(input)) throw new TypeError('Expected an array')
+              await writeFile('approved.json', text)
+              return { outcome: 'done', output: {} }
+            } catch (error) {
+              throw error
+            }
           })
         `),
       ),
@@ -435,6 +439,11 @@ test('strict decoding and parsing preserve distinct failures before effects', ()
   expect(markdown).toContain('UTF-8 decoding succeeds')
   expect(markdown).toContain('JSON syntax is valid')
   expect(markdown).toContain('Throws SyntaxError')
+  const syntaxFailure = routes.find((route) => end(route, 'Throws SyntaxError'))!
+  const syntaxCheck = syntaxFailure.find(
+    (step) => step.kind === 'condition' && step.code === 'JSON syntax is valid',
+  )!
+  expect(syntaxFailure.at(-1)?.site).toEqual(syntaxCheck.site)
   expect(markdown).toContain('Throws: Expected an array')
   const opaque = inspect("new TextDecoder('utf-8', { fatal: false })")
   expect(opaque.scopes[0]!.routes.some(writes)).toBe(false)

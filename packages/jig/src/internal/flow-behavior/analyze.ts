@@ -89,6 +89,11 @@ const add = (state: State, step: BehaviorStep): State => {
   return { ...state, steps: [...state.steps, step] }
 }
 const next = (state: State): State => ({ ...state, mode: 'next', value: missing })
+const raised = (state: State, site: SourceSite, value: Value): State => {
+  if (value.kind !== 'error') return { ...state, mode: 'throw', site, value }
+  const origin = value.origin ?? site
+  return { ...state, mode: 'throw', site: origin, value: { ...value, origin } }
+}
 const originalDeclaration = (node: ts.Node) => {
   for (let parent = node.parent; parent !== undefined; parent = parent.parent)
     if (isLocalFunction(parent)) return parent
@@ -488,9 +493,7 @@ export class Interpreter {
     }
     if (ts.isThrowStatement(n)) {
       const results = this.expression(n.expression, state, depth)
-      return results.map((s) =>
-        s.mode === 'next' ? { ...s, mode: 'throw' as const, site: this.source.site(n) } : s,
-      )
+      return results.map((s) => (s.mode === 'next' ? raised(s, this.source.site(n), s.value) : s))
     }
     if (ts.isTryStatement(n)) {
       const caught = n.catchClause
@@ -1427,7 +1430,7 @@ export class Interpreter {
       unknown,
       state,
       (branch, completed) => [
-        completed ? withValue(branch, result) : { ...branch, mode: 'throw', site, value: failure },
+        completed ? withValue(branch, result) : raised(branch, site, failure),
       ],
       { label: check },
     )
