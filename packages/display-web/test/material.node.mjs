@@ -305,7 +305,16 @@ test('root facts and exact per-slot counts remain separate from child request to
   assert(text(detail).includes('Run phase: live'))
   assert(text(detail).includes('Observing'))
   assert(!text(detail).includes('No matching invocation observations'))
-  const routeList = walk(detail).find((node) => node.props.class === 'composition-route-list')
+  const configured = walk(detail).find(
+    (node) => node.type === 'section' && text(node).startsWith('Configured calls'),
+  )
+  const observed = walk(detail).find(
+    (node) => node.type === 'section' && text(node).startsWith('Observed child calls'),
+  )
+  assert(observed)
+  assert(text(observed).includes('prepare'))
+  assert(!text(observed).includes('retry'))
+  const routeList = walk(configured).find((node) => node.props.class === 'composition-route-list')
   const routes = walk(routeList).filter((node) => node.type === 'li')
   assert(text(routes[0]).includes('prepareWorker2 retained requests'))
   assert(text(routes[1]).includes('retryWorkerNo matching retained requests'))
