@@ -4995,12 +4995,6 @@ export async function inspectPrivateApprovedProject(
     )
     requireCandidateRoot(candidate, owner.root)
     owner.database.exec('COMMIT')
-    // This inert retained value is for command-private projection only. It does
-    // not acquire a coordinator or replace submission's admission comparison.
-    await onCandidate?.(
-      candidate,
-      descriptorChild(owner.directory, PRIVATE_PACKAGE_STORE_DIRECTORY),
-    )
     const targets = candidate.candidate.targets.map(({ request, disposition }) => ({
       target:
         request.target.kind === 'flow'
@@ -5198,6 +5192,12 @@ export async function inspectPrivateApprovedProject(
       }
     }
     await owner.finish()
+    // Supplemental presentation borrows only the directory descriptor after
+    // the database and state turn have been released.
+    await onCandidate?.(
+      candidate,
+      descriptorChild(owner.directory, PRIVATE_PACKAGE_STORE_DIRECTORY),
+    )
     return result
   } finally {
     await owner.dispose()
