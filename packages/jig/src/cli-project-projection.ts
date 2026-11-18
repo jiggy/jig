@@ -218,10 +218,17 @@ export function projectPrivateProjectSnapshot(
                 })),
               }),
         }
-  const composition: DisplayComposition =
-    Buffer.byteLength(JSON.stringify(projected)) > DISPLAY_COMPOSITION_BYTE_LIMIT
-      ? { state: 'unavailable', reason: 'limit' }
-      : projected
+  let composition = projected
+  if (
+    composition.state === 'available' &&
+    Buffer.byteLength(JSON.stringify(composition)) > DISPLAY_COMPOSITION_BYTE_LIMIT
+  ) {
+    const { sourceBehavior: _, ...topology } = composition
+    composition =
+      Buffer.byteLength(JSON.stringify(topology)) <= DISPLAY_COMPOSITION_BYTE_LIMIT
+        ? topology
+        : { state: 'unavailable', reason: 'limit' }
+  }
   return validateDisplayProjectSnapshot({
     kind: 'project',
     revision: identity('approval', approval),
