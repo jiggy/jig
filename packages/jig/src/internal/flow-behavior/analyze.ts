@@ -671,12 +671,23 @@ export class Interpreter {
       let states = result({ kind: 'array', items: [] })
       for (const item of e.elements)
         states = this.continue(states, (s, array) =>
-          this.continue(this.expression(item, s, depth), (ss, value) => [
-            withValue(ss, {
-              kind: 'array',
-              items: [...(array.kind === 'array' ? array.items : []), value],
-            }),
-          ]),
+          this.continue(
+            this.expression(ts.isSpreadElement(item) ? item.expression : item, s, depth),
+            (ss, value) => {
+              const prefix = array.kind === 'array' ? array.items : []
+              if (!ts.isSpreadElement(item))
+                return [withValue(ss, { kind: 'array', items: [...prefix, value] })]
+              if (value.kind === 'array' && value.items.length <= BEHAVIOR_LIMITS.loopItems)
+                return [withValue(ss, { kind: 'array', items: [...prefix, ...value.items] })]
+              return [
+                this.stop(
+                  ss,
+                  item,
+                  'The spread iterable or length is outside the supported subset.',
+                ),
+              ]
+            },
+          ),
         )
       return states
     }
@@ -864,6 +875,8 @@ export class Interpreter {
               return [withValue(ss, literal(a | b))]
             case ts.SyntaxKind.MinusToken:
               return [withValue(ss, literal(a - b))]
+            case ts.SyntaxKind.AsteriskToken:
+              return [withValue(ss, literal(a * b))]
             case ts.SyntaxKind.SlashToken:
               return [withValue(ss, literal(a / b))]
             case ts.SyntaxKind.LessThanToken:
@@ -882,6 +895,7 @@ export class Interpreter {
           [
             ts.SyntaxKind.PlusToken,
             ts.SyntaxKind.MinusToken,
+            ts.SyntaxKind.AsteriskToken,
             ts.SyntaxKind.SlashToken,
             ts.SyntaxKind.BarToken,
             ts.SyntaxKind.InKeyword,
@@ -939,6 +953,35 @@ export class Interpreter {
           )
       }
       const intrinsic = dataIntrinsic(this.source, callee)
+      if (
+        callee.name.text === 'test' &&
+        unwrap(callee.expression).kind === ts.SyntaxKind.RegularExpressionLiteral
+      )
+        return this.arguments(e.arguments, state, depth).map(({ state: result, values }) => {
+          if (result.mode !== 'next') return result
+          return values.every(isData)
+            ? withValue(result, unknown)
+            : this.stop(result, e, 'The regular expression argument is opaque.')
+        })
+      const callback = e.arguments[0]
+      if (
+        this.retainLimitedPaths &&
+        callee.name.text === 'map' &&
+        !callee.questionDotToken &&
+        !e.questionDotToken &&
+        callback !== undefined &&
+        e.arguments.length === 1
+      ) {
+        const mapper = this.functionAt(callback, state)
+        if (
+          mapper &&
+          dataEffects(this.source, callee.expression, state.values) &&
+          dataEffects(this.source, mapper, state.values, { allowExplicitThrows: true })
+        )
+          return this.continue(this.expression(callee.expression, state, depth), (s, array) =>
+            this.mapData(e, mapper, s, array, depth),
+          )
+      }
       if (
         intrinsic ||
         (dataMethod(callee.name.text) && dataEffects(this.source, e, state.values))
@@ -1131,6 +1174,56 @@ export class Interpreter {
         })
       }),
     )
+  }
+
+  private mapData(
+    call: ts.CallExpression,
+    mapper: LocalFunction,
+    state: State,
+    array: Value,
+    depth: number,
+  ): State[] {
+    if (array.kind === 'array' && array.items.length <= BEHAVIOR_LIMITS.loopItems) {
+      let paths = [withValue(state, { kind: 'array', items: [] })]
+      for (const [index, item] of array.items.entries()) {
+        paths = this.retainVariants(
+          call,
+          paths.flatMap((path) => {
+            if (path.mode !== 'next' || path.value.kind !== 'array') return [path]
+            const prefix = path.value.items
+            return this.invoke(mapper, [item, literal(index), array], path, depth + 1).map(
+              (result) => {
+                if (result.mode !== 'return' && result.mode !== 'next') return result
+                const value = result.mode === 'return' ? result.value : missing
+                if (value.kind === 'function')
+                  return this.stop(
+                    result,
+                    call,
+                    'Escaping closures are outside the supported subset.',
+                  )
+                return withValue(next(result), { kind: 'array', items: [...prefix, value] })
+              },
+            )
+          }),
+        )
+      }
+      return paths
+    }
+    if (array.kind !== 'array' && array.kind !== 'unknown')
+      return [this.stop(state, call, 'The map receiver is outside the supported array subset.')]
+    if (dataEffects(this.source, mapper, state.values))
+      return [withValue(state, evaluateDataMethod('map', array, []))]
+    return [
+      withValue(
+        add(state, {
+          kind: 'gap',
+          site: this.source.site(call),
+          detail:
+            'Array elements and callback failures are unresolved. This continuation assumes mapping completes.',
+        }),
+        unknown,
+      ),
+    ]
   }
 
   private arguments(args: readonly ts.Expression[], state: State, depth: number) {

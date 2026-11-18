@@ -23,6 +23,8 @@ Explain conditional behavior from a captured Jig project without running its met
 - Retain bounded child paths from the call evaluation that supplied the displayed result.
 - At an analysis cutoff, keep established paths and identify omitted alternatives.
 - Interpret finite literal-array loops and empty error subclasses without executing source.
+- Evaluate small inert array transformations through proven data-only callbacks.
+- Mark successful continuation of unresolved data mappings as conditional.
 - Keep contextual presentation records outside semantic path deduplication.
 - Analyze the application within a shared work allowance while preserving each configured use.
 - Apply the same known-return contract checks at standalone and child boundaries.

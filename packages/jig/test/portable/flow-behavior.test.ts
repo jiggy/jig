@@ -653,6 +653,68 @@ test('a finite array repeats the same call site and an early return skips later 
   expect(renderFlowBehavior(report)).toContain('up to 3 times')
 })
 
+test('a bounded data map preserves validation failures before a write', () => {
+  const inspect = (items: string) =>
+    analyzeFlowBehavior({
+      ...snapshot(
+        method(`
+          import { handle } from '@jigging/flow'
+          import { writeFile } from 'node:fs/promises'
+          function check(item: string, index: number) {
+            if (item === '') throw new TypeError('Name is empty')
+            return item + index * 2
+          }
+          await handle(async () => {
+            const names = ['one', ...${items}].map(check)
+            await writeFile(names[1], 'prepared')
+            return { outcome: 'done', output: { status: names[1] } }
+          })
+        `),
+      ),
+      focus: 'flow:flows/convert',
+    }).scopes[0]!.routes[0]!
+
+  expect(inspect("['two']")).toMatchObject([
+    { kind: 'condition', taken: false },
+    { kind: 'condition', taken: false },
+    { kind: 'effect', operation: 'writeFile', detail: '"two2"' },
+    { kind: 'end', completion: 'return', detail: 'outcome "done", status = "two2"' },
+  ])
+  expect(inspect("['']")).toMatchObject([
+    { kind: 'condition', taken: false },
+    { kind: 'condition', taken: true },
+    { kind: 'end', completion: 'throw', detail: 'Throws: Name is empty' },
+  ])
+})
+
+test('an unresolved data map shows its conditional continuation without hiding opaque callbacks', () => {
+  const inspect = (check: string) =>
+    analyzeFlowBehavior(
+      snapshot(
+        method(handlerSource(`return { outcome: 'done', output: {} }`)),
+        method(
+          handlerSource(`
+            const labels = run.input.items.map((label) => {
+              ${check}
+              return label
+            })
+            await run.call({slot:'converter', operationId:'prepare', input:{labels}})
+            return { outcome: 'done', output: {} }
+          `),
+        ),
+      ),
+    ).scopes[0]!
+
+  const data = inspect(`if (label === '') throw new TypeError('Empty label')`)
+  expect(data.routes[0]).toMatchObject([
+    { kind: 'gap', detail: expect.stringContaining('assumes mapping completes') },
+    { kind: 'call', slot: 'converter' },
+    { kind: 'end', completion: 'return' },
+  ])
+  const opaque = inspect(`external(label)`)
+  expect(opaque.routes[0]).toMatchObject([{ kind: 'end', completion: 'unknown' }])
+})
+
 test('an empty error subclass can be caught without folding ordinary TypeError into the refusal', () => {
   const caller = method(`
     import {handle} from '@jigging/flow'
