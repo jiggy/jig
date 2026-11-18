@@ -19,6 +19,8 @@ Wider declared outcomes leave the main diagram intact.
 The diagram marks assumptions on the affected branches.
 Proven data-only formatting can exhaust its own allowance while the caller remains visible.
 
+Call-order tests preserve the difference between opposite baseline order and unresolved baseline order.
+
 Linked child paths preserve configured callers, distinct call sites, and guards before file writes.
 Case links retain their result after an earlier callee return is added.
 Short-circuit operands retain their truthiness and value kind.

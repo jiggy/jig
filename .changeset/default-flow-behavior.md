@@ -2,4 +2,4 @@
 "@jigging/jig": patch
 ---
 
-Show source behavior by default in `jig inspect --flow`. Capture a baseline with `--snapshot`, then use `--compare` for source-linked changes to configured uses, calls, results, and effects. Add `--all` to see complete changed paths. Use `--topology` for configured connections.
+Show source behavior by default in `jig inspect --flow`. Capture a baseline with `--snapshot`, then use `--compare` for source-linked changes to configured uses, calls, results, and effects. The diff also surfaces newly captured call order when complete paths cannot be matched. Add `--all` to see complete changed paths. Use `--topology` for configured connections.

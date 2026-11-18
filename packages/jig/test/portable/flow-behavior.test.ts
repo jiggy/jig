@@ -218,6 +218,59 @@ test('unmatched source paths disclose writes without pairing changed checks', ()
   expect(summary).not.toContain('Removed · writeFile')
 })
 
+test('unmatched paths retain newly captured call order without inventing baseline order', () => {
+  const report = flowBehaviorSnapshot(
+    analyzeFlowBehavior(
+      snapshot(method(handlerSource(`return {outcome:'done',output:{status:'ready'}}`))),
+    ),
+  )
+  type CapturedPath = (typeof report.targets)[number]['paths'][number]
+  const path = (kind: CapturedPath['kind'], guard: string, ...slots: string[]): CapturedPath => ({
+    kind,
+    facts: [
+      ['check', guard, ['flows/import/FLOW.ts', 12]],
+      ...slots.map(
+        (slot, offset) =>
+          ['call', slot + ' → flow:flows/' + slot, ['flows/import/FLOW.ts', 15 + offset]] as const,
+      ),
+    ],
+  })
+  const capture = (...paths: CapturedPath[]): typeof report => ({
+    ...report,
+    targets: [{ ...report.targets[0]!, paths }],
+  })
+  const baseline = capture(path('source', 'Before', 'release'), path('authored', 'Later', 'export'))
+  const next = capture(path('source', 'After', 'export', 'release'))
+  const render = (old: typeof report, current: typeof report) =>
+    renderFlowBehaviorComparison(compareFlowBehavior(old, current))
+  const result = render(baseline, next)
+  expect(result).toContain(
+    'Captured call order · export before release · 1 source path · baseline order unresolved',
+  )
+  expect(result).toContain('[flows/import/FLOW.ts:15](./flows/import/FLOW.ts#L15)')
+  expect(render(capture(path('source', 'Before', 'release', 'export')), next)).toContain(
+    'opposite order in baseline source paths',
+  )
+  expect(
+    render(capture(path('source', 'Before', 'export', 'review', 'release')), next),
+  ).not.toContain('Captured call order')
+  expect(
+    render(baseline, capture(path('conditional', 'After', 'export', 'release'))),
+  ).not.toContain('Captured call order')
+  expect(
+    render(baseline, capture(path('source', 'After', 'export', 'release', 'export'))),
+  ).not.toContain('Captured call order')
+  expect(
+    render(
+      baseline,
+      capture(
+        path('source', 'First', 'export', 'release'),
+        path('source', 'Second', 'release', 'export'),
+      ),
+    ),
+  ).not.toContain('Captured call order')
+})
+
 test('a new callee return keeps the existing call case link attached to its result', () => {
   const caller = method(
     handlerSource(`

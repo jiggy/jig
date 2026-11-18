@@ -360,6 +360,77 @@ function consequenceKey(fact: ComparisonFact): string {
   return JSON.stringify(factMeaning(fact))
 }
 
+function callSites(facts: Path['facts']) {
+  return facts.flatMap((fact) => {
+    const separator = fact[1].indexOf(' → ')
+    return fact[0] === 'call' && separator > 0 ? [{ slot: fact[1].slice(0, separator), fact }] : []
+  })
+}
+
+function sourceCallPaths(paths: readonly ComparedPath[]) {
+  return paths.flatMap(([kind, facts]) => {
+    if (kind !== 'source') return []
+    const calls = callSites(facts)
+    const positions = new Map<string, number>()
+    // A repeated slot has no single position on this captured path.
+    for (const [index, { slot }] of calls.entries())
+      positions.set(slot, positions.has(slot) ? -1 : index)
+    return [{ calls, positions }]
+  })
+}
+
+function orderedSourcePaths(
+  paths: ReturnType<typeof sourceCallPaths>,
+  earlier: string,
+  later: string,
+): number {
+  return paths.filter(({ positions }) => {
+    const first = positions.get(earlier) ?? -1
+    const second = positions.get(later) ?? -1
+    return first >= 0 && first < second
+  }).length
+}
+
+function changedCallOrder(before: readonly ComparedPath[], after: readonly ComparedPath[]) {
+  const previousSlots = new Set(
+    before.flatMap(([kind, facts]) =>
+      kind === 'conditional' ? [] : callSites(facts).map(({ slot }) => slot),
+    ),
+  )
+  const previous = sourceCallPaths(before)
+  const current = sourceCallPaths(after)
+  const orders = []
+  const seen = new Set<string>()
+  for (const { calls, positions } of current) {
+    for (let index = 1; index < calls.length; index++) {
+      const first = calls[index - 1]!
+      const second = calls[index]!
+      if (
+        positions.get(first.slot) === -1 ||
+        positions.get(second.slot) === -1 ||
+        !previousSlots.has(first.slot) ||
+        !previousSlots.has(second.slot)
+      )
+        continue
+      const key = JSON.stringify([first.slot, second.slot])
+      if (seen.has(key)) continue
+      seen.add(key)
+      if (
+        orderedSourcePaths(previous, first.slot, second.slot) ||
+        orderedSourcePaths(current, second.slot, first.slot)
+      )
+        continue
+      orders.push({
+        first,
+        second,
+        paths: orderedSourcePaths(current, first.slot, second.slot),
+        reversed: orderedSourcePaths(previous, second.slot, first.slot) > 0,
+      })
+    }
+  }
+  return orders
+}
+
 export function compareFlowBehavior(before: Snapshot, after: Snapshot) {
   const previous = new Map(before.targets.map((current) => [current.id, current]))
   const current = new Map(after.targets.map((target) => [target.id, target]))
@@ -403,6 +474,7 @@ export function compareFlowBehavior(before: Snapshot, after: Snapshot) {
         removedPaths,
         addedPaths,
         pathSummary,
+        callOrder: partial ? changedCallOrder(oldPaths, newPaths) : [],
         beforeConsequences: difference(oldConsequences, newConsequences, consequenceKey),
         afterConsequences: difference(newConsequences, oldConsequences, consequenceKey),
         coverageLimited: Boolean(old?.coverage.length || next?.coverage.length),
