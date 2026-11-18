@@ -574,7 +574,9 @@ function failureText(value: Value): string {
     message.value.length <= 160 &&
     message.value.length > 0
     ? 'Throws: ' + message.value
-    : 'Throws'
+    : value.kind === 'error'
+      ? 'Throws ' + value.type.base
+      : 'Throws'
 }
 
 function mapEntries(key: string, value: unknown): unknown {

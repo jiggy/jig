@@ -7,7 +7,7 @@ import {
   evaluateIntrinsic,
   isData,
 } from './data.js'
-import { readOnlyOpen } from './file-access.js'
+import { readOnlyOpen, strictUtf8Decoder } from './file-access.js'
 import {
   BEHAVIOR_LIMITS,
   type AuthoredHandoff,
@@ -819,13 +819,16 @@ export class Interpreter {
             : literal(
                 value.kind === 'literal'
                   ? typeof value.value
-                  : value.kind === 'undefined' || value.kind === 'function'
-                    ? value.kind
-                    : 'object',
+                  : value.kind === 'decoded-text'
+                    ? 'string'
+                    : value.kind === 'undefined' || value.kind === 'function'
+                      ? value.kind
+                      : 'object',
               ),
         ),
       ])
     if (ts.isNewExpression(e)) {
+      if (strictUtf8Decoder(this.source, e)) return result({ kind: 'strict-utf8-decoder' })
       const error = this.source.errorClass(e.expression)
       const args = e.arguments ?? []
       if (error && args.length <= 1 && !args.some(ts.isSpreadElement)) {
@@ -1070,6 +1073,45 @@ export class Interpreter {
     }
     if (ts.isPropertyAccessExpression(callee)) {
       const receiver = this.boundValue(callee.expression, state)
+      const base = unwrap(callee.expression)
+      const argument = e.arguments[0]
+      if (
+        callee.name.text === 'decode' &&
+        (receiver?.kind === 'strict-utf8-decoder' ||
+          (ts.isNewExpression(base) && strictUtf8Decoder(this.source, base))) &&
+        e.arguments.length === 1 &&
+        argument &&
+        !ts.isSpreadElement(argument)
+      )
+        return this.continue(this.expression(argument, state, depth), (s, value) =>
+          value.kind === 'file-bytes'
+            ? this.checkedOperation(
+                e,
+                s,
+                'UTF-8 decoding succeeds',
+                { kind: 'decoded-text' },
+                { kind: 'error', type: { base: 'TypeError' }, message: unknown },
+              )
+            : [this.stop(s, e, 'The bytes supplied to the decoder are unresolved.')],
+        )
+      if (
+        callee.name.text === 'parse' &&
+        ts.isIdentifier(base) &&
+        base.text === 'JSON' &&
+        this.source.declaration(base) === undefined &&
+        e.arguments.length === 1 &&
+        argument &&
+        !ts.isSpreadElement(argument)
+      )
+        return this.continue(this.expression(argument, state, depth), (s, value) =>
+          value.kind === 'decoded-text'
+            ? this.checkedOperation(e, s, 'JSON syntax is valid', unknown, {
+                kind: 'error',
+                type: { base: 'SyntaxError' },
+                message: unknown,
+              })
+            : [this.stop(s, e, 'The text supplied to JSON.parse is unresolved.')],
+        )
       if (receiver?.kind === 'file-handle' && awaited && e.arguments.length === 0) {
         const method = callee.name.text
         if (state.closeAttempted?.has(receiver))
@@ -1077,7 +1119,7 @@ export class Interpreter {
         if (method === 'stat')
           return this.fileOperation(e, state, method, receiver.path, { kind: 'file-stat' })
         if (method === 'readFile')
-          return this.fileOperation(e, state, method, receiver.path, unknown)
+          return this.fileOperation(e, state, method, receiver.path, { kind: 'file-bytes' })
         if (method === 'close')
           return this.fileOperation(
             e,
@@ -1369,14 +1411,25 @@ export class Interpreter {
   ): State[] {
     const site = this.source.site(call)
     const attempted = add(state, { kind: 'effect', owner: this.target.id, operation, detail, site })
+    return this.checkedOperation(call, attempted, operation + ' completes', result, unknown)
+  }
+
+  private checkedOperation(
+    call: ts.CallExpression,
+    state: State,
+    check: string,
+    result: Value,
+    failure: Value,
+  ): State[] {
+    const site = this.source.site(call)
     return this.branch(
       call,
       unknown,
-      attempted,
+      state,
       (branch, completed) => [
-        completed ? withValue(branch, result) : { ...branch, mode: 'throw', site, value: unknown },
+        completed ? withValue(branch, result) : { ...branch, mode: 'throw', site, value: failure },
       ],
-      { label: operation + ' completes' },
+      { label: check },
     )
   }
 

@@ -57,6 +57,7 @@ export function isData(value: Value): boolean {
     case 'report-view':
     case 'file-handle':
     case 'file-stat':
+    case 'strict-utf8-decoder':
       return false
     default:
       return true

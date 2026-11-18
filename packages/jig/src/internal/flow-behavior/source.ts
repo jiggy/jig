@@ -13,7 +13,7 @@ const compilerOptions: ts.CompilerOptions = {
 }
 
 export type LocalFunction = ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration
-type ErrorBase = 'Error' | 'TypeError' | 'RangeError'
+type ErrorBase = 'Error' | 'TypeError' | 'RangeError' | 'SyntaxError'
 export type ErrorClass = { readonly base: ErrorBase; readonly identity?: string }
 type HandoffSite = Omit<AuthoredHandoff, 'target'> & { receiver: ts.Declaration }
 
@@ -123,7 +123,12 @@ export class SourceIndex {
   private builtinError(expression: ts.Expression): ErrorBase | undefined {
     if (!ts.isIdentifier(expression) || this.declaration(expression) !== undefined) return undefined
     const name = expression.text
-    return name === 'Error' || name === 'TypeError' || name === 'RangeError' ? name : undefined
+    return name === 'Error' ||
+      name === 'TypeError' ||
+      name === 'RangeError' ||
+      name === 'SyntaxError'
+      ? name
+      : undefined
   }
 
   emptyErrorSubclass(node: ts.ClassDeclaration): ErrorBase | undefined {
