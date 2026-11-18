@@ -325,3 +325,6 @@ The map may show how its caller would respond to a contract outcome or failure.
 An effect before an opaque continuation remains visible on the route that reaches it.
 Follow reported gaps into source before relying on a continuation.
 Use ordinary Runs to verify results, effects, and displayed progress.
+
+The chart can show repeated calls in a supported finite loop.
+Follow separate paths to see early stops and shared continuations.

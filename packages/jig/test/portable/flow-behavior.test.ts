@@ -581,19 +581,145 @@ test('additional contract outcomes leave the main diagram and source routes inta
   expect(wide.scopes[0]!.alternatives.length).toBeGreaterThan(8)
 })
 
-test('an overbound scope is explicit and another target still has its source results', () => {
+test('a route limit preserves the established handoff and keeps omissions visible', () => {
   const many = Array.from({ length: 6 }, (_, i) => `if (run.input.field${i}) {}\n`).join('')
   const report = analyzeFlowBehavior(
     snapshot(
       method(handlerSource(`return { outcome: 'done', output: { status: 'ready' } }`)),
-      method(handlerSource(many + `return { outcome: 'done', output: {} }`)),
+      method(
+        handlerSource(
+          `await run.call({slot:'converter', operationId:'check', input:{}});\n` +
+            many +
+            `return { outcome: 'done', output: {} }`,
+        ),
+      ),
     ),
   )
-  expect(report.scopes[0]?.routes).toEqual([])
+  const routes = report.scopes[0]?.routes ?? []
+  expect(routes.length).toBeGreaterThan(1)
+  expect(routes.length).toBeLessThanOrEqual(32)
+  expect(
+    routes.some(
+      (route) =>
+        route.at(-1)?.kind === 'end' &&
+        route.at(-1)?.detail.includes('limit on alternatives') &&
+        route.some((step) => step.kind === 'call' && step.slot === 'converter'),
+    ),
+  ).toBe(true)
+  expect(
+    routes.some((route) =>
+      route.some((step) => step.kind === 'end' && step.completion === 'return'),
+    ),
+  ).toBe(true)
   expect(report.scopes[0]?.gaps[0]?.reason).toContain('limit on alternatives')
   expect(report.scopes.find((scope) => scope.target === 'flow:flows/convert')?.routes).toHaveLength(
     1,
   )
+})
+
+test('a finite array repeats the same call site and an early return skips later iterations', () => {
+  const child = method(
+    handlerSource(`
+    if (run.input.stage === 'review' && run.input.refuse)
+      return {outcome:'blocked', output:{reason:'Needs review'}}
+    return {outcome:'done', output:{status:run.input.stage}}
+  `),
+  )
+  const caller = method(
+    handlerSource(`
+    for (const stage of ['check', 'review', 'publish']) {
+      const result = await run.call({slot:'converter', operationId:stage, input:{stage, refuse:run.input.refuse}})
+      if (result.outcome === 'blocked') return {outcome:'done', output:{status:'blocked early'}}
+    }
+    return {outcome:'done', output:{status:'published'}}
+  `),
+  )
+  const report = analyzeFlowBehavior(snapshot(child, caller))
+  const routes = report.scopes[0]?.routes ?? []
+  const calls = (status: string) =>
+    routes
+      .find((route) => route.some((step) => step.kind === 'end' && step.detail.includes(status)))
+      ?.filter((step) => step.kind === 'call')
+  expect(calls('blocked early')?.map((step) => step.returned?.outcome)).toEqual([
+    '"done"',
+    '"blocked"',
+  ])
+  expect(calls('published')?.map((step) => step.returned?.fields[0]?.[1])).toEqual([
+    '"check"',
+    '"review"',
+    '"publish"',
+  ])
+  expect(new Set(calls('published')?.map((step) => step.site.identity)).size).toBe(1)
+  expect(renderFlowBehavior(report)).toContain('up to 3 times')
+})
+
+test('an empty error subclass can be caught without folding ordinary TypeError into the refusal', () => {
+  const caller = method(`
+    import {handle} from '@jigging/flow'
+    import {validate, Refusal} from './policy.ts'
+    await handle(async (run) => {
+      try {
+        validate(run.input)
+      } catch (error) {
+        if (!(error instanceof Refusal)) throw error
+        return {outcome:'done', output:{reason:error.message}}
+      }
+      return {outcome:'done', output:{status:'valid'}}
+    })
+  `)
+  const pkg: BehaviorPackage = {
+    ...caller,
+    sources: new Map([
+      ...caller.sources,
+      [
+        'policy.ts',
+        `
+    export class Refusal extends TypeError {}
+    export function validate(input) {
+      if (input.refuse) throw new Refusal('Needs review')
+      if (input.fail) throw new TypeError('Invalid value')
+    }
+  `,
+      ],
+    ]),
+  }
+  const child = method(handlerSource(`return {outcome:'done', output:{}}`))
+  const report = analyzeFlowBehavior(snapshot(child, pkg))
+  const rendered = renderFlowBehavior(report)
+  expect(rendered).toContain('reason = "Needs review"')
+  expect(rendered).toContain('status = "valid"')
+  expect(rendered).toContain('Throws: Invalid value')
+})
+
+test('equivalent suffixes converge while different return values keep separate continuations', () => {
+  const project = snapshot(
+    method(handlerSource(`return {outcome:'done', output:{status:'ready'}}`)),
+  )
+  const chart = (tail: string) => {
+    const parent = method(
+      handlerSource(`
+      let status
+      if (run.input.forward) {
+        const converted = await run.call({slot:'converter', operationId:'convert', input:{}})
+        status = converted.output.status
+      } else {
+        const exported = await run.call({slot:'exporter', operationId:'export', input:{}})
+        status = exported.output.status
+      }
+      return {outcome:'done', output:{status:${tail}}}
+    `),
+    )
+    const packages = new Map(project.packages)
+    packages.set('flows/import', parent)
+    const rendered = renderFlowBehavior(analyzeFlowBehavior({ ...project, packages }))
+    return rendered.match(/```mermaid[\s\S]+?```/)?.[0] ?? ''
+  }
+  const joined = [...chart("'complete'").matchAll(/--> (\w+)\["Returns[^\n]+complete/g)]
+  expect(joined).toHaveLength(2)
+  expect(joined[0]?.[1]).toBe(joined[1]?.[1])
+  const distinct = [...chart('status').matchAll(/--> (\w+)\["Returns[^\n]+status/g)]
+  expect(distinct).toHaveLength(2)
+  expect(distinct[0]?.[1]).not.toBe(distinct[1]?.[1])
 })
 
 test('an application map keeps configured continuations separate under one chart per Flow', () => {

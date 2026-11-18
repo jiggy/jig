@@ -979,9 +979,16 @@ Reinspect the working tree after edits to refresh the application map and its re
 The analyzer covers a subset of local TypeScript.
 Unsupported operations, opaque dependencies, and analysis bounds leave visible gaps.
 Routes retain known effects before an opaque continuation and carry inherited assumptions across calls.
+When alternatives exceed the allowance, the map retains supported continuations and shows the cutoff for omitted paths.
+
+Supported finite array loops show repeated calls and early stops.
+Other synchronous collection loops can show repetition with an unknown count.
+An opaque loop can leave its body or continuation unknown.
 
 The focused view summarizes selected route consequences and evidence.
-The main diagram projects supported calls and file writes within a fixed display bound.
+The main diagram projects supported calls, loops, and file writes within a fixed display bound.
+Routes join only when their remaining displayed steps and checks agree.
+
 An unresolved check travels with the affected branch, including through a child return.
 Checks preceding a projected file write appear on its incoming edge.
 Call links open retained child paths for the displayed caller and configuration, with bounded input facts.

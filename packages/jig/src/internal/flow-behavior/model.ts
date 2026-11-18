@@ -80,6 +80,12 @@ export type BehaviorStep =
     }
   | { readonly kind: 'gap'; readonly site: SourceSite; readonly detail: string }
   | {
+      readonly kind: 'repeat'
+      readonly site: SourceSite
+      readonly collection: string
+      readonly count?: number
+    }
+  | {
       readonly kind: 'end'
       readonly site: SourceSite
       readonly completion: 'return' | 'rejected' | 'throw' | 'unknown'
@@ -116,6 +122,7 @@ export const BEHAVIOR_LIMITS = {
   steps: 18_000,
   depth: 20,
   variants: 32,
+  loopItems: 8,
   scopes: 24,
   stepsPerRoute: 72,
   retainedChildPaths: 256,

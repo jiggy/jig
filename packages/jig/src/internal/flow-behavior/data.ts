@@ -1,11 +1,12 @@
 import ts from 'typescript-parser'
 import { isLocalFunction, type SourceIndex, unwrap } from './source.js'
-import { type Value, literal, toJson, unknown } from './values.js'
+import { literal, toJson, unknown, type Value } from './values.js'
 
 const readers = new Set([
   'at',
   'entries',
   'filter',
+  'find',
   'findIndex',
   'includes',
   'indexOf',
@@ -21,11 +22,13 @@ const readers = new Set([
 ])
 const localArrayWrites = new Set(['push', 'splice', 'unshift'])
 const globals = new Set([
+  'Array.from',
   'Array.isArray',
   'Buffer.byteLength',
   'JSON.stringify',
   'Math.max',
   'Number.isInteger',
+  'Object.hasOwn',
   'Object.keys',
 ])
 
@@ -47,6 +50,7 @@ export function isData(value: Value): boolean {
     case 'array':
       return value.items.every(isData)
     case 'function':
+    case 'error':
     case 'context':
     case 'reporter':
     case 'report-view':
@@ -62,6 +66,18 @@ export function dataMethod(name: string): boolean {
 
 export function evaluateIntrinsic(name: string, args: readonly Value[]): Value {
   const first = args[0] ?? unknown
+  if (name === 'Array.from' && args.length === 1) {
+    if (first.kind === 'array') return { kind: 'array', items: [...first.items] }
+    if (first.kind === 'literal' && typeof first.value === 'string' && first.value.length <= 8192)
+      return { kind: 'array', items: Array.from(first.value, literal) }
+    return unknown
+  }
+  if (name === 'Object.hasOwn' && first.kind === 'object') {
+    const key = args[1]
+    if (key?.kind === 'literal' && typeof key.value === 'string')
+      return first.fields.has(key.value) ? literal(true) : first.open ? unknown : literal(false)
+    return unknown
+  }
   if (name === 'Array.isArray')
     return first.kind === 'unknown' ? unknown : literal(first.kind === 'array')
   if (
