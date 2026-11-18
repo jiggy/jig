@@ -55,6 +55,8 @@ export function isData(value: Value): boolean {
     case 'context':
     case 'reporter':
     case 'report-view':
+    case 'file-handle':
+    case 'file-stat':
       return false
     default:
       return true

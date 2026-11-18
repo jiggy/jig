@@ -2,7 +2,11 @@ import type { JsonValue } from '../../json.js'
 import type { BehaviorReturn } from './model.js'
 import type { ErrorClass, LocalFunction } from './source.js'
 
+export type FileHandleValue = { readonly kind: 'file-handle'; readonly path: string }
+
 export type Value =
+  | FileHandleValue
+  | { readonly kind: 'file-stat' }
   | { readonly kind: 'unknown' | 'undefined' | 'context' | 'reporter' | 'report-view' }
   | { readonly kind: 'literal'; readonly value: string | number | boolean | null }
   | { readonly kind: 'object'; readonly fields: ReadonlyMap<string, Value>; readonly open?: true }

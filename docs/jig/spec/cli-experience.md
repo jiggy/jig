@@ -985,6 +985,9 @@ When route analysis stops in a function, inspection can show later authored call
 This part shows local branch predicates and result checks with their source locations.
 Reachability, execution order, and returned values remain unresolved there.
 
+Supported read-only file opens and subsequent metadata, read, and close operations appear as attempts.
+The map shows conditional success and failure, while file contents and runtime metadata remain unknown.
+
 Supported finite array loops show repeated calls and early stops.
 Other synchronous collection loops can show repetition with an unknown count.
 An opaque loop can leave its body or continuation unknown.

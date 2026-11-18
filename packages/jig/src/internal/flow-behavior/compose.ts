@@ -7,6 +7,7 @@ import {
 } from './analyze.js'
 import {
   BEHAVIOR_LIMITS,
+  isFileOperation,
   type AuthoredHandoff,
   type BehaviorAssumption,
   type BehaviorChildPath,
@@ -552,9 +553,9 @@ function callerEvidence(steps: Route): { prefix: BehaviorStep[]; guards: Behavio
     if (step.kind === 'condition' && step.unresolved) guards.push(step)
     if (step.kind === 'call') guards.push(...(step.guards ?? []))
     if (step.kind === 'effect') {
-      // Conditions seen before a write belong to the write's incoming edge.
+      // Conditions seen before a file operation belong to its incoming edge.
       // A later condition stays with the child completion.
-      if (step.operation === 'writeFile' && guards.length) {
+      if (isFileOperation(step) && guards.length) {
         prefix.push({ ...step, guards: [...guards, ...(step.guards ?? [])].slice(0, 4) })
         guards = []
       } else prefix.push(step)

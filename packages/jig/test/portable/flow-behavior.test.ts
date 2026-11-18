@@ -326,7 +326,7 @@ test('finite Set spreads and formatting preserve progress before an opaque impor
     `
     import { handle } from '@jigging/flow'
     import { withReporting } from '@jigging/reporting'
-    import { open } from 'node:fs/promises'
+    import { access } from 'node:fs/promises'
     const total = 2 * 3
     function panel() {
       const marks = [...new Set(['check', 'check', -0, 0])]
@@ -336,7 +336,7 @@ test('finite Set spreads and formatting preserve progress before an opaque impor
     }
     await handle(run => withReporting(run, 'progress', async reporter => {
       reporter.view('progress').update(panel())
-      await open('unknown.txt', 'r')
+      await access('unknown.txt')
       return { outcome: 'done', output: {} }
     }))
   `,
@@ -348,6 +348,79 @@ test('finite Set spreads and formatting preserve progress before an opaque impor
     { kind: 'effect', operation: 'view update', detail: 'progress 2/6' },
     { kind: 'end', completion: 'unknown', detail: 'Opaque imported call: node:fs/promises.' },
   ])
+})
+
+test('read-only file validation branches retain cleanup and file effect order', () => {
+  const caller = method(`
+    import { handle } from '@jigging/flow'
+    import { constants as flags } from 'node:fs'
+    import { open } from 'node:fs/promises'
+    await handle(async () => {
+      const file = await open('catalogue.json', flags.O_RDONLY | flags.O_NOFOLLOW)
+      try {
+        const metadata = await file.stat()
+        if (!metadata.isFile() || metadata.size > 1024) throw new TypeError('Supply a bounded regular file')
+        await file.readFile()
+        return { outcome: 'done', output: { status: 'checked' } }
+      } finally {
+        await file.close()
+      }
+    })
+  `)
+  const report = analyzeFlowBehavior(snapshot(method(''), caller))
+  const routes = report.scopes[0]!.routes
+  const operations = (route: (typeof routes)[number]) =>
+    route.flatMap((step) => (step.kind === 'effect' ? [step.operation] : []))
+  const accepted = routes.find((route) => {
+    const stop = route.at(-1)
+    return stop?.kind === 'end' && stop.completion === 'return' && stop.detail.includes('checked')
+  })!
+  const refused = routes.find((route) => {
+    const stop = route.at(-1)
+    return (
+      stop?.kind === 'end' &&
+      stop.completion === 'throw' &&
+      stop.detail.includes('Supply a bounded regular file')
+    )
+  })!
+  expect(operations(accepted)).toEqual(['open', 'stat', 'readFile', 'close'])
+  expect(operations(refused)).toEqual(['open', 'stat', 'close'])
+  expect(routes.some((route) => operations(route).join(',') === 'open')).toBe(true)
+  expect(renderFlowBehavior(report)).toContain('File operations attempted')
+  const markdown = renderFlowBehavior(report)
+  expect(markdown).toContain('Attempts readFile')
+  expect(markdown).toMatch(/assume true \(!metadata\.isFile/)
+  expect(markdown).toMatch(/assume false \(!metadata\.isFile/)
+})
+
+test('writable opens and reads through a closed alias stay unresolved', () => {
+  const inspect = (flags: string) =>
+    analyzeFlowBehavior(
+      snapshot(
+        method(''),
+        method(`
+    import { handle } from '@jigging/flow'
+    import { open } from 'node:fs/promises'
+    import { constants } from 'node:fs'
+    await handle(async () => {
+      const file = await open('catalogue.json', ${flags})
+      const alias = file
+      try {} finally { await file.close() }
+      await alias.readFile()
+      return { outcome: 'done', output: {} }
+    })
+  `),
+      ),
+    ).scopes[0]!
+  const writable = inspect('constants.O_RDONLY | constants.O_CREAT')
+  expect(writable.routes[0]?.[0]).toMatchObject({ kind: 'end', completion: 'unknown' })
+  const closed = inspect("'r'")
+  expect(closed.routes.flat()).not.toContainEqual(
+    expect.objectContaining({ operation: 'readFile' }),
+  )
+  expect(closed.gaps).toContainEqual(
+    expect.objectContaining({ reason: 'File handle use after a close attempt is unresolved.' }),
+  )
 })
 
 test('an unknown reporting payload leaves a later handoff visible', () => {
