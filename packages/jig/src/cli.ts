@@ -31,7 +31,14 @@ import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-a
 import { parsePrivateExploreArguments, privateExecuteExplore } from './cli-explore.js'
 import type { PrivateExploreLaunch } from './cli-explore-launch.js'
 import { flowContextRecord, renderFlowContext } from './cli-flow-context.js'
-import { renderFlowBehavior } from './cli-flow-behavior.js'
+import { renderFlowBehavior, renderFlowBehaviorComparison } from './cli-flow-behavior.js'
+import {
+  BehaviorComparisonError,
+  compareFlowBehavior,
+  decodeFlowBehaviorSnapshot,
+  encodeFlowBehaviorSnapshot,
+  flowBehaviorSnapshot,
+} from './internal/flow-behavior/comparison.js'
 import type { BehaviorReport } from './internal/flow-behavior/model.js'
 import {
   privateCliHumanText,
@@ -247,8 +254,9 @@ The destination parent must exist; existing destinations are never replaced.
 Example:
   jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
-       jig inspect --flow [target | --all] [--approved] [--json]
-       jig inspect --flow [target | --all] --behavior
+       jig inspect --flow [target | --all] [--topology] [--approved] [--json]
+       jig inspect --flow --snapshot
+       jig inspect --flow --compare BASELINE [--all]
        jig inspect --result DIRECTORY [--display plain|tui|web] [--json]
 
 List the current project's approved targets, or show one target's retained
@@ -263,11 +271,13 @@ Ordinary approval inspection does not compare visible source.
 Launch readiness and remote provider availability remain unchecked.
 
   --json     Emit JSON even in a terminal (redirected output is JSON unless --flow is selected)
-  --flow     Emit configured topology as Markdown, including when piped
+  --flow     Explain supported source behavior as Markdown, including when piped
              A target retains callers, their other slots and shared package uses
-  --all      With --flow: include every configured target and connection
-  --behavior With --flow: explain supported behavior from current source
-  --approved With --flow: use the last approved snapshot instead of the working tree
+  --all      With --flow: include every target, or every changed path in a comparison
+  --topology With --flow: emit configured connections
+  --approved With --flow: emit retained approved topology
+  --snapshot With --flow: emit a machine baseline for the complete application
+  --compare BASELINE  With --flow: show current behavior changes from that baseline
   --result DIRECTORY  Inspect a saved packet without approval or new execution
   --display MODE      For saved results: plain (default), tui or web
 
@@ -1012,12 +1022,24 @@ function parseInspect(arguments_: readonly string[]) {
   let flow = false
   let approved = false
   let all = false
-  let behavior = false
+  let topology = false
+  let snapshot = false
+  let comparison: string | undefined
   for (let index = 1; index < arguments_.length; index++) {
     const value = arguments_[index]!
-    if (value === '--behavior') {
-      if (behavior) usage('inspect', '--behavior may only be supplied once.')
-      behavior = true
+    if (value === '--topology' && !topology) {
+      topology = true
+      continue
+    }
+    if (value === '--snapshot' && !snapshot) {
+      snapshot = true
+      continue
+    }
+    if (value === '--compare') {
+      const next = arguments_[++index]
+      if (comparison !== undefined || next === undefined || next.startsWith('-'))
+        usage('inspect', 'Specify --compare with one behavior baseline file.')
+      comparison = next
       continue
     }
     if (value === '--all') {
@@ -1069,11 +1091,19 @@ function parseInspect(arguments_: readonly string[]) {
     usage('inspect', '--display requires --result DIRECTORY.')
   if (approved && !flow) usage('inspect', '--approved requires --flow.')
   if (all && !flow) usage('inspect', '--all requires --flow.')
-  if (behavior && !flow) usage('inspect', '--behavior requires --flow.')
-  if (behavior && (approved || json))
+  if (topology && !flow) usage('inspect', '--topology requires --flow.')
+  if (
+    (snapshot || comparison !== undefined) &&
+    (!flow ||
+      approved ||
+      topology ||
+      json ||
+      selector !== undefined ||
+      (snapshot && (all || comparison !== undefined)))
+  )
     usage(
       'inspect',
-      '--behavior uses the working tree and emits Markdown. Remove --approved and --json.',
+      'Use --flow --snapshot or --flow --compare BASELINE to inspect the complete working tree.',
     )
   if (all && selector !== undefined) usage('inspect', '--all cannot be combined with a target.')
   if (flow && resultDirectory !== undefined)
@@ -1087,7 +1117,9 @@ function parseInspect(arguments_: readonly string[]) {
     flow,
     approved,
     all,
-    behavior,
+    topology,
+    snapshot,
+    comparison,
   }
 }
 
@@ -1171,23 +1203,47 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
   let snapshot: JsonValue
   runtime.signal?.throwIfAborted()
   try {
-    if (parsed.behavior) {
+    if (parsed.flow && !parsed.approved && !parsed.topology && !json) {
       if (runtime.host.inspectBehavior === undefined)
         throw new CliDiagnostic(
           'JIG_SOURCE_INSPECTION_UNAVAILABLE',
           'Behavior inspection needs the installed Jig declaration evaluator on a supported host. Use the installed jig command.',
           2,
         )
+      let before: ReturnType<typeof decodeFlowBehaviorSnapshot> | undefined
+      if (parsed.comparison !== undefined)
+        try {
+          before = decodeFlowBehaviorSnapshot(
+            privateReadOperatorFile(
+              resolve(runtime.currentDirectory, parsed.comparison),
+              JSON_1_LIMITS.bytes,
+            ),
+          )
+        } catch (error) {
+          throw new BehaviorComparisonError(
+            error instanceof BehaviorComparisonError
+              ? error.message
+              : 'Read a regular baseline file produced by jig inspect --flow --snapshot.',
+          )
+        }
       const report = await runtime.host.inspectBehavior(
         runtime.currentDirectory,
         {
           ...(selector === undefined ? {} : { target: selector }),
-          ...(parsed.all ? { all: true } : {}),
+          ...(parsed.all || parsed.snapshot || before ? { all: true } : {}),
         },
         runtime.signal,
       )
       runtime.signal?.throwIfAborted()
-      await runtime.writeRecord(renderFlowBehavior(report))
+      const output = parsed.snapshot
+        ? encodeFlowBehaviorSnapshot(flowBehaviorSnapshot(report))
+        : before
+          ? renderFlowBehaviorComparison(
+              compareFlowBehavior(before, flowBehaviorSnapshot(report)),
+              parsed.all,
+            )
+          : renderFlowBehavior(report)
+      await runtime.writeRecord(output)
       return 0
     }
     if (parsed.flow && !parsed.approved) {
@@ -1221,6 +1277,8 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
     }
   } catch (error) {
     if (error instanceof CliDiagnostic) throw error
+    if (error instanceof BehaviorComparisonError)
+      throw new CliDiagnostic('JIG_BEHAVIOR_COMPARISON_FAILED', error.message, 1)
     if (
       error instanceof CheckError &&
       ['PROJECT_JIG_VERSION_MISMATCH', 'PROJECT_JIG_REQUIREMENT_INVALID'].includes(error.code)

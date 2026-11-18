@@ -901,8 +901,9 @@ Changed or unchecked environments recommend `jig review`, not `jig run`.
 Unsafe, incompatible or busy state produces a bounded diagnostic without repair.
 Ordinary redirected inspection emits JSON. Explicit `--json` selects JSON, while `--flow` selects the Markdown presentation below.
 
-`jig inspect --flow [target | --all] [--approved] [--json]` projects configured topology.
-Markdown remains literal through pipes. Explicit `--json` returns the selected configured records.
+`jig inspect --flow [target | --all]` explains supported current source behavior.
+Markdown remains literal through pipes.
+Use `--topology` for a configured connection map, `--approved` for retained approved topology, or `--json` for configured records.
 Each target retains its exact selector, package identity, settings, and resolved caller-local routes.
 Separate Bindings remain distinct. Native resources retain their configured caller slots.
 
@@ -952,10 +953,7 @@ Markdown refuses graphs beyond fixed target and connection bounds. Inline settin
 The [limits reference](../reference/limits.md#inspect-application-composition) lists these fixed presentation bounds.
 Saved packets contain no configured-topology record.
 
-`jig inspect --flow [target | --all] --behavior` inspects supported current source.
-The command uses the same captured working tree and resolved slots as the topology view.
-It writes literal Markdown to stdout, including through a pipe.
-`--behavior` requires `--flow` and excludes `--approved` and `--json`.
+Source behavior uses the same captured working tree and resolved slots as the topology view.
 
 The declared entrypoint selects the default focus.
 An exact target retains its configured context, including other uses of its implementation and callers.
@@ -1024,6 +1022,22 @@ The inspection reports requested publications and supported payload calculations
 Proven data-only payload calculations use a local allowance within analysis.
 An unknown payload can leave the caller continuation visible.
 It provides no observation of a Run and grants no execution authority.
+
+`jig inspect --flow --snapshot` emits a machine baseline for the complete working-tree application.
+Redirect it to a file before editing.
+`jig inspect --flow --compare BASELINE` captures the current work from the same command context and writes Markdown.
+Both forms select the complete application and exclude target and topology options.
+The baseline contains represented routes, conditional alternatives, and coverage gaps. Settings are compared by digest.
+
+The baseline follows the JSON transport limits and is read once from a bounded regular file.
+
+The comparison reports changed configured uses, entrypoint, settings, and represented paths.
+Path comparison preserves the order of unresolved checks, child results, and effects and ignores line number shifts.
+It shows attempted file operations, requested publications, outcomes, and newly reported gaps.
+
+The view groups matching consequence summaries and labels representative checks.
+Use `--compare BASELINE --all` to show every changed path captured by the analyzer.
+The comparison is a source inspection. A matching projection establishes agreement for the captured facts.
 
 `jig inspect --result <directory> [--display plain|tui|web] [--json]` reads a
 saved packet without loading a project, verifying an execution installation,

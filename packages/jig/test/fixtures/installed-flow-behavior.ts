@@ -76,18 +76,28 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
     }),
   )
 
-  const inspect = (...args: string[]) =>
-    command([cli, 'inspect', '--flow', '--behavior', ...args], project)
+  const inspect = (...args: string[]) => command([cli, 'inspect', '--flow', ...args], project)
   const before = await inspect()
   expect(before.stdout).toContain('# Source behavior')
   expect(before.stdout).toMatch(/\[converter\]\(#call-converter-[^)]+\) → \[exporter\]/)
   expect(before.stdout).toContain('exporter → flow:flows/export · outcome "done"')
   expect(before.stdout).toContain('status = "exported"')
+  const baseline = await inspect('--snapshot')
+  await put('behavior-before.json', baseline.stdout)
+  const unchanged = await inspect('--compare', 'behavior-before.json')
+  expect(unchanged.stdout).toContain('0 changed')
   await put('flows/convert/FLOW.ts', converter('needs_mapping'))
   const after = await inspect()
   const callerOnly = after.stdout.split('\n## binding:code\n')[1]?.split('\n## ')[0]
   expect(callerOnly).toContain('status = "attention"')
   expect(callerOnly).not.toContain('exporter → flow:flows/export')
+  const changes = await inspect('--compare', 'behavior-before.json')
+  const changedCaller = changes.stdout.split('\n## binding:code\n')[1]?.split('\n## ')[0]
+  expect(changedCaller).toContain('Before · source')
+  expect(changedCaller).toContain('exporter → flow:flows/export')
+  expect(changedCaller).toContain('After · source')
+  expect(changedCaller).toContain('status = "attention"')
+  expect(changes.stdout).not.toContain('## binding:manual')
   expect(before.stdout).toMatch(/Revision sha256:[a-f0-9]{64}/)
   expect(after.stdout.match(/Revision (sha256:[a-f0-9]{64})/)?.[1]).not.toBe(
     before.stdout.match(/Revision (sha256:[a-f0-9]{64})/)?.[1],
@@ -105,7 +115,12 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
   expect(application.stdout).toContain('["binding:code"]')
   expect(application.stdout).toContain('["binding:manual"]')
   expect(application.stdout).toContain('flow:flows/opaque')
-  expect((await readdir(project)).sort()).toEqual(['bindings', 'flows', 'jig.ts'])
+  expect((await readdir(project)).sort()).toEqual([
+    'behavior-before.json',
+    'bindings',
+    'flows',
+    'jig.ts',
+  ])
 
   await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
   const observed = await command([cli, 'run', 'binding:code', '--input', '{}', '--json'], project)

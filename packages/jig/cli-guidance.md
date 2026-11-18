@@ -244,7 +244,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Topology supplies configured routes. Source behavior has a separate view.
 
 - `src/cli-flow-behavior.ts` renders conditional source routes as literal Markdown.
-  `--behavior` uses current capture and excludes approved and JSON output.
+  Human working-tree `--flow` inspection opens the behavior view by default.
+  The comparison renders changed source evidence from `--snapshot` and a fresh capture.
   `src/internal/flow-inspection-scope.ts` provides target selection for both views.
 
   The application view links the complete configured inventory to one chart per Flow.

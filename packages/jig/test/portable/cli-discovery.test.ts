@@ -670,11 +670,20 @@ test('complete topology grammar rejects conflicting operands before host acquisi
     expect(await main(args, { writeError: () => {} })).toBe(2)
   }
   expect(privateCliRequiresHost(['inspect', '--flow', '--all'])).toBe(true)
-  expect(privateCliRequiresHost(['inspect', '--flow', '--behavior'])).toBe(true)
+  expect(privateCliRequiresHost(['inspect', '--flow', '--snapshot'])).toBe(true)
+  expect(privateCliRequiresHost(['inspect', '--flow', '--compare', 'before.json'])).toBe(true)
+  expect(privateCliRequiresHost(['inspect', '--flow', '--compare', 'before.json', '--all'])).toBe(
+    true,
+  )
   for (const flags of [
-    ['--behavior'],
-    ['--flow', '--behavior', '--approved'],
-    ['--flow', '--behavior', '--json'],
+    ['--snapshot'],
+    ['--topology'],
+    ['--flow', '--compare'],
+    ['--flow', '--snapshot', '--approved'],
+    ['--flow', '--snapshot', '--all'],
+    ['--flow', '--compare', 'before.json', 'binding:main'],
+    ['--flow', '--compare', 'before.json', '--json'],
+    ['--flow', '--compare', 'before.json', '--snapshot'],
   ]) {
     expect(privateCliRequiresHost(['inspect', ...flags])).toBe(false)
     expect(await main(['inspect', ...flags], { writeError: () => {} })).toBe(2)

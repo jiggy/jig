@@ -180,7 +180,7 @@ export function completionScript(shell: string): string | undefined {
       run) opts='${runOptions}';;
       explore) opts='--help --timeout --verification';;
       review) opts='--help --allow-resolution-network --source-root --allow-authority-changes --generate-contracts --yes --details --verification --agent';;
-      inspect) opts='--help --json --verification --result --display --flow --approved --all --behavior';;
+      inspect) opts='--help --json --verification --result --display --flow --approved --all --topology --snapshot --compare';;
       views) opts='list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision';;
       init) opts='--help --bare --agent';;
       import-contract) opts='--help --list';;
@@ -224,7 +224,7 @@ _jig() {
       run) choices=(${runOptions});;
       explore) choices=(--help --timeout --verification);;
       review) choices=(--help --allow-resolution-network --source-root --allow-authority-changes --generate-contracts --yes --details --verification --agent);;
-      inspect) choices=(--help --json --verification --result --display --flow --approved --all --behavior);;
+      inspect) choices=(--help --json --verification --result --display --flow --approved --all --topology --snapshot --compare);;
       views) choices=(list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision);;
       init) choices=(--help --bare --agent);;
       import-contract) choices=(--help --list);;

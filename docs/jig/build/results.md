@@ -297,9 +297,9 @@ Inspection checks the project's declared Jig version before evaluating declarati
 Prepare the application map before changing a conditional route.
 
 ```sh
-jig inspect --flow --all --behavior > before.md
-jig inspect --flow --behavior
-jig inspect --flow binding:code --behavior
+jig inspect --flow --all
+jig inspect --flow
+jig inspect --flow binding:code
 ```
 
 The application overview lists its entrypoint, independent direct Flows, and configured Bindings.
@@ -312,7 +312,18 @@ Follow a call link to see the inputs, supported child path, and continuation for
 Select another target to inspect it independently.
 The configured inventory lists declared outcomes, attachments, and artifact results.
 
-After an edit, prepare the map again to see the current revision.
+Capture a baseline before an edit. Compare it with the current application afterward.
+
+```sh
+jig inspect --flow --snapshot > before.json
+jig inspect --flow --compare before.json
+```
+
+The comparison highlights affected targets, ordered path changes, and coverage gaps.
+Add `--all` to the comparison to read all changed captured paths.
+Inspect an affected target for child-path detail.
+Use representative Runs to verify actual outputs, progress, and delivered files.
+
 The result contract checks point out known undeclared outcomes and concrete results that fail the schema.
 Other analyzed results can remain readable when the diagram reaches its display limit.
 

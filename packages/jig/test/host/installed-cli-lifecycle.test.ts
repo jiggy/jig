@@ -72,7 +72,7 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
     expect(existsSync(join(project, 'jig.lock'))).toBe(false)
     await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
     const lock = await readFile(join(project, 'jig.lock'), 'utf8')
-    const graph = await command([cli, 'inspect', '--flow'], project)
+    const graph = await command([cli, 'inspect', '--flow', '--topology'], project)
     expect(graph.stdout).toContain('# Configured topology')
     expect(graph.stdout).toContain('flowchart LR')
     const methodPath = join(project, 'flows/hello/FLOW.ts')
