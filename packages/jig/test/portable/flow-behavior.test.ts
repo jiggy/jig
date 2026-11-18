@@ -124,6 +124,29 @@ test('authored handoffs retain caller exit checks beyond an opaque operation', (
   expect(rendered).not.toContain('Unrelated receiver')
 })
 
+test('a known configured early return leaves no speculative exporter handoff', () => {
+  const caller = method(
+    handlerSource(`
+    const labels = run.input.labels.map(label => {
+      if (!label) throw new TypeError('Supply a label')
+      return label
+    })
+    if (run.settings.validateOnly) return { outcome: 'done', output: { labels } }
+    return await run.call({ slot: 'exporter', operationId: 'export', input: { labels } })
+  `),
+  )
+  const input = snapshot(method(handlerSource(`return { outcome: 'done', output: {} }`)), caller)
+  const report = analyzeFlowBehavior({
+    ...input,
+    targets: input.targets.map((target) =>
+      target.id === 'binding:code' ? { ...target, settings: { validateOnly: true } } : target,
+    ),
+  })
+  const scope = report.scopes[0]!
+  expect(scope.gaps[0]?.reason).toContain('assumes mapping completes')
+  expect(scope.authoredHandoffs).toBeUndefined()
+})
+
 test('opaque children retain hypothetical caller responses and concrete schema refusals suppress returns', () => {
   const opaque = analyzeFlowBehavior(
     snapshot(method('', { unavailable: 'Opaque implementation.' })),
