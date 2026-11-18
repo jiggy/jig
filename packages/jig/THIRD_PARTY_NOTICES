@@ -166,12 +166,12 @@ The prebundled Codex ACP adapter and Anthropic Claude Agent SDK also contain
 Zod 4.4.3. These copies use
 the same complete MIT license reproduced in the Zod 4.3.6 section above.
 
-@agentclientprotocol/sdk (transitive adapter dependencies)
-------------------------------------------------------------
+@agentclientprotocol/sdk (Jig and bundled adapter dependencies)
+--------------------------------------------------------------
 
-Codex ACP and Claude ACP bundle SDK v2 implementations. Jig does not depend on
-the ACP v1 SDK directly; adapter SDK dependencies are licensed under Apache-2.0,
-retained in `LICENSES/Apache-2.0.txt`.
+Jig uses SDK 2.6.0 and the Codex and Claude ACP adapters bundle SDK v2
+implementations. These copies use Apache-2.0, retained in
+`LICENSES/Apache-2.0.txt`.
 
    Copyright 2025 Zed Industries, Inc. and contributors
 
