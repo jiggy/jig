@@ -990,6 +990,7 @@ Other synchronous collection loops can show repetition with an unknown count.
 An opaque loop can leave its body or continuation unknown.
 The analyzer follows data-only callbacks on small known arrays, including explicit validation failures.
 When validation callbacks operate on unresolved contents, the displayed continuation assumes mapping completes.
+Small known scalar sets and literal numeric products can contribute to reported progress.
 
 The focused view summarizes selected route consequences and evidence.
 The main diagram projects supported calls, loops, and file writes within a fixed display bound.

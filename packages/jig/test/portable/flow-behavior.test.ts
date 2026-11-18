@@ -298,6 +298,35 @@ test('unsupported mutation preserves the known prefix and stops before a stale r
   expect(scope!.gaps[0]?.reason).toBe('Opaque call may affect later behavior.')
 })
 
+test('finite Set spreads and formatting preserve progress before an opaque import', () => {
+  const importer = method(
+    `
+    import { handle } from '@jigging/flow'
+    import { withReporting } from '@jigging/reporting'
+    import { open } from 'node:fs/promises'
+    const total = 2 * 3
+    function panel() {
+      const marks = [...new Set(['check', 'check', 'ready'])]
+      const sections = [{ blocks: [{ kind: 'progress', completed: marks.length, total }] }]
+      if (marks.length > total) sections.push(...sections.splice(0, 1))
+      return { sections }
+    }
+    await handle(run => withReporting(run, 'progress', async reporter => {
+      reporter.view('progress').update(panel())
+      await open('unknown.txt', 'r')
+      return { outcome: 'done', output: {} }
+    }))
+  `,
+    { reportingFiles: new Set(['FLOW.ts']) },
+  )
+  const input = snapshot(method(handlerSource(`return { outcome: 'done', output: {} }`)), importer)
+  const scope = analyzeFlowBehavior(input).scopes[0]!
+  expect(scope.routes[0]).toMatchObject([
+    { kind: 'effect', operation: 'view update', detail: 'progress 2/6' },
+    { kind: 'end', completion: 'unknown', detail: 'Opaque imported call: node:fs/promises.' },
+  ])
+})
+
 test('an unknown reporting payload leaves a later handoff visible', () => {
   const body = `
     import { handle } from '@jigging/flow'

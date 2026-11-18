@@ -48,6 +48,7 @@ export function isData(value: Value): boolean {
     case 'object':
       return [...value.fields.values()].every(isData)
     case 'array':
+    case 'set':
       return value.items.every(isData)
     case 'function':
     case 'error':
@@ -67,7 +68,8 @@ export function dataMethod(name: string): boolean {
 export function evaluateIntrinsic(name: string, args: readonly Value[]): Value {
   const first = args[0] ?? unknown
   if (name === 'Array.from' && args.length === 1) {
-    if (first.kind === 'array') return { kind: 'array', items: [...first.items] }
+    if (first.kind === 'array' || first.kind === 'set')
+      return { kind: 'array', items: [...first.items] }
     if (first.kind === 'literal' && typeof first.value === 'string' && first.value.length <= 8192)
       return { kind: 'array', items: Array.from(first.value, literal) }
     return unknown
@@ -282,7 +284,10 @@ export function dataEffects(
     if (ts.isCallExpression(node)) {
       const callee = unwrap(node.expression)
       const args = node.arguments
-      if (args.some(ts.isSpreadElement)) return false
+      if (args.some(ts.isSpreadElement)) {
+        if (!ts.isPropertyAccessExpression(callee) || !localArrayWrites.has(callee.name.text))
+          return false
+      }
       const helper = functionOf(callee)
       if (helper) return sub(helper) && args.every(sub)
       const imported = source.importOf(callee)
