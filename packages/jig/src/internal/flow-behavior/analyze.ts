@@ -37,6 +37,7 @@ export interface State {
   readonly mode: 'next' | 'return' | 'throw' | 'unknown'
   readonly value: Value
   readonly site?: SourceSite
+  readonly stoppedAt?: ts.Node
 }
 
 export interface ChildResult {
@@ -203,6 +204,7 @@ export class Interpreter {
       site,
       mode: 'unknown',
       value: unknown,
+      stoppedAt: node,
     }
   }
 
@@ -255,16 +257,6 @@ export class Interpreter {
         values.set(parameter, evaluated?.value ?? unknown)
       }
     })
-    if (
-      this.recordAuthoredHandoff &&
-      [...values.values()].some((value) => value.kind === 'context')
-    ) {
-      for (const { receiver, ...handoff } of this.source.handoffsIn(fn)) {
-        if (values.get(receiver)?.kind !== 'context') continue
-        const target = this.target.slots.get(handoff.slot)
-        if (target !== undefined) this.recordAuthoredHandoff({ ...handoff, target })
-      }
-    }
     const inner = { ...caller, values, mode: 'next' as const, value: missing }
     const results = ts.isBlock(fn.body)
       ? this.block(fn.body.statements, [inner], depth)
@@ -273,6 +265,29 @@ export class Interpreter {
             ? { ...state, mode: 'return' as const, site: this.source.site(fn.body!) }
             : state,
         )
+    for (const result of results) {
+      const stoppedAt = result.stoppedAt
+      if (
+        !this.recordAuthoredHandoff ||
+        result.mode !== 'unknown' ||
+        !stoppedAt ||
+        originalDeclaration(stoppedAt) !== fn ||
+        ![...result.values.values()].some((value) => value.kind === 'context')
+      )
+        continue
+      const cut = this.source.site(stoppedAt)
+      for (const { receiver, ...handoff } of this.source.handoffsIn(fn)) {
+        if (result.values.get(receiver)?.kind !== 'context' || handoff.site.path !== cut.path)
+          continue
+        if (
+          handoff.site.line < cut.line ||
+          (handoff.site.line === cut.line && (handoff.site.column ?? 0) <= (cut.column ?? 0))
+        )
+          continue
+        const target = this.target.slots.get(handoff.slot)
+        if (target !== undefined) this.recordAuthoredHandoff({ ...handoff, target })
+      }
+    }
     return results.map((state) => {
       const restored = new Map(state.values)
       for (const key of restored.keys()) {
@@ -987,7 +1002,11 @@ export class Interpreter {
       )
         return [this.stop(state, e, 'Reporting wrapper or installed implementation is opaque.')]
       return this.invoke(handler, [{ kind: 'reporter' }], state, depth + 1).map((completion) =>
-        completion.mode === 'return' ? { ...completion, mode: 'next' as const } : completion,
+        completion.mode === 'return'
+          ? { ...completion, mode: 'next' as const }
+          : completion.mode === 'unknown'
+            ? { ...completion, stoppedAt: e }
+            : completion,
       )
     }
     if (ts.isPropertyAccessExpression(callee)) {
@@ -1162,6 +1181,7 @@ export class Interpreter {
                 }),
                 unknown,
               )
+            if (body.mode === 'unknown') return { ...body, stoppedAt: e }
             if (body.mode === 'return' && body.value.kind === 'function')
               return this.stop(body, e, 'Escaping closures are outside the supported subset.')
             return body.mode === 'return'
@@ -1225,6 +1245,7 @@ export class Interpreter {
             ...add(updated, child.step),
             assumptions: [...s.assumptions, ...child.assumptions],
             mode: child.mode,
+            ...(child.mode === 'unknown' ? { stoppedAt: e } : {}),
             value: child.value,
             site: child.step.site,
           }
@@ -1250,7 +1271,8 @@ export class Interpreter {
             const prefix = path.value.items
             return this.invoke(mapper, [item, literal(index), array], path, depth + 1).map(
               (result) => {
-                if (result.mode !== 'return' && result.mode !== 'next') return result
+                if (result.mode === 'unknown') return { ...result, stoppedAt: call }
+                if (result.mode === 'throw') return result
                 const value = result.mode === 'return' ? result.value : missing
                 if (value.kind === 'function')
                   return this.stop(

@@ -981,7 +981,7 @@ Unsupported operations, opaque dependencies, and analysis bounds leave visible g
 Routes retain known effects before an opaque continuation and carry inherited assumptions across calls.
 When alternatives exceed the allowance, the map retains supported continuations and shows the cutoff for omitted paths.
 
-For a reached function with a coverage gap, inspection can show further authored calls at configured slots.
+When route analysis stops in a function, inspection can show later authored calls at configured slots.
 This part shows local branch predicates and result checks with their source locations.
 Reachability, execution order, and returned values remain unresolved there.
 
