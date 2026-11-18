@@ -379,10 +379,15 @@ export class Interpreter {
     value: Value,
     state: T,
     alternatives: (s: State, taken: boolean) => State[],
-    label?: string,
+    { label, enteringValues }: { label?: string; enteringValues?: State['values'] } = {},
   ): State[] {
     const condition = truth(value)
     const possible = condition === undefined ? [true, false] : [condition]
+    const sourceCode = label ?? n.getText()
+    const enteringNumbers =
+      condition === undefined && enteringValues && sourceCode.length <= 140
+        ? this.comparisonNumbers(n, enteringValues)
+        : []
     return this.retainVariants(
       n,
       possible.flatMap((taken) =>
@@ -390,15 +395,49 @@ export class Interpreter {
           add(state, {
             kind: 'condition',
             site: this.source.site(n),
-            code:
-              label ?? (n.getText().length <= 140 ? n.getText() : '(see full predicate in source)'),
+            code: sourceCode.length <= 140 ? sourceCode : '(see full predicate in source)',
             taken,
             unresolved: condition === undefined,
+            ...(enteringNumbers.length > 0 ? { enteringNumbers } : {}),
           }),
           taken,
         ),
       ),
     )
+  }
+
+  private comparisonNumbers(n: ts.Expression, values: State['values']) {
+    const numbers = new Map<string, number>()
+    const visit = (expression: ts.Expression): void => {
+      const node = unwrap(expression)
+      if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken)
+        return visit(node.operand)
+      if (!ts.isBinaryExpression(node)) return
+      const operator = node.operatorToken.kind
+      if (
+        operator === ts.SyntaxKind.AmpersandAmpersandToken ||
+        operator === ts.SyntaxKind.BarBarToken
+      ) {
+        visit(node.left)
+        visit(node.right)
+        return
+      }
+      if (operator < ts.SyntaxKind.LessThanToken || operator > ts.SyntaxKind.GreaterThanEqualsToken)
+        return
+      for (const operand of [unwrap(node.left), unwrap(node.right)]) {
+        if (!ts.isIdentifier(operand) || numbers.size >= 2) continue
+        const declaration = this.source.declaration(operand)
+        const value = declaration && values.get(declaration)
+        if (
+          value?.kind === 'literal' &&
+          typeof value.value === 'number' &&
+          Number.isFinite(value.value)
+        )
+          numbers.set(operand.text, value.value)
+      }
+    }
+    visit(n)
+    return [...numbers]
   }
 
   private statement(n: ts.Statement, state: State, depth: number): State[] {
@@ -428,10 +467,16 @@ export class Interpreter {
     }
     if (ts.isIfStatement(n))
       return this.continue(this.expression(n.expression, state, depth), (s, value) =>
-        this.branch(n.expression, value, s, (branch, taken) => {
-          const selected = taken ? n.thenStatement : n.elseStatement
-          return selected === undefined ? [branch] : this.advance(selected, branch, depth)
-        }),
+        this.branch(
+          n.expression,
+          value,
+          s,
+          (branch, taken) => {
+            const selected = taken ? n.thenStatement : n.elseStatement
+            return selected === undefined ? [branch] : this.advance(selected, branch, depth)
+          },
+          { enteringValues: state.values },
+        ),
       )
     if (ts.isReturnStatement(n)) {
       const results = n.expression
@@ -843,8 +888,12 @@ export class Interpreter {
     }
     if (ts.isConditionalExpression(e))
       return this.continue(this.expression(e.condition, state, depth), (s, value) =>
-        this.branch(e.condition, value, s, (ss, taken) =>
-          this.expression(taken ? e.whenTrue : e.whenFalse, ss, depth),
+        this.branch(
+          e.condition,
+          value,
+          s,
+          (ss, taken) => this.expression(taken ? e.whenTrue : e.whenFalse, ss, depth),
+          { enteringValues: state.values },
         ),
       )
     if (ts.isBinaryExpression(e)) return this.binary(e, state, depth)
@@ -908,7 +957,7 @@ export class Interpreter {
             s,
             (ss, coalesces) =>
               coalesces ? this.expression(e.right, ss, depth) : [withValue(ss, left)],
-            'nullish test: ' + e.left.getText().slice(0, 100),
+            { label: 'nullish test: ' + e.left.getText().slice(0, 100) },
           )
         }
         return left.kind === 'undefined' || (left.kind === 'literal' && left.value === null)
@@ -1327,7 +1376,7 @@ export class Interpreter {
       (branch, completed) => [
         completed ? withValue(branch, result) : { ...branch, mode: 'throw', site, value: unknown },
       ],
-      operation + ' completes',
+      { label: operation + ' completes' },
     )
   }
 

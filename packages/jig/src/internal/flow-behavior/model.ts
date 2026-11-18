@@ -47,6 +47,7 @@ export interface BehaviorGuard {
   readonly code: string
   readonly taken: boolean
   readonly unresolved: boolean
+  readonly enteringNumbers?: readonly (readonly [name: string, value: number])[]
 }
 
 export interface BehaviorReturn {

@@ -21,6 +21,7 @@ Explain conditional behavior from a captured Jig project without running its met
 - Carry hypothetical results and known effects through caller continuations.
 - Keep incomplete values distinct from unknown control flow.
 - Keep unresolved checks attached to their conditional continuations.
+  Show known numeric comparison operands as context at entry to the check.
 - Retain bounded child paths from the call evaluation that supplied the displayed result.
 - At an analysis cutoff, keep established paths and identify omitted alternatives.
 - Retain distinct exits before further variants of the same exit.
