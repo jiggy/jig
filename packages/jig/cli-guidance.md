@@ -235,6 +235,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Other uses of the focus package and their downstream closures remain visible.
   Markdown leads with the selected target's handoffs, exact caller slots, and shared uses.
   Application views lead with the declared entrypoint's handoffs.
+
   Caller peers are not recursively expanded. Boundary notices count omitted incoming and outgoing connections.
   The focus is distinct from the declared entrypoint. Shared package identity does not imply a call or equivalent behavior.
 
