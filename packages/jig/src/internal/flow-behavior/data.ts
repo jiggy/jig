@@ -182,6 +182,7 @@ export function dataEffects(
   source: SourceIndex,
   root: ts.Expression | ts.ForOfStatement | ts.FunctionLikeDeclaration,
   values: ReadonlyMap<ts.Node, Value>,
+  { allowExplicitThrows = false } = {},
 ): Proof | undefined {
   const writes = new Set<ts.Declaration>()
   const visiting = new Set<ts.Node>()
@@ -378,13 +379,18 @@ export function dataEffects(
       }
       return sub(node.left) && sub(node.right)
     }
-    if (ts.isNewExpression(node))
+    if (ts.isNewExpression(node)) {
+      const args = node.arguments ?? []
+      if (allowExplicitThrows && source.errorClass(node.expression) !== undefined)
+        return args.length <= 1 && args.every(sub)
       return (
         ts.isIdentifier(node.expression) &&
         node.expression.text === 'Set' &&
         source.declaration(node.expression) === undefined &&
-        (node.arguments ?? []).every(sub)
+        args.every(sub)
       )
+    }
+    if (ts.isThrowStatement(node)) return allowExplicitThrows && inFunction && sub(node.expression)
     if (ts.isReturnStatement(node)) return inFunction && (!node.expression || sub(node.expression))
     if (ts.isConditionalExpression(node))
       return sub(node.condition) && sub(node.whenTrue) && sub(node.whenFalse)

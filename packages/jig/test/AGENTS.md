@@ -23,6 +23,7 @@ The application map links independent targets and distinct configured uses to sh
 An unrelated line insertion preserves the call link.
 
 Finite iteration retains early exits. Join nodes preserve distinct results.
+Bounded data mappings preserve validation before writes and flag unresolved callbacks.
 The alternatives bound preserves available continuations and explicitly ends omitted paths.
 
 `portable/package-project.test.ts` checks source-only linking and refusal to create activation requests.
