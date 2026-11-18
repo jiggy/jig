@@ -9,6 +9,7 @@ import {
 } from './data.js'
 import {
   BEHAVIOR_LIMITS,
+  type AuthoredHandoff,
   type BehaviorAssumption,
   type BehaviorStep,
   type BehaviorTarget,
@@ -100,6 +101,7 @@ export class Interpreter {
     readonly budget: AnalysisBudget,
     readonly invokeChild: InvokeChild,
     readonly retainLimitedPaths = true,
+    readonly recordAuthoredHandoff?: (handoff: AuthoredHandoff) => void,
   ) {}
 
   run(depth: number): State[] {
@@ -251,6 +253,16 @@ export class Interpreter {
         values.set(parameter, evaluated?.value ?? unknown)
       }
     })
+    if (
+      this.recordAuthoredHandoff &&
+      [...values.values()].some((value) => value.kind === 'context')
+    ) {
+      for (const { receiver, ...handoff } of this.source.handoffsIn(fn)) {
+        if (values.get(receiver)?.kind !== 'context') continue
+        const target = this.target.slots.get(handoff.slot)
+        if (target !== undefined) this.recordAuthoredHandoff({ ...handoff, target })
+      }
+    }
     const inner = { ...caller, values, mode: 'next' as const, value: missing }
     const results = ts.isBlock(fn.body)
       ? this.block(fn.body.statements, [inner], depth)
