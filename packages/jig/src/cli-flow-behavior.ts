@@ -31,6 +31,15 @@ export function projectSourceBehavior(
   report: BehaviorReport,
   nodes: ReadonlyMap<string, string>,
 ): readonly DisplaySourceBehavior[] {
+  const packages = [...new Set(report.inventory.map((target) => target.implementation))].sort(
+    (a, b) => b.length - a.length,
+  )
+  const packageSite = (location: SourceSite): string => {
+    const owner = packages.find((path) => location.path.startsWith(path + '/'))
+    const file =
+      owner === undefined ? location.path.split('/').at(-1)! : location.path.slice(owner.length + 1)
+    return file + ':' + location.line
+  }
   const clip = (value: string) => {
     const chars = [...value]
     return chars.length <= 256 ? value : chars.slice(0, 255).join('') + '…'
@@ -61,7 +70,10 @@ export function projectSourceBehavior(
               .filter((guard) => guard.unresolved)
               .map((guard) =>
                 clip(
-                  guard.code + (guard.taken ? ' · true' : ' · false') + ' · ' + site(guard.site),
+                  guard.code +
+                    (guard.taken ? ' · true' : ' · false') +
+                    ' · ' +
+                    packageSite(guard.site),
                 ),
               ),
           )
@@ -72,10 +84,9 @@ export function projectSourceBehavior(
       {
         nodeId,
         cases,
-        gaps: [...new Set(scope.gaps.map((gap) => clip(gap.reason + ' · ' + site(gap))))].slice(
-          0,
-          3,
-        ),
+        gaps: [
+          ...new Set(scope.gaps.map((gap) => clip(gap.reason + ' · ' + packageSite(gap)))),
+        ].slice(0, 3),
         omitted: scope.routes.length - cases.length,
       },
     ]
