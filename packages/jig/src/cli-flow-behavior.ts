@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { renderFlowOrientation } from './cli-flow-orientation.js'
 import type { ComparisonFact, compareFlowBehavior } from './internal/flow-behavior/comparison.js'
 import {
   type BehaviorGuard,
@@ -853,9 +854,9 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   if (report.unavailable !== undefined) return [...lines, text(report.unavailable), ''].join('\n')
   const { focus, inventory, scopes } = report
   if (focus === undefined) return [...lines, ...applicationMap(report)].join('\n') + '\n'
+  lines.push('## ' + text(focus), '', ...configuredOrientation(report, focus))
   const selected = scopes.find((scope) => scope.target === focus)
   if (selected) {
-    lines.push('## ' + text(selected.target), '')
     lines.push(...contractChecks(selected))
     const routes = selectRoutes(selected)
     const details = callDetails(report, [...routes, ...selected.alternatives])
@@ -912,15 +913,6 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   }
   lines.push('## Configured targets and declared boundaries', '')
   if (!inventory.length) lines.push('The captured project has no configured targets.', '')
-  const implementation = inventory.find((target) => target.id === focus)?.implementation
-  const shared = inventory.filter(
-    (target) => target.id !== focus && target.implementation === implementation,
-  )
-  if (shared.length)
-    lines.push(
-      'Other configured uses of this implementation: ' + brief(shared.map((target) => target.id)),
-      '',
-    )
   for (const target of inventory) {
     lines.push(
       '- ' + text(target.id + ' uses ' + target.implementation) + ' · ' + boundaryFacts(target),
@@ -929,6 +921,50 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   if (inventory.some((target) => target.id !== focus))
     lines.push('', 'Supply an exact target to inspect its behavior and callers.')
   return lines.join('\n') + '\n'
+}
+
+function configuredOrientation(
+  report: BehaviorReport,
+  focus: string | undefined,
+  linkedTargets?: ReadonlySet<string>,
+): string[] {
+  const sites = new Map<string, Set<string>>()
+  const edgeKey = (caller: string, slot: string, target: string) =>
+    JSON.stringify([caller, slot, target])
+  const recordSite = (
+    caller: string,
+    handoff: { slot: string; target: string; site: SourceSite },
+  ) => {
+    if (caller !== focus && handoff.target !== focus) return
+    const key = edgeKey(caller, handoff.slot, handoff.target)
+    const found = sites.get(key) ?? new Set()
+    found.add(site(handoff.site))
+    sites.set(key, found)
+  }
+  for (const scope of report.scopes) {
+    for (const route of [...scope.routes, ...scope.alternatives])
+      for (const step of route)
+        if (step.kind === 'call' && step.caller === scope.target) recordSite(scope.target, step)
+    for (const handoff of scope.authoredHandoffs ?? []) recordSite(scope.target, handoff)
+  }
+  return renderFlowOrientation(
+    report.inventory,
+    report.inventory.flatMap((target) =>
+      [...target.slots].map(([slot, to]) => ({
+        from: target.id,
+        slot,
+        to,
+        sites: sites.get(edgeKey(target.id, slot, to)),
+      })),
+    ),
+    focus,
+    {
+      text,
+      target: (id) =>
+        linkedTargets?.has(id) ? `[${text(id)}](#${idFor('target', id)})` : text(id),
+      includeCallers: linkedTargets === undefined,
+    },
+  )
 }
 
 function boundaryFacts(target: BehaviorTarget): string {
@@ -964,11 +1000,21 @@ function applicationMap(report: BehaviorReport): string[] {
   const linkedTargets = new Set(report.inventory.map((target) => target.id))
   const scopes = new Map(report.scopes.map((scope) => [scope.target, scope]))
   const selections = new Map(report.scopes.map((scope) => [scope.target, selectRoutes(scope)]))
+  const entry = report.inventory.find((target) => target.id === report.entrypoint)
+  if (entry)
+    lines.push(
+      '### Project entrypoint',
+      '',
+      ...configuredOrientation(report, entry.id, linkedTargets),
+    )
   lines.push(
     '| Configured target | Flow | Role | Supported continuations |',
     '| --- | --- | --- | --- |',
   )
-  for (const target of report.inventory) {
+  const ordered = entry
+    ? [entry, ...report.inventory.filter((target) => target !== entry)]
+    : report.inventory
+  for (const target of ordered) {
     const group = groups.get(target.implementation) ?? []
     group.push(target)
     groups.set(target.implementation, group)

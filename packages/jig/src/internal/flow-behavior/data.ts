@@ -1,6 +1,6 @@
 import ts from 'typescript-parser'
 import { isLocalFunction, type SourceIndex, unwrap } from './source.js'
-import { literal, toJson, unknown, type Value } from './values.js'
+import { literal, toJson, truth, unknown, type Value } from './values.js'
 
 const readers = new Set([
   'at',
@@ -33,6 +33,10 @@ const globals = new Set([
 ])
 
 export function dataIntrinsic(source: SourceIndex, callee: ts.Expression): string | undefined {
+  if (ts.isIdentifier(callee))
+    return callee.text === 'Boolean' && source.declaration(callee) === undefined
+      ? callee.text
+      : undefined
   if (
     !ts.isPropertyAccessExpression(callee) ||
     !ts.isIdentifier(callee.expression) ||
@@ -70,6 +74,10 @@ export function dataMethod(name: string): boolean {
 
 export function evaluateIntrinsic(name: string, args: readonly Value[]): Value {
   const first = args[0] ?? unknown
+  if (name === 'Boolean') {
+    const value = truth(args[0] ?? literal(false))
+    return value === undefined ? unknown : literal(value)
+  }
   if (name === 'Array.from' && args.length === 1) {
     if (first.kind === 'array' || first.kind === 'set')
       return { kind: 'array', items: [...first.items] }

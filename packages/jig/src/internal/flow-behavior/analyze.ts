@@ -38,6 +38,7 @@ export interface State {
   readonly assumptions: readonly BehaviorAssumption[]
   readonly mode: 'next' | 'return' | 'throw' | 'unknown'
   readonly value: Value
+  readonly adoptedRejection?: true
   readonly site?: SourceSite
   readonly localCall?: SourceSite | undefined
   readonly stoppedAt?: ts.Node
@@ -100,6 +101,8 @@ const originalDeclaration = (node: ts.Node) => {
     if (isLocalFunction(parent)) return parent
   return undefined
 }
+const isAsync = (fn: LocalFunction): boolean =>
+  ts.getModifiers(fn)?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) ?? false
 
 export class Interpreter {
   readonly #context: Value = { kind: 'context' }
@@ -275,7 +278,7 @@ export class Interpreter {
     const inner = { ...caller, values, localCall, mode: 'next' as const, value: missing }
     const results = ts.isBlock(fn.body)
       ? this.block(fn.body.statements, [inner], depth)
-      : this.expression(fn.body, inner, depth, true).map((state) =>
+      : this.returnExpression(fn.body, inner, depth, true).map((state) =>
           state.mode === 'next'
             ? { ...state, mode: 'return' as const, site: this.source.site(fn.body!) }
             : state,
@@ -311,8 +314,10 @@ export class Interpreter {
         if (previous === undefined) restored.delete(key)
         else restored.set(key, previous)
       }
+      const { adoptedRejection, ...completion } = state
       return {
-        ...state,
+        ...completion,
+        mode: adoptedRejection ? 'throw' : completion.mode,
         values: restored,
         localCall: caller.localCall,
         site: state.site ?? this.source.site(fn),
@@ -504,7 +509,7 @@ export class Interpreter {
       )
     if (ts.isReturnStatement(n)) {
       const results = n.expression
-        ? this.expression(n.expression, state, depth)
+        ? this.returnExpression(n.expression, state, depth)
         : [withValue(state, missing)]
       return results.map((s) =>
         s.mode === 'next' ? { ...s, mode: 'return', site: this.source.site(n) } : s,
@@ -685,6 +690,37 @@ export class Interpreter {
     return this.budget.variants(
       states.flatMap((s) => (s.mode === 'next' ? apply(s, s.value) : [s])),
     )
+  }
+
+  private returnExpression(
+    expression: ts.Expression,
+    state: State,
+    depth: number,
+    concise = false,
+  ): State[] {
+    const owner = originalDeclaration(expression)
+    const value = unwrap(expression)
+    if (owner && isAsync(owner) && ts.isCallExpression(value)) {
+      const helper = this.functionAt(unwrap(value.expression), state)
+      if (helper && isAsync(helper)) {
+        for (
+          let parent = value.parent;
+          parent !== undefined && parent !== owner;
+          parent = parent.parent
+        )
+          if (ts.isTryStatement(parent) && parent.finallyBlock)
+            return [
+              this.stop(
+                state,
+                value,
+                'Returned helper and a surrounding finalizer can interleave.',
+              ),
+            ]
+        this.budget.check()
+        return this.call(value, state, depth, false, true)
+      }
+    }
+    return this.expression(expression, state, depth, concise)
   }
 
   private expression(
@@ -1075,10 +1111,28 @@ export class Interpreter {
     })
   }
 
-  private call(e: ts.CallExpression, state: State, depth: number, awaited: boolean): State[] {
+  private call(
+    e: ts.CallExpression,
+    state: State,
+    depth: number,
+    awaited: boolean,
+    adopted = false,
+  ): State[] {
     const callee = unwrap(e.expression)
     const fn = this.functionAt(callee, state)
     const imported = this.source.importOf(callee)
+    const intrinsic = dataIntrinsic(this.source, callee)
+    if (intrinsic && !e.questionDotToken)
+      return this.arguments(e.arguments, state, depth).map(({ state: result, values }) =>
+        result.mode !== 'next'
+          ? result
+          : withValue(
+              result,
+              intrinsic === 'Boolean' || values.every(isData)
+                ? evaluateIntrinsic(intrinsic, values)
+                : unknown,
+            ),
+      )
     if (imported?.module === '@jigging/reporting' && imported.member === 'withReporting') {
       const [context, channel, body] = e.arguments
       const handler = body === undefined ? undefined : this.functionAt(body, state)
@@ -1185,7 +1239,6 @@ export class Interpreter {
               ],
           )
       }
-      const intrinsic = dataIntrinsic(this.source, callee)
       if (
         callee.name.text === 'test' &&
         unwrap(callee.expression).kind === ts.SyntaxKind.RegularExpressionLiteral
@@ -1215,26 +1268,14 @@ export class Interpreter {
             this.mapData(e, mapper, s, array, depth),
           )
       }
-      if (
-        intrinsic ||
-        (dataMethod(callee.name.text) && dataEffects(this.source, e, state.values))
-      ) {
-        const args = (ss: State, recv: Value) =>
+      if (dataMethod(callee.name.text) && dataEffects(this.source, e, state.values))
+        return this.continue(this.expression(callee.expression, state, depth), (ss, recv) =>
           this.arguments(e.arguments, ss, depth).map((row) =>
             row.state.mode !== 'next'
               ? row.state
-              : withValue(
-                  row.state,
-                  intrinsic && row.values.every(isData)
-                    ? evaluateIntrinsic(intrinsic, row.values)
-                    : intrinsic
-                      ? unknown
-                      : evaluateDataMethod(callee.name.text, recv, row.values),
-                ),
-          )
-        if (intrinsic) return args(state, unknown)
-        return this.continue(this.expression(callee.expression, state, depth), args)
-      }
+              : withValue(row.state, evaluateDataMethod(callee.name.text, recv, row.values)),
+          ),
+        )
       if (
         receiver?.kind === 'array' &&
         ts.isIdentifier(callee.expression) &&
@@ -1324,8 +1365,7 @@ export class Interpreter {
       args.flatMap(({ state: s, values }) => {
         if (s.mode !== 'next') return [s]
         if (fn !== undefined) {
-          const async = ts.getModifiers(fn)?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)
-          if (async && !awaited)
+          if (isAsync(fn) && !awaited && !adopted)
             return [this.stop(s, e, 'An unawaited helper may continue independently.')]
           const proof = values.every(isData) && dataEffects(this.source, fn, s.values)
           return this.invoke(fn, values, s, depth + 1, this.source.site(e)).map((body) => {
@@ -1339,6 +1379,9 @@ export class Interpreter {
                 unknown,
               )
             if (body.mode === 'unknown') return { ...body, stoppedAt: e }
+            // Argument errors above still throw locally. The adopted promise rejects at the function boundary.
+            if (adopted && body.mode === 'throw')
+              return { ...body, mode: 'return' as const, adoptedRejection: true as const }
             if (body.mode === 'return' && body.value.kind === 'function')
               return this.stop(body, e, 'Escaping closures are outside the supported subset.')
             return body.mode === 'return'

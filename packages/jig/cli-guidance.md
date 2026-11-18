@@ -230,6 +230,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   An explicit focus retains upstream caller paths and their direct slot targets.
   Other uses of the focus package and their downstream closures remain visible.
+  Markdown leads with the selected target's handoffs, exact caller slots, and shared uses.
+  Application views lead with the declared entrypoint's handoffs.
   Caller peers are not recursively expanded. Boundary notices count omitted incoming and outgoing connections.
   The focus is distinct from the declared entrypoint. Shared package identity does not imply a call or equivalent behavior.
 
@@ -253,6 +255,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   `src/internal/flow-inspection-scope.ts` provides target selection for both views.
 
   The application view links the complete configured inventory to one chart per Flow.
+  Its opening handoffs and the focused target's callers use the same configured orientation as topology.
   Each configured use retains its own analyzed routes, coverage, and caller continuations.
   Flow and target links use selectors. Call links use captured source identity.
   Link each retained child path to the continuation of its own caller.
