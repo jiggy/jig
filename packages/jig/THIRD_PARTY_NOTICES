@@ -152,6 +152,10 @@ Jig bundles the official ACP adapter for native Claude Code as optional inert
 support. The adapter is selected only when the operator explicitly enables
 Claude Code; Jig does not include the native Claude executable or credentials.
 
+Jig patches the adapter to suppress separate title inference and unsolicited
+authentication-status notifications in its finite ACP environment. See
+`packages/jig/patches/claude-agent-acp@0.107.0.md`.
+
 Copyright 2025 Zed Industries
 
 The adapter is licensed under Apache-2.0. Its bundle includes Anthropic's

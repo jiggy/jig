@@ -29,6 +29,37 @@ test('installed Claude adapter disables unreviewed SDK title inference when Jig 
   expect(source).toContain('typeof query.generateSessionTitle === "function"')
 })
 
+test('installed Claude adapter keeps auth status private when Jig blocks nonessential traffic', () => {
+  const installed = new URL(
+    './auth-status-reporter.js',
+    import.meta.resolve('@agentclientprotocol/claude-agent-acp'),
+  )
+  const script = `
+    import { AuthStatusReporter } from ${JSON.stringify(installed.href)}
+    const notifications = []
+    const reporter = new AuthStatusReporter({
+      push: () => notifications.push('_auth/status_update'),
+      pushAcp: () => notifications.push('auth/status_update'),
+    })
+    const status = { kind: 'api_key', label: 'Test key' }
+    reporter.set(status)
+    await new Promise(setImmediate)
+    console.log(JSON.stringify({ retained: reporter.current === status, notifications }))
+  `
+  for (const [setting, notifications] of [
+    ['1', []],
+    ['0', ['_auth/status_update', 'auth/status_update']],
+  ] as const) {
+    const result = Bun.spawnSync([process.execPath, '--no-env-file', '--eval', script], {
+      env: { ...process.env, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: setting },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(result.exitCode, result.stderr.toString()).toBe(0)
+    expect(JSON.parse(result.stdout.toString())).toEqual({ retained: true, notifications })
+  }
+})
+
 const temporary = new Set<string>()
 function environment(
   model: string,

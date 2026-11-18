@@ -8,3 +8,17 @@ diff --git a/dist/session-titles.js b/dist/session-titles.js
 +    // Suppress it independently of the native CLI's own traffic policy.
 +    return process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC !== "1" && typeof query.generateSessionTitle === "function";
  }
+diff --git a/dist/auth-status-reporter.js b/dist/auth-status-reporter.js
+--- a/dist/auth-status-reporter.js
++++ b/dist/auth-status-reporter.js
+@@ -65,6 +65,10 @@ export class AuthStatusReporter {
+             return;
+         }
+         this.current = next;
++        // Jig owns credential selection. Authentication-status pushes are outside its finite ACP exchange.
++        if (process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC === "1") {
++            return;
++        }
+         // ACP notifications get no reply, and clients that do not know the method
+         // drop it silently — send unconditionally and never fail a caller on it.
+         void Promise.resolve()

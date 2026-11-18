@@ -81,6 +81,10 @@ These links locate module rules. All selected domain requirements still apply.
   Keep recorded integration and hostile-host regressions.
   Do not duplicate upstream protocol behavior in another compatibility patch.
 
+  The Claude ACP patch suppresses unrequested title inference and unsolicited
+  authentication-status notifications when Jig disables nonessential traffic.
+  It preserves the adapter's internal authentication state.
+
   Every patch has a same-basename `.md` note explaining purpose, behavioral
   tests and removal conditions. A version bump alone proves none of them.
 
