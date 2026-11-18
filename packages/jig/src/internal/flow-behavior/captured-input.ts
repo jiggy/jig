@@ -24,6 +24,7 @@ export async function prepareFlowBehavior(
   project: PackageProjectValue,
   members: readonly CapturedFlowMember[],
   signal?: AbortSignal,
+  packagePath?: string,
 ): Promise<BehaviorReport> {
   const byPackage = new Map(project.flows.map((f) => [f.provenance.projectPath, f]))
   const targets: BehaviorTarget[] = []
@@ -157,6 +158,7 @@ export async function prepareFlowBehavior(
     {
       revision,
       focus,
+      ...(packagePath === undefined ? {} : { packagePath }),
       ...(entrypoint === undefined ? {} : { entrypoint }),
       targets,
       visible,

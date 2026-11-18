@@ -48,10 +48,10 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   const childPaths: BehaviorChildPath[] = []
   const childKeys = new Map<string, number>()
   let childSteps = 0
-  const { focus, entrypoint, revision } = input
+  const { focus, entrypoint, packagePath, revision } = input
 
   const primary = new AnalysisBudget(signal, focus === undefined ? 72_000 : BEHAVIOR_LIMITS.steps)
-  const first = focus ?? entrypoint
+  const first = focus ?? (packagePath === undefined ? entrypoint : undefined)
   const visible =
     first === undefined ? input.visible : [first, ...input.visible.filter((id) => id !== first)]
   // Finish all primary analysis before spending work on secondary alternatives.
@@ -76,7 +76,8 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     scopes.push(inspect(target, new AnalysisBudget(signal, BEHAVIOR_LIMITS.steps, primary)))
   }
   const secondary = new AnalysisBudget(signal, 96_000)
-  for (const [index, scope] of scopes.entries()) {
+  // Package inspection needs local source anchors for configured calls.
+  for (const [index, scope] of (packagePath === undefined ? scopes : []).entries()) {
     if (focus !== undefined && scope.target !== focus) continue
     const target = targets.get(scope.target)!
     const seeds = new Map<string, Handoff>()
@@ -115,6 +116,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   return {
     revision,
     focus,
+    ...(packagePath === undefined ? {} : { packagePath }),
     ...(entrypoint === undefined ? {} : { entrypoint }),
     inventory,
     scopes,

@@ -228,6 +228,9 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   It requires `--flow` and excludes an explicit target. Current and approved bases keep their existing semantics.
   Markdown bounds never truncate the complete JSON inventory.
 
+  `--package` scopes the existing configuration records to uses of one Flow package and their direct callers.
+  Every configured use remains distinct. The short Markdown report shows differing settings and exact caller slots.
+
   An explicit focus retains upstream caller paths and their direct slot targets.
   Other uses of the focus package and their downstream closures remain visible.
   Markdown leads with the selected target's handoffs, exact caller slots, and shared uses.
@@ -259,6 +262,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Each configured use retains its own analyzed routes, coverage, and caller continuations.
   Flow and target links use selectors. Call links use captured source identity.
   Link each retained child path to the continuation of its own caller.
+
+  Working-tree package inspection adds source locations to the same configured caller slots.
 
   Lead with route consequences and attach their unresolved checks.
   Give main routes their own analysis budget and disclose omissions and opaque regions.

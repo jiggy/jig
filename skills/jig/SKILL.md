@@ -20,6 +20,7 @@ Keep portable method guidance with FLOW and host configuration with Jig.
 
 For workflow edits, start with `jig inspect --flow`, or supply the target if known.
 Use the configured callers, slots, and shared implementations to find the source that owns the change.
+When starting from a Flow package directory, use `jig inspect --flow --package PATH` to find its configured uses.
 See [source behavior inspection](reference/build/results.md#inspect-source-behavior) for tracing a route or comparing specific revisions.
 Complete this step when the outcome, existing project state, and execution prerequisites are clear.
 

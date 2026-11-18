@@ -59,7 +59,10 @@ export function inspectWorkingFlowBehavior(
           inventory: [],
           childPaths: [],
           scopes: [],
-          unavailable: 'This view exceeds the presentation limits. Inspect a smaller target.',
+          unavailable:
+            options.packagePath === undefined
+              ? 'This view exceeds the presentation limits. Inspect a smaller target.'
+              : 'Package inspection exceeds the presentation limits. Add --json for the complete configured records.',
         }
 
       const { prepareFlowBehavior } = await import('./flow-behavior/captured-input.js')
@@ -72,6 +75,7 @@ export function inspectWorkingFlowBehavior(
         linked,
         members,
         signal,
+        options.packagePath,
       )
     },
     signal,
@@ -176,6 +180,11 @@ async function captureWorkingFlow<T>(
         : { defaultProviders: declaration.value.defaultProviders }),
     })
     const flowByPath = new Map(linked.flows.map((flow) => [flow.provenance.projectPath, flow]))
+    if (options.packagePath !== undefined && !flowByPath.has(options.packagePath))
+      invalid(
+        'INSPECTION_PACKAGE_MISSING',
+        'Flow package is absent from the working-tree configuration.',
+      )
     const requests = [
       ...linked.flows
         .filter((flow) => flow.directRun)

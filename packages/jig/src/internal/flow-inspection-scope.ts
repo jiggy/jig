@@ -9,7 +9,7 @@ export const record = (value: JsonValue | undefined): Record<string, JsonValue> 
 export const list = (value: JsonValue | undefined): JsonValue[] =>
   Array.isArray(value) ? value : []
 
-export type FlowContextOptions = Readonly<{ target?: string; all?: boolean }>
+export type FlowContextOptions = Readonly<{ target?: string; packagePath?: string; all?: boolean }>
 
 export function selectFlowContext(value: JsonValue, options: FlowContextOptions) {
   const snapshot = record(value)
@@ -20,9 +20,10 @@ export function selectFlowContext(value: JsonValue, options: FlowContextOptions)
     const entry = parseProjectEntrypoint(snapshot.entrypoint).target
     entrypoint = entry.kind === 'binding' ? `binding:${entry.id}` : flowSelector(entry.path)
   }
-  if (options.all && options.target !== undefined)
-    throw new Error('Complete topology cannot have a target focus')
-  const focus = options.all ? undefined : (options.target ?? entrypoint)
+  const { all, target, packagePath } = options
+  if (Number(all === true) + Number(target !== undefined) + Number(packagePath !== undefined) > 1)
+    throw new Error('Select only one inspection scope')
+  const focus = all || packagePath !== undefined ? undefined : (target ?? entrypoint)
   if (focus !== undefined && !byTarget.has(focus)) throw new Error('Configured target is missing')
   const allEdges = targets.flatMap((item) =>
     list(record(item.flow).routes)
@@ -65,8 +66,14 @@ export function selectFlowContext(value: JsonValue, options: FlowContextOptions)
           .filter((item) => item.target !== focus && item.package === packageId)
           .map((item) => String(item.target))
           .sort()
-  const seeds = focus === undefined ? byTarget.keys() : [focus, ...shared]
-  const selected = closure(seeds, adjacency)
+  const packageUses =
+    packagePath === undefined
+      ? []
+      : targets.filter((item) => item.package === packagePath).map((item) => String(item.target))
+  const selected =
+    packagePath === undefined
+      ? closure(focus === undefined ? byTarget.keys() : [focus, ...shared], adjacency)
+      : new Set([...packageUses.flatMap((id) => reverse.get(id) ?? []), ...packageUses])
   if (options.target !== undefined) {
     const upstream = closure([options.target, ...shared], reverse)
     for (const caller of upstream) {
@@ -75,7 +82,10 @@ export function selectFlowContext(value: JsonValue, options: FlowContextOptions)
       for (const peer of adjacency.get(caller) ?? []) selected.add(peer)
     }
   }
-  const included = targets.filter((item) => selected.has(String(item.target)))
+  const included =
+    packagePath === undefined
+      ? targets.filter((item) => selected.has(String(item.target)))
+      : [...selected].map((id) => byTarget.get(id)!)
   const edges = allEdges.filter(
     (edge) =>
       selected.has(edge.from) && (typeof edge.target !== 'string' || selected.has(edge.target)),
@@ -108,6 +118,7 @@ export function selectFlowContext(value: JsonValue, options: FlowContextOptions)
     edges,
     focus,
     entrypoint,
+    packageUses,
     shared,
     boundaries,
     state,

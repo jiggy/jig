@@ -1,4 +1,8 @@
-import { renderFlowOrientation } from './cli-flow-orientation.js'
+import {
+  type ConfiguredConnection,
+  renderFlowOrientation,
+  renderFlowPackageUses,
+} from './cli-flow-orientation.js'
 import {
   type FlowContextOptions,
   list,
@@ -66,12 +70,46 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
     included.length > PRIVATE_FLOW_CONTEXT_LIMITS.targets ||
     edges.length > PRIVATE_FLOW_CONTEXT_LIMITS.connections
   )
-    return '# Configured topology unavailable\n\nThe selected view exceeds fixed presentation bounds. Choose a smaller target. No graph was truncated.\n'
+    return options.packagePath === undefined
+      ? '# Configured topology unavailable\n\nThe selected view exceeds fixed presentation bounds. Choose a smaller target. No graph was truncated.\n'
+      : '# Flow package uses unavailable\n\nThe selected view exceeds fixed presentation bounds. Add --json for the complete configured records.\n'
   const working = snapshot.basis === 'working-tree'
+  const basis = `Basis: ${working ? 'captured working tree (unapproved)' : 'last locally approved configuration'}. Revision ${markdown(String(snapshot.revision))}.`
+  const configuredTargets = included.flatMap((item) =>
+    typeof item.package === 'string'
+      ? [
+          {
+            id: String(item.target),
+            implementation: item.package,
+            settings: record(item.flow).settings ?? {},
+          },
+        ]
+      : [],
+  )
+  const configuredConnections = edges.flatMap((edge): ConfiguredConnection[] => {
+    const slot = String(edge.slot)
+    if (typeof edge.target === 'string') return [{ from: edge.from, slot, to: edge.target }]
+    if (typeof edge.resource === 'string')
+      return [{ from: edge.from, slot, to: edge.resource, resource: true }]
+    return []
+  })
+  if (options.packagePath !== undefined)
+    return [
+      '# Flow package uses',
+      '',
+      basis,
+      '',
+      ...renderFlowPackageUses(
+        options.packagePath,
+        configuredTargets,
+        configuredConnections,
+        markdown,
+      ),
+    ].join('\n')
   const lines = [
     '# Configured topology',
     '',
-    `Basis: ${working ? 'captured working tree (unapproved)' : 'last locally approved configuration'}. Revision ${markdown(String(snapshot.revision))}.`,
+    basis,
     'Arrows identify available caller slots and selected targets. They do not establish order, conditions, caller reactions, or execution.',
     ...(focus === undefined
       ? []
@@ -89,28 +127,10 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
       '',
     )
   lines.push(
-    ...renderFlowOrientation(
-      included.flatMap((item) =>
-        typeof item.package === 'string'
-          ? [
-              {
-                id: String(item.target),
-                implementation: item.package,
-                settings: record(item.flow).settings ?? {},
-              },
-            ]
-          : [],
-      ),
-      edges.flatMap((edge) => {
-        const slot = String(edge.slot)
-        if (typeof edge.target === 'string') return [{ from: edge.from, slot, to: edge.target }]
-        if (typeof edge.resource === 'string')
-          return [{ from: edge.from, slot, to: edge.resource, resource: true }]
-        return []
-      }),
-      focus ?? entrypoint,
-      { text: markdown, includeCallers: options.target !== undefined },
-    ),
+    ...renderFlowOrientation(configuredTargets, configuredConnections, focus ?? entrypoint, {
+      text: markdown,
+      includeCallers: options.target !== undefined,
+    }),
   )
   const graph = ['flowchart LR']
   const ids = diagramIds(snapshot)
@@ -173,6 +193,9 @@ export function flowContextRecord(value: JsonValue, options: FlowContextOptions)
     state: selected.state,
     scope: {
       target: selected.focus ?? null,
+      ...(options.packagePath === undefined
+        ? {}
+        : { package: options.packagePath, configuredUses: selected.packageUses }),
       entrypoint: selected.entrypoint ?? null,
       sharedImplementation: selected.shared,
       boundaries: selected.boundaries,

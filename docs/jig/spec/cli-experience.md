@@ -901,7 +901,7 @@ Changed or unchecked environments recommend `jig review`, not `jig run`.
 Unsafe, incompatible or busy state produces a bounded diagnostic without repair.
 Ordinary redirected inspection emits JSON. Explicit `--json` selects JSON, while `--flow` selects the Markdown presentation below.
 
-`jig inspect --flow [target | --all]` explains supported current source behavior.
+`jig inspect --flow [target | --package PATH | --all]` explains supported current source behavior.
 Markdown remains literal through pipes.
 Use `--topology` for a configured connection map, `--approved` for retained approved topology, or `--json` for configured records.
 Each target retains its exact selector, package identity, settings, and resolved caller-local routes.
@@ -912,6 +912,17 @@ It overrides default entrypoint focus and cannot accompany an explicit target.
 The declared entrypoint remains identified separately.
 It requires `--flow` and applies equally to current and approved inspection.
 Markdown retains its presentation bounds. JSON returns the complete configured records.
+
+`--package PATH` selects every configured use of the same Flow package and its direct callers.
+Supply a project-relative package directory or an exact declared `npm:` package selector.
+The Markdown report lists each configured use, its caller slots, and the settings that differ across uses.
+Working-tree source analysis adds available call-site locations.
+An exact package with no configured use yields an empty list.
+
+Package scope supports current and approved topology.
+With `--json`, `scope.package` identifies the package and `scope.configuredUses` lists the configured selectors.
+The target records include those uses and their direct callers.
+This scope excludes a target operand, `--all`, `--snapshot`, and `--compare`.
 
 Markdown identifies each Binding's implementing package even when its settings are empty.
 Bidirectional controls in rendered labels and values are shown as visible code points.

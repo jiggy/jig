@@ -29,6 +29,7 @@ export interface BehaviorTarget {
 export interface BehaviorInput {
   readonly revision: string
   readonly focus: string | undefined
+  readonly packagePath?: string
   readonly entrypoint?: string
   readonly targets: readonly BehaviorTarget[]
   readonly visible: readonly string[]
@@ -130,6 +131,7 @@ export interface BehaviorReport {
   readonly unavailable?: string
   readonly revision: string
   readonly focus: string | undefined
+  readonly packagePath?: string
   readonly entrypoint?: string
   readonly inventory: readonly BehaviorTarget[]
   readonly childPaths: readonly BehaviorChildPath[]

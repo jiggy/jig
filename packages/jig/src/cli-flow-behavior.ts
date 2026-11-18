@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto'
-import { renderFlowOrientation } from './cli-flow-orientation.js'
+import {
+  type ConfiguredConnection,
+  renderFlowOrientation,
+  renderFlowPackageUses,
+} from './cli-flow-orientation.js'
 import type { ComparisonFact, compareFlowBehavior } from './internal/flow-behavior/comparison.js'
 import {
   type BehaviorGuard,
@@ -846,13 +850,29 @@ function authoredHandoffs(scope: Scope, linkedTargets?: ReadonlySet<string>): st
 
 export function renderFlowBehavior(report: BehaviorReport): string {
   const lines = [
-    '# Source behavior',
+    report.packagePath === undefined ? '# Source behavior' : '# Flow package uses',
     '',
     'Captured working tree (unapproved). Revision ' + text(report.revision) + '.',
     '',
   ]
   if (report.unavailable !== undefined) return [...lines, text(report.unavailable), ''].join('\n')
   const { focus, inventory, scopes } = report
+  if (report.packagePath !== undefined) {
+    const uses = new Set(
+      inventory
+        .filter((target) => target.implementation === report.packagePath)
+        .map((target) => target.id),
+    )
+    lines.push(
+      ...renderFlowPackageUses(
+        report.packagePath,
+        inventory,
+        configuredConnections(report, (_caller, target) => uses.has(target)),
+        text,
+      ),
+    )
+    return lines.join('\n')
+  }
   if (focus === undefined) return [...lines, ...applicationMap(report)].join('\n') + '\n'
   lines.push('## ' + text(focus), '', ...configuredOrientation(report, focus))
   const selected = scopes.find((scope) => scope.target === focus)
@@ -928,6 +948,23 @@ function configuredOrientation(
   focus: string | undefined,
   linkedTargets?: ReadonlySet<string>,
 ): string[] {
+  return renderFlowOrientation(
+    report.inventory,
+    configuredConnections(report, (caller, target) => caller === focus || target === focus),
+    focus,
+    {
+      text,
+      target: (id) =>
+        linkedTargets?.has(id) ? `[${text(id)}](#${idFor('target', id)})` : text(id),
+      includeCallers: linkedTargets === undefined,
+    },
+  )
+}
+
+function configuredConnections(
+  report: BehaviorReport,
+  relevant: (caller: string, target: string) => boolean,
+): ConfiguredConnection[] {
   const sites = new Map<string, Set<string>>()
   const edgeKey = (caller: string, slot: string, target: string) =>
     JSON.stringify([caller, slot, target])
@@ -935,7 +972,7 @@ function configuredOrientation(
     caller: string,
     handoff: { slot: string; target: string; site: SourceSite },
   ) => {
-    if (caller !== focus && handoff.target !== focus) return
+    if (!relevant(caller, handoff.target)) return
     const key = edgeKey(caller, handoff.slot, handoff.target)
     const found = sites.get(key) ?? new Set()
     found.add(site(handoff.site))
@@ -947,23 +984,13 @@ function configuredOrientation(
         if (step.kind === 'call' && step.caller === scope.target) recordSite(scope.target, step)
     for (const handoff of scope.authoredHandoffs ?? []) recordSite(scope.target, handoff)
   }
-  return renderFlowOrientation(
-    report.inventory,
-    report.inventory.flatMap((target) =>
-      [...target.slots].map(([slot, to]) => ({
-        from: target.id,
-        slot,
-        to,
-        sites: sites.get(edgeKey(target.id, slot, to)),
-      })),
-    ),
-    focus,
-    {
-      text,
-      target: (id) =>
-        linkedTargets?.has(id) ? `[${text(id)}](#${idFor('target', id)})` : text(id),
-      includeCallers: linkedTargets === undefined,
-    },
+  return report.inventory.flatMap((target) =>
+    [...target.slots].map(([slot, to]) => ({
+      from: target.id,
+      slot,
+      to,
+      sites: sites.get(edgeKey(target.id, slot, to)),
+    })),
   )
 }
 

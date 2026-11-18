@@ -8,12 +8,64 @@ interface ConfiguredTarget {
   readonly settings: JsonValue
 }
 
-interface ConfiguredConnection {
+export interface ConfiguredConnection {
   readonly from: string
   readonly slot: string
   readonly to: string
   readonly resource?: boolean
   readonly sites?: ReadonlySet<string> | undefined
+}
+
+function sourceLabel(edge: ConfiguredConnection, text: (value: string) => string): string {
+  const sites = [...(edge.sites ?? [])]
+  if (!sites.length) return ''
+  return (
+    ' · ' +
+    sites.slice(0, 2).map(text).join(', ') +
+    (sites.length > 2 ? ` +${sites.length - 2}` : '')
+  )
+}
+
+function configuredCallers(connections: readonly ConfiguredConnection[]) {
+  const incoming = new Map<string, ConfiguredConnection[]>()
+  for (const connection of connections) {
+    if (connection.resource) continue
+    const callers = incoming.get(connection.to) ?? []
+    callers.push(connection)
+    incoming.set(connection.to, callers)
+  }
+  return incoming
+}
+
+export function renderFlowPackageUses(
+  packagePath: string,
+  targets: readonly ConfiguredTarget[],
+  connections: readonly ConfiguredConnection[],
+  text: (value: string) => string,
+): string[] {
+  const lines = ['## ' + text(packagePath), '']
+  const uses = targets.filter((target) => target.implementation === packagePath)
+  if (!uses.length) return [...lines, 'No configured uses.', '']
+  const incoming = configuredCallers(connections)
+  const settings = uses.map((target) => record(target.settings))
+  const different = settings.length === 1 ? Object.keys(settings[0]!) : differingKeys(settings)
+  for (const [index, use] of uses.entries()) {
+    lines.push('### ' + text(use.id), '')
+    if (different.length)
+      lines.push(
+        (uses.length === 1 ? 'Settings: ' : 'Settings that differ: ') +
+          settingsText(settings[index]!, different, 512, text) +
+          '.',
+        '',
+      )
+    const callers = incoming.get(use.id) ?? []
+    if (!callers.length) lines.push('No configured callers.')
+    else
+      for (const caller of callers)
+        lines.push('- ' + text(caller.from) + ' · ' + text(caller.slot) + sourceLabel(caller, text))
+    lines.push('')
+  }
+  return lines
 }
 
 /** Lead with facts that help a reader find the owner and other uses of a handoff. */
@@ -31,22 +83,7 @@ export function renderFlowOrientation(
   if (!selected) return []
   const { text } = options
   const targetLabel = options.target ?? text
-  const incoming = new Map<string, ConfiguredConnection[]>()
-  for (const connection of connections) {
-    if (connection.resource) continue
-    const callers = incoming.get(connection.to) ?? []
-    callers.push(connection)
-    incoming.set(connection.to, callers)
-  }
-  const sourceLabel = (edge: ConfiguredConnection) => {
-    const sites = [...(edge.sites ?? [])]
-    if (!sites.length) return ''
-    return (
-      ' · ' +
-      sites.slice(0, 2).map(text).join(', ') +
-      (sites.length > 2 ? ` +${sites.length - 2}` : '')
-    )
-  }
+  const incoming = configuredCallers(connections)
   const callerLabel = (edge: ConfiguredConnection) =>
     targetLabel(edge.from) + ' · ' + text(edge.slot)
   const appendList = <T>(heading: string, items: readonly T[], label: (item: T) => string) => {
@@ -62,7 +99,7 @@ export function renderFlowOrientation(
     appendList(
       'Configured callers',
       incoming.get(selected.id) ?? [],
-      (edge) => callerLabel(edge) + sourceLabel(edge),
+      (edge) => callerLabel(edge) + sourceLabel(edge, text),
     )
     appendList(
       'Other configured uses of ' + text(selected.implementation),
@@ -89,7 +126,7 @@ export function renderFlowOrientation(
       text(edge.slot) +
       ' → ' +
       (edge.resource ? text(edge.to) : targetLabel(edge.to)) +
-      sourceLabel(edge),
+      sourceLabel(edge, text),
   )
   return lines
 }
@@ -101,21 +138,42 @@ function settingsDifference(
 ): string {
   const original = record(focus)
   const changes = record(alternative)
-  const keys = [...new Set([...Object.keys(original), ...Object.keys(changes)])].sort()
-  const differences = keys.filter((key) => {
-    if (!Object.hasOwn(original, key) || !Object.hasOwn(changes, key)) return true
-    return !Buffer.from(canonicalJson(original[key]!)).equals(canonicalJson(changes[key]!))
-  })
+  const differences = differingKeys([original, changes])
   if (!differences.length) return ''
-  const message = differences
-    .map(
-      (key) => key + ' = ' + (Object.hasOwn(changes, key) ? JSON.stringify(changes[key]) : 'unset'),
-    )
-    .join(', ')
   return (
     ' · settings differ: ' +
-    (Buffer.byteLength(message) > PRIVATE_FLOW_CONTEXT_LIMITS.inlineValueBytes
-      ? 'see topology'
-      : text(message))
+    settingsText(changes, differences, PRIVATE_FLOW_CONTEXT_LIMITS.inlineValueBytes, text)
   )
+}
+
+function differingKeys(settings: readonly Record<string, JsonValue>[]): string[] {
+  const keys = [...new Set(settings.flatMap(Object.keys))].sort()
+  const baseline = settings[0]!
+  return keys.filter((key) => {
+    const reference = Object.hasOwn(baseline, key)
+      ? Buffer.from(canonicalJson(baseline[key]!))
+      : undefined
+    return settings
+      .slice(1)
+      .some((row) =>
+        Object.hasOwn(row, key)
+          ? reference === undefined || !reference.equals(canonicalJson(row[key]!))
+          : reference !== undefined,
+      )
+  })
+}
+
+function settingsText(
+  settings: Record<string, JsonValue>,
+  keys: readonly string[],
+  limit: number,
+  text: (value: string) => string,
+): string {
+  const message = keys
+    .map(
+      (key) =>
+        key + ' = ' + (Object.hasOwn(settings, key) ? JSON.stringify(settings[key]) : 'unset'),
+    )
+    .join(', ')
+  return Buffer.byteLength(message) > limit ? 'see --json' : text(message)
 }

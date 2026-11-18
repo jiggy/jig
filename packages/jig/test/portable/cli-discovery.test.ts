@@ -662,16 +662,82 @@ test('complete topology includes disconnected targets and resources without entr
   expect(() => flowContextRecord(snapshot, { all: true, target: 'binding:main' })).toThrow()
 })
 
-test('complete topology grammar rejects conflicting operands before host acquisition', async () => {
+test('package inspection retains every configured use and its direct callers', () => {
+  const item = (target: string, pkg: string, settings: JsonValue, routes: JsonValue = []) => ({
+    target,
+    package: pkg,
+    state: 'environment-matches',
+    flow: { settings, routes },
+  })
+  const snapshot: JsonValue = {
+    revision: 'approved',
+    entrypoint: 'binding:root',
+    targets: [
+      item('binding:root', 'flows/root', {}, [{ slot: 'work', target: 'binding:producer' }]),
+      item('binding:producer', 'flows/producer', {}, [
+        { slot: 'chapter', target: 'binding:chapter' },
+        { slot: 'polish', target: 'binding:chapter' },
+      ]),
+      item('binding:comparison', 'flows/compare', {}, [
+        { slot: 'baseline', target: 'binding:control' },
+      ]),
+      item('binding:chapter', 'flows/draft', { prompt: 'chapter', shared: { b: 2, a: 1 } }),
+      item('binding:control', 'flows/draft', { shared: { a: 1, b: 2 } }),
+      item('binding:standalone', 'flows/draft', { prompt: 'control', shared: { a: 1, b: 2 } }),
+    ],
+  }
+  const options = { packagePath: 'flows/draft' }
+  const view = flowContextRecord(snapshot, options) as TopologyView
+  expect(view.scope).toMatchObject({
+    target: null,
+    package: 'flows/draft',
+    configuredUses: ['binding:chapter', 'binding:control', 'binding:standalone'],
+    omittedTargets: 1,
+  })
+  expect(view.targets.map((item) => item.target).sort()).toEqual([
+    'binding:chapter',
+    'binding:comparison',
+    'binding:control',
+    'binding:producer',
+    'binding:standalone',
+  ])
+  const output = renderFlowContext(snapshot, options)
+  expect(output).toContain('last locally approved configuration')
+  expect(output).toContain('### binding:chapter\n\nSettings that differ: prompt = "chapter".')
+  expect(output).toContain('- binding:producer · chapter\n- binding:producer · polish')
+  expect(output).toContain('### binding:control\n\nSettings that differ: prompt = unset.')
+  expect(output).toContain('- binding:comparison · baseline')
+  expect(output).toContain('### binding:standalone')
+  expect(output).toContain('No configured callers.')
+  expect(output).not.toContain('shared')
+  expect(output).not.toContain('binding:root')
+  expect(renderFlowContext(snapshot, { packagePath: 'flows/unused' })).toContain(
+    'No configured uses.',
+  )
+})
+
+test('inspection grammar rejects conflicting scopes before host acquisition', async () => {
   for (const args of [
     ['inspect', '--all'],
     ['inspect', '--flow', '--all', '--all'],
     ['inspect', '--flow', '--all', 'binding:main'],
     ['inspect', '--flow', '--all', '--result', 'saved'],
+    ['inspect', '--package', 'flows/repair'],
+    ['inspect', '--flow', '--package'],
+    ['inspect', '--flow', '--package', '../flows/repair'],
+    ['inspect', '--flow', '--package', 'flows/repair', '--package', 'flows/retry'],
+    ['inspect', '--flow', '--package', 'flows/repair', 'binding:main'],
+    ['inspect', '--flow', '--package', 'flows/repair', '--all'],
+    ['inspect', '--flow', '--package', 'flows/repair', '--snapshot'],
+    ['inspect', '--flow', '--package', 'flows/repair', '--compare', 'before.json'],
   ]) {
     expect(privateCliRequiresHost(args)).toBe(false)
     expect(await main(args, { writeError: () => {} })).toBe(2)
   }
+  expect(privateCliRequiresHost(['inspect', '--flow', '--package', './flows/repair'])).toBe(true)
+  expect(
+    privateCliRequiresHost(['inspect', '--flow', '--package', 'npm:@test/repair', '--approved']),
+  ).toBe(false)
   expect(privateCliRequiresHost(['inspect', '--flow', '--all'])).toBe(true)
   expect(privateCliRequiresHost(['inspect', '--flow', '--snapshot'])).toBe(true)
   expect(privateCliRequiresHost(['inspect', '--flow', '--compare', 'before.json'])).toBe(true)
