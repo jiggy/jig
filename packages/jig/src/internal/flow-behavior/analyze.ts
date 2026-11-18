@@ -7,6 +7,7 @@ import {
   evaluateIntrinsic,
   isData,
 } from './data.js'
+import { readOnlyOpen } from './file-access.js'
 import {
   BEHAVIOR_LIMITS,
   type AuthoredHandoff,
@@ -27,6 +28,7 @@ import {
   resultText,
   truth,
   unknown,
+  type FileHandleValue,
   type Value,
 } from './values.js'
 
@@ -38,6 +40,7 @@ export interface State {
   readonly value: Value
   readonly site?: SourceSite
   readonly stoppedAt?: ts.Node
+  readonly closeAttempted?: ReadonlySet<FileHandleValue>
 }
 
 export interface ChildResult {
@@ -472,7 +475,13 @@ export class Interpreter {
               : this.advance(finalizer, next(s), depth).map((fin) =>
                   fin.mode !== 'next'
                     ? fin
-                    : { ...s, values: fin.values, steps: fin.steps, assumptions: fin.assumptions },
+                    : {
+                        ...s,
+                        values: fin.values,
+                        steps: fin.steps,
+                        assumptions: fin.assumptions,
+                        ...(fin.closeAttempted ? { closeAttempted: fin.closeAttempted } : {}),
+                      },
                 ),
           ),
         )
@@ -1012,6 +1021,32 @@ export class Interpreter {
     }
     if (ts.isPropertyAccessExpression(callee)) {
       const receiver = this.boundValue(callee.expression, state)
+      if (receiver?.kind === 'file-handle' && awaited && e.arguments.length === 0) {
+        const method = callee.name.text
+        if (state.closeAttempted?.has(receiver))
+          return [this.stop(state, e, 'File handle use after a close attempt is unresolved.')]
+        if (method === 'stat')
+          return this.fileOperation(e, state, method, receiver.path, { kind: 'file-stat' })
+        if (method === 'readFile')
+          return this.fileOperation(e, state, method, receiver.path, unknown)
+        if (method === 'close')
+          return this.fileOperation(
+            e,
+            {
+              ...state,
+              closeAttempted: new Set([...(state.closeAttempted ?? []), receiver]),
+            },
+            method,
+            receiver.path,
+            missing,
+          )
+      }
+      if (
+        receiver?.kind === 'file-stat' &&
+        callee.name.text === 'isFile' &&
+        e.arguments.length === 0
+      )
+        return [withValue(state, unknown)]
       const reporting = this.reportCall(e, callee.name.text, receiver, state, depth)
       if (reporting !== undefined) return reporting
       if (ts.isCallExpression(unwrap(callee.expression))) {
@@ -1192,6 +1227,27 @@ export class Interpreter {
                 : body
           })
         }
+        if (
+          imported?.module === 'node:fs/promises' &&
+          imported.member === 'open' &&
+          awaited &&
+          values.length >= 1 &&
+          values.length <= 2 &&
+          readOnlyOpen(this.source, e.arguments[1], values[1])
+        ) {
+          const filename = values[0]!
+          if (
+            filename.kind === 'path' ||
+            filename.kind === 'unknown' ||
+            (filename.kind === 'literal' && typeof filename.value === 'string')
+          ) {
+            const path = describe(filename)
+            return this.fileOperation(e, s, 'open', 'read-only · ' + path, {
+              kind: 'file-handle',
+              path,
+            })
+          }
+        }
         if (imported?.module === 'node:fs/promises' && imported.member === 'writeFile' && awaited) {
           return [
             withValue(
@@ -1252,6 +1308,26 @@ export class Interpreter {
           }
         })
       }),
+    )
+  }
+
+  private fileOperation(
+    call: ts.CallExpression,
+    state: State,
+    operation: 'open' | 'stat' | 'readFile' | 'close',
+    detail: string,
+    result: Value,
+  ): State[] {
+    const site = this.source.site(call)
+    const attempted = add(state, { kind: 'effect', owner: this.target.id, operation, detail, site })
+    return this.branch(
+      call,
+      unknown,
+      attempted,
+      (branch, completed) => [
+        completed ? withValue(branch, result) : { ...branch, mode: 'throw', site, value: unknown },
+      ],
+      operation + ' completes',
     )
   }
 

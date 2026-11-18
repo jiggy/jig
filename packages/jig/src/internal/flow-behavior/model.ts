@@ -94,6 +94,15 @@ export type BehaviorStep =
       readonly contractPath?: string
     }
 
+export function isFileOperation(
+  step: BehaviorStep,
+): step is Extract<BehaviorStep, { kind: 'effect' }> {
+  return (
+    step.kind === 'effect' &&
+    ['open', 'stat', 'readFile', 'close', 'writeFile'].includes(step.operation)
+  )
+}
+
 export interface BehaviorChildPath {
   readonly input: string
   readonly steps: readonly BehaviorStep[]

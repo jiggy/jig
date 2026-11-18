@@ -29,6 +29,8 @@ The alternatives bound preserves available continuations and distinct exits, and
 Authored fallback retains literal configured handoffs and result exit checks without treating shadowed receivers as Flow calls.
 Finite Set spreads retain visible progress before an opaque file operation.
 A known configured early return excludes later call sites from the authored fallback.
+Read-only file validation preserves attempts and finalizer order.
+Writable opens and aliases after a close stay unresolved.
 
 `portable/package-project.test.ts` checks source-only linking and refusal to create activation requests.
 Unpinned Agent resources remain unselected for inspection and still require an operator choice for review.

@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto'
-import type {
-  BehaviorGuard,
-  BehaviorReport,
-  BehaviorReturn,
-  BehaviorStep,
-  BehaviorTarget,
-  SourceSite,
+import {
+  isFileOperation,
+  type BehaviorGuard,
+  type BehaviorReport,
+  type BehaviorReturn,
+  type BehaviorStep,
+  type BehaviorTarget,
+  type SourceSite,
 } from './internal/flow-behavior/model.js'
 
 type Route = BehaviorReport['scopes'][number]['routes'][number]
@@ -117,7 +118,7 @@ function diagramBody(routes: readonly Route[], prefix: string, start: string): s
         step.kind !== 'call' &&
         step.kind !== 'end' &&
         step.kind !== 'repeat' &&
-        !writesFile(step)
+        !isFileOperation(step)
       )
         continue
       let guards = pending
@@ -170,8 +171,13 @@ function diagramBody(routes: readonly Route[], prefix: string, start: string): s
   function output(id: string): void {
     if (visited.has(id)) return
     visited.add(id)
-    for (const { guards, target } of nodes.get(id)?.links ?? []) {
-      const guard = guards[0]
+    const links = nodes.get(id)?.links ?? []
+    for (const { guards, target } of links) {
+      // A check common to each outgoing edge cannot explain their different destinations.
+      const guard =
+        guards.find((candidate, index) =>
+          links.some((link) => JSON.stringify(link.guards[index]) !== JSON.stringify(candidate)),
+        ) ?? guards[0]
       const edge = guard
         ? 'Unresolved check at ' +
           site(guard.site) +
@@ -214,7 +220,7 @@ function selectRoutes(scope: Scope): Route[] {
             step.kind === 'call' ||
             step.kind === 'end' ||
             step.kind === 'repeat' ||
-            writesFile(step),
+            isFileOperation(step),
         ),
         progress(route, scope.target),
       ],
@@ -228,7 +234,29 @@ function selectRoutes(scope: Scope): Route[] {
     return terminal?.kind === 'end' && terminal.completion === 'return'
   })
   const exceptional = group.filter((route) => !returned.includes(route))
-  return [...returned.slice(0, 4), ...exceptional.slice(0, 2)]
+  const readSequence = (route: Route) =>
+    route.some((step) => isFileOperation(step) && step.operation !== 'writeFile')
+  const partial = exceptional.find((route) => {
+    const terminal = route.at(-1)
+    return terminal?.kind === 'end' && terminal.completion === 'unknown' && readSequence(route)
+  })
+  const refusal =
+    partial &&
+    exceptional.find((route) => {
+      const terminal = route.at(-1)
+      return (
+        terminal?.kind === 'end' &&
+        terminal.completion === 'throw' &&
+        terminal.detail !== 'Throws' &&
+        readSequence(route)
+      )
+    })
+  const stops = new Set([
+    ...(partial ? [partial] : []),
+    ...(refusal ? [refusal] : []),
+    ...exceptional,
+  ])
+  return [...returned.slice(0, 4), ...[...stops].slice(0, 2)]
 }
 
 function withoutChildPath(key: string, value: unknown): unknown {
@@ -244,7 +272,7 @@ function continuation(route: Route, at: number, call: Call): BehaviorStep[] {
     }
     if (
       after.length < 3 &&
-      (step.kind === 'condition' || (writesFile(step) && step.owner === call.caller))
+      (step.kind === 'condition' || (isFileOperation(step) && step.owner === call.caller))
     )
       after.push(step)
   }
@@ -284,10 +312,15 @@ function callDetails(routes: readonly Route[]): { shown: CallDetails; omitted: n
 }
 
 function consequences(scope: Scope, routes: readonly Route[], details?: CallDetails): string[] {
+  const hasReads = routes.some((route) =>
+    route.some((step) => isFileOperation(step) && step.operation !== 'writeFile'),
+  )
   const rows = [
     '### Consequences',
     '',
-    '| Result or stop | Calls | Last progress requested here | File writes attempted |',
+    '| Result or stop | Calls | Last progress requested here | ' +
+      (hasReads ? 'File operations attempted' : 'File writes attempted') +
+      ' |',
     '| --- | --- | --- | --- |',
   ]
   const summaries = new Set<string>()
@@ -303,12 +336,14 @@ function consequences(scope: Scope, routes: readonly Route[], details?: CallDeta
         return ['[' + title + '](#' + anchor + '-path-' + match.index + ')']
       return [cases ? '[' + title + '](#' + anchor + ')' : title]
     })
-    const writes = route.filter((step) => step.kind === 'effect' && writesFile(step))
+    const fileOperations = hasReads
+      ? route.filter(isFileOperation).map((step) => step.operation + ' · ' + step.detail)
+      : route.filter(writesFile).map((step) => step.detail)
     const values = [
       terminal && terminal.kind !== 'condition' ? text(label(terminal)) : 'Unknown',
       calls.join(' → ') || '—',
       text(progress(route, scope.target)),
-      text(writes.map((write) => write.detail).join(' · ')) || '—',
+      text(fileOperations.join(' → ')) || '—',
     ]
     summaries.add('| ' + values.join(' | ') + ' |')
   }
