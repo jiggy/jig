@@ -536,23 +536,38 @@ function contractChecks(scope: Scope): string[] {
 }
 
 function otherResults(routes: readonly Route[], shown: readonly Route[]): string[] {
-  const displayed = new Set(
-    shown
-      .map((route) => route.at(-1))
-      .flatMap((step) =>
-        step?.kind === 'end' && step.completion === 'return' ? [label(step)] : [],
-      ),
-  )
-  const additional = new Map<string, SourceSite>()
+  function outcome(route: Route): { key: string; title: string; source: SourceSite } | undefined {
+    const end = route.at(-1)
+    if (end?.kind !== 'end') return undefined
+    const title = label(end)
+    if (end.completion === 'return' && end.returned) return { key: title, title, source: end.site }
+    if (end.completion !== 'throw' || end.detail === 'Throws') return undefined
+    const check = route.find(
+      (step) =>
+        step.kind === 'condition' &&
+        step.unresolved &&
+        !step.taken &&
+        step.site.path === end.site.path &&
+        step.site.line === end.site.line &&
+        step.site.column === end.site.column,
+    )
+    return {
+      key: title + ' · ' + site(end.site),
+      title:
+        check?.kind === 'condition' ? title + ' when ' + guardLabel(check) + ' is false' : title,
+      source: end.site,
+    }
+  }
+  const displayed = new Set(shown.map((route) => outcome(route)?.key))
+  const additional = new Map<string, { title: string; source: SourceSite }>()
   for (const route of routes) {
-    const step = route.at(-1)
-    if (step?.kind !== 'end' || step.completion !== 'return' || !step.returned) continue
-    const title = label(step)
-    if (!displayed.has(title) && !additional.has(title)) additional.set(title, step.site)
+    const result = outcome(route)
+    if (result && !displayed.has(result.key) && !additional.has(result.key))
+      additional.set(result.key, result)
   }
   if (!additional.size) return []
   const lines = ['### Other analyzed results', '']
-  for (const [title, source] of [...additional].slice(0, 8))
+  for (const { title, source } of [...additional.values()].slice(0, 8))
     lines.push('- ' + text(title) + ' (' + text(site(source)) + ')')
   if (additional.size > 8) lines.push('- ' + (additional.size - 8) + ' additional results omitted.')
   return [...lines, '']

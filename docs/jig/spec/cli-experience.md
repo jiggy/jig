@@ -987,6 +987,9 @@ Reachability, execution order, and returned values remain unresolved there.
 
 Supported read-only file opens and subsequent metadata, read, and close operations appear as attempts.
 The map shows conditional success and failure, while file contents and runtime metadata remain unknown.
+It can show known numeric operands at entry to a comparison.
+Supported strict UTF-8 decoding and JSON parsing of read bytes retain separate validation failures.
+Additional source results include distinct throws with a known error type or message when the main diagram omits them.
 
 Supported finite array loops show repeated calls and early stops.
 Other synchronous collection loops can show repetition with an unknown count.
