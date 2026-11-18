@@ -3195,6 +3195,7 @@ export function renderFailure(error: unknown, runtime: Pick<CliRuntime, 'writeEr
       PROJECT_ACP_UNAVAILABLE:
         'configure the native client named in the affected ACP grant: its operator executable, model and authentication; then retry jig review',
       PACKAGE_BUN_LOCK_INVALID: 'bun.lock is invalid; correct the supplied lock',
+      PACKAGE_FLOW_IMPORT_OUTSIDE_CAPTURE: error.message,
       PACKAGE_BUN_LOCK_STALE: staleDependencyLockHint(error),
       PACKAGE_BUN_INPUT_LIMIT:
         'the selected package sources exceed the preparation limit; reduce captured package files and see https://jig.md/build/dependencies',

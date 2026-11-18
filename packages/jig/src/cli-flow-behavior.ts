@@ -916,6 +916,56 @@ function authoredHandoffs(scope: Scope, linkedTargets?: ReadonlySet<string>): st
   return [...lines, '']
 }
 
+function importBoundaryNotice(report: BehaviorReport): string[] {
+  const boundary = report.importBoundary
+  const selected = report.focus ?? report.entrypoint
+  const selectedTarget = report.inventory.find((target) => target.id === selected)
+  if (boundary === undefined) {
+    if (!selectedTarget || report.packagePath !== undefined) return []
+    if (![...selectedTarget.slots.values()].some((target) => /^(?:flow|binding):/.test(target)))
+      return []
+    return [
+      'Each Flow has its own package. Use configured slots to call other Flows and declared dependencies to share code.',
+      '',
+    ]
+  }
+  const lines = [
+    '**Flow package boundary**',
+    '',
+    text(`${boundary.sourcePackage}/${boundary.file}:${boundary.line}`) +
+      ' imports ' +
+      text(JSON.stringify(boundary.specifier)) +
+      ', outside ' +
+      text(boundary.sourcePackage) +
+      '.',
+  ]
+  const targets = new Map(report.inventory.map((target) => [target.id, target.implementation]))
+  const handoffs = report.inventory
+    .filter(
+      (target) =>
+        target.implementation === boundary.sourcePackage &&
+        (report.packagePath !== undefined || target.id === selected),
+    )
+    .flatMap(({ id, slots }) =>
+      [...slots].flatMap(([slot, target]) =>
+        boundary.targetPackage !== undefined && targets.get(target) === boundary.targetPackage
+          ? [`${id} · ${slot} → ${target}`]
+          : [],
+      ),
+    )
+  if (handoffs.length) {
+    lines.push('Configured calls to that package:')
+    for (const handoff of handoffs.slice(0, 4)) lines.push('- ' + text(handoff))
+    if (handoffs.length > 4) lines.push('- ' + (handoffs.length - 4) + ' more configured calls.')
+    lines.push('')
+  }
+  lines.push(
+    'Use the Flow call for delegation or a declared dependency for shared code. Review checks the files available to the Run.',
+    '',
+  )
+  return lines
+}
+
 export function renderFlowBehavior(report: BehaviorReport): string {
   const lines = [
     report.packagePath === undefined ? '# Source behavior' : '# Flow package uses',
@@ -938,6 +988,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
         configuredConnections(report, (_caller, target) => uses.has(target)),
         text,
       ),
+      ...importBoundaryNotice(report),
       ...renderCallReferences(scopes, inventory, (caller) => {
         const slots = inventory.find((target) => target.id === caller)?.slots
         return new Set([...(slots ?? [])].flatMap(([slot, id]) => (uses.has(id) ? [slot] : [])))
@@ -946,7 +997,12 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     return lines.join('\n')
   }
   if (focus === undefined) return [...lines, ...applicationMap(report)].join('\n') + '\n'
-  lines.push('## ' + text(focus), '', ...configuredOrientation(report, focus))
+  lines.push(
+    '## ' + text(focus),
+    '',
+    ...configuredOrientation(report, focus),
+    ...importBoundaryNotice(report),
+  )
   const selected = scopes.find((scope) => scope.target === focus)
   if (selected) {
     lines.push(...renderCallReferences([selected], inventory))
@@ -1188,6 +1244,7 @@ function applicationMap(report: BehaviorReport): string[] {
       '### Project entrypoint',
       '',
       ...configuredOrientation(report, entry.id, linkedTargets),
+      ...importBoundaryNotice(report),
     )
   lines.push(
     '| Configured target | Flow | Role | Supported continuations |',

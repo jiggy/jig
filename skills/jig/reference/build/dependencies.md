@@ -287,6 +287,10 @@ owns supported ranges, precedence, shared budgets, and fixed constraints.
 A package with no external dependencies needs neither a dependency manifest nor
 a lock for execution. Relative imports of its own source files remain supported.
 
+When review finds an eager, explicit relative source import outside the Flow whose
+module is absent from the captured Run files, it reports `PACKAGE_FLOW_IMPORT_OUTSIDE_CAPTURE`.
+Use a configured Flow call for delegation or a declared dependency for shared code.
+
 A `FLOW.md` package uses the bundled interpreter and needs no SDK dependency or
 installation. Its resources do not trigger dependency preparation.
 [Project policy](../spec/project-policy.md#4-flow-members-and-direct-targets)

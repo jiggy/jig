@@ -13,6 +13,9 @@ It also checks exact Jig requirements before evaluating working-tree declaration
 The installed lifecycle case verifies relative Flow selectors in current and approved inspection.
 
 It also inspects a consumer before and after a callee edit, then verifies the unchanged caller through a native Run.
+It checks that an eager sibling import identifies its configured handoff, fails
+review, and leaves the prior approval readable. A local helper and type-only
+or unvisited imports preserve the successful native Run.
 The behavior snapshot comparison verifies changed caller routes and preserves unrelated Binding facts.
 Portable behavior comparison checks source-linked progress changes and keeps ambiguous paths available in the detailed output.
 Installed exploration verifies that the Run map retains its approved source cases after a working-tree edit.

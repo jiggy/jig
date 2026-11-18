@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, posix, resolve } from 'node:path'
 import { invalid } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
 import { captureOpenedPackageDirectory } from '../package/capture.js'
@@ -23,6 +23,7 @@ import { isProtectedProjectPath } from '../project/paths.js'
 import { retainFlowSourcePackages } from '../project/retained-flow.js'
 import { openPrivateProjectRoot } from '../project/root.js'
 import type { BehaviorReport } from './flow-behavior/model.js'
+import { findFlowImportBoundary } from './flow-import-boundary.js'
 import { type FlowContextOptions, selectFlowContext } from './flow-inspection-scope.js'
 import { privateDomainDigest } from './identity.js'
 import { PRIVATE_FLOW_CONTEXT_LIMITS } from './inspection-policy.js'
@@ -66,7 +67,7 @@ export function inspectWorkingFlowBehavior(
         }
 
       const { prepareFlowBehavior } = await import('./flow-behavior/captured-input.js')
-      return prepareFlowBehavior(
+      const report = await prepareFlowBehavior(
         resolve(project),
         String(selection.snapshot.revision),
         selection.focus,
@@ -77,6 +78,33 @@ export function inspectWorkingFlowBehavior(
         signal,
         options.packagePath,
       )
+      const orientation = selection.focus ?? selection.entrypoint
+      const sourcePackage =
+        options.packagePath ??
+        selection.included.find((item) => item.target === orientation)?.package
+      if (typeof sourcePackage !== 'string' || sourcePackage.startsWith('npm:')) return report
+      const source = members.find((member) => member.provenance.projectPath === sourcePackage)
+      if (source === undefined) return report
+      const boundary = await findFlowImportBoundary(
+        source.captured,
+        source.inspected.entrypoint.path,
+        {
+          signal,
+        },
+      )
+      if (boundary === undefined) return report
+      const importedPath = posix.join(sourcePackage, boundary.target)
+      const targetPackage = linked.flows.find(({ provenance }) =>
+        importedPath.startsWith(provenance.projectPath + '/'),
+      )?.provenance.projectPath
+      return {
+        ...report,
+        importBoundary: {
+          ...boundary,
+          sourcePackage,
+          ...(targetPackage === undefined ? {} : { targetPackage }),
+        },
+      }
     },
     signal,
   )

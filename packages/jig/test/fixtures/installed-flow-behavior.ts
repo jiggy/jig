@@ -137,4 +137,35 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
     outcome: 'done',
     output: { status: 'attention' },
   })
+
+  const lock = await readFile(join(project, 'jig.lock'), 'utf8')
+  const approved = await inspect('--approved', '--json')
+  const entryWithHelper = "import './boundary.ts'\n" + importer
+  await put('flows/import/FLOW.ts', entryWithHelper)
+  await put('flows/convert/value.ts', 'export const value = "converter-owned"\n')
+  await put('flows/import/boundary.ts', "export { value } from '../convert/value.ts'\n")
+  const boundary = await inspect('binding:code')
+  expect(boundary.stdout).toContain('flows/import/boundary.ts:1')
+  expect(boundary.stdout).toContain('imports "../convert/value.ts", outside flows/import.')
+  expect(boundary.stdout).toContain('binding:code · converter → flow:flows/convert')
+  await expect(
+    command([cli, 'review', '--yes', '--allow-resolution-network'], project),
+  ).rejects.toThrow('PACKAGE_FLOW_IMPORT_OUTSIDE_CAPTURE')
+  expect(await readFile(join(project, 'jig.lock'), 'utf8')).toBe(lock)
+  expect((await inspect('--approved', '--json')).stdout).toBe(approved.stdout)
+
+  await put('flows/import/local.ts', 'export const value = "caller-owned"\n')
+  await put(
+    'flows/import/boundary.ts',
+    "import type { Missing } from '../convert/missing.ts'\nexport { value } from './local.ts'\nexport type Optional = Missing\n",
+  )
+  await put('flows/import/unused.ts', "export * from '../convert/missing.ts'\n")
+  const local = await inspect('binding:code')
+  expect(local.stdout).not.toContain('**Flow package boundary**')
+  await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
+  const repaired = await command([cli, 'run', 'binding:code', '--input', '{}', '--json'], project)
+  expect(JSON.parse(repaired.stdout)).toMatchObject({
+    status: 'succeeded',
+    output: { status: 'attention' },
+  })
 }

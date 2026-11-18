@@ -73,6 +73,7 @@ import {
 import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
 import type { PrivateExecutionBackend } from './execution-backend.js'
 import type { PrivateFileRecovery } from './file-command.js'
+import { checkFlowImportBoundary } from './flow-import-boundary.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import type { PrivateInstalledBunSupport } from './installed-bun-support.js'
@@ -464,7 +465,9 @@ function createSession(
               }
             },
             ...(host.agentOverride === undefined ? {} : { agentOverride: host.agentOverride }),
-            ...(host.onAgentSelection === undefined ? {} : { onAgentSelection: host.onAgentSelection }),
+            ...(host.onAgentSelection === undefined
+              ? {}
+              : { onAgentSelection: host.onAgentSelection }),
             reviewEvaluation: async (grant, captured) => {
               budget.reserve(
                 captured.digest,
@@ -660,6 +663,13 @@ function createSession(
                 } else {
                   const dependencyInput = await inspectPrivateBunPackageInput(source)
                   if (dependencyInput.state === 'direct') {
+                    await checkFlowImportBoundary(
+                      source,
+                      request.entrypoint.path,
+                      request.packagePath,
+                      '',
+                      budget.signal,
+                    )
                     execution = privateBunExecutionArtifact(request.package)
                   } else {
                     execution = await prepareExecution(source)
@@ -701,6 +711,13 @@ function createSession(
                       })
                       try {
                         budget.signal.throwIfAborted()
+                        await checkFlowImportBoundary(
+                          assembled,
+                          request.entrypoint.path,
+                          request.packagePath,
+                          admitted.execution.layout.flowRoot,
+                          budget.signal,
+                        )
                         const execution = privateBunExecutionArtifact(
                           await publishCapturedPackage(packageStoreRoot, assembled),
                           admitted.execution.layout,
@@ -745,6 +762,13 @@ function createSession(
                     }),
                   )
                   try {
+                    await checkFlowImportBoundary(
+                      prepared.captured,
+                      request.entrypoint.path,
+                      request.packagePath,
+                      prepared.layout.flowRoot,
+                      budget.signal,
+                    )
                     budget.retain(
                       prepared.captured.files,
                       request.packagePath,
@@ -1173,6 +1197,7 @@ export function projectError(
           'INVALID_CANDIDATE',
           [
             'AUTHORING_COMPILE',
+            'PACKAGE_FLOW_IMPORT_OUTSIDE_CAPTURE',
             'PROJECT_JIG_VERSION_MISMATCH',
             'PROJECT_JIG_REQUIREMENT_INVALID',
           ].includes(error.code)
@@ -1313,6 +1338,7 @@ function isCandidateDiagnosticCode(code: string): boolean {
     [
       'AUTHORING_COMPILE',
       'AUTHORING_CONFLICT',
+      'PACKAGE_FLOW_IMPORT_OUTSIDE_CAPTURE',
       'PROJECT_JIG_VERSION_MISMATCH',
       'PROJECT_JIG_REQUIREMENT_INVALID',
       'PROJECT_CHILD_BOUND_ATTACHMENTS_UNSUPPORTED',

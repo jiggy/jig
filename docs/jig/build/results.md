@@ -312,6 +312,10 @@ When you select a target, start with its configured callers and their exact slot
 Other configured uses of the same Flow include their own callers and relevant settings differences.
 Use these connections to locate the right handoff before changing a shared implementation.
 
+The opening view can flag a relative runtime import that leaves the Flow package.
+Use the source location and any matching configured slots to find the owning package.
+For shared code, declare a dependency. Review checks supported imports against the captured Run files.
+
 When you know the package path, use `--package` to see every configured use and its direct caller slots.
 This works for packages that require a Binding. The report shows settings that differ across uses and adds source locations where available.
 

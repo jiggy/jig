@@ -1,3 +1,4 @@
+import type { FlowImportBoundary } from '../flow-import-boundary.js'
 import type { JsonValue } from '../../json.js'
 
 export interface SourceSite {
@@ -160,6 +161,10 @@ export interface BehaviorReport {
   readonly entrypoint?: string
   readonly inventory: readonly BehaviorTarget[]
   readonly childPaths: readonly BehaviorChildPath[]
+  readonly importBoundary?: FlowImportBoundary & {
+    readonly sourcePackage: string
+    readonly targetPackage?: string
+  }
   readonly scopes: readonly {
     readonly target: string
     readonly routes: readonly (readonly BehaviorStep[])[]
