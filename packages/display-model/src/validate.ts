@@ -562,7 +562,10 @@ function json(value: unknown): void {
     if (!Number.isFinite(value)) fail()
     return
   }
-  if (!value || typeof value !== 'object') fail()
+  if (!value || typeof value !== 'object') {
+    fail()
+    return
+  }
   for (const child of Object.values(value)) json(child)
 }
 
