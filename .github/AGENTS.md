@@ -488,6 +488,7 @@ The workbench visual workflow builds the exact PR-base renderer in an isolated w
 ## Verification
 
 - Quick development checks mount production web assets in Chromium against an authenticated inert producer.
+  The job allowance covers browser dependency installation alongside development and browser checks.
   They verify application material, host inspection, responsive navigation, focus and evidence delivery.
   These checks establish browser behavior, not native execution or visual parity with an approved mockup.
 - After any automation change, validate the called script locally where
