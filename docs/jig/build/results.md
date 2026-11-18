@@ -322,6 +322,8 @@ jig inspect --flow --compare before.json
 The comparison highlights affected targets, changes to calls and effects, and coverage gaps.
 Follow the source reference to investigate a change, such as a request for 4/4 progress on an early-return path.
 Calls and effects can appear on only one side when changed conditions prevent a path match.
+The summary can show a newly captured call order even when the complete paths cannot be paired.
+
 Add `--all` to compare the full paths.
 Inspect an affected target for child-path detail.
 Use representative Runs to verify actual outputs, progress, and delivered files.

@@ -247,6 +247,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Human working-tree `--flow` inspection opens the behavior view by default.
   The comparison renders changed source evidence from `--snapshot` and a fresh capture.
   It leads with source-linked changes on paths with uniquely corresponding captured checks.
+  Unmatched-path summaries can retain call order from current source paths.
+
   `--all` expands both sides with their ordered facts and source references.
   `src/internal/flow-inspection-scope.ts` provides target selection for both views.
 

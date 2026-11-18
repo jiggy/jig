@@ -81,6 +81,25 @@ export function renderFlowBehaviorComparison(
       }
     } else {
       const { spans, unmatchedBefore, unmatchedAfter } = change.pathSummary
+      for (const { first, second, paths, reversed } of change.callOrder.slice(0, 3))
+        lines.push(
+          '- Captured call order · ' +
+            text(first.slot) +
+            ' before ' +
+            text(second.slot) +
+            ' · ' +
+            paths +
+            (paths === 1 ? ' source path' : ' source paths') +
+            (reversed
+              ? ' · opposite order in baseline source paths'
+              : ' · baseline order unresolved') +
+            ' · ' +
+            comparisonLocation(first.fact, true),
+        )
+      if (change.callOrder.length > 3)
+        lines.push(
+          '- ' + (change.callOrder.length - 3) + ' more captured order changes. See `--all`.',
+        )
       const groups = new Map<string, { description: string; kind: string; count: number }>()
       for (const { kind, before, after } of spans) {
         const description = comparisonSpan(before, after)
