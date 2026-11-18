@@ -80,6 +80,7 @@ export type BehaviorStep =
       readonly operation: string
       readonly detail: string
       readonly guards?: readonly BehaviorGuard[]
+      readonly reportingCall?: SourceSite
     }
   | { readonly kind: 'gap'; readonly site: SourceSite; readonly detail: string }
   | {

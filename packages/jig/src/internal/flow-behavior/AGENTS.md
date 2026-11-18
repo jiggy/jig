@@ -46,6 +46,7 @@ Explain conditional behavior from a captured Jig project without running its met
   conditions and result checks separate from interpreted routes.
 - Keep the private result independent of CLI and display rendering.
 - Compare ordered facts without deriving execution or authority from a supplied baseline.
+  Keep source coordinates outside path identity. Pair changed paths only when their captured checks and evidence kind correspond uniquely.
 
 ## Verification
 

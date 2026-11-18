@@ -1035,8 +1035,10 @@ The comparison reports changed configured uses, entrypoint, settings, and repres
 Path comparison preserves the order of unresolved checks, child results, and effects and ignores line number shifts.
 It shows attempted file operations, requested publications, outcomes, and newly reported gaps.
 
-The view groups matching consequence summaries and labels representative checks.
-Use `--compare BASELINE --all` to show every changed path captured by the analyzer.
+The default view shows what changed between uniquely corresponding paths with the same ordered captured checks and evidence kind.
+It groups repeated changes at the same source locations and provides project-relative references to the current source.
+Unmatched path counts show where correspondence is uncertain.
+Use `--compare BASELINE --all` to show every changed path with its ordered checks, effects, and source references.
 The comparison is a source inspection. A matching projection establishes agreement for the captured facts.
 
 `jig inspect --result <directory> [--display plain|tui|web] [--json]` reads a

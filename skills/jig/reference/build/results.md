@@ -319,8 +319,9 @@ jig inspect --flow --snapshot > before.json
 jig inspect --flow --compare before.json
 ```
 
-The comparison highlights affected targets, ordered path changes, and coverage gaps.
-Add `--all` to the comparison to read all changed captured paths.
+The comparison highlights affected targets, changes to calls and effects, and coverage gaps.
+Follow the source reference to investigate a change, such as a request for 4/4 progress on an early-return path.
+Add `--all` to compare complete paths and inspect alternatives with changed or ambiguous conditions.
 Inspect an affected target for child-path detail.
 Use representative Runs to verify actual outputs, progress, and delivered files.
 

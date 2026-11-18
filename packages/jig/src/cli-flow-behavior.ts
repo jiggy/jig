@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { compareFlowBehavior } from './internal/flow-behavior/comparison.js'
+import type { ComparisonFact, compareFlowBehavior } from './internal/flow-behavior/comparison.js'
 import {
   type BehaviorGuard,
   type BehaviorReport,
@@ -64,19 +64,11 @@ export function renderFlowBehaviorComparison(
       if (!all && items.length > 8)
         lines.push('- ' + (items.length - 8) + ' additional ' + label.toLowerCase() + ' entries.')
     }
-    const callDetails = (paths: typeof change.removedPaths) =>
-      new Set(
-        paths.flatMap(([, facts]) =>
-          facts.filter(([type]) => type === 'call').map(([, detail]) => detail),
-        ),
-      )
-    const beforeCalls = callDetails(change.removedPaths)
-    const afterCalls = callDetails(change.addedPaths)
-    for (const [label, paths] of [
-      ['Before', change.removedPaths],
-      ['After', change.addedPaths],
-    ] as const) {
-      if (all) {
+    if (all) {
+      for (const [label, paths] of [
+        ['Before', change.removedPaths],
+        ['After', change.addedPaths],
+      ] as const) {
         for (const [kind, facts] of paths)
           lines.push(
             '- **' +
@@ -84,76 +76,92 @@ export function renderFlowBehaviorComparison(
               ' · ' +
               kind +
               '** · ' +
-              facts.map(([, detail]) => text(detail)).join(' → '),
+              facts.map((fact) => comparisonFact(fact, label === 'After', false)).join(' → '),
           )
-        continue
       }
-      const groups = new Map<
-        string,
-        { kind: string; summary: string; count: number; checks: string[] }
-      >()
-      for (const [kind, facts] of paths) {
-        const progress = facts
-          .filter(
-            ([type, detail]) =>
-              type === 'effect' &&
-              detail.startsWith('view update · ') &&
-              detail.endsWith(' (' + change.id + ')'),
-          )
-          .at(-1)
-        const events = facts.filter(
-          ([type, detail]) =>
-            type !== 'check' && (type !== 'effect' || !detail.startsWith('view update · ')),
-        )
-        const shown = events.length > 10 ? [...events.slice(0, 4), ...events.slice(-6)] : events
-        const summary =
-          shown
-            .map(([type, detail]) =>
-              type === 'call' && beforeCalls.has(detail) && afterCalls.has(detail)
-                ? detail.split(' · ', 1)[0]
-                : detail,
-            )
-            .join(' → ') +
-          (events.length > shown.length
-            ? ' · ' + (events.length - shown.length) + ' intermediate steps omitted'
-            : '') +
-          (progress ? ' · Last requested here: ' + progress[1] : '')
-        const key = JSON.stringify([kind, summary])
+    } else {
+      const { spans, unmatchedBefore, unmatchedAfter } = change.pathSummary
+      const groups = new Map<string, { description: string; kind: string; count: number }>()
+      for (const { kind, before, after } of spans) {
+        const description = comparisonSpan(before, after)
+        const key = JSON.stringify([kind, before, after])
         const group = groups.get(key)
         if (group) group.count++
-        else
-          groups.set(key, {
-            kind,
-            summary,
-            count: 1,
-            checks: facts.filter(([type]) => type === 'check').map(([, detail]) => detail),
-          })
+        else groups.set(key, { description, kind, count: 1 })
       }
-      for (const { kind, summary, count, checks } of [...groups.values()].slice(0, 6)) {
+      for (const { description, kind, count } of [...groups.values()].slice(0, 6))
         lines.push(
-          '- **' +
-            label +
-            ' · ' +
-            kind +
-            '** · ' +
-            text(summary) +
-            (count > 1 ? ' · ' + count + ' variants' : ''),
+          '- ' + description + ' · ' + count + ' ' + kind + (count === 1 ? ' path' : ' paths'),
         )
-        if (checks.length)
-          lines.push(
-            (count > 1 ? '  - Representative checks · ' : '  - Checks · ') +
-              checks.slice(-3).map(text).join(' → ') +
-              (checks.length > 3 ? ' · ' + (checks.length - 3) + ' earlier checks omitted' : ''),
-          )
-      }
-      if (groups.size > 6)
+      if (groups.size > 6) lines.push('- ' + (groups.size - 6) + ' more changes. See `--all`.')
+      if (unmatchedBefore || unmatchedAfter)
         lines.push(
-          '- ' + (groups.size - 6) + ' more changed ' + label.toLowerCase() + ' path summaries.',
+          '- Unmatched paths · ' +
+            unmatchedBefore +
+            ' before, ' +
+            unmatchedAfter +
+            ' after. See `--all` for their checks and consequences.',
         )
     }
     lines.push('')
   }
+  if (!all && changeCount)
+    lines.push('Add `--all` for the ordered checks, calls, and effects on every changed path.', '')
   return lines.join('\n') + '\n'
+}
+
+function comparisonLocation(fact: ComparisonFact, current: boolean): string {
+  const [path, line] = fact[2]
+  const location = text(site({ path, line }))
+  if (!current) return location
+  const destination = path
+    .split('/')
+    .map((part) => encodeURIComponent(part).replace(/[()]/g, (ch) => (ch === '(' ? '%28' : '%29')))
+    .join('/')
+  return '[' + location + '](./' + destination + '#L' + line + ')'
+}
+
+function comparisonFact(fact: ComparisonFact, current: boolean, compact: boolean): string {
+  const description = fact[1]
+  const points = [...description]
+  return (
+    text(compact && points.length > 150 ? points.slice(0, 149).join('') + '…' : description) +
+    ' · ' +
+    comparisonLocation(fact, current)
+  )
+}
+
+function comparisonSpan(
+  before: readonly ComparisonFact[],
+  after: readonly ComparisonFact[],
+): string {
+  if (
+    before.length === 1 &&
+    after.length === 1 &&
+    before[0]![0] === 'effect' &&
+    after[0]![0] === 'effect'
+  ) {
+    const progress = /^view update · progress (.+) \(([^()]*)\)$/
+    const oldValue = progress.exec(before[0]![1])
+    const newValue = progress.exec(after[0]![1])
+    if (oldValue && newValue && oldValue[2] === newValue[2])
+      return (
+        'Requested progress ' +
+        text(oldValue[1]!) +
+        ' → ' +
+        text(newValue[1]!) +
+        ' · ' +
+        comparisonLocation(after[0]!, true)
+      )
+  }
+  const side = (facts: readonly ComparisonFact[], current: boolean) =>
+    facts
+      .slice(0, 2)
+      .map((fact) => comparisonFact(fact, current, true))
+      .join(' → ') + (facts.length > 2 ? ' · ' + (facts.length - 2) + ' more steps' : '')
+  if (!before.length) return 'Added · ' + side(after, true)
+  if (!after.length) return 'Removed · ' + side(before, false)
+  return 'Before · ' + side(before, false) + '  |  After · ' + side(after, true)
 }
 
 function text(value: string): string {
