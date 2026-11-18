@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { posix } from 'node:path'
 import ts from 'typescript-parser'
-import type { BehaviorPackage, SourceSite } from './model.js'
+import type { AuthoredHandoff, BehaviorPackage, SourceSite } from './model.js'
 
 const root = '/flow/'
 const compilerOptions: ts.CompilerOptions = {
@@ -15,6 +15,12 @@ const compilerOptions: ts.CompilerOptions = {
 export type LocalFunction = ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration
 type ErrorBase = 'Error' | 'TypeError' | 'RangeError'
 export type ErrorClass = { readonly base: ErrorBase; readonly identity?: string }
+type HandoffSite = Omit<AuthoredHandoff, 'target'> & { receiver: ts.Declaration }
+
+const shortText = (node: ts.Node) => {
+  const code = node.getText()
+  return code.length <= 140 ? code : code.slice(0, 139) + '…'
+}
 
 export function isLocalFunction(node: ts.Node): node is LocalFunction {
   return ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node)
@@ -39,6 +45,7 @@ export class SourceIndex {
   readonly #reporting: ReadonlySet<string>
   readonly #callIdentities = new Map<ts.CallExpression, string>()
   readonly #indexedCalls = new Set<ts.SourceFile>()
+  readonly #handoffs = new Map<LocalFunction, readonly HandoffSite[]>()
   readonly entry: ts.SourceFile | undefined
 
   constructor(
@@ -160,6 +167,112 @@ export class SourceIndex {
       line: position.line + 1,
       column: position.character + 1,
     }
+  }
+
+  handoffsIn(fn: LocalFunction): readonly HandoffSite[] {
+    const cached = this.#handoffs.get(fn)
+    if (cached !== undefined) return cached
+    const sites: HandoffSite[] = []
+    const visit = (node: ts.Node): void => {
+      if (ts.isFunctionLike(node) || ts.isClassLike(node)) return
+      if (ts.isCallExpression(node)) {
+        const handoff = this.handoffSite(node, fn)
+        if (handoff) sites.push(handoff)
+      }
+      ts.forEachChild(node, visit)
+    }
+    if (fn.body) visit(fn.body)
+    this.#handoffs.set(fn, sites)
+    return sites
+  }
+
+  private handoffSite(call: ts.CallExpression, fn: LocalFunction): HandoffSite | undefined {
+    const callee = unwrap(call.expression)
+    const [argument] = call.arguments
+    if (
+      !ts.isPropertyAccessExpression(callee) ||
+      callee.name.text !== 'call' ||
+      !ts.isIdentifier(callee.expression) ||
+      call.arguments.length !== 1 ||
+      !argument ||
+      !ts.isObjectLiteralExpression(unwrap(argument))
+    )
+      return undefined
+    const receiver = this.declaration(callee.expression)
+    if (!receiver) return undefined
+    const request = unwrap(argument) as ts.ObjectLiteralExpression
+    const fields = new Map<string, string | undefined>()
+    for (const property of request.properties) {
+      const name = property.name
+      if (
+        !name ||
+        (!ts.isIdentifier(name) && !ts.isStringLiteralLike(name)) ||
+        fields.has(name.text)
+      )
+        return undefined
+      const value = ts.isPropertyAssignment(property) ? unwrap(property.initializer) : undefined
+      fields.set(name.text, value && ts.isStringLiteralLike(value) ? value.text : undefined)
+    }
+    const slot = fields.get('slot')
+    if (!slot) return undefined
+    const intent = fields.get('intent')
+    const guards: AuthoredHandoff['guards'][number][] = []
+    for (let node: ts.Node = call; node !== fn && node.parent; node = node.parent) {
+      const parent: ts.Node = node.parent
+      if (
+        ts.isIfStatement(parent) &&
+        (node === parent.thenStatement || node === parent.elseStatement)
+      )
+        guards.unshift({
+          site: this.site(parent.expression),
+          code: shortText(parent.expression),
+          taken: node === parent.thenStatement,
+          unresolved: true,
+        })
+    }
+    return {
+      receiver,
+      slot,
+      site: this.callSite(call),
+      ...(intent ? { intent: intent.length <= 140 ? intent : intent.slice(0, 139) + '…' } : {}),
+      guards: guards.slice(0, 4),
+      exitChecks: this.resultExitChecks(call),
+    }
+  }
+
+  private resultExitChecks(call: ts.CallExpression): AuthoredHandoff['exitChecks'] {
+    const awaited = call.parent
+    if (!ts.isAwaitExpression(awaited)) return []
+    const declaration = awaited.parent
+    if (!ts.isVariableDeclaration(declaration) || !ts.isIdentifier(declaration.name)) return []
+    if (!(declaration.parent.flags & ts.NodeFlags.Const)) return []
+    const statement = declaration.parent.parent
+    if (!ts.isVariableStatement(statement) || !ts.isBlock(statement.parent)) return []
+    const { statements } = statement.parent
+    const checks: AuthoredHandoff['exitChecks'][number][] = []
+    const readsResult = (node: ts.Node): boolean =>
+      !ts.isFunctionLike(node) &&
+      ((ts.isIdentifier(node) && this.declaration(node) === declaration) ||
+        (ts.forEachChild(node, (child) => (readsResult(child) ? true : undefined)) ?? false))
+    const start = statements.indexOf(statement) + 1
+    for (const following of statements.slice(start, start + 40)) {
+      if (!ts.isIfStatement(following) || !readsResult(following.expression)) continue
+      for (const [branch, taken] of [
+        [following.thenStatement, true],
+        [following.elseStatement, false],
+      ] as const) {
+        const exit = branch && (ts.isBlock(branch) ? branch.statements.at(-1) : branch)
+        if (!exit || (!ts.isReturnStatement(exit) && !ts.isThrowStatement(exit))) continue
+        checks.push({
+          site: this.site(following.expression),
+          code: shortText(following.expression),
+          taken,
+          exit: ts.isReturnStatement(exit) ? 'return' : 'throw',
+        })
+      }
+      if (checks.length >= 4) break
+    }
+    return checks.slice(0, 4)
   }
 
   callSite(node: ts.CallExpression): SourceSite {

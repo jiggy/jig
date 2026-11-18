@@ -99,6 +99,20 @@ export interface BehaviorChildPath {
   readonly steps: readonly BehaviorStep[]
 }
 
+export interface AuthoredHandoff {
+  readonly slot: string
+  readonly target: string
+  readonly site: SourceSite
+  readonly intent?: string
+  readonly guards: readonly BehaviorGuard[]
+  readonly exitChecks: readonly {
+    readonly site: SourceSite
+    readonly code: string
+    readonly taken: boolean
+    readonly exit: 'return' | 'throw'
+  }[]
+}
+
 export interface BehaviorReport {
   readonly unavailable?: string
   readonly revision: string
@@ -111,6 +125,8 @@ export interface BehaviorReport {
     readonly routes: readonly (readonly BehaviorStep[])[]
     readonly alternatives: readonly (readonly BehaviorStep[])[]
     readonly gaps: readonly (SourceSite & { readonly reason: string })[]
+    readonly authoredHandoffs?: readonly AuthoredHandoff[]
+    readonly authoredHandoffsOmitted?: number
   }[]
 }
 
@@ -127,4 +143,5 @@ export const BEHAVIOR_LIMITS = {
   stepsPerRoute: 72,
   retainedChildPaths: 256,
   retainedChildSteps: 4_096,
+  authoredHandoffs: 24,
 } as const

@@ -7,6 +7,7 @@ import {
 } from './analyze.js'
 import {
   BEHAVIOR_LIMITS,
+  type AuthoredHandoff,
   type BehaviorAssumption,
   type BehaviorChildPath,
   type BehaviorGuard,
@@ -146,8 +147,12 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     const evidence = new Map<string, Scope['gaps'][number]>()
     const routes = new Map<string, Route>()
     const alternate = new Map<string, Route>()
+    const authored = new Map<string, AuthoredHandoff>()
+    const record = handoff
+      ? undefined
+      : (candidate: AuthoredHandoff) => authored.set(JSON.stringify(candidate.site), candidate)
     try {
-      const states = evaluate(target, unknown, 0, new Set(), budget, handoff)
+      const states = evaluate(target, unknown, 0, new Set(), budget, handoff, record)
       if (!handoff && states.length === 0)
         evidence.set('entry', {
           ...site,
@@ -179,11 +184,27 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
           : error.message,
       })
     }
+    const analyzedHandoffs = new Set<string>()
+    for (const route of routes.values())
+      for (const step of route)
+        if (step.kind === 'call' && step.caller === target.id)
+          analyzedHandoffs.add(JSON.stringify(step.site))
+    const authoredHandoffs = evidence.size
+      ? [...authored]
+          .filter(([key]) => !analyzedHandoffs.has(key))
+          .map(([, candidate]) => candidate)
+      : []
     return {
       target: target.id,
       routes: [...routes.values()],
       alternatives: [...alternate.values()],
       gaps: [...evidence.values()],
+      ...(authoredHandoffs.length
+        ? { authoredHandoffs: authoredHandoffs.slice(0, BEHAVIOR_LIMITS.authoredHandoffs) }
+        : {}),
+      ...(authoredHandoffs.length > BEHAVIOR_LIMITS.authoredHandoffs
+        ? { authoredHandoffsOmitted: authoredHandoffs.length - BEHAVIOR_LIMITS.authoredHandoffs }
+        : {}),
     }
   }
 
@@ -194,6 +215,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     active: ReadonlySet<string>,
     budget: AnalysisBudget,
     handoff: Handoff | undefined,
+    recordAuthoredHandoff?: (handoff: AuthoredHandoff) => void,
   ): State[] {
     budget.check()
     const pkg = input.packages.get(target.implementation)
@@ -234,6 +256,8 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
           next,
         )
       },
+      true,
+      recordAuthoredHandoff,
     ).run(depth)
   }
 

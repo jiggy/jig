@@ -515,6 +515,56 @@ function otherResults(routes: readonly Route[], shown: readonly Route[]): string
   return [...lines, '']
 }
 
+function authoredHandoffs(scope: Scope, linkedTargets?: ReadonlySet<string>): string[] {
+  if (!scope.authoredHandoffs?.length) return []
+  const lines = [
+    '#### Authored handoffs beyond analyzed routes',
+    '',
+    'These call sites use the configured slots below. Reachability, order, and results remain unresolved.',
+    '',
+  ]
+  for (const handoff of scope.authoredHandoffs) {
+    const target = linkedTargets?.has(handoff.target)
+      ? `[${text(handoff.target)}](#${idFor('target', handoff.target)})`
+      : text(handoff.target)
+    lines.push(
+      '- ' +
+        text(handoff.slot) +
+        ' → ' +
+        target +
+        ' (' +
+        text(site(handoff.site)) +
+        ')' +
+        (handoff.intent ? ' · ' + text(handoff.intent) : ''),
+    )
+    for (const guard of handoff.guards)
+      lines.push(
+        '  - Enclosing branch takes ' +
+          text(guard.code) +
+          ' as ' +
+          guard.taken +
+          ' (' +
+          text(site(guard.site)) +
+          ')',
+      )
+    for (const check of handoff.exitChecks)
+      lines.push(
+        '  - Later result check ' +
+          text(check.code) +
+          ' · ' +
+          check.taken +
+          ' branch ends with ' +
+          check.exit +
+          ' (' +
+          text(site(check.site)) +
+          ')',
+      )
+  }
+  if (scope.authoredHandoffsOmitted)
+    lines.push('- ' + scope.authoredHandoffsOmitted + ' additional authored handoffs omitted.')
+  return [...lines, '']
+}
+
 export function renderFlowBehavior(report: BehaviorReport): string {
   const lines = [
     '# Source behavior',
@@ -549,7 +599,11 @@ export function renderFlowBehavior(report: BehaviorReport): string {
           '',
         )
     }
-    lines.push(...otherResults(selected.routes, routes), ...alternatives(selected))
+    lines.push(
+      ...otherResults(selected.routes, routes),
+      ...alternatives(selected),
+      ...authoredHandoffs(selected),
+    )
     if (selected.gaps.length) {
       lines.push('### Coverage gaps', '')
       for (const gap of selected.gaps)
@@ -629,6 +683,7 @@ function applicationMap(report: BehaviorReport): string[] {
   if (!report.inventory.length)
     return [...lines, 'The captured project has no configured targets.', '']
   const groups = new Map<string, BehaviorTarget[]>()
+  const linkedTargets = new Set(report.inventory.map((target) => target.id))
   const scopes = new Map(report.scopes.map((scope) => [scope.target, scope]))
   const selections = new Map(report.scopes.map((scope) => [scope.target, selectRoutes(scope)]))
   lines.push(
@@ -654,8 +709,9 @@ function applicationMap(report: BehaviorReport): string[] {
       summaries.add((handoffs.length ? brief(handoffs) + ' → ' : '') + text(label(terminal)))
     }
     const continuation = [...summaries].slice(0, 2).join('<br>') || 'Unavailable'
+    const hasAuthored = scopes.get(target.id)?.authoredHandoffs?.length
     lines.push(
-      `| [${text(target.id)}](#${idFor('target', target.id)}) | [${text(target.implementation)}](#${idFor('flow', target.implementation)}) | ${role} | ${continuation}${summaries.size > 2 ? '<br>See more routes below.' : ''} |`,
+      `| [${text(target.id)}](#${idFor('target', target.id)}) | [${text(target.implementation)}](#${idFor('flow', target.implementation)}) | ${role} | ${continuation}${summaries.size > 2 ? '<br>See more routes below.' : ''}${hasAuthored ? '<br>See authored handoffs below.' : ''} |`,
     )
   }
   lines.push('')
@@ -701,7 +757,11 @@ function applicationMap(report: BehaviorReport): string[] {
             ' additional analyzed variants omitted from the chart.',
           '',
         )
-      lines.push(...otherResults(scope.routes, routes), ...alternatives(scope))
+      lines.push(
+        ...otherResults(scope.routes, routes),
+        ...alternatives(scope),
+        ...authoredHandoffs(scope, linkedTargets),
+      )
       if (scope.gaps.length) {
         lines.push('#### Coverage gaps', '')
         for (const gap of scope.gaps)

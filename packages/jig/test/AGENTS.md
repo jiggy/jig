@@ -25,6 +25,7 @@ An unrelated line insertion preserves the call link.
 Finite iteration retains early exits. Join nodes preserve distinct results.
 Bounded data mappings preserve validation before writes and flag unresolved callbacks.
 The alternatives bound preserves available continuations and distinct exits, and explicitly ends omitted paths.
+Authored fallback retains literal configured handoffs and result exit checks without treating shadowed receivers as Flow calls.
 
 `portable/package-project.test.ts` checks source-only linking and refusal to create activation requests.
 Unpinned Agent resources remain unselected for inspection and still require an operator choice for review.

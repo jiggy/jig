@@ -87,6 +87,43 @@ test('a callee-only change alters the unchanged caller continuation', () => {
   )
 })
 
+test('authored handoffs retain caller exit checks beyond an opaque operation', () => {
+  const caller = method(
+    handlerSource(`
+    opaque()
+    if (run.input.confirmed) {
+      const result = await run.call({ slot: 'converter', intent: 'Check records' })
+      if (result.outcome === 'blocked') return { outcome: 'done', output: {} }
+      await run.call({ slot: 'exporter', intent: 'Write checked records' })
+    }
+    if (run.input.preview) {
+      const run = { call() {} }
+      run.call({ slot: 'converter', intent: 'Unrelated receiver' })
+    }
+    await run.call({ slot: 'converter', ...other })
+  `),
+  )
+  const input = snapshot(method(handlerSource(`return { outcome: 'done', output: {} }`)), caller)
+  const report = analyzeFlowBehavior({ ...input, focus: undefined })
+  const scope = report.scopes.find((item) => item.target === 'binding:code')!
+  expect(scope.routes.flat().some((step) => step.kind === 'call')).toBe(false)
+  expect(scope.authoredHandoffs).toMatchObject([
+    {
+      slot: 'converter',
+      target: 'flow:flows/convert',
+      intent: 'Check records',
+      guards: [{ code: 'run.input.confirmed', taken: true }],
+      exitChecks: [{ code: "result.outcome === 'blocked'", taken: true, exit: 'return' }],
+    },
+    { slot: 'exporter', target: 'flow:flows/export', intent: 'Write checked records' },
+  ])
+  const rendered = renderFlowBehavior(report)
+  expect(rendered).toContain('Reachability, order, and results remain unresolved.')
+  expect(rendered).toMatch(/converter → \[flow:flows\/convert\]\(#target-/)
+  expect(rendered).toContain('true branch ends with return')
+  expect(rendered).not.toContain('Unrelated receiver')
+})
+
 test('opaque children retain hypothetical caller responses and concrete schema refusals suppress returns', () => {
   const opaque = analyzeFlowBehavior(
     snapshot(method('', { unavailable: 'Opaque implementation.' })),
