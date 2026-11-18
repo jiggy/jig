@@ -248,6 +248,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Graph and inline-value bounds disclose unavailable or omitted presentation.
   Topology supplies configured routes. Source behavior has a separate view.
 
+  Contained evaluator failures use closed cause-specific guidance and disclose the retained topology option.
+
 - `src/cli-flow-behavior.ts` renders conditional source routes as literal Markdown.
   Human working-tree `--flow` inspection opens the behavior view by default.
   The comparison renders changed source evidence from `--snapshot` and a fresh capture.

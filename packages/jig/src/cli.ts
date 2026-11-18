@@ -95,7 +95,7 @@ import {
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
 import type { RunTargetRef } from './project/author.js'
 import { resolveProjectEntrypoint } from './project/entrypoint.js'
-import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
+import { EVALUATOR_HINTS, evaluatorInspectionHint } from './project/evaluator-diagnostics.js'
 import type { NativeAcpClient } from './project/grants.js'
 import { checkProjectJigRequirement } from './project/jig-version.js'
 import { DEPENDENCY_PREPARATION_LIMIT_POLICY } from './project/limits.js'
@@ -1328,12 +1328,20 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
         `${error.message} Inspect its configured uses with this command.\n\n  $ ${packageInspectionCommand(error.path)}`,
         1,
       )
-    if (parsed.flow && !parsed.approved && error instanceof CheckError)
+    if (parsed.flow && !parsed.approved && error instanceof CheckError) {
+      const evaluatorHint = evaluatorInspectionHint(error.code)
+      if (evaluatorHint !== undefined)
+        throw new CliDiagnostic(
+          'JIG_SOURCE_INSPECTION_FAILED',
+          `Working-tree configuration evaluation failed (${error.code}). ${evaluatorHint}\n\nIf the project has a retained approval, inspect its topology with this command.\n\n  $ jig inspect --flow --approved`,
+          error.kind === 'invalid' ? 1 : 2,
+        )
       throw new CliDiagnostic(
         'JIG_SOURCE_INSPECTION_FAILED',
         `Working-tree inspection failed (${error.code})${error.path ? ' at ' + asciiJsonString(error.path) : ''}: ${error.message}. Correct the local declaration or missing dependency and retry. No project approval or lock was changed.`,
         error.kind === 'invalid' ? 1 : 2,
       )
+    }
     if (error instanceof CheckError && error.code === 'INSPECTION_TARGET_MISSING')
       throw new CliDiagnostic(
         'JIG_TARGET_NOT_FOUND',

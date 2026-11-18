@@ -155,6 +155,71 @@ test('directly returned helper promises settle at the returning function boundar
   )
 })
 
+test('returned Reporting wrappers and forwarding callbacks reach their handoffs', () => {
+  const callee = method(handlerSource('return { outcome: "done", output: {} }'))
+  const source = (entry: string) => `
+    import { handle } from '@jigging/flow'
+    import { withReporting } from '@jigging/reporting'
+    async function work(run) {
+      return await run.call({ slot: 'converter', operationId: 'convert', input: {} })
+    }
+    function reporting(run) {
+      return withReporting(run, 'progress', () => { return work(run) })
+    }
+    await handle(${entry})
+  `
+  for (const entry of [
+    "run => withReporting(run, 'progress', () => work(run))",
+    'async run => { return reporting(run) }',
+    'run => { return reporting(run) }',
+    'async run => { return await reporting(run) }',
+  ]) {
+    const caller = method(source(entry), { reportingFiles: new Set(['FLOW.ts']) })
+    const scope = analyzeFlowBehavior(snapshot(callee, caller)).scopes[0]!
+    expect(scope.gaps).toEqual([])
+    expect(scope.routes.flat()).toContainEqual(
+      expect.objectContaining({ kind: 'call', slot: 'converter' }),
+    )
+    expect(scope.routes.flat()).toContainEqual(
+      expect.objectContaining({ kind: 'end', detail: 'outcome "done"' }),
+    )
+  }
+})
+
+test('returned Reporting promises preserve the boundary of a local catch or finalizer', () => {
+  const callee = method(handlerSource('return { outcome: "done", output: {} }'))
+  const check = (expression: string, finalizer = '') => {
+    const caller = method(
+      `
+        import { handle } from '@jigging/flow'
+        import { withReporting } from '@jigging/reporting'
+        function reject(run) {
+          return withReporting(run, 'progress', () => { throw new Error('from body') })
+        }
+        function fail() { throw new Error('synchronous') }
+        await handle(async run => {
+          try { ${expression} }
+          catch { return { outcome: 'done', output: { status: 'caught' } } }
+          ${finalizer}
+        })
+      `,
+      { reportingFiles: new Set(['FLOW.ts']) },
+    )
+    return analyzeFlowBehavior(snapshot(callee, caller)).scopes[0]!
+  }
+  const caught = { kind: 'end', detail: 'outcome "done", status = "caught"' }
+  expect(check('return reject(run)').routes.flat()).toContainEqual(
+    expect.objectContaining({ kind: 'end', completion: 'throw' }),
+  )
+  expect(check('return reject(run)').routes.flat()).not.toContainEqual(
+    expect.objectContaining(caught),
+  )
+  for (const expression of ['return await reject(run)', 'return fail()']) {
+    expect(check(expression).routes.flat()).toContainEqual(expect.objectContaining(caught))
+  }
+  expect(check('return reject(run)', 'finally {}').gaps[0]?.reason).toContain('finalizer')
+})
+
 test('focused orientation shows distinct slots and variant callers before analysis', () => {
   const focus = 'binding:chapter-reading'
   const baseline = 'binding:chapter-reading-baseline'

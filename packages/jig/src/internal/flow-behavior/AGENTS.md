@@ -23,8 +23,10 @@ Explain conditional behavior from a captured Jig project without running its met
 - Keep analyzer inputs in memory. Use the existing capture owners for filesystem reads.
 - Carry hypothetical results and known effects through caller continuations.
 - Keep incomplete values distinct from unknown control flow.
-- Follow directly returned local async helpers through promise adoption.
-  Keep rejection outside local catches unless the caller awaits inside the try.
+- Follow directly returned helper and qualified Reporting promises through callers
+  that consume them, including synchronous forwarding functions.
+  Distinguish synchronous throws from rejection, which bypasses the returning
+  function's catch unless it awaits inside the try.
   Disclose unsupported finalizer interleavings.
 - Preserve the truthiness of a short-circuit operand without substituting a Boolean value.
 - Keep unresolved checks attached to their conditional continuations.
