@@ -1,5 +1,19 @@
 # @jigging/jig
 
+## 0.1.0-alpha.56
+
+### Minor Changes
+
+- 9577813: Add an explicit recovery-only `client.reconcile({ ticket })` and `jig attempt reconcile --json` for accepted attempts whose foreground coordinator was lost. Reacquire the trusted project owner to fence and settle older durable work without preparing, submitting, or replaying the original Flow. Refuse active ownership or cleanup that cannot be confirmed; preserve the original ticket and retained checkpoints.
+
+### Patch Changes
+
+- a077f4a: Keep Claude Code authentication-status notifications inside the bundled ACP
+  adapter. Previously, unsolicited identity notices could stop the finite ACP
+  exchange before Jig forwarded the first task prompt. The workspace build
+  inputs and canonical qualification archives now use the corrected patch.
+- af59d37: Add opt-in source behavior inspection through `jig inspect --flow --behavior`. See caller continuations and reported effects for supported TypeScript, with explicit gaps for opaque behavior.
+
 ## 0.1.0-alpha.55
 
 ### Minor Changes

@@ -1,75 +1,27 @@
 {
   "schemaVersion": 1,
-  "baseRevision": "1a6657981fcc03ebfa500d0cfb357568eddea0b2",
-  "sourceDigest": "dc0b314b74ca3dc7709d8b6d0d2bbb2945720b062955d3a0ee7e02da1f25f277",
+  "baseRevision": "a077f4a553b203f76e632bef943ee44c85d278a6",
+  "sourceDigest": "2058a72f9d8f6e3237c9f5e95ad8d1793e3ecd6ce97adeb66f76eef3bfb315f8",
   "changesets": [
     {
-      "id": "child-artifact-diagnostics",
-      "sha256": "178cfa2f1a2e65b50f229283cc48ffb0aba3a57a1018e2dfa180e85a0e35b975"
+      "id": "claude-acp-auth-status",
+      "sha256": "64b8adb55b1d6d05314410fd825d1f0b7189acb9eeaacc5ff27a843385e47249"
     },
     {
-      "id": "complete-flow-inventory",
-      "sha256": "5421ce978e60a69e18be9551e410cb212a3a098cdefc7ab6e4a39f9bf197d692"
+      "id": "reconcile-original-attempt",
+      "sha256": "115e8ff76fd7e3ba97076de1e40b2628a5762d10b6a0a46a33b9a24742bb3ee7"
     },
     {
-      "id": "configured-topology-inspection",
-      "sha256": "659e0c17cec9c76c09258e86b79fe80b7898514ca7ab8d3c9b3f775a1358ece1"
-    },
-    {
-      "id": "macos-arm-native-portability",
-      "sha256": "9afca37a302959c38f59d3e82cfc46a2fe2f1895e04d773e185f20aecaeed20b"
-    },
-    {
-      "id": "native-codex-acp-v2",
-      "sha256": "f170b0ffbc1b1748549741d277aabcda7bfbd3ed9008c65ea7ec2d465b30a196"
-    },
-    {
-      "id": "native-v2-retire-pi",
-      "sha256": "3bac9bf2360a4b6d980a1ba08917c256aadba1c36344e510b8e021d3152d03e4"
+      "id": "source-behavior-inspection",
+      "sha256": "4904156a4e2268a8ef8e79e98cf3bf096f1ea1ed0fe574dba5e566ff760c9dff"
     }
   ],
   "releases": [
     {
-      "name": "@jigging/agent-acp",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.15",
-      "newVersion": "0.1.0-alpha.16"
-    },
-    {
-      "name": "@jigging/agent-method",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.13",
-      "newVersion": "0.1.0-alpha.14"
-    },
-    {
-      "name": "@jigging/display-model",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.8",
-      "newVersion": "0.1.0-alpha.9"
-    },
-    {
-      "name": "@jigging/display-tui",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.8",
-      "newVersion": "0.1.0-alpha.9"
-    },
-    {
-      "name": "@jigging/display-web",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.9",
-      "newVersion": "0.1.0-alpha.10"
-    },
-    {
       "name": "@jigging/jig",
       "type": "minor",
-      "oldVersion": "0.1.0-alpha.54",
-      "newVersion": "0.1.0-alpha.55"
-    },
-    {
-      "name": "@jigging/reporting",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.6",
-      "newVersion": "0.1.0-alpha.7"
+      "oldVersion": "0.1.0-alpha.55",
+      "newVersion": "0.1.0-alpha.56"
     }
   ]
 }
