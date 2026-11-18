@@ -30,16 +30,8 @@ import { approvedTargets, completionScript, invocationGuide } from './cli-discov
 import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-archive.js'
 import { parsePrivateExploreArguments, privateExecuteExplore } from './cli-explore.js'
 import type { PrivateExploreLaunch } from './cli-explore-launch.js'
-import { flowContextRecord, renderFlowContext } from './cli-flow-context.js'
 import { renderFlowBehavior, renderFlowBehaviorComparison } from './cli-flow-behavior.js'
-import {
-  BehaviorComparisonError,
-  compareFlowBehavior,
-  decodeFlowBehaviorSnapshot,
-  encodeFlowBehaviorSnapshot,
-  flowBehaviorSnapshot,
-} from './internal/flow-behavior/comparison.js'
-import type { BehaviorReport } from './internal/flow-behavior/model.js'
+import { flowContextRecord, renderFlowContext } from './cli-flow-context.js'
 import {
   privateCliHumanText,
   privateCliStyleEnabled,
@@ -73,6 +65,14 @@ import {
   privateReadOperatorFile,
   sha256,
 } from './internal/file-input.js'
+import {
+  BehaviorComparisonError,
+  compareFlowBehavior,
+  decodeFlowBehaviorSnapshot,
+  encodeFlowBehaviorSnapshot,
+  flowBehaviorSnapshot,
+} from './internal/flow-behavior/comparison.js'
+import type { BehaviorReport } from './internal/flow-behavior/model.js'
 import { PrivateInputInspectionCapture } from './internal/input-inspection.js'
 import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
 import { PrivateAttemptError } from './internal/prepared-attempt-store.js'

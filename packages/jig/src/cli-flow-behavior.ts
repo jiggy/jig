@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto'
 import type { compareFlowBehavior } from './internal/flow-behavior/comparison.js'
 import {
-  isFileOperation,
   type BehaviorGuard,
   type BehaviorReport,
   type BehaviorReturn,
   type BehaviorStep,
   type BehaviorTarget,
+  isFileOperation,
   type SourceSite,
 } from './internal/flow-behavior/model.js'
 

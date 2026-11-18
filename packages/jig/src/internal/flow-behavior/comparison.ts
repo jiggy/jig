@@ -1,4 +1,4 @@
-import { type JsonValue, canonicalJson, decodeJson1 } from '../../json.js'
+import { canonicalJson, decodeJson1, type JsonValue } from '../../json.js'
 import { privateDomainDigest } from '../identity.js'
 import type { BehaviorGuard, BehaviorReport, SourceSite } from './model.js'
 
