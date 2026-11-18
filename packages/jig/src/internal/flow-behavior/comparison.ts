@@ -1,18 +1,23 @@
 import { canonicalJson, decodeJson1, type JsonValue } from '../../json.js'
+import { validateProjectPath } from '../../project/paths.js'
 import { privateDomainDigest } from '../identity.js'
 import type { BehaviorGuard, BehaviorReport, SourceSite } from './model.js'
 
 const format = 'jig.flow-behavior/1'
 const digest = /^sha256:[a-f0-9]{64}$/
 
-type Fact = readonly [
+type Location = readonly [path: string, line: number]
+
+export type ComparisonFact = readonly [
   kind: 'check' | 'call' | 'effect' | 'repeat' | 'exit' | 'gap',
   description: string,
+  location: Location,
 ]
 type Path = {
   readonly kind: 'source' | 'conditional' | 'authored'
-  readonly facts: readonly Fact[]
+  readonly facts: readonly ComparisonFact[]
 }
+type ComparedPath = readonly [kind: Path['kind'], facts: Path['facts']]
 type Target = {
   readonly id: string
   readonly configuration: readonly string[]
@@ -29,11 +34,23 @@ type Snapshot = {
 
 export class BehaviorComparisonError extends Error {}
 
-function distinct<T>(values: readonly T[]): T[] {
-  return [...new Map(values.map((value) => [JSON.stringify(value), value])).values()]
+function distinct<T>(values: readonly T[], key: (value: T) => string = JSON.stringify): T[] {
+  return [...new Map(values.map((value) => [key(value), value])).values()]
 }
 
-function check(guard: BehaviorGuard): Fact {
+function location(site: SourceSite): Location {
+  return [site.path, site.line]
+}
+
+function factMeaning([kind, description]: ComparisonFact) {
+  return [kind, description] as const
+}
+
+function pathMeaning([kind, facts]: ComparedPath): string {
+  return JSON.stringify([kind, facts.map(factMeaning)])
+}
+
+function check(guard: BehaviorGuard): ComparisonFact {
   const numbers = guard.enteringNumbers?.map(([key, value]) => key + ' = ' + value)
   return [
     'check',
@@ -45,11 +62,12 @@ function check(guard: BehaviorGuard): Fact {
       ' (' +
       guard.site.path +
       ')',
+    location(guard.site),
   ]
 }
 
-function addFacts(route: BehaviorReport['scopes'][number]['routes'][number]): Fact[] {
-  const facts: Fact[] = []
+function addFacts(route: BehaviorReport['scopes'][number]['routes'][number]): ComparisonFact[] {
+  const facts: ComparisonFact[] = []
   for (const step of route)
     switch (step.kind) {
       case 'condition':
@@ -67,24 +85,34 @@ function addFacts(route: BehaviorReport['scopes'][number]['routes'][number]): Fa
               ' (' +
               assumption.site.path +
               ')',
+            location(assumption.site),
           ])
-        facts.push(['call', step.slot + ' → ' + step.target + ' · ' + step.result])
+        facts.push([
+          'call',
+          step.slot + ' → ' + step.target + ' · ' + step.result,
+          location(step.site),
+        ])
         break
       case 'effect':
         facts.push(...(step.guards ?? []).map(check))
-        facts.push(['effect', step.operation + ' · ' + step.detail + ' (' + step.owner + ')'])
+        facts.push([
+          'effect',
+          step.operation + ' · ' + step.detail + ' (' + step.owner + ')',
+          location(step.reportingCall ?? step.site),
+        ])
         break
       case 'repeat':
         facts.push([
           'repeat',
           'Repeat over ' + step.collection + ' · ' + (step.count ?? 'unknown count'),
+          location(step.site),
         ])
         break
       case 'gap':
-        facts.push(['gap', step.detail + ' (' + step.site.path + ')'])
+        facts.push(['gap', step.detail + ' (' + step.site.path + ')', location(step.site)])
         break
       case 'end':
-        facts.push(['exit', step.completion + ' · ' + step.detail])
+        facts.push(['exit', step.completion + ' · ' + step.detail, location(step.site)])
         break
     }
   return facts
@@ -117,11 +145,12 @@ export function flowBehaviorSnapshot(report: BehaviorReport): Snapshot {
             kind: 'authored',
             facts: [
               ...call.guards.map(check),
-              ['call', call.slot + ' → ' + call.target + located(call.site)],
+              ['call', call.slot + ' → ' + call.target + located(call.site), location(call.site)],
               ...call.exitChecks.map(
-                (guard): Fact => [
+                (guard): ComparisonFact => [
                   'check',
                   guard.code + ' is ' + guard.taken + ' → ' + guard.exit + located(guard.site),
+                  location(guard.site),
                 ],
               ),
             ],
@@ -144,7 +173,7 @@ export function flowBehaviorSnapshot(report: BehaviorReport): Snapshot {
           ...[...(target.artifactResults ?? [])].sort().map((name) => 'Artifact result ' + name),
         ],
         settings: privateDomainDigest('flow-behavior-settings/1', target.settings),
-        paths: distinct(paths),
+        paths: distinct(paths, ({ kind, facts }) => pathMeaning([kind, facts])),
         coverage,
       }
     }),
@@ -167,6 +196,24 @@ function strings(value: JsonValue | undefined): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
 }
 
+function validLocation(value: JsonValue): value is Location {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 2 ||
+    typeof value[0] !== 'string' ||
+    typeof value[1] !== 'number' ||
+    !Number.isSafeInteger(value[1]) ||
+    value[1] < 1
+  )
+    return false
+  try {
+    validateProjectPath(value[0], 'Behavior source location')
+    return true
+  } catch {
+    return false
+  }
+}
+
 function path(value: JsonValue): value is Path {
   return (
     object(value) &&
@@ -177,9 +224,10 @@ function path(value: JsonValue): value is Path {
     value.facts.every(
       (fact) =>
         Array.isArray(fact) &&
-        fact.length === 2 &&
+        fact.length === 3 &&
         ['check', 'call', 'effect', 'repeat', 'exit', 'gap'].includes(fact[0]) &&
-        typeof fact[1] === 'string',
+        typeof fact[1] === 'string' &&
+        validLocation(fact[2]),
     )
   )
 }
@@ -226,24 +274,80 @@ export function decodeFlowBehaviorSnapshot(bytes: Uint8Array): Snapshot {
   throw new BehaviorComparisonError('The baseline is not a Jig behavior snapshot of this format.')
 }
 
-function difference<T>(before: readonly T[], after: readonly T[]): T[] {
-  const remaining = new Set(after.map((item) => JSON.stringify(item)))
-  return before.filter((item) => !remaining.has(JSON.stringify(item)))
+function difference<T>(
+  before: readonly T[],
+  after: readonly T[],
+  key: (value: T) => string = JSON.stringify,
+): T[] {
+  const remaining = new Set(after.map(key))
+  return before.filter((item) => !remaining.has(key(item)))
+}
+
+function pathContexts(paths: readonly ComparedPath[]): Map<string, ComparedPath[]> {
+  const contexts = new Map<string, ComparedPath[]>()
+  for (const path of paths) {
+    const [kind, facts] = path
+    const key = pathMeaning([kind, facts.filter(([type]) => type === 'check')])
+    const existing = contexts.get(key)
+    if (existing) existing.push(path)
+    else contexts.set(key, [path])
+  }
+  return contexts
+}
+
+function sameFact(a: ComparisonFact, b: ComparisonFact): boolean {
+  return a[0] === b[0] && a[1] === b[1]
+}
+
+function changedSpan(previous: Path['facts'], current: Path['facts']) {
+  let start = 0
+  let beforeEnd = previous.length
+  let afterEnd = current.length
+  while (start < beforeEnd && start < afterEnd && sameFact(previous[start]!, current[start]!))
+    start++
+  while (
+    start < beforeEnd &&
+    start < afterEnd &&
+    sameFact(previous[beforeEnd - 1]!, current[afterEnd - 1]!)
+  ) {
+    beforeEnd--
+    afterEnd--
+  }
+  return { before: previous.slice(start, beforeEnd), after: current.slice(start, afterEnd) }
+}
+
+function summarizePaths(removed: readonly ComparedPath[], added: readonly ComparedPath[]) {
+  const previous = pathContexts(removed)
+  const current = pathContexts(added)
+  const spans = []
+  let matched = 0
+  for (const [context, before] of previous) {
+    const after = current.get(context)
+    // Ambiguous or changed checks do not establish route correspondence.
+    if (before.length !== 1 || after?.length !== 1) continue
+    const [kind, oldFacts] = before[0]!
+    spans.push({ kind, ...changedSpan(oldFacts, after[0]![1]) })
+    matched++
+  }
+  return {
+    spans,
+    unmatchedBefore: removed.length - matched,
+    unmatchedAfter: added.length - matched,
+  }
 }
 
 export function compareFlowBehavior(before: Snapshot, after: Snapshot) {
   const previous = new Map(before.targets.map((current) => [current.id, current]))
   const current = new Map(after.targets.map((target) => [target.id, target]))
   const changes = []
-  const pathKey = (path: Path) => [path.kind, path.facts] as const
+  const comparedPath = (path: Path) => [path.kind, path.facts] as const
   for (const id of new Set([...previous.keys(), ...current.keys()])) {
     const old = previous.get(id)
     const next = current.get(id)
-    const removedPaths = difference(
-      (old?.paths ?? []).map(pathKey),
-      (next?.paths ?? []).map(pathKey),
-    )
-    const addedPaths = difference((next?.paths ?? []).map(pathKey), (old?.paths ?? []).map(pathKey))
+    const oldPaths = (old?.paths ?? []).map(comparedPath)
+    const newPaths = (next?.paths ?? []).map(comparedPath)
+    const removedPaths = difference(oldPaths, newPaths, pathMeaning)
+    const addedPaths = difference(newPaths, oldPaths, pathMeaning)
     const previousConfiguration = difference(old?.configuration ?? [], next?.configuration ?? [])
     const currentConfiguration = difference(next?.configuration ?? [], old?.configuration ?? [])
     const previousGaps = difference(old?.coverage ?? [], next?.coverage ?? [])
@@ -270,6 +374,7 @@ export function compareFlowBehavior(before: Snapshot, after: Snapshot) {
         settingsChanged,
         removedPaths,
         addedPaths,
+        pathSummary: summarizePaths(removedPaths, addedPaths),
         coverageLimited: Boolean(old?.coverage.length || next?.coverage.length),
       })
   }

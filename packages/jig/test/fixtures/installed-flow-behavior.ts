@@ -93,11 +93,15 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
   expect(callerOnly).not.toContain('exporter → flow:flows/export')
   const changes = await inspect('--compare', 'behavior-before.json')
   const changedCaller = changes.stdout.split('\n## binding:code\n')[1]?.split('\n## ')[0]
-  expect(changedCaller).toContain('Before · source')
+  expect(changedCaller).toContain('Before ·')
   expect(changedCaller).toContain('exporter → flow:flows/export')
-  expect(changedCaller).toContain('After · source')
+  expect(changedCaller).toContain('After ·')
   expect(changedCaller).toContain('status = "attention"')
+  expect(changedCaller).toContain('(./flows/import/FLOW.ts#L')
   expect(changes.stdout).not.toContain('## binding:manual')
+  const details = await inspect('--compare', 'behavior-before.json', '--all')
+  expect(details.stdout).toContain('Before · source')
+  expect(details.stdout).toContain('After · source')
   expect(before.stdout).toMatch(/Revision sha256:[a-f0-9]{64}/)
   expect(after.stdout.match(/Revision (sha256:[a-f0-9]{64})/)?.[1]).not.toBe(
     before.stdout.match(/Revision (sha256:[a-f0-9]{64})/)?.[1],

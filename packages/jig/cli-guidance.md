@@ -246,6 +246,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 - `src/cli-flow-behavior.ts` renders conditional source routes as literal Markdown.
   Human working-tree `--flow` inspection opens the behavior view by default.
   The comparison renders changed source evidence from `--snapshot` and a fresh capture.
+  It leads with source-linked changes on paths with uniquely corresponding captured checks.
+  `--all` expands both sides with their ordered facts and source references.
   `src/internal/flow-inspection-scope.ts` provides target selection for both views.
 
   The application view links the complete configured inventory to one chart per Flow.

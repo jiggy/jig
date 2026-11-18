@@ -9,8 +9,8 @@ import {
 } from './data.js'
 import { readOnlyOpen, strictUtf8Decoder } from './file-access.js'
 import {
-  BEHAVIOR_LIMITS,
   type AuthoredHandoff,
+  BEHAVIOR_LIMITS,
   type BehaviorAssumption,
   type BehaviorStep,
   type BehaviorTarget,
@@ -20,6 +20,7 @@ import { progressDescription } from './reporting.js'
 import { isLocalFunction, type LocalFunction, type SourceIndex, unwrap } from './source.js'
 import {
   describe,
+  type FileHandleValue,
   field,
   fromJson,
   literal,
@@ -28,7 +29,6 @@ import {
   resultText,
   truth,
   unknown,
-  type FileHandleValue,
   type Value,
 } from './values.js'
 
@@ -39,6 +39,7 @@ export interface State {
   readonly mode: 'next' | 'return' | 'throw' | 'unknown'
   readonly value: Value
   readonly site?: SourceSite
+  readonly localCall?: SourceSite | undefined
   readonly stoppedAt?: ts.Node
   readonly closeAttempted?: ReadonlySet<FileHandleValue>
 }
@@ -232,7 +233,13 @@ export class Interpreter {
     return undefined
   }
 
-  private invoke(fn: LocalFunction, args: readonly Value[], caller: State, depth: number): State[] {
+  private invoke(
+    fn: LocalFunction,
+    args: readonly Value[],
+    caller: State,
+    depth: number,
+    localCall?: SourceSite,
+  ): State[] {
     this.budget.check()
     if (depth >= BEHAVIOR_LIMITS.depth)
       return [this.stop(caller, fn, 'Analysis reached the call depth limit.')]
@@ -265,7 +272,7 @@ export class Interpreter {
         values.set(parameter, evaluated?.value ?? unknown)
       }
     })
-    const inner = { ...caller, values, mode: 'next' as const, value: missing }
+    const inner = { ...caller, values, localCall, mode: 'next' as const, value: missing }
     const results = ts.isBlock(fn.body)
       ? this.block(fn.body.statements, [inner], depth)
       : this.expression(fn.body, inner, depth, true).map((state) =>
@@ -304,7 +311,12 @@ export class Interpreter {
         if (previous === undefined) restored.delete(key)
         else restored.set(key, previous)
       }
-      return { ...state, values: restored, site: state.site ?? this.source.site(fn) }
+      return {
+        ...state,
+        values: restored,
+        localCall: caller.localCall,
+        site: state.site ?? this.source.site(fn),
+      }
     })
   }
 
@@ -420,8 +432,10 @@ export class Interpreter {
     const numbers = new Map<string, number>()
     const visit = (expression: ts.Expression): void => {
       const node = unwrap(expression)
-      if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken)
-        return visit(node.operand)
+      if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) {
+        visit(node.operand)
+        return
+      }
       if (!ts.isBinaryExpression(node)) return
       const operator = node.operatorToken.kind
       if (
@@ -1314,7 +1328,7 @@ export class Interpreter {
           if (async && !awaited)
             return [this.stop(s, e, 'An unawaited helper may continue independently.')]
           const proof = values.every(isData) && dataEffects(this.source, fn, s.values)
-          return this.invoke(fn, values, s, depth + 1).map((body) => {
+          return this.invoke(fn, values, s, depth + 1, this.source.site(e)).map((body) => {
             if (proof && body.mode === 'unknown')
               return withValue(
                 add(s, {
@@ -1562,6 +1576,7 @@ export class Interpreter {
               operation: update ? 'view update' : 'notice',
               detail: message,
               site: this.source.site(e),
+              ...(s.localCall === undefined ? {} : { reportingCall: s.localCall }),
             }),
             missing,
           )

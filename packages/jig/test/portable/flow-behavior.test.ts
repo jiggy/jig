@@ -137,10 +137,51 @@ test('comparison round-trips a baseline and localizes changed effects to the con
       facts.every(([kind, detail]) => kind !== 'call' || !detail.includes('exporter')),
     ),
   ).toBe(true)
-  expect(renderFlowBehaviorComparison(diff)).toContain('## binding:validation')
+  const summary = renderFlowBehaviorComparison(diff)
+  expect(summary).toContain('## binding:validation')
+  expect(summary).toContain('Removed · exporter → flow:flows/export')
+  expect(summary).not.toContain('converter → flow:flows/convert')
+  expect(renderFlowBehaviorComparison(diff, true)).toContain('converter → flow:flows/convert')
   expect(() => decodeFlowBehaviorSnapshot(Buffer.from('{"format":"jig.flow-behavior/1"}'))).toThrow(
     'Jig behavior snapshot',
   )
+})
+
+test('comparison keeps paths with the same checks unpaired when correspondence is ambiguous', () => {
+  const captured = flowBehaviorSnapshot(
+    analyzeFlowBehavior(
+      snapshot(method(handlerSource(`return {outcome:'done',output:{status:'ready'}}`))),
+    ),
+  )
+  const make = (results: readonly string[]): typeof captured => ({
+    ...captured,
+    targets: [
+      {
+        ...captured.targets[0]!,
+        paths: results.map((result) => ({
+          kind: 'source',
+          facts: [['exit', result, ['flows/import/FLOW.ts', 23]]],
+        })),
+      },
+    ],
+  })
+  const diff = compareFlowBehavior(make(['first', 'second']), make(['third', 'fourth']))
+  const summary = renderFlowBehaviorComparison(diff)
+  expect(summary).toContain('Unmatched paths · 2 before, 2 after')
+  expect(summary).not.toContain('first')
+  const detail = renderFlowBehaviorComparison(diff, true)
+  expect(detail).toContain('first · flows/import/FLOW.ts:23')
+  expect(detail).toContain('[flows/import/FLOW.ts:23](./flows/import/FLOW.ts#L23)')
+  expect(() =>
+    decodeFlowBehaviorSnapshot(
+      Buffer.from(
+        encodeFlowBehaviorSnapshot(make(['first'])).replace(
+          'flows/import/FLOW.ts',
+          '../outside.ts',
+        ),
+      ),
+    ),
+  ).toThrow('Jig behavior snapshot')
 })
 
 test('a new callee return keeps the existing call case link attached to its result', () => {
@@ -401,6 +442,25 @@ test('conditional publication follows closure state and the computed view payloa
       detail: 'progress 4/4',
     }),
   )
+  const repaired = analyzeFlowBehavior(
+    snapshot(
+      child,
+      method(body.replace("show('ready')", "show('checking')"), {
+        reportingFiles: new Set(['FLOW.ts']),
+      }),
+    ),
+  )
+  const comparison = compareFlowBehavior(
+    flowBehaviorSnapshot(report),
+    flowBehaviorSnapshot(repaired),
+  )
+  const reportingLine = body.split('\n').findIndex((line) => line.includes("show('ready')")) + 1
+  const rendered = renderFlowBehaviorComparison(comparison)
+  expect(rendered).toContain('Requested progress 4/4 → 3/4')
+  expect(rendered).toContain(
+    `[flows/import/FLOW.ts:${reportingLine}](./flows/import/FLOW.ts#L${reportingLine})`,
+  )
+  expect(rendered).not.toContain('converter → flow:flows/convert')
   const withoutProfile = analyzeFlowBehavior(snapshot(child, method(body)))
   expect(withoutProfile.scopes[0]!.gaps[0]?.reason).toContain('opaque')
   expect(renderFlowBehavior(withoutProfile)).not.toContain('progress 4/4')

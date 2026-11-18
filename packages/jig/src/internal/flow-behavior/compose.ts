@@ -6,9 +6,8 @@ import {
   type State,
 } from './analyze.js'
 import {
-  BEHAVIOR_LIMITS,
-  isFileOperation,
   type AuthoredHandoff,
+  BEHAVIOR_LIMITS,
   type BehaviorAssumption,
   type BehaviorChildPath,
   type BehaviorGuard,
@@ -17,6 +16,7 @@ import {
   type BehaviorReport,
   type BehaviorStep,
   type BehaviorTarget,
+  isFileOperation,
   type SourceSite,
 } from './model.js'
 import { SourceIndex } from './source.js'
@@ -99,7 +99,8 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       // A later handoff also pays to traverse its caller's prefix. Give it room
       // to reach the response while charging all probes to the shared ceiling.
       const conditional = inspect(target, new AnalysisBudget(signal, 12_000, secondary), seed)
-      for (const route of conditional.alternatives) alternatives.set(JSON.stringify(route), route)
+      for (const route of conditional.alternatives)
+        alternatives.set(JSON.stringify(route, omitReportingCall), route)
       for (const gap of conditional.gaps) gaps.set(JSON.stringify(gap), gap)
     }
     if (seeds.size > 8) {
@@ -121,7 +122,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   }
 
   function retainChild(argument: string, steps: Route): number | undefined {
-    const key = JSON.stringify([argument, steps])
+    const key = JSON.stringify([argument, steps], omitReportingCall)
     const existing = childKeys.get(key)
     if (existing !== undefined) return existing
     if (
@@ -613,9 +614,14 @@ function failureText(value: Value): string {
       : 'Throws'
 }
 
+function omitReportingCall(key: string, value: unknown): unknown {
+  return key === 'reportingCall' ? undefined : value
+}
+
 function mapEntries(key: string, value: unknown): unknown {
   // Retaining a representative child path must not change the analysis budget.
-  if (key === 'childPath' || key === 'representativeChild') return undefined
+  if (key === 'childPath' || key === 'representativeChild' || key === 'reportingCall')
+    return undefined
   if (value instanceof Map) return [...value]
   if (typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'function')
     return { kind: 'function' }
