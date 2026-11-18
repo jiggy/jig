@@ -96,8 +96,9 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     const alternatives = new Map<string, Route>()
     const gaps = new Map(scope.gaps.map((gap) => [JSON.stringify(gap), gap]))
     for (const seed of [...seeds.values()].slice(0, 8)) {
-      // Keep the work allowance for each handoff independent.
-      const conditional = inspect(target, new AnalysisBudget(signal, 6_000, secondary), seed)
+      // A later handoff also pays to traverse its caller's prefix. Give it room
+      // to reach the response while charging all probes to the shared ceiling.
+      const conditional = inspect(target, new AnalysisBudget(signal, 12_000, secondary), seed)
       for (const route of conditional.alternatives) alternatives.set(JSON.stringify(route), route)
       for (const gap of conditional.gaps) gaps.set(JSON.stringify(gap), gap)
     }
@@ -313,6 +314,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     const states = callee ? evaluate(callee, argument, depth, active, budget, handoff) : []
     const pkg = callee && input.packages.get(callee.implementation)
     const values: ChildResult[] = []
+    const readFailures = new Set<ChildResult>()
     const opaque: {
       steps: readonly BehaviorStep[]
       assumptions: readonly BehaviorAssumption[]
@@ -341,17 +343,29 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
         continue
       }
       if (state.mode === 'throw') {
-        values.push(
-          choice(
-            'throw',
-            state.value,
-            failureText(state.value),
-            prefix,
-            state.assumptions,
-            guards,
-            childPath,
-          ),
+        const failure = choice(
+          'throw',
+          state.value,
+          failureText(state.value),
+          prefix,
+          state.assumptions,
+          guards,
+          childPath,
         )
+        const failedAt = state.site
+        if (
+          state.value.kind === 'unknown' &&
+          failedAt &&
+          state.steps.some(
+            (step) =>
+              step.kind === 'condition' &&
+              step.readOperation &&
+              !step.taken &&
+              sameSite(step.site, failedAt),
+          )
+        )
+          readFailures.add(failure)
+        values.push(failure)
         continue
       }
       if (state.mode !== 'return') continue
@@ -464,8 +478,25 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     }
     const distinct = new Map<string, ChildResult>()
     for (const result of values) {
-      const key = JSON.stringify(result, mapEntries)
-      if (!distinct.has(key)) distinct.set(key, result)
+      const readFailure = readFailures.has(result)
+      const key = JSON.stringify(
+        readFailure ? { ...result, step: { ...result.step, guards: undefined } } : result,
+        mapEntries,
+      )
+      const previous = distinct.get(key)
+      if (!previous) distinct.set(key, result)
+      else if (readFailure) {
+        const current = result.step.guards ?? []
+        const common: BehaviorGuard[] = []
+        for (const [index, guard] of (previous.step.guards ?? []).entries()) {
+          if (JSON.stringify(guard) !== JSON.stringify(current[index])) break
+          common.push(guard)
+        }
+        distinct.set(key, {
+          ...previous,
+          step: { ...previous.step, guards: common, representativeChild: true },
+        })
+      }
     }
     return budget.variants(
       [...distinct.values()].filter(
@@ -550,9 +581,12 @@ function callerEvidence(steps: Route): { prefix: BehaviorStep[]; guards: Behavio
   const prefix: BehaviorStep[] = []
   let guards: BehaviorGuard[] = []
   for (const step of steps) {
-    if (step.kind === 'condition' && step.unresolved) guards.push(step)
+    // The child path keeps its reads and their operational checks. A caller
+    // needs the child's completion and effects that cross the boundary.
+    if (step.kind === 'condition' && step.unresolved && !step.readOperation) guards.push(step)
     if (step.kind === 'call') guards.push(...(step.guards ?? []))
     if (step.kind === 'effect') {
+      if (isFileOperation(step) && step.operation !== 'writeFile') continue
       // Conditions seen before a file operation belong to its incoming edge.
       // A later condition stays with the child completion.
       if (isFileOperation(step) && guards.length) {
@@ -581,7 +615,7 @@ function failureText(value: Value): string {
 
 function mapEntries(key: string, value: unknown): unknown {
   // Retaining a representative child path must not change the analysis budget.
-  if (key === 'childPath') return undefined
+  if (key === 'childPath' || key === 'representativeChild') return undefined
   if (value instanceof Map) return [...value]
   if (typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'function')
     return { kind: 'function' }

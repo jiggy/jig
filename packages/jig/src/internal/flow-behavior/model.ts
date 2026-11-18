@@ -47,6 +47,7 @@ export interface BehaviorGuard {
   readonly code: string
   readonly taken: boolean
   readonly unresolved: boolean
+  readonly readOperation?: true
   readonly enteringNumbers?: readonly (readonly [name: string, value: number])[]
 }
 
@@ -70,6 +71,7 @@ export type BehaviorStep =
       readonly assumptions?: readonly BehaviorAssumption[]
       readonly guards?: readonly BehaviorGuard[]
       readonly childPath?: number
+      readonly representativeChild?: true
     }
   | {
       readonly kind: 'effect'

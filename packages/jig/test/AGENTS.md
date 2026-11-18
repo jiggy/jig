@@ -18,6 +18,11 @@ The diagram marks assumptions on the affected branches.
 Proven data-only formatting can exhaust its own allowance while the caller remains visible.
 
 Linked child paths preserve configured callers, distinct call sites, and guards before file writes.
+Case links retain their result after an earlier callee return is added.
+Short-circuit operands retain their truthiness and value kind.
+Read-only child operations remain in the expansion while writes appear in the caller.
+Overview and diagram selection prioritize distinct outcomes.
+
 Known result refusals retain prior effects in standalone and child paths.
 The application map links independent targets and distinct configured uses to shared Flow charts.
 An unrelated line insertion preserves the call link.

@@ -87,6 +87,59 @@ test('a callee-only change alters the unchanged caller continuation', () => {
   )
 })
 
+test('a new callee return keeps the existing call case link attached to its result', () => {
+  const caller = method(
+    handlerSource(`
+    const converted = await run.call({slot:'converter',operationId:'convert',input:run.input})
+    return {outcome:'done',output:converted.output}
+  `),
+  )
+  const render = (early: string) =>
+    renderFlowBehavior(
+      analyzeFlowBehavior(
+        snapshot(
+          method(
+            handlerSource(`
+      ${early}
+      if (run.input.special) return {outcome:'done', output:{status:'special'}}
+      return {outcome:'done', output:{status:'other'}}
+    `),
+          ),
+          caller,
+        ),
+      ),
+    )
+  const before = render('')
+  const after = render(`if (run.input.added) return {outcome:'done', output:{status:'new'}}`)
+  const link = /<a id="(call-converter-[a-f0-9]+-path-[a-f0-9]+)"><\/a>\*\*[^\n]+status = "special"/
+  const id = before.match(link)?.[1]
+  expect(id).toBeDefined()
+  expect(after.match(link)?.[1]).toBe(id)
+  expect(after).toContain('status = "new"')
+})
+
+test('short-circuited values keep their truth without becoming Booleans', () => {
+  for (const operation of ['||', '&&']) {
+    const expected = operation === '||'
+    const input = snapshot(
+      method(
+        handlerSource(`
+      let usedFallback = false
+      const selected = run.input.name ${operation} (usedFallback = true)
+      if (selected) return {outcome:'done', output:{selected, usedFallback, truth:'true'}}
+      return {outcome:'done', output:{selected, usedFallback, truth:'false'}}
+    `),
+      ),
+    )
+    const routes = analyzeFlowBehavior({ ...input, focus: 'flow:flows/convert' }).scopes[0]!.routes
+    const short = routes.filter((route) => route.at(-1)?.detail.includes('usedFallback = false'))
+    expect(short).toHaveLength(1)
+    expect(short[0]?.at(-1)?.detail).toContain('truth = "' + expected + '"')
+    expect(short[0]?.at(-1)?.detail).not.toContain('selected = ')
+    expect(routes.some((route) => route.at(-1)?.detail.includes('selected = true'))).toBe(true)
+  }
+})
+
 test('authored handoffs retain caller exit checks beyond an opaque operation', () => {
   const caller = method(
     handlerSource(`
@@ -386,16 +439,71 @@ test('read-only file validation branches retain cleanup and file effect order', 
   })!
   expect(operations(accepted)).toEqual(['open', 'stat', 'readFile', 'close'])
   expect(operations(refused)).toEqual(['open', 'stat', 'close'])
+  expect(
+    routes.some(
+      (route) =>
+        operations(route).includes('readFile') &&
+        route.some(
+          (step) => step.kind === 'condition' && step.code === '!metadata.isFile()' && step.taken,
+        ),
+    ),
+  ).toBe(false)
   expect(routes.some((route) => operations(route).join(',') === 'open')).toBe(true)
   expect(renderFlowBehavior(report)).toContain('File operations attempted')
   const markdown = renderFlowBehavior(report)
   expect(markdown).toContain('Attempts readFile')
   expect(markdown).toMatch(/assume true \(!metadata\.isFile/)
   expect(markdown).toMatch(/assume false \(!metadata\.isFile/)
-  expect(markdown).toMatch(/assume true \(!metadata\.isFile[^\n]+before check: maximumBytes = 1024/)
-  expect(markdown).toMatch(
-    /assume false \(!metadata\.isFile[^\n]+before check: maximumBytes = 1024/,
+  expect(markdown).toContain('before check: maximumBytes = 1024')
+})
+
+test('a child read sequence stays in its expansion while the write reaches the caller', () => {
+  const child = method(`
+    import { handle } from '@jigging/flow'
+    import { open, writeFile } from 'node:fs/promises'
+    await handle(async () => {
+      const file = await open('catalogue.json')
+      const bytes = await file.readFile()
+      await file.close()
+      await writeFile('preview.json', bytes)
+      return {outcome:'done', output:{status:'ready'}}
+    })
+  `)
+  const report = analyzeFlowBehavior(
+    snapshot(
+      child,
+      method(
+        handlerSource(`
+    const result = await run.call({slot:'converter',operationId:'check',input:{}})
+    if (result.outcome === 'blocked') return {outcome:'done',output:{status:'refused'}}
+    return {outcome:'done',output:{status:'ready'}}
+  `),
+      ),
+    ),
   )
+  const scope = report.scopes[0]!
+  expect(
+    scope.routes
+      .flat()
+      .filter((step) => step.kind === 'effect')
+      .map((step) => step.operation),
+  ).toEqual(['writeFile'])
+  expect(
+    scope.routes.flat().filter((step) => step.kind === 'call' && step.result === 'Throws'),
+  ).toMatchObject([{ representativeChild: true }])
+  expect(
+    scope.alternatives
+      .flat()
+      .some((step) => step.kind === 'end' && step.detail.includes('refused')),
+  ).toBe(true)
+  const markdown = renderFlowBehavior(report)
+  expect(markdown).toContain('Read-only file attempts')
+  expect(markdown).toMatch(
+    /Read-only file attempts[^\n]+Attempts open[^\n]+Attempts readFile[^\n]+Attempts close/,
+  )
+  const diagram = markdown.match(/\x60\x60\x60mermaid([\s\S]+?)\x60\x60\x60/)?.[1]
+  expect(diagram).toContain('Attempts writeFile')
+  expect(diagram).not.toContain('Attempts open')
 })
 
 test('strict decoding and parsing preserve distinct failures before effects', () => {
@@ -862,6 +970,33 @@ test('repeated failures do not hide a distinct return at the alternatives limit'
     expect.objectContaining({ kind: 'end', completion: 'throw', detail: 'Throws: Unavailable' }),
   )
   expect(scope.gaps.some((gap) => gap.reason.includes('limit on alternatives'))).toBe(true)
+})
+
+test('the chart and overview reserve space for distinct outcomes', () => {
+  const refusals = Array.from(
+    { length: 5 },
+    (_, index) => `
+    if (run.input.case === ${index}) return {outcome:'blocked', output:{reason:'reason-${index}'}}
+  `,
+  ).join('\n')
+  const input = snapshot(
+    method(
+      handlerSource(`
+    ${refusals}
+    return {outcome:'done', output:{status:'ready'}}
+  `),
+    ),
+  )
+  const report = analyzeFlowBehavior({ ...input, focus: undefined })
+  const rendered = renderFlowBehavior(report)
+  const overview = rendered.split('## Flow ')[0] ?? ''
+  const row = overview.split('\n').find((line) => line.startsWith('| [flow:flows/convert]'))
+  expect(row).toContain('Returns "blocked"')
+  expect(row).toContain('Returns "done"')
+  const scope = rendered.split('## Flow flows/convert\n')[1] ?? ''
+  const chart = scope.match(/\x60\x60\x60mermaid([\s\S]+?)\x60\x60\x60/)?.[1]
+  expect(chart).toContain('Returns &#34;blocked&#34;')
+  expect(chart).toContain('Returns &#34;done&#34;')
 })
 
 test('a finite array repeats the same call site and an early return skips later iterations', () => {

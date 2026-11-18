@@ -12,8 +12,12 @@ import {
 type Route = BehaviorReport['scopes'][number]['routes'][number]
 type Scope = BehaviorReport['scopes'][number]
 type Call = Extract<BehaviorStep, { kind: 'call' }>
-type CallCase = { call: Call; after: readonly BehaviorStep[] }
-type CallDetails = ReadonlyMap<string, ReadonlyMap<string, CallCase & { index: number }>>
+type CallCase = {
+  call: Call
+  after: readonly BehaviorStep[]
+  sources: Set<number | undefined>
+}
+type CallDetails = ReadonlyMap<string, ReadonlyMap<string, CallCase>>
 
 const directions = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu
 const controls = /[\p{Cc}\u2028\u2029]/gu
@@ -241,6 +245,20 @@ function selectRoutes(scope: Scope): Route[] {
     const terminal = route.at(-1)
     return terminal?.kind === 'end' && terminal.completion === 'return'
   })
+  const byOutcome = new Map<string | undefined, Route>()
+  const byConsequence = new Map<string, Route>()
+  for (const route of returned) {
+    const terminal = route.at(-1)!
+    if (terminal.kind !== 'end') continue
+    const outcome = terminal.returned?.outcome
+    if (!byOutcome.has(outcome)) byOutcome.set(outcome, route)
+    const consequence = JSON.stringify([
+      terminal.returned,
+      progress(route, scope.target),
+      route.filter(isFileOperation).map(({ operation, detail }) => [operation, detail]),
+    ])
+    if (!byConsequence.has(consequence)) byConsequence.set(consequence, route)
+  }
   const exceptional = group.filter((route) => !returned.includes(route))
   const readSequence = (route: Route) =>
     route.some((step) => isFileOperation(step) && step.operation !== 'writeFile')
@@ -264,11 +282,12 @@ function selectRoutes(scope: Scope): Route[] {
     ...(refusal ? [refusal] : []),
     ...exceptional,
   ])
-  return [...returned.slice(0, 4), ...[...stops].slice(0, 2)]
+  const returns = [...new Set([...byOutcome.values(), ...byConsequence.values(), ...returned])]
+  return [...returns.slice(0, 4), ...[...stops].slice(0, 2)]
 }
 
 function withoutChildPath(key: string, value: unknown): unknown {
-  return key === 'childPath' ? undefined : value
+  return key === 'childPath' || key === 'representativeChild' ? undefined : value
 }
 
 function continuation(route: Route, at: number, call: Call): BehaviorStep[] {
@@ -287,17 +306,29 @@ function continuation(route: Route, at: number, call: Call): BehaviorStep[] {
   return after
 }
 
-function caseKey(call: Call, after: readonly BehaviorStep[]): string {
-  const steps = after.map((step) =>
-    step.kind === 'call' ? [step.caller, step.slot, step.target, step.site] : step,
+function caseId(report: BehaviorReport, call: Call, after: readonly BehaviorStep[]): string {
+  const steps = after.map((step) => (step.kind === 'call' ? [callAnchor(step), step.target] : step))
+  const child = call.childPath === undefined ? undefined : report.childPaths[call.childPath]
+  // Cases with the same input, child effects and caller continuation can share
+  // an anchor. Keep condition evidence in their representative child path.
+  const facts = child?.steps.filter((step) => step.kind !== 'condition')
+  const key = JSON.stringify(
+    [call.target, call.completion, call.result, call.assumptions, child?.input, facts, steps],
+    (name, value) =>
+      name === 'line' || name === 'column' || name === 'guards'
+        ? undefined
+        : withoutChildPath(name, value),
   )
-  return JSON.stringify([call.childPath, call.result, steps])
+  return idFor(callAnchor(call) + '-path', key)
 }
 
 const callCaseLimit = 4
 
-function callDetails(routes: readonly Route[]): { shown: CallDetails; omitted: number } {
-  const entries = new Map<string, Map<string, CallCase & { index: number }>>()
+function callDetails(
+  report: BehaviorReport,
+  routes: readonly Route[],
+): { shown: CallDetails; omitted: number } {
+  const entries = new Map<string, Map<string, CallCase>>()
   const omitted = new Set<string>()
   for (const route of routes)
     for (const [index, call] of route.entries()) {
@@ -313,13 +344,20 @@ function callDetails(routes: readonly Route[]): { shown: CallDetails; omitted: n
         entries.set(anchor, cases)
       }
       const after = continuation(route, index, call)
-      const key = caseKey(call, after)
-      if (!cases.has(key)) cases.set(key, { call, after, index: cases.size + 1 })
+      const id = caseId(report, call, after)
+      const existing = cases.get(id)
+      if (existing) existing.sources.add(call.childPath)
+      else cases.set(id, { call, after, sources: new Set([call.childPath]) })
     }
   return { shown: entries, omitted: omitted.size }
 }
 
-function consequences(scope: Scope, routes: readonly Route[], details?: CallDetails): string[] {
+function consequences(
+  report: BehaviorReport,
+  scope: Scope,
+  routes: readonly Route[],
+  details?: CallDetails,
+): string[] {
   const hasReads = routes.some((route) =>
     route.some((step) => isFileOperation(step) && step.operation !== 'writeFile'),
   )
@@ -339,9 +377,11 @@ function consequences(scope: Scope, routes: readonly Route[], details?: CallDeta
       const title = text(step.slot + (step.completion === 'if-failed' ? ' failed' : ''))
       const anchor = callAnchor(step)
       const cases = details?.get(anchor)
-      const match = cases?.get(caseKey(step, continuation(route, index, step)))
-      if (match && match.index <= callCaseLimit)
-        return ['[' + title + '](#' + anchor + '-path-' + match.index + ')']
+      if (cases) {
+        const id = caseId(report, step, continuation(route, index, step))
+        if ([...cases.keys()].slice(0, callCaseLimit).includes(id))
+          return ['[' + title + '](#' + id + ')']
+      }
       return [cases ? '[' + title + '](#' + anchor + ')' : title]
     })
     const fileOperations = hasReads
@@ -381,8 +421,8 @@ function renderCallDetails(
   const lines = [application ? '#### Calls in context' : '## Calls in context', '']
   const targets = new Set(report.inventory.map((target) => target.id))
   for (const [anchor, variants] of details) {
-    const cases = [...variants.values()]
-    const first = cases[0]
+    const cases = [...variants.entries()]
+    const first = cases[0]?.[1]
     if (!first) continue
     const { call } = first
     lines.push(
@@ -399,11 +439,20 @@ function renderCallDetails(
     )
     if (application && targets.has(call.target))
       lines.push('[Configured child](#' + idFor('target', call.target) + ')', '')
-    for (const { call, after, index } of cases.slice(0, callCaseLimit)) {
+    for (const [id, { call, after, sources }] of cases.slice(0, callCaseLimit)) {
       const path = call.childPath === undefined ? undefined : report.childPaths[call.childPath]
-      lines.push('- <a id="' + anchor + '-path-' + index + '"></a>**' + text(label(call)) + '**')
+      lines.push('- <a id="' + id + '"></a>**' + text(label(call)) + '**')
       if (path) {
         lines.push('  - Input from this caller · ' + text(path.input))
+        const reads = path.steps
+          .filter(isFileOperation)
+          .filter((step) => step.operation !== 'writeFile')
+        if (reads.length)
+          lines.push(
+            '  - Read-only file attempts · ' +
+              reads.slice(0, 6).map(detailLine).join(' → ') +
+              (reads.length > 6 ? ' · ' + (reads.length - 6) + ' later operations omitted' : ''),
+          )
         const steps = path.steps.filter(
           (step) =>
             step.kind !== 'effect' || step.operation === 'writeFile' || step.operation === 'notice',
@@ -411,7 +460,9 @@ function renderCallDetails(
         const shown = steps.length > 6 ? [...steps.slice(0, 4), ...steps.slice(-2)] : steps
         if (steps.length)
           lines.push(
-            '  - Child path · ' +
+            (sources.size > 1 || call.representativeChild
+              ? '  - Representative child path · '
+              : '  - Child path · ') +
               shown.map(detailLine).join(' → ') +
               (shown.length < steps.length
                 ? ' · ' + (steps.length - shown.length) + ' intermediate steps omitted'
@@ -638,9 +689,9 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     lines.push('## ' + text(selected.target), '')
     lines.push(...contractChecks(selected))
     const routes = selectRoutes(selected)
-    const details = callDetails([...routes, ...selected.alternatives])
+    const details = callDetails(report, [...routes, ...selected.alternatives])
     if (routes.length) {
-      lines.push(...consequences(selected, routes, details.shown))
+      lines.push(...consequences(report, selected, routes, details.shown))
       lines.push(
         'Routes depend on the shown checks, completion of intervening operations, and admission of child results.',
         '',
@@ -686,7 +737,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
             route.some((step) => step.kind === 'call' && step.target === focus),
           ),
         }).slice(0, 3)
-        lines.push('### ' + text(caller.target), '', ...consequences(caller, routes))
+        lines.push('### ' + text(caller.target), '', ...consequences(report, caller, routes))
       }
     }
   }
@@ -805,9 +856,9 @@ function applicationMap(report: BehaviorReport): string[] {
       }
       if (routes.length && !body.length)
         lines.push('This configured target exceeds the diagram limit.', '')
-      const details = callDetails([...routes, ...scope.alternatives])
+      const details = callDetails(report, [...routes, ...scope.alternatives])
       lines.push(...contractChecks(scope))
-      if (routes.length) lines.push(...consequences(scope, routes, details.shown))
+      if (routes.length) lines.push(...consequences(report, scope, routes, details.shown))
       if (scope.routes.length > routes.length)
         lines.push(
           scope.routes.length -
