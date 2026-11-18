@@ -20,6 +20,7 @@ Explain conditional behavior from a captured Jig project without running its met
 - Keep analyzer inputs in memory. Use the existing capture owners for filesystem reads.
 - Carry hypothetical results and known effects through caller continuations.
 - Keep incomplete values distinct from unknown control flow.
+- Preserve the truthiness of a short-circuit operand without substituting a Boolean value.
 - Keep unresolved checks attached to their conditional continuations.
   Show known numeric comparison operands as context at entry to the check.
 - Retain bounded child paths from the call evaluation that supplied the displayed result.
@@ -28,7 +29,9 @@ Explain conditional behavior from a captured Jig project without running its met
 - Interpret finite literal-array loops and empty error subclasses without executing source.
 - Evaluate small inert array transformations through proven data-only callbacks.
 - Interpret spreads of small, known scalar sets and literal numeric products.
-- Carry file-open, metadata, read, and close attempts with their conditional continuations.
+- Keep read-only file attempts and operational checks in the Flow that performs them.
+  Carry child completion, consequential guards, and writes into the caller.
+  Combine equivalent operational failures at the caller and label their representative child path.
 - Carry possible UTF-8 and JSON validation failures without reading file data.
   Keep the original source reference when a handler rethrows the same modeled error.
 - Mark successful continuation of unresolved data mappings as conditional.

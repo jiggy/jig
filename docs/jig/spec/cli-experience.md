@@ -974,6 +974,8 @@ Source references identify the captured implementation and line.
 Flow and configured target links derive from their selectors.
 An unchanged call retains its link when unrelated lines move around it.
 Identically spelled calls in one file use their occurrence order.
+Expanded call cases use their represented input, child effects, result, and caller continuation for their links.
+Equivalent cases may share a representative child path.
 Reinspect the working tree after edits to refresh the application map and its revision.
 
 The analyzer covers a subset of local TypeScript.
@@ -987,6 +989,7 @@ Reachability, execution order, and returned values remain unresolved there.
 
 Supported read-only file opens and subsequent metadata, read, and close operations appear as attempts.
 The map shows conditional success and failure, while file contents and runtime metadata remain unknown.
+These read-only attempts stay in the Flow that performs them and its call expansion.
 It can show known numeric operands at entry to a comparison.
 Supported strict UTF-8 decoding and JSON parsing of read bytes retain separate validation failures.
 Additional source results include distinct throws with a known error type or message when the main diagram omits them.
@@ -999,6 +1002,7 @@ When validation callbacks operate on unresolved contents, the displayed continua
 Small known scalar sets and literal numeric products can contribute to reported progress.
 
 The focused view summarizes selected route consequences and evidence.
+It prioritizes distinct return outcomes and consequential differences before further variants.
 The main diagram projects supported calls, loops, and file writes within a fixed display bound.
 Routes join only when their remaining displayed steps and checks agree.
 

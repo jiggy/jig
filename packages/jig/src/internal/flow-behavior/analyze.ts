@@ -384,7 +384,11 @@ export class Interpreter {
     value: Value,
     state: T,
     alternatives: (s: State, taken: boolean) => State[],
-    { label, enteringValues }: { label?: string; enteringValues?: State['values'] } = {},
+    {
+      label,
+      enteringValues,
+      readOperation,
+    }: { label?: string; enteringValues?: State['values']; readOperation?: true } = {},
   ): State[] {
     const condition = truth(value)
     const possible = condition === undefined ? [true, false] : [condition]
@@ -404,6 +408,7 @@ export class Interpreter {
             taken,
             unresolved: condition === undefined,
             ...(enteringNumbers.length > 0 ? { enteringNumbers } : {}),
+            ...(readOperation ? { readOperation } : {}),
           }),
           taken,
         ),
@@ -948,7 +953,14 @@ export class Interpreter {
           return this.branch(e.left, left, s, (ss, taken) =>
             taken === (operator === ts.SyntaxKind.AmpersandAmpersandToken)
               ? this.expression(e.right, ss, depth)
-              : [withValue(ss, left)],
+              : [
+                  withValue(
+                    ss,
+                    left.kind === 'unknown' || left.kind === 'decoded-text'
+                      ? { ...left, truthiness: taken }
+                      : left,
+                  ),
+                ],
           )
         return known === (operator === ts.SyntaxKind.AmpersandAmpersandToken)
           ? this.expression(e.right, s, depth)
@@ -956,6 +968,7 @@ export class Interpreter {
       }
       if (operator === ts.SyntaxKind.QuestionQuestionToken) {
         if (left.kind === 'unknown') {
+          if (truth(left) === true) return [withValue(s, left)]
           if (dataEffects(this.source, e.right, s.values)) return [withValue(s, unknown)]
           return this.branch(
             e.left,
@@ -1414,7 +1427,7 @@ export class Interpreter {
   ): State[] {
     const site = this.source.site(call)
     const attempted = add(state, { kind: 'effect', owner: this.target.id, operation, detail, site })
-    return this.checkedOperation(call, attempted, operation + ' completes', result, unknown)
+    return this.checkedOperation(call, attempted, operation + ' completes', result, unknown, true)
   }
 
   private checkedOperation(
@@ -1423,6 +1436,7 @@ export class Interpreter {
     check: string,
     result: Value,
     failure: Value,
+    readOperation?: true,
   ): State[] {
     const site = this.source.site(call)
     return this.branch(
@@ -1432,7 +1446,7 @@ export class Interpreter {
       (branch, completed) => [
         completed ? withValue(branch, result) : raised(branch, site, failure),
       ],
-      { label: check },
+      { label: check, ...(readOperation ? { readOperation } : {}) },
     )
   }
 
