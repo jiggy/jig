@@ -267,6 +267,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   A captured package that lacks a direct target points the reader to package inspection.
   Focused and package reports can show authored call references beyond the analyzed routes.
   Keep computed slot expressions distinct from exact selected targets.
+  Supported literal lookups can show their authored rows, source assignments, and preceding returns.
 
   Lead with route consequences and attach their unresolved checks.
   Give main routes their own analysis budget and disclose omissions and opaque regions.

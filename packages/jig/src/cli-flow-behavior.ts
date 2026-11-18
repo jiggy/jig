@@ -870,7 +870,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
         configuredConnections(report, (_caller, target) => uses.has(target)),
         text,
       ),
-      ...renderCallReferences(scopes, (caller) => {
+      ...renderCallReferences(scopes, inventory, (caller) => {
         const slots = inventory.find((target) => target.id === caller)?.slots
         return new Set([...(slots ?? [])].flatMap(([slot, id]) => (uses.has(id) ? [slot] : [])))
       }),
@@ -881,7 +881,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   lines.push('## ' + text(focus), '', ...configuredOrientation(report, focus))
   const selected = scopes.find((scope) => scope.target === focus)
   if (selected) {
-    lines.push(...renderCallReferences([selected]))
+    lines.push(...renderCallReferences([selected], inventory))
     lines.push(...contractChecks(selected))
     const routes = selectRoutes(selected)
     const details = callDetails(report, [...routes, ...selected.alternatives])
@@ -950,13 +950,16 @@ export function renderFlowBehavior(report: BehaviorReport): string {
 
 function renderCallReferences(
   scopes: readonly Scope[],
+  inventory: readonly BehaviorTarget[],
   selectedSlots?: (caller: string) => ReadonlySet<string>,
 ): string[] {
   const lines: string[] = []
+  const lookups = new Map<string, string[]>()
   let omitted = 0
   for (const scope of scopes) {
     const selected = selectedSlots?.(scope.target)
     if (selected?.size === 0) continue
+    const configured = inventory.find((target) => target.id === scope.target)?.slots
     for (const reference of scope.callReferences ?? []) {
       if (reference.kind === 'literal' && selected && !selected.has(reference.slot)) continue
       const slot =
@@ -966,6 +969,42 @@ function renderCallReferences(
       if (lines.length < 12)
         lines.push(`- ${text(scope.target)} · ${text(slot)} (${text(site(reference.site))})`)
       else omitted++
+      if (reference.kind === 'computed' && reference.selection) {
+        const { lookup, table, key, member, rows, origins } = reference.selection
+        if (selected && !rows.some((row) => selected.has(row.slot))) continue
+        const identity = JSON.stringify([scope.target, lookup.site])
+        if (lookups.has(identity) || lookups.size >= 4) continue
+        lookups.set(identity, [
+          `- ${text(scope.target)} · ${text(key)} matches ${text(member)} in ${text(table.code)} (${text(site(table.site))}) · lookup at ${text(site(lookup.site))}`,
+          ...rows.map((row) => {
+            const target = configured?.get(row.slot)
+            return `  - ${text(row.key)} → ${text(row.slot)}${target === undefined ? ' (unconfigured)' : ' → ' + text(target)}`
+          }),
+          ...origins.flatMap((origin) => [
+            `  - Key source ${text(origin.value.code)} (${text(site(origin.value.site))})`,
+            ...(origin.enclosing
+              ? [
+                  `    - Inside ${text(origin.enclosing.condition.code)} · ${origin.enclosing.taken} branch (${text(site(origin.enclosing.condition.site))})`,
+                ]
+              : []),
+            ...(origin.producer
+              ? [
+                  `    - Value from ${text(origin.producer.code)} (${text(site(origin.producer.site))})`,
+                ]
+              : []),
+            ...(origin.inputSlot
+              ? [
+                  `    - Input from slot ${text(origin.inputSlot.name)} (${text(site(origin.inputSlot.site))})`,
+                ]
+              : []),
+            ...(origin.guard
+              ? [
+                  `    - Before assigning this key, ${text(origin.guard.condition.code)} leads to ${text(origin.guard.exit.code)} (${text(site(origin.guard.exit.site))})`,
+                ]
+              : []),
+          ]),
+        ])
+      }
     }
     omitted += scope.callReferencesOmitted ?? 0
   }
@@ -978,6 +1017,16 @@ function renderCallReferences(
     '',
     ...lines,
     '',
+    ...(lookups.size
+      ? [
+          '### Authored slot selection',
+          '',
+          'These lookup rows and key sources describe the authored decision. Selection depends on the caller input and conditions.',
+          '',
+          ...[...lookups.values()].flat(),
+          '',
+        ]
+      : []),
   ]
 }
 

@@ -2,6 +2,16 @@ import { createHash } from 'node:crypto'
 import { posix } from 'node:path'
 import ts from 'typescript-parser'
 import type { AuthoredHandoff, BehaviorPackage, CallReference, SourceSite } from './model.js'
+import { slotSelection } from './slot-selection.js'
+import {
+  isLocalFunction,
+  type LocalFunction,
+  shortText,
+  sourceNodes,
+  unwrap,
+} from './source-syntax.js'
+
+export { isLocalFunction, type LocalFunction, unwrap } from './source-syntax.js'
 
 const root = '/flow/'
 const compilerOptions: ts.CompilerOptions = {
@@ -12,31 +22,9 @@ const compilerOptions: ts.CompilerOptions = {
   allowImportingTsExtensions: true,
 }
 
-export type LocalFunction = ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration
 type ErrorBase = 'Error' | 'TypeError' | 'RangeError' | 'SyntaxError'
 export type ErrorClass = { readonly base: ErrorBase; readonly identity?: string }
 type HandoffSite = Omit<AuthoredHandoff, 'target'> & { receiver: ts.Declaration }
-
-const shortText = (node: ts.Node) => {
-  const code = node.getText()
-  return code.length <= 140 ? code : code.slice(0, 139) + '…'
-}
-
-export function isLocalFunction(node: ts.Node): node is LocalFunction {
-  return ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node)
-}
-
-export function unwrap(expression: ts.Expression): ts.Expression {
-  while (
-    ts.isParenthesizedExpression(expression) ||
-    ts.isAsExpression(expression) ||
-    ts.isSatisfiesExpression(expression) ||
-    ts.isNonNullExpression(expression) ||
-    ts.isTypeAssertionExpression(expression)
-  )
-    expression = expression.expression
-  return expression
-}
 
 export class SourceIndex {
   readonly #files: ReadonlyMap<string, string>
@@ -198,9 +186,18 @@ export class SourceIndex {
     limit: number,
   ): { references: CallReference[]; omitted: number } {
     const references: CallReference[] = []
+    const computed = new Map<number, ts.Expression>()
+    const calls = new Map<ts.Declaration, ts.CallExpression[]>()
     let omitted = 0
     const visit = (node: ts.Node): void => {
       if (ts.isCallExpression(node)) {
+        const callee = unwrap(node.expression)
+        const declaration = ts.isIdentifier(callee) ? this.declaration(callee) : undefined
+        if (declaration) {
+          const sites = calls.get(declaration) ?? []
+          sites.push(node)
+          calls.set(declaration, sites)
+        }
         const request = this.callRequest(node)
         const slot = request?.fields.get('slot')
         if (request && slot && this.contextParameter(request.receiver)) {
@@ -210,27 +207,47 @@ export class SourceIndex {
               ? { kind: 'literal', slot: slot.text, site }
               : { kind: 'computed', expression: shortText(slot), site }
             if (reference.kind === 'computed' || slots.has(reference.slot)) {
-              if (references.length < limit) references.push(reference)
-              else omitted++
+              if (references.length < limit) {
+                if (reference.kind === 'computed') computed.set(references.length, slot)
+                references.push(reference)
+              } else omitted++
             }
           }
         }
       }
     }
     for (const file of this.#program.getSourceFiles()) {
-      if (!this.valid(file)) continue
-      const pending: ts.Node[] = [file]
-      while (pending.length) {
-        const node = pending.pop()!
-        visit(node)
-        const children: ts.Node[] = []
-        ts.forEachChild(node, (child) => {
-          children.push(child)
-        })
-        pending.push(...children.reverse())
-      }
+      if (this.valid(file)) for (const node of sourceNodes(file)) visit(node)
+    }
+    const selections = new Map<ts.Declaration, Map<string, ReturnType<typeof slotSelection>>>()
+    for (const [index, slot] of computed) {
+      const reference = references[index]
+      if (
+        reference?.kind !== 'computed' ||
+        !ts.isPropertyAccessExpression(slot) ||
+        slot.questionDotToken
+      )
+        continue
+      const receiver = this.declaration(slot.expression)
+      if (!receiver) continue
+      const cached = selections.get(receiver) ?? new Map()
+      if (!cached.has(slot.name.text)) cached.set(slot.name.text, slotSelection(this, slot, calls))
+      selections.set(receiver, cached)
+      const selection = cached.get(slot.name.text)
+      if (selection) references[index] = { ...reference, selection }
     }
     return { references, omitted }
+  }
+
+  literalCallSlot(call: ts.CallExpression): string | undefined {
+    const request = this.callRequest(call)
+    const slot = request?.fields.get('slot')
+    return request &&
+      slot &&
+      ts.isStringLiteralLike(slot) &&
+      this.contextParameter(request.receiver)
+      ? slot.text
+      : undefined
   }
 
   private contextParameter(receiver: ts.Declaration): boolean {

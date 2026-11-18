@@ -981,6 +981,8 @@ Each analyzed route keeps its own conditions, call results, effects, and continu
 Source references identify the captured implementation and line.
 Focused and package reports may show additional authored call references after an analysis cutoff.
 Computed slot expressions remain separate from exact configured routes.
+Supported strict-equality lookups in literal tables may include their authored rows, key sources, and early returns.
+These source facts retain their locations and carry no reachability claim.
 
 Flow and configured target links derive from their selectors.
 An unchanged call retains its link when unrelated lines move around it.
