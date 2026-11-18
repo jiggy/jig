@@ -355,17 +355,18 @@ test('read-only file validation branches retain cleanup and file effect order', 
     import { handle } from '@jigging/flow'
     import { constants as flags } from 'node:fs'
     import { open } from 'node:fs/promises'
-    await handle(async () => {
+    async function inspectCatalogue(maximumBytes: number) {
       const file = await open('catalogue.json', flags.O_RDONLY | flags.O_NOFOLLOW)
       try {
         const metadata = await file.stat()
-        if (!metadata.isFile() || metadata.size > 1024) throw new TypeError('Supply a bounded regular file')
+        if (!metadata.isFile() || metadata.size > maximumBytes) throw new TypeError('Supply a bounded regular file')
         await file.readFile()
         return { outcome: 'done', output: { status: 'checked' } }
       } finally {
         await file.close()
       }
-    })
+    }
+    await handle(async () => inspectCatalogue(1024))
   `)
   const report = analyzeFlowBehavior(snapshot(method(''), caller))
   const routes = report.scopes[0]!.routes
@@ -391,6 +392,10 @@ test('read-only file validation branches retain cleanup and file effect order', 
   expect(markdown).toContain('Attempts readFile')
   expect(markdown).toMatch(/assume true \(!metadata\.isFile/)
   expect(markdown).toMatch(/assume false \(!metadata\.isFile/)
+  expect(markdown).toMatch(/assume true \(!metadata\.isFile[^\n]+before check: maximumBytes = 1024/)
+  expect(markdown).toMatch(
+    /assume false \(!metadata\.isFile[^\n]+before check: maximumBytes = 1024/,
+  )
 })
 
 test('writable opens and reads through a closed alias stay unresolved', () => {

@@ -56,7 +56,15 @@ function callAnchor(call: Call): string {
 
 function guardLabel(guard: BehaviorGuard): string {
   const code = guard.code.replace(/\s+/g, ' ')
-  return '(' + (code.length <= 72 ? code : code.slice(0, 69) + '…') + ')'
+  const short = code.length <= 72 ? code : code.slice(0, 69) + '…'
+  return '(' + short + guardContext(guard) + ')'
+}
+
+function guardContext(guard: BehaviorGuard): string {
+  return guard.enteringNumbers
+    ? ' · before check: ' +
+        guard.enteringNumbers.map(([name, value]) => name + ' = ' + value).join(', ')
+    : ''
 }
 
 function result(facts: BehaviorReturn, includeArtifacts = false): string {
@@ -441,12 +449,12 @@ function evidence(routes: readonly Route[]): string[] {
   for (const route of routes)
     for (const step of route) {
       if (step.kind === 'condition')
-        checks.add(text(step.code) + ' (' + text(site(step.site)) + ')')
+        checks.add(text(step.code + guardContext(step)) + ' (' + text(site(step.site)) + ')')
       if (step.kind === 'effect')
         effects.add(text(label(step)) + ' (' + text(site(step.site)) + ')')
       if (step.kind === 'call' || step.kind === 'effect')
         for (const guard of step.guards ?? [])
-          checks.add(text(guard.code) + ' (' + text(site(guard.site)) + ')')
+          checks.add(text(guard.code + guardContext(guard)) + ' (' + text(site(guard.site)) + ')')
       if (step.kind === 'call') {
         handoffs.add(
           text(step.slot + ' → ' + step.target + ' · ' + step.result) +
