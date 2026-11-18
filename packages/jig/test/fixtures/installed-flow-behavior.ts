@@ -89,8 +89,10 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
   await put('flows/convert/FLOW.ts', converter('needs_mapping'))
   const after = await inspect()
   const callerOnly = after.stdout.split('\n## binding:code\n')[1]?.split('\n## ')[0]
-  expect(callerOnly).toContain('status = "attention"')
-  expect(callerOnly).not.toContain('exporter → flow:flows/export')
+  expect(callerOnly).toContain('exporter → flow:flows/export')
+  const consequences = callerOnly?.split('### Consequences')[1]
+  expect(consequences).toContain('status = "attention"')
+  expect(consequences).not.toContain('exporter → flow:flows/export')
   const changes = await inspect('--compare', 'behavior-before.json')
   const changedCaller = changes.stdout.split('\n## binding:code\n')[1]?.split('\n## ')[0]
   expect(changedCaller).toContain('Before ·')
@@ -108,7 +110,9 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
   )
   expect(await readFile(join(project, 'flows/import/FLOW.ts'), 'utf8')).toBe(importer)
   const alternative = await inspect('binding:manual')
-  expect(alternative.stdout).toContain('Other configured uses of this implementation: binding:code')
+  expect(alternative.stdout).toContain(
+    '**Other configured uses of flows/import**\n\n- binding:code',
+  )
   expect(alternative.stdout).toContain('Unsupported statement: SwitchStatement')
   expect(alternative.stdout).toContain('status = "refused"')
   const application = await inspect('--all')
