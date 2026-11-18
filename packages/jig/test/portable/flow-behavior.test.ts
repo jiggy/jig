@@ -184,6 +184,40 @@ test('comparison keeps paths with the same checks unpaired when correspondence i
   ).toThrow('Jig behavior snapshot')
 })
 
+test('unmatched source paths disclose writes without pairing changed checks', () => {
+  const report = flowBehaviorSnapshot(
+    analyzeFlowBehavior(
+      snapshot(method(handlerSource(`return {outcome:'done',output:{status:'ready'}}`))),
+    ),
+  )
+  const site = ['flows/import/FLOW.ts', 25] as const
+  const withGuard = (guard: string, write: boolean): typeof report => ({
+    ...report,
+    targets: [
+      {
+        ...report.targets[0]!,
+        paths: [
+          {
+            kind: 'source',
+            facts: [
+              ['check', guard, site],
+              ...(write
+                ? [['effect', 'writeFile · preview.json (binding:code)', site] as const]
+                : []),
+              ['exit', 'return · done', site],
+            ],
+          },
+        ],
+      },
+    ],
+  })
+  const diff = compareFlowBehavior(withGuard('Previous', true), withGuard('Current', false))
+  const summary = renderFlowBehaviorComparison(diff)
+  expect(summary).toContain('Baseline source paths only · writeFile · preview.json')
+  expect(summary).toContain('Unmatched paths · 1 before, 1 after')
+  expect(summary).not.toContain('Removed · writeFile')
+})
+
 test('a new callee return keeps the existing call case link attached to its result', () => {
   const caller = method(
     handlerSource(`

@@ -336,6 +336,30 @@ function summarizePaths(removed: readonly ComparedPath[], added: readonly Compar
   }
 }
 
+function representedConsequences(paths: readonly ComparedPath[], target: string): ComparisonFact[] {
+  const writes: ComparisonFact[] = []
+  const calls: ComparisonFact[] = []
+  const progress: ComparisonFact[] = []
+  for (const [kind, facts] of paths) {
+    if (kind !== 'source') continue
+    let lastProgress: ComparisonFact | undefined
+    for (const fact of facts) {
+      const [type, detail] = fact
+      if (type === 'call') calls.push(fact)
+      if (type !== 'effect') continue
+      if (detail.startsWith('writeFile · ')) writes.push(fact)
+      if (detail.startsWith('view update · progress ') && detail.endsWith(' (' + target + ')'))
+        lastProgress = fact
+    }
+    if (lastProgress) progress.push(lastProgress)
+  }
+  return distinct([...writes, ...calls, ...progress], consequenceKey)
+}
+
+function consequenceKey(fact: ComparisonFact): string {
+  return JSON.stringify(factMeaning(fact))
+}
+
 export function compareFlowBehavior(before: Snapshot, after: Snapshot) {
   const previous = new Map(before.targets.map((current) => [current.id, current]))
   const current = new Map(after.targets.map((target) => [target.id, target]))
@@ -364,7 +388,11 @@ export function compareFlowBehavior(before: Snapshot, after: Snapshot) {
       currentConfiguration.length ||
       previousGaps.length ||
       currentGaps.length
-    )
+    ) {
+      const pathSummary = summarizePaths(removedPaths, addedPaths)
+      const partial = pathSummary.unmatchedBefore > 0 || pathSummary.unmatchedAfter > 0
+      const oldConsequences = partial ? representedConsequences(oldPaths, id) : []
+      const newConsequences = partial ? representedConsequences(newPaths, id) : []
       changes.push({
         id,
         previousConfiguration,
@@ -374,9 +402,12 @@ export function compareFlowBehavior(before: Snapshot, after: Snapshot) {
         settingsChanged,
         removedPaths,
         addedPaths,
-        pathSummary: summarizePaths(removedPaths, addedPaths),
+        pathSummary,
+        beforeConsequences: difference(oldConsequences, newConsequences, consequenceKey),
+        afterConsequences: difference(newConsequences, oldConsequences, consequenceKey),
         coverageLimited: Boolean(old?.coverage.length || next?.coverage.length),
       })
+    }
   }
   return {
     before: before.revision,

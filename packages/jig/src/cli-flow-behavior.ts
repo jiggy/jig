@@ -94,6 +94,14 @@ export function renderFlowBehaviorComparison(
           '- ' + description + ' · ' + count + ' ' + kind + (count === 1 ? ' path' : ' paths'),
         )
       if (groups.size > 6) lines.push('- ' + (groups.size - 6) + ' more changes. See `--all`.')
+      for (const [label, facts, current] of [
+        ['Baseline source paths only', change.beforeConsequences, false],
+        ['Current source paths only', change.afterConsequences, true],
+      ] as const) {
+        for (const fact of facts.slice(0, 4))
+          lines.push('- ' + label + ' · ' + comparisonFact(fact, current, true))
+        if (facts.length > 4) lines.push('- ' + (facts.length - 4) + ' more. See `--all`.')
+      }
       if (unmatchedBefore || unmatchedAfter)
         lines.push(
           '- Unmatched paths · ' +

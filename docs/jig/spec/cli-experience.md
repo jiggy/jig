@@ -1038,6 +1038,8 @@ It shows attempted file operations, requested publications, outcomes, and newly 
 The default view shows what changed between uniquely corresponding paths with the same ordered captured checks and evidence kind.
 It groups repeated changes at the same source locations and provides project-relative references to the current source.
 Unmatched path counts show where correspondence is uncertain.
+The summary also shows consequential calls, writes, and progress captured on only one side.
+
 Use `--compare BASELINE --all` to show every changed path with its ordered checks, effects, and source references.
 The comparison is a source inspection. A matching projection establishes agreement for the captured facts.
 
