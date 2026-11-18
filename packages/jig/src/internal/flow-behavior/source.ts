@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { posix } from 'node:path'
 import ts from 'typescript-parser'
-import type { AuthoredHandoff, BehaviorPackage, SourceSite } from './model.js'
+import type { AuthoredHandoff, BehaviorPackage, CallReference, SourceSite } from './model.js'
 
 const root = '/flow/'
 const compilerOptions: ts.CompilerOptions = {
@@ -191,14 +191,74 @@ export class SourceIndex {
     return sites
   }
 
-  private handoffSite(call: ts.CallExpression, fn: LocalFunction): HandoffSite | undefined {
+  /** Source references are independent of the interpreter and carry no reachability claims. */
+  callReferences(
+    slots: ReadonlyMap<string, string>,
+    represented: ReadonlySet<string>,
+    limit: number,
+  ): { references: CallReference[]; omitted: number } {
+    const references: CallReference[] = []
+    let omitted = 0
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node)) {
+        const request = this.callRequest(node)
+        const slot = request?.fields.get('slot')
+        if (request && slot && this.contextParameter(request.receiver)) {
+          const site = this.callSite(node)
+          if (!represented.has(JSON.stringify(site))) {
+            const reference: CallReference = ts.isStringLiteralLike(slot)
+              ? { kind: 'literal', slot: slot.text, site }
+              : { kind: 'computed', expression: shortText(slot), site }
+            if (reference.kind === 'computed' || slots.has(reference.slot)) {
+              if (references.length < limit) references.push(reference)
+              else omitted++
+            }
+          }
+        }
+      }
+    }
+    for (const file of this.#program.getSourceFiles()) {
+      if (!this.valid(file)) continue
+      const pending: ts.Node[] = [file]
+      while (pending.length) {
+        const node = pending.pop()!
+        visit(node)
+        const children: ts.Node[] = []
+        ts.forEachChild(node, (child) => {
+          children.push(child)
+        })
+        pending.push(...children.reverse())
+      }
+    }
+    return { references, omitted }
+  }
+
+  private contextParameter(receiver: ts.Declaration): boolean {
+    if (!ts.isParameter(receiver)) return false
+    if (receiver.type && ts.isTypeReferenceNode(receiver.type)) {
+      const imported = this.importOf(receiver.type.typeName)
+      if (imported?.module === '@jigging/flow' && imported.member === 'RunContext') return true
+    }
+    const handler = receiver.parent
+    if (
+      !isLocalFunction(handler) ||
+      handler.parameters[0] !== receiver ||
+      !ts.isCallExpression(handler.parent) ||
+      handler.parent.arguments[0] !== handler
+    )
+      return false
+    const imported = this.importOf(unwrap(handler.parent.expression))
+    return imported?.module === '@jigging/flow' && imported.member === 'handle'
+  }
+
+  private callRequest(call: ts.CallExpression) {
     const callee = unwrap(call.expression)
     const [argument] = call.arguments
     if (
       !ts.isPropertyAccessExpression(callee) ||
       callee.name.text !== 'call' ||
       !ts.isIdentifier(callee.expression) ||
-      call.arguments.length !== 1 ||
+      call.arguments.length > 2 ||
       !argument ||
       !ts.isObjectLiteralExpression(unwrap(argument))
     )
@@ -206,7 +266,7 @@ export class SourceIndex {
     const receiver = this.declaration(callee.expression)
     if (!receiver) return undefined
     const request = unwrap(argument) as ts.ObjectLiteralExpression
-    const fields = new Map<string, string | undefined>()
+    const fields = new Map<string, ts.Expression | undefined>()
     for (const property of request.properties) {
       const name = property.name
       if (
@@ -215,12 +275,28 @@ export class SourceIndex {
         fields.has(name.text)
       )
         return undefined
-      const value = ts.isPropertyAssignment(property) ? unwrap(property.initializer) : undefined
-      fields.set(name.text, value && ts.isStringLiteralLike(value) ? value.text : undefined)
+      fields.set(
+        name.text,
+        ts.isPropertyAssignment(property)
+          ? unwrap(property.initializer)
+          : ts.isShorthandPropertyAssignment(property)
+            ? property.name
+            : undefined,
+      )
     }
-    const slot = fields.get('slot')
+    return { receiver, fields }
+  }
+
+  private handoffSite(call: ts.CallExpression, fn: LocalFunction): HandoffSite | undefined {
+    if (call.arguments.length !== 1) return undefined
+    const request = this.callRequest(call)
+    if (!request) return undefined
+    const { receiver, fields } = request
+    const slotValue = fields.get('slot')
+    const slot = slotValue && ts.isStringLiteralLike(slotValue) ? slotValue.text : undefined
     if (!slot) return undefined
-    const intent = fields.get('intent')
+    const intentValue = fields.get('intent')
+    const intent = intentValue && ts.isStringLiteralLike(intentValue) ? intentValue.text : undefined
     const guards: AuthoredHandoff['guards'][number][] = []
     for (let node: ts.Node = call; node !== fn && node.parent; node = node.parent) {
       const parent: ts.Node = node.parent

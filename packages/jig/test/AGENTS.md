@@ -4,6 +4,7 @@
 
 `portable/cli-discovery.test.ts` covers configured-topology grammar, readable collision-safe identities, contextual focus, complete inventories including disconnected targets, shared package uses, cycles, explicit boundary omissions, and graph bounds.
 Package scope preserves independent uses, distinct caller slots, and settings differences without expanding the caller's callers.
+Package-path diagnostics supply a copyable command without treating source paths as shell code.
 
 `portable/activation-admission-store.test.ts` verifies retained topology without mutable-source reads or state writes.
 `host/installed-cli-lifecycle.test.ts` checks pre-approval topology and current versus approved source identity through the installed CLI.
@@ -38,6 +39,7 @@ Bounded data mappings preserve validation before writes and flag unresolved call
 The alternatives bound preserves available continuations and distinct exits, and explicitly ends omitted paths.
 
 Authored fallback retains literal configured handoffs and result exit checks without treating shadowed receivers as Flow calls.
+Navigation references can include a typed helper's computed slot after the interpreter stops.
 Finite Set spreads retain visible progress before an opaque file operation.
 A known configured early return excludes later call sites from the authored fallback.
 Read-only file validation preserves attempts and finalizer order.

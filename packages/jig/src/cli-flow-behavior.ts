@@ -870,6 +870,10 @@ export function renderFlowBehavior(report: BehaviorReport): string {
         configuredConnections(report, (_caller, target) => uses.has(target)),
         text,
       ),
+      ...renderCallReferences(scopes, (caller) => {
+        const slots = inventory.find((target) => target.id === caller)?.slots
+        return new Set([...(slots ?? [])].flatMap(([slot, id]) => (uses.has(id) ? [slot] : [])))
+      }),
     )
     return lines.join('\n')
   }
@@ -877,6 +881,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   lines.push('## ' + text(focus), '', ...configuredOrientation(report, focus))
   const selected = scopes.find((scope) => scope.target === focus)
   if (selected) {
+    lines.push(...renderCallReferences([selected]))
     lines.push(...contractChecks(selected))
     const routes = selectRoutes(selected)
     const details = callDetails(report, [...routes, ...selected.alternatives])
@@ -941,6 +946,39 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   if (inventory.some((target) => target.id !== focus))
     lines.push('', 'Supply an exact target to inspect its behavior and callers.')
   return lines.join('\n') + '\n'
+}
+
+function renderCallReferences(
+  scopes: readonly Scope[],
+  selectedSlots?: (caller: string) => ReadonlySet<string>,
+): string[] {
+  const lines: string[] = []
+  let omitted = 0
+  for (const scope of scopes) {
+    const selected = selectedSlots?.(scope.target)
+    if (selected?.size === 0) continue
+    for (const reference of scope.callReferences ?? []) {
+      if (reference.kind === 'literal' && selected && !selected.has(reference.slot)) continue
+      const slot =
+        reference.kind === 'literal'
+          ? `slot ${reference.slot}`
+          : `computed slot ${reference.expression}`
+      if (lines.length < 12)
+        lines.push(`- ${text(scope.target)} · ${text(slot)} (${text(site(reference.site))})`)
+      else omitted++
+    }
+    omitted += scope.callReferencesOmitted ?? 0
+  }
+  if (!lines.length && !omitted) return []
+  if (omitted) lines.push(`- ${omitted} additional source references omitted.`)
+  return [
+    '### Caller source references',
+    '',
+    'These are authored call sites. Inspect computed slot expressions in source to determine which slot they select.',
+    '',
+    ...lines,
+    '',
+  ]
 }
 
 function configuredOrientation(

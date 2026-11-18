@@ -759,3 +759,31 @@ test('inspection grammar rejects conflicting scopes before host acquisition', as
   }
   expect(privateCliRequiresHost(['inspect', '--flow', '--all', '--approved'])).toBe(false)
 })
+
+test('a package path used as a flow target gets a copyable inspection command', async () => {
+  for (const args of [
+    ['inspect', '--flow', 'flows/repair'],
+    ['inspect', './flows/repair', '--flow'],
+  ]) {
+    let stderr = ''
+    expect(privateCliRequiresHost(args)).toBe(false)
+    expect(
+      await main(args, {
+        writeError: (value) => {
+          stderr += value
+        },
+      }),
+    ).toBe(2)
+    expect(stderr).toContain('$ jig inspect --flow --package flows/repair\n')
+  }
+  let stderr = ''
+  expect(
+    await main(['inspect', '--flow', 'flows/$(repair)'], {
+      writeError: (value) => {
+        stderr += value
+      },
+    }),
+  ).toBe(2)
+  expect(stderr).toContain('$ jig inspect --flow --package PATH\n')
+  expect(stderr).not.toContain('$(repair)')
+})

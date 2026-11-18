@@ -979,6 +979,8 @@ Targets that exceed the analysis allowance remain visible with a coverage notice
 
 Each analyzed route keeps its own conditions, call results, effects, and continuation.
 Source references identify the captured implementation and line.
+Focused and package reports may show additional authored call references after an analysis cutoff.
+Computed slot expressions remain separate from exact configured routes.
 
 Flow and configured target links derive from their selectors.
 An unchanged call retains its link when unrelated lines move around it.

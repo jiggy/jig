@@ -1014,8 +1014,13 @@ async function executeImportContract(
   }
 }
 
+function packageInspectionCommand(path: string): string {
+  const operand = /^[A-Za-z0-9._/-]+$/.test(path) && !path.startsWith('-') ? path : 'PATH'
+  return `jig inspect --flow --package ${operand}`
+}
+
 function parseInspect(arguments_: readonly string[]) {
-  let selector: string | undefined
+  let targetOperand: string | undefined
   let packagePath: string | undefined
   let json = false
   let verification: string | undefined
@@ -1088,15 +1093,29 @@ function parseInspect(arguments_: readonly string[]) {
       continue
     }
     if (value === '--json' && !json) json = true
-    else if (!value.startsWith('-') && selector === undefined) {
-      // Reuse the exact selector grammar without resolving or executing it.
-      try {
-        const target = parseTarget(value)
-        selector = target.kind === 'flow' ? flowSelector(target.path) : `binding:${target.id}`
-      } catch {
-        usage('inspect', 'Use an exact flow:path or binding:id target.')
+    else if (!value.startsWith('-') && targetOperand === undefined) targetOperand = value
+    else usage('inspect', 'Specify at most one target and one --json option.')
+  }
+  let selector: string | undefined
+  if (targetOperand !== undefined) {
+    try {
+      const target = parseTarget(targetOperand)
+      selector = target.kind === 'flow' ? flowSelector(target.path) : `binding:${target.id}`
+    } catch {
+      if (flow && !targetOperand.includes(':')) {
+        let path: string | undefined
+        try {
+          path = normalizeFlowPackage(targetOperand)
+        } catch {}
+        if (path !== undefined) {
+          usage(
+            'inspect',
+            `Inspect configured uses of a package path with this command.\n\n  $ ${packageInspectionCommand(path)}\n\nFor a target, use an exact selector such as binding:id.`,
+          )
+        }
       }
-    } else usage('inspect', 'Specify at most one target and one --json option.')
+      usage('inspect', 'Use an exact flow:path or binding:id target.')
+    }
   }
   if (resultDirectory !== undefined && (selector !== undefined || verification !== undefined))
     usage('inspect', '--result cannot be combined with a target or --verification.')
@@ -1299,6 +1318,16 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
       throw error
     if (error instanceof CheckError && error.code === 'INSPECTION_PACKAGE_MISSING')
       throw new CliDiagnostic('JIG_PACKAGE_NOT_FOUND', error.message, 1)
+    if (
+      error instanceof CheckError &&
+      error.code === 'INSPECTION_PACKAGE_SCOPE_REQUIRED' &&
+      error.path !== undefined
+    )
+      throw new CliDiagnostic(
+        'JIG_PACKAGE_SCOPE_REQUIRED',
+        `${error.message} Inspect its configured uses with this command.\n\n  $ ${packageInspectionCommand(error.path)}`,
+        1,
+      )
     if (parsed.flow && !parsed.approved && error instanceof CheckError)
       throw new CliDiagnostic(
         'JIG_SOURCE_INSPECTION_FAILED',

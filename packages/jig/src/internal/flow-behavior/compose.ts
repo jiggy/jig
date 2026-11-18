@@ -199,6 +199,16 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
           .filter(([key]) => !analyzedHandoffs.has(key))
           .map(([, candidate]) => candidate)
       : []
+    const callReferences =
+      !handoff && evidence.size && (target.id === focus || packagePath !== undefined)
+        ? sources
+            .get(target.implementation)
+            ?.callReferences(
+              target.slots,
+              new Set([...analyzedHandoffs, ...authored.keys()]),
+              BEHAVIOR_LIMITS.authoredHandoffs,
+            )
+        : undefined
     return {
       target: target.id,
       routes: [...routes.values()],
@@ -210,6 +220,8 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       ...(authoredHandoffs.length > BEHAVIOR_LIMITS.authoredHandoffs
         ? { authoredHandoffsOmitted: authoredHandoffs.length - BEHAVIOR_LIMITS.authoredHandoffs }
         : {}),
+      ...(callReferences?.references.length ? { callReferences: callReferences.references } : {}),
+      ...(callReferences?.omitted ? { callReferencesOmitted: callReferences.omitted } : {}),
     }
   }
 
