@@ -10,7 +10,7 @@ Explain conditional behavior from a captured Jig project without running its met
 - `source.ts` resolves parsed source and call identities inside one captured package.
 - `analyze.ts` evaluates a bounded TypeScript subset through inert values.
 - `data.ts` checks which data computations can safely lose value precision.
-- `file-access.ts` recognizes read-only opens in source. The interpreter keeps file handles inert.
+- `file-access.ts` recognizes read-only opens and strict UTF-8 decoding. The interpreter keeps file handles and bytes inert.
 - `compose.ts` owns configured handoffs, caller continuations, and coverage.
 - `reporting-capture.ts` recognizes local installed Reporting bytes.
 - `reporting.ts` describes supported authored progress payloads.
@@ -29,6 +29,7 @@ Explain conditional behavior from a captured Jig project without running its met
 - Evaluate small inert array transformations through proven data-only callbacks.
 - Interpret spreads of small, known scalar sets and literal numeric products.
 - Carry file-open, metadata, read, and close attempts with their conditional continuations.
+- Carry possible UTF-8 and JSON validation failures without reading file data.
 - Mark successful continuation of unresolved data mappings as conditional.
 - Keep contextual presentation records outside semantic path deduplication.
 - Analyze the application within a shared work allowance while preserving each configured use.

@@ -7,6 +7,7 @@ export type FileHandleValue = { readonly kind: 'file-handle'; readonly path: str
 export type Value =
   | FileHandleValue
   | { readonly kind: 'file-stat' }
+  | { readonly kind: 'file-bytes' | 'decoded-text' | 'strict-utf8-decoder' }
   | { readonly kind: 'unknown' | 'undefined' | 'context' | 'reporter' | 'report-view' }
   | { readonly kind: 'literal'; readonly value: string | number | boolean | null }
   | { readonly kind: 'object'; readonly fields: ReadonlyMap<string, Value>; readonly open?: true }
@@ -67,6 +68,7 @@ export function field(value: Value, name: string): Value {
 export function truth(value: Value): boolean | undefined {
   switch (value.kind) {
     case 'unknown':
+    case 'decoded-text':
       return undefined
     case 'undefined':
       return false

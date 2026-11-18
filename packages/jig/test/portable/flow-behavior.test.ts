@@ -398,6 +398,47 @@ test('read-only file validation branches retain cleanup and file effect order', 
   )
 })
 
+test('strict decoding and parsing preserve distinct failures before effects', () => {
+  const inspect = (decoder: string) =>
+    analyzeFlowBehavior(
+      snapshot(
+        method(''),
+        method(`
+          import { handle } from '@jigging/flow'
+          import { open, writeFile } from 'node:fs/promises'
+          await handle(async () => {
+            const file = await open('catalogue.json', 'r')
+            const bytes = await file.readFile()
+            await file.close()
+            const text = ${decoder}.decode(bytes)
+            const input = JSON.parse(text)
+            if (!Array.isArray(input)) throw new TypeError('Expected an array')
+            await writeFile('approved.json', text)
+            return { outcome: 'done', output: {} }
+          })
+        `),
+      ),
+    )
+  const report = inspect("new TextDecoder('utf-8', { fatal: true })")
+  const routes = report.scopes[0]!.routes
+  const end = (route: (typeof routes)[number], detail: string) =>
+    route.some((step) => step.kind === 'end' && step.detail === detail)
+  const writes = (route: (typeof routes)[number]) =>
+    route.some((step) => step.kind === 'effect' && step.operation === 'writeFile')
+  for (const failure of ['Throws TypeError', 'Throws SyntaxError', 'Throws: Expected an array']) {
+    const route = routes.find((candidate) => end(candidate, failure))
+    expect(route).toBeDefined()
+    expect(writes(route!)).toBe(false)
+  }
+  expect(routes.some(writes)).toBe(true)
+  const markdown = renderFlowBehavior(report)
+  expect(markdown).toContain('UTF-8 decoding succeeds')
+  expect(markdown).toContain('JSON syntax is valid')
+  const opaque = inspect("new TextDecoder('utf-8', { fatal: false })")
+  expect(opaque.scopes[0]!.routes.some(writes)).toBe(false)
+  expect(renderFlowBehavior(opaque)).not.toContain('UTF-8 decoding succeeds')
+})
+
 test('writable opens and reads through a closed alias stay unresolved', () => {
   const inspect = (flags: string) =>
     analyzeFlowBehavior(
