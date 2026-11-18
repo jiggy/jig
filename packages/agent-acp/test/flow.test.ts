@@ -728,9 +728,11 @@ describe('ordinary session retention and restoration', () => {
 })
 
 describe('ordinary continuing Agent', () => {
-  test.each([false, true])(
-    'continues after interruption (cancelled before insertion: %s)',
-    async (beforeInsertion) => {
+  for (const [timing, beforeInsertion] of [
+    ['after', false],
+    ['before', true],
+  ] as const) {
+    test(`continues after cancellation ${timing} prompt insertion`, async () => {
       const commands = pair(),
         replies = pair(),
         events = pair()
@@ -853,8 +855,8 @@ describe('ordinary continuing Agent', () => {
       expect(f.frames.filter((frame) => frame.method === 'session/new')).toHaveLength(1)
       expect(f.frames.filter((frame) => frame.method === 'session/prompt')).toHaveLength(3)
       expect(f.stats().settled).toBe(true)
-    },
-  )
+    })
+  }
 
   test('losing control is not a clean conversation end', async () => {
     const commands = pair(),
