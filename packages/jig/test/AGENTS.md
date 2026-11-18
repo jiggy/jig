@@ -3,6 +3,8 @@
 ## Ownership
 
 `portable/cli-discovery.test.ts` covers configured-topology grammar, readable collision-safe identities, contextual focus, complete inventories including disconnected targets, shared package uses, cycles, explicit boundary omissions, and graph bounds.
+Package scope preserves independent uses, distinct caller slots, and settings differences without expanding the caller's callers.
+
 `portable/activation-admission-store.test.ts` verifies retained topology without mutable-source reads or state writes.
 `host/installed-cli-lifecycle.test.ts` checks pre-approval topology and current versus approved source identity through the installed CLI.
 `host/project-author-evaluator.test.ts` checks current Bindings, invalid declarations, and absent project-state writes through contained evaluation.

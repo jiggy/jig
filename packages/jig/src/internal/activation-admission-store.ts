@@ -4965,7 +4965,7 @@ export async function inspectPrivateApprovedProject(
   describeTargets = false,
   onAdmission?: (digest: string, writableTargets: readonly string[]) => void,
   onCandidate?: (candidate: PrivateActivationCandidateArtifactV5) => void,
-  flowContext?: Readonly<{ target?: string }>,
+  flowContext?: Readonly<{ target?: string; packagePath?: string }>,
 ): Promise<JsonValue> {
   let owner: StateOwner
   try {
@@ -5004,6 +5004,13 @@ export async function inspectPrivateApprovedProject(
       availability: disposition.state === 'ready' ? { state: 'ready' } : disposition,
     }))
     const targetIndexes = new Map(targets.map((item, index) => [item.target, index]))
+    if (flowContext?.target !== undefined && !targetIndexes.has(flowContext.target))
+      invalid('INSPECTION_TARGET_MISSING', 'target is not in the approved revision')
+    if (
+      flowContext?.packagePath !== undefined &&
+      !Object.hasOwn(candidate.lock.packages, flowContext.packagePath)
+    )
+      invalid('INSPECTION_PACKAGE_MISSING', 'Flow package is absent from the approved revision.')
     const checkpointGraphs = new Map<number, boolean>()
     const hasCheckpoints = (index: number): boolean => {
       const existing = checkpointGraphs.get(index)
@@ -5089,8 +5096,6 @@ export async function inspectPrivateApprovedProject(
       }
       let flow: JsonValue | undefined
       if (flowContext !== undefined) {
-        if (flowContext.target !== undefined && !targetIndexes.has(flowContext.target))
-          invalid('INSPECTION_TARGET_MISSING', 'target is not in the approved revision')
         flow = {
           digest: request.package.digest,
           settings: request.settings,

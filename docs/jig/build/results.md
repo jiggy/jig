@@ -300,6 +300,7 @@ Prepare the application map before changing a conditional route.
 jig inspect --flow --all
 jig inspect --flow
 jig inspect --flow binding:code
+jig inspect --flow --package flows/import
 ```
 
 The application overview leads with the declared entrypoint and its configured handoffs.
@@ -310,6 +311,11 @@ Each configured use keeps its own conditions, child results, and caller continua
 When you select a target, start with its configured callers and their exact slots.
 Other configured uses of the same Flow include their own callers and relevant settings differences.
 Use these connections to locate the right handoff before changing a shared implementation.
+
+When you know the package path, use `--package` to see every configured use and its direct caller slots.
+This works for packages that require a Binding. The report shows settings that differ across uses and adds source locations where available.
+Use an exact project-relative package path or an installed `npm:` package selector.
+Select a listed target for its behavior, or add `--json` to get the exact configuration records.
 
 The consequences list calls, requested progress, and attempted file writes.
 The diagram labels unresolved checks on the affected connections. Source details point to the checks and publications.

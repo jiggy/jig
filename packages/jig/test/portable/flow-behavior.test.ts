@@ -210,6 +210,26 @@ test('focused orientation shows distinct slots and variant callers before analys
   )
 })
 
+test('package inspection joins source sites to exact configured caller slots', () => {
+  const input = snapshot(
+    method(handlerSource(`return { outcome: 'done', output: { status: 'ready' } }`)),
+  )
+  const report = analyzeFlowBehavior({
+    ...input,
+    focus: undefined,
+    packagePath: 'flows/convert',
+    visible: ['binding:code', 'flow:flows/convert'],
+  })
+  const output = renderFlowBehavior(report)
+  expect(output).toStartWith('# Flow package uses')
+  expect(output).toContain('### flow:flows/convert')
+  expect(output).toContain('- binding:code · converter · flows/import/FLOW.ts:2')
+  expect(output).not.toContain('flow:flows/export')
+  expect(output).not.toContain('mermaid')
+  const opaque = renderFlowBehavior({ ...report, scopes: [] })
+  expect(opaque).toContain('- binding:code · converter\n')
+})
+
 test('comparison round-trips a baseline and localizes changed effects to the configured use', () => {
   const caller = handlerSource(`
     const result = await run.call({slot:'converter',operationId:'convert',input:{}})
