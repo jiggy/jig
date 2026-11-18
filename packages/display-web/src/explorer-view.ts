@@ -2,6 +2,7 @@ import type { DisplayProjectRun, DisplayProjectSnapshot } from '@jigging/display
 import { type ComponentChildren, h } from 'preact'
 import { CompositionPage } from './composition-view.js'
 import { type PrivateExplorerConnection, privateExplorerInput } from './explorer-client.js'
+import type { PrivateExplorerScenario } from './explorer-scenarios.js'
 import { privateBrowserLiteral } from './navigation.js'
 
 export type PrivateExplorerViewProps = {
@@ -22,6 +23,9 @@ export type PrivateExplorerViewProps = {
   inputOpen: boolean
   inputTouched: boolean
   draftNotice: string
+  scenarioName: string
+  scenarioNotice: string
+  loadedScenario?: PrivateExplorerScenario | undefined
   selectedNodeId?: string | undefined
   detailOpen: boolean
   scale: number
@@ -32,6 +36,10 @@ export type PrivateExplorerViewProps = {
   onRefreshRun: () => void
   onInput: (value: string) => void
   onInputTouched: () => void
+  onScenarioName: (name: string) => void
+  onScenarioDownload: () => void
+  onScenarioFile: (file: File) => void
+  onScenarioApply: () => void
   onInputOpen: () => void
   onInputClose: () => void
   onRun: () => void
@@ -238,6 +246,75 @@ function InputPanel(props: PrivateExplorerViewProps): ComponentChildren {
             : 'Input stays in this tab until you choose Run.',
       ),
       props.draftNotice ? h('p', { class: 'secondary' }, props.draftNotice) : null,
+      h(
+        'details',
+        { class: 'explorer-scenarios' },
+        h('summary', {}, 'Reusable input scenarios'),
+        h(
+          'p',
+          { class: 'secondary' },
+          'Save a named scenario file or load one from your project. Neither action starts a Run.',
+        ),
+        h(
+          'div',
+          { class: 'explorer-scenario-controls' },
+          h('label', { htmlFor: 'explorer-scenario-name' }, 'Scenario name'),
+          h('input', {
+            id: 'explorer-scenario-name',
+            type: 'text',
+            maxLength: 80,
+            value: props.scenarioName,
+            placeholder: 'Recognized headings',
+            onInput: (event: Event) =>
+              props.onScenarioName((event.currentTarget as HTMLInputElement).value),
+          }),
+          button('Download scenario file', props.onScenarioDownload, {
+            disabled: parsed.state !== 'valid' || !props.scenarioName.trim(),
+          }),
+          h('label', { htmlFor: 'explorer-scenario-file' }, 'Load a scenario file'),
+          h('input', {
+            id: 'explorer-scenario-file',
+            type: 'file',
+            accept: '.json,application/json',
+            onChange: (event: Event) => {
+              const input = event.currentTarget as HTMLInputElement
+              const file = input.files?.[0]
+              if (file) props.onScenarioFile(file)
+              input.value = ''
+            },
+          }),
+        ),
+        props.loadedScenario
+          ? h(
+              'div',
+              { class: 'explorer-scenario-loaded' },
+              h('strong', {}, literal(props.loadedScenario.name)),
+              h(
+                'p',
+                { class: 'secondary' },
+                'Written for ',
+                literal(props.loadedScenario.workflow.label),
+                ' (',
+                props.loadedScenario.workflow.kind === 'binding' ? 'Binding' : 'Flow',
+                ').',
+              ),
+              h(
+                'p',
+                { class: 'secondary' },
+                'Choose the approved workflow above. Applying only edits its input; it never selects or runs a workflow.',
+              ),
+              button('Use input in selected workflow', props.onScenarioApply),
+            )
+          : null,
+        props.scenarioNotice
+          ? h('p', { class: 'explorer-scenario-notice', role: 'status' }, literal(props.scenarioNotice))
+          : null,
+        h(
+          'p',
+          { class: 'secondary explorer-scenario-privacy' },
+          'Scenario files contain the complete input, including any secrets. Review before sharing or committing them.',
+        ),
+      ),
       schema
         ? h(
             'details',

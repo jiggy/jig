@@ -102,6 +102,11 @@ The map adds no execution or editing controls, and recorded snapshots retain the
 ## Explore before running
 
 The same fixed assets also serve `/explore#cap=<value>` for a separately authorized local explorer.
+Its input panel can explicitly download and import a `jig-input-scenario.v1` file containing a name,
+informational workflow kind/label, and exact JSON input text. The user selects the workflow and
+chooses **Use input** before the separate **Run workflow** action. No file import performs a request
+to start work. Files are read only through the user's browser picker, within bounded size; Jig
+does not automatically read project files or persist scenario data. Exported inputs may be sensitive.
 It reads `DisplayProjectSnapshot` from `GET /api/project`, with an optional opaque `target` query.
 The workflow list selects approved Flows and Bindings before any Run exists.
 Configuration-only maps show no synthetic workspace facts or zero request counts.

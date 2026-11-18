@@ -2,6 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CompositionPage } from '../dist/composition-view.js'
 import { privateExplorerInput } from '../dist/explorer-client.js'
+import {
+  PRIVATE_SCENARIO_FILE_BYTE_LIMIT,
+  privateExplorerScenario,
+  privateExplorerScenarioFile,
+} from '../dist/explorer-scenarios.js'
 import { ExplorerPage, ExplorerRunStatus } from '../dist/explorer-view.js'
 
 const project = (targetId = 'review') => ({
@@ -77,6 +82,9 @@ const props = () => ({
   inputOpen: false,
   inputTouched: false,
   draftNotice: '',
+  scenarioName: '',
+  scenarioNotice: '',
+  loadedScenario: undefined,
   detailOpen: false,
   scale: 1,
   theme: 'system',
@@ -86,6 +94,10 @@ const props = () => ({
   onRefreshRun() {},
   onInput() {},
   onInputTouched() {},
+  onScenarioName() {},
+  onScenarioDownload() {},
+  onScenarioFile() {},
+  onScenarioApply() {},
   onInputOpen() {},
   onInputClose() {},
   onRun() {},
@@ -192,4 +204,82 @@ test('input accepts JSON scalars and refuses empty, nonfinite, malformed, and ov
   assert.equal(privateExplorerInput('1e999').state, 'invalid')
   assert.equal(privateExplorerInput('{"bad":}').state, 'invalid')
   assert.equal(privateExplorerInput('['.repeat(129) + '0' + ']'.repeat(129)).state, 'invalid')
+})
+
+
+test('portable scenarios round-trip literal input without carrying execution authority', () => {
+  const input = '{"issue":"first","issue":"second"}'
+  const saved = privateExplorerScenarioFile(
+    'Recognized headings',
+    { kind: 'binding', label: 'Review changes' },
+    input,
+  )
+  assert.equal(saved.state, 'valid')
+  assert.equal(saved.filename, 'recognized-headings.jig-scenario.json')
+  const parsed = privateExplorerScenario(saved.text)
+  assert.equal(parsed.state, 'valid')
+  assert.equal(parsed.scenario.name, 'Recognized headings')
+  assert.equal(parsed.scenario.workflow.label, 'Review changes')
+  assert.equal(parsed.scenario.workflow.kind, 'binding')
+  assert.equal(parsed.scenario.input, input)
+  assert.equal('targetId' in parsed.scenario, false)
+  assert.equal('revision' in parsed.scenario, false)
+  assert.equal('approval' in parsed.scenario, false)
+  assert.equal(privateExplorerScenarioFile('No input', { kind: 'flow', label: 'Flow' }, '').state, 'invalid')
+})
+
+test('scenario files reject malformed, unknown, oversized and unsafe metadata', () => {
+  const valid = {
+    format: 'jig-input-scenario.v1',
+    name: 'One',
+    workflow: { kind: 'flow', label: 'Prepare draft' },
+    input: 'null',
+  }
+  for (const candidate of [
+    { ...valid, format: 'jig-input-scenario.v2' },
+    { ...valid, name: '../bad' + '\n' },
+    { ...valid, name: '' },
+    { ...valid, name: 'a'.repeat(81) },
+    { ...valid, workflow: { kind: 'binding', label: '' } },
+    { ...valid, workflow: { ...valid.workflow, targetId: 'forged' } },
+    { ...valid, input: '{"unterminated"' },
+    { ...valid, input: '1e999' },
+    { ...valid, grants: ['native'] },
+  ]) {
+    const result = privateExplorerScenario(JSON.stringify(candidate))
+    assert.equal(result.state, 'invalid', JSON.stringify(candidate).slice(0, 160))
+  }
+  assert.equal(privateExplorerScenario('[').state, 'invalid')
+  assert.equal(privateExplorerScenario('x'.repeat(PRIVATE_SCENARIO_FILE_BYTE_LIMIT + 1)).state, 'invalid')
+})
+
+test('scenario controls do not select a workflow, modify input or run on import alone', () => {
+  const scenario = {
+    format: 'jig-input-scenario.v1',
+    name: 'Example',
+    workflow: { kind: 'flow', label: 'Another Flow' },
+    input: '{"issue":"review"}',
+  }
+  let applied = 0, launched = 0
+  const page = ExplorerPage({
+    ...props(),
+    inputOpen: true,
+    loadedScenario: scenario,
+    scenarioName: 'Example',
+    onScenarioApply() { applied++ },
+    onRun() { launched++ },
+  })
+  const nodes = walk(page)
+  assert.equal(nodes.find((node) => node.type === 'textarea').props.value, '')
+  assert.match(text(page), /Written for/)
+  assert.match(text(page), /Another Flow/)
+  assert.equal(nodes.filter((node) => node.props['data-explorer-target']).length, 3)
+  assert.equal(nodes.find((node) => node.props['data-explorer-target'] === 'review').props['aria-current'], 'page')
+  assert.equal(applied, 0)
+  assert.equal(launched, 0)
+  const apply = nodes.find((node) => node.type === 'button' && text(node) === 'Use input in selected workflow')
+  assert(apply)
+  apply.props.onClick()
+  assert.equal(applied, 1)
+  assert.equal(launched, 0)
 })

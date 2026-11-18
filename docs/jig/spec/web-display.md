@@ -129,6 +129,22 @@ It receives no project control capability.
 Closing a settled inspector before the next launch releases its command owner.
 Earlier run history is not an explorer archive.
 
+The explorer supports portable input scenarios through explicit export and import.
+A `jig-input-scenario.v1` file stores a bounded name, informational workflow kind and label, and exact JSON input text.
+It carries no approval identity, private selector, grant, Run identity or executable target binding.
+
+The browser reads a file only when the user chooses it through the file picker.
+The file allowance is 16 MiB of input plus 4 KiB of metadata.
+The browser never discovers or reads project files.
+Import validates the envelope and JSON syntax without changing the selected workflow, input draft or execution state.
+The user explicitly applies input to the selected approved workflow.
+**Run workflow** remains a second, distinct action with normal approval checks.
+
+An informational workflow label cannot select a target or bypass approval checks.
+Downloads require explicit action, and scenarios stay only in tab memory.
+The interface warns that files contain the complete input, including any secrets.
+This is not an automatic scenario repository, a history archive or a comparison facility.
+
 Close explorer prevents new launches and cancels active owned work through ordinary cancellation and cleanup.
 It waits for owned command settlement before releasing its listener.
 The terminal reports unconfirmed cleanup separately from any known result.

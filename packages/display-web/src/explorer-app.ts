@@ -2,6 +2,12 @@ import { DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT } from '@jigging/display-model'
 import { h, render } from 'preact'
 import { PrivateExplorerClient, privateExplorerInput } from './explorer-client.js'
 import { ExplorerPage } from './explorer-view.js'
+import {
+  PRIVATE_SCENARIO_FILE_BYTE_LIMIT,
+  type PrivateExplorerScenario,
+  privateExplorerScenario,
+  privateExplorerScenarioFile,
+} from './explorer-scenarios.js'
 
 type Draft = {
   input: string
@@ -23,6 +29,10 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
   let filter = ''
   let inputOpen = false
   let draftNotice = ''
+  let scenarioName = ''
+  let scenarioNotice = ''
+  let loadedScenario: PrivateExplorerScenario | undefined
+  let scenarioReadGeneration = 0
   let theme = document.documentElement.dataset.theme ?? 'system'
   let viewport: HTMLElement | undefined
   let viewportVisible = false
@@ -193,6 +203,9 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
         inputOpen,
         inputTouched: draft.touched,
         draftNotice,
+        scenarioName,
+        scenarioNotice,
+        loadedScenario,
         selectedNodeId: draft.nodeId,
         detailOpen: draft.detailOpen,
         scale: draft.scale,
@@ -225,6 +238,88 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
           draft.touched = true
           redraw()
         },
+        onScenarioName(value: string) {
+          scenarioName = value
+          scenarioNotice = ''
+          redraw()
+        },
+        onScenarioDownload() {
+          const selected = client?.project?.selected
+          const target = client?.project?.targets.find((item) => item.id === selected?.targetId)
+          if (!selected || !target) {
+            scenarioNotice = 'Choose an approved workflow before saving a scenario.'
+            redraw()
+            return
+          }
+          const saved = privateExplorerScenarioFile(
+            scenarioName,
+            { kind: target.kind, label: target.label },
+            draft.input,
+          )
+          if (saved.state === 'invalid') {
+            scenarioNotice = saved.reason
+            redraw()
+            return
+          }
+          // A download is an explicit user action. No project file is written or cached by Jig.
+          const url = URL.createObjectURL(new Blob([saved.text], { type: 'application/json' }))
+          const anchor = document.createElement('a')
+          anchor.href = url
+          anchor.download = saved.filename
+          document.body.append(anchor)
+          anchor.click()
+          anchor.remove()
+          setTimeout(() => URL.revokeObjectURL(url), 1000)
+          scenarioNotice = 'Scenario download requested. Review its full input before sharing.'
+          redraw()
+        },
+        onScenarioFile(file: File) {
+          const generation = ++scenarioReadGeneration
+          loadedScenario = undefined
+          if (file.size > PRIVATE_SCENARIO_FILE_BYTE_LIMIT) {
+            scenarioNotice = 'The scenario file exceeds the 16 MiB input allowance.'
+            redraw()
+            return
+          }
+          scenarioNotice = 'Reading the selected scenario file…'
+          redraw()
+          void file.text().then(
+            (source) => {
+              if (disposed || generation !== scenarioReadGeneration) return
+              const result = privateExplorerScenario(source)
+              if (result.state === 'valid') {
+                loadedScenario = result.scenario
+                scenarioName = result.scenario.name
+                scenarioNotice = 'Scenario loaded for review. Select Use input to change this workflow’s draft.'
+              } else scenarioNotice = result.reason
+              redraw()
+            },
+            () => {
+              if (disposed || generation !== scenarioReadGeneration) return
+              scenarioNotice = 'The selected scenario file could not be read.'
+              redraw()
+            },
+          )
+        },
+        onScenarioApply() {
+          const selected = client?.project?.selected
+          const source = loadedScenario
+          if (!source || !selected) return
+          const draft = selectedDraft()
+          draft.input = source.input
+          draft.bytes = new TextEncoder().encode(source.input).byteLength
+          draft.touched = false
+          const target = client?.project?.targets.find((item) => item.id === selected.targetId)
+          scenarioNotice =
+            'Loaded “' + source.name + '” into this workflow’s input without starting a Run.' +
+            (target && (target.label !== source.workflow.label || target.kind !== source.workflow.kind)
+              ? ' Its recorded workflow name differs; review the selected target and input before running.'
+              : '')
+          inputOpen = true
+          draft.detailOpen = false
+          redraw()
+          document.getElementById('explorer-input')?.focus()
+        },
         onInputOpen() {
           rememberViewport()
           inputOpen = true
@@ -250,6 +345,8 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
         async onClose() {
           if (await client?.close()) {
             drafts.clear()
+            loadedScenario = undefined
+            scenarioReadGeneration++
             inputOpen = false
             redraw()
           }
@@ -376,6 +473,8 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
     'pagehide',
     () => {
       disposed = true
+      scenarioReadGeneration++
+      loadedScenario = undefined
       client?.stop()
       drafts.clear()
       releaseViewport()

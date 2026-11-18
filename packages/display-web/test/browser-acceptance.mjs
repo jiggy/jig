@@ -6,6 +6,7 @@ import {
   compositionFixture,
   contactFixture,
   documentFixture,
+  explorerFixture,
   factoryFixture,
   hostFixture,
   kitchenFixture,
@@ -61,6 +62,79 @@ async function withPage(fixture, options, run) {
     await host.close()
   }
 }
+
+
+test('explicit scenario files round-trip through the mounted pre-run explorer without starting work', async () => {
+  const fixture = explorerFixture()
+  const host = await startBrowserFixture(fixture)
+  const context = await browser.newContext({ viewport: { width: 1440, height: 950 }, acceptDownloads: true })
+  const page = await context.newPage()
+  page.setDefaultTimeout(5000)
+  const errors = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  try {
+    await page.goto(host.url)
+    await page.getByRole('heading', { name: 'Review changes', exact: true }).waitFor()
+    assert.equal(new URL(page.url()).hash, '')
+    await page.getByRole('button', { name: 'Run with input' }).click()
+    const input = page.locator('#explorer-input')
+    const original = '{"issue":"first","issue":"second"}'
+    await input.fill(original)
+    await page.locator('.explorer-scenarios summary').click()
+    await page.locator('#explorer-scenario-name').fill('Recognized headings')
+
+    const pendingDownload = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Download scenario file' }).click()
+    const downloaded = await pendingDownload
+    assert.equal(downloaded.suggestedFilename(), 'recognized-headings.jig-scenario.json')
+    const bytes = []
+    for await (const chunk of await downloaded.createReadStream()) bytes.push(chunk)
+    const file = Buffer.concat(bytes)
+    const parsed = JSON.parse(file.toString('utf8'))
+    assert.equal(parsed.name, 'Recognized headings')
+    assert.equal(parsed.workflow.kind, 'binding')
+    assert.equal(parsed.workflow.label, 'Review changes')
+    assert.equal(parsed.input, original, 'duplicate JSON members retain their original text')
+    assert.equal('targetId' in parsed, false, 'private target identity is never exported')
+    assert.equal('approval' in parsed, false)
+    assert.deepEqual(host.submissions, [], 'downloading a scenario never starts a Run')
+
+    await page.getByRole('button', { name: 'Close run input' }).click()
+    await page.locator('[data-explorer-target="draft"]').click()
+    await page.getByRole('heading', { name: 'Prepare a draft', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Run with input' }).click()
+    await page.locator('.explorer-scenarios summary').click()
+    assert.equal(await page.locator('#explorer-input').inputValue(), '')
+    await page.locator('#explorer-scenario-file').setInputFiles({
+      name: downloaded.suggestedFilename(),
+      mimeType: 'application/json',
+      buffer: file,
+    })
+    await page.getByText(/Scenario loaded for review/).waitFor()
+    await page.getByText(/Written for Review changes/).waitFor()
+    assert.equal(await page.locator('#explorer-input').inputValue(), '',
+      'importing never changes another target input without explicit confirmation')
+    assert.deepEqual(host.submissions, [], 'importing a file never starts work')
+    await page.getByRole('button', { name: 'Use input in selected workflow' }).click()
+    assert.equal(await page.locator('#explorer-input').inputValue(), original)
+    await page.getByText(/Its recorded workflow name differs/).waitFor()
+    assert.deepEqual(host.submissions, [], 'applying a scenario does not submit a Run')
+
+    await page.locator('#explorer-scenario-file').setInputFiles({
+      name: 'invalid.json', mimeType: 'application/json',
+      buffer: Buffer.from('{"format":"not-a-scenario"}'),
+    })
+    await page.getByText(/unsupported format or invalid fields/).waitFor()
+    assert.equal(await page.locator('#explorer-input').inputValue(), original,
+      'invalid imports cannot overwrite the selected input')
+    assert.deepEqual(errors, [])
+    assert(host.requests.filter((request) => request.path.startsWith('/api/'))
+      .every((request) => request.authorized))
+  } finally {
+    await context.close()
+    await host.close()
+  }
+})
 
 async function noPageOverflow(page) {
   assert(

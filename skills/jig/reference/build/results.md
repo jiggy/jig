@@ -161,6 +161,22 @@ The explorer keeps your draft for the next explicit invocation.
 This tab retains up to 16 input drafts within 16 MiB.
 Larger drafts stay visible but may be cleared when you choose another workflow.
 
+To repeat an input later, open **Reusable input scenarios** beside the JSON editor.
+Give the current input a name and select **Download scenario file**.
+The resulting `.jig-scenario.json` file contains the exact JSON text and an informational workflow name and kind.
+Keep it with your project's examples if appropriate.
+
+To use a saved scenario, choose its target workflow and select the file.
+Read the recorded workflow name, then choose **Use input in selected workflow**.
+Importing does not change the draft or start a Run.
+Applying changes only the input.
+**Run workflow** remains a separate action with ordinary approval and input checks.
+If the workflow name differs, the explorer explicitly warns you to review the target.
+
+Scenario files may contain private inputs, credentials or customer data. Review them before downloading, sharing or committing.
+Jig does not save scenarios to project files, browser storage or a server automatically.
+The single loaded scenario remains in the current explorer tab until replaced or the tab closes.
+
 If input is invalid, correct the displayed problem and submit again.
 If approval changes, refresh the explorer before choosing the workflow again.
 The explorer never repeats a submission automatically after a lost connection.

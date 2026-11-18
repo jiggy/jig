@@ -69,6 +69,35 @@ export function view(id, options, value, sourceId = 'root') {
   }
 }
 
+export function explorerFixture() {
+  return {
+    project: {
+      kind: 'project',
+      revision: 'approved-one',
+      state: 'approved',
+      targets: [
+        { id: 'review', label: 'Review changes', kind: 'binding', availability: 'ready' },
+        { id: 'draft', label: 'Prepare a draft', kind: 'flow', availability: 'ready' },
+      ],
+      selected: {
+        targetId: 'review',
+        composition: {
+          state: 'available',
+          provenance: 'admitted',
+          rootId: 'review',
+          nodes: [{ id: 'review', kind: 'binding', label: 'Review changes' }],
+          edges: [],
+        },
+        input: { state: 'schema', schema: { type: 'object' } },
+        attachments: [],
+        receives: [],
+        launch: { state: 'available' },
+      },
+    },
+    captures: {},
+  }
+}
+
 export function hostFixture() {
   const body = snapshot([
     view(
