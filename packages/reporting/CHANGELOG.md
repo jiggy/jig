@@ -1,5 +1,18 @@
 # @jigging/reporting
 
+## 0.1.0-alpha.7
+
+### Patch Changes
+
+- bfa09cd: Replace the Codex ACP v1 compatibility adapter with upstream native ACP v2.
+  Preserve private subscription bootstrap, finite inference, cancellation,
+  native failure diagnostics, and truthful shutdown results. Remove Jig's direct
+  ACP v1 SDK dependency. Rebuild the canonical archives affected by the patch.
+- 74981e7: Remove the legacy Pi ACP v1 compatibility bridge rather than preserving protocol
+  translation in Jig's native Agent support. Only qualified direct ACP v2
+  implementations are eligible as Codex or Claude Code clients. Pi requires a
+  native ACP v2 adapter and independent conformance before admission can return.
+
 ## 0.1.0-alpha.6
 
 ### Patch Changes

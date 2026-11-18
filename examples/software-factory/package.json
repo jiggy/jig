@@ -3,17 +3,17 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@jigging/agent-acp": "0.1.0-alpha.15"
+    "@jigging/agent-acp": "0.1.0-alpha.16"
   },
   "devDependencies": {
     "@jigging/flow": "0.1.0-alpha.15",
-    "@jigging/reporting": "0.1.0-alpha.6",
+    "@jigging/reporting": "0.1.0-alpha.7",
     "semantic-router-flow": "workspace:*"
   },
   "workspaces": [
     "flows/*"
   ],
   "engines": {
-    "jig": "0.1.0-alpha.54"
+    "jig": "0.1.0-alpha.55"
   }
 }
