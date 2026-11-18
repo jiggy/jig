@@ -139,6 +139,7 @@ describe.serial('private contained Agent Run lifecycle', () => {
           const matched = compositionObservations(snapshot)
           expect(matched.unmatched).toEqual([])
           expect(matched.matches).toHaveLength(5)
+          expect(snapshot.calls.map((call) => call.outcome)).toEqual(Array(5).fill('done'))
           expect(new Set(matched.matches.map((match) => match.edgeId)).size).toBe(5)
           await expectNoAgentOwner(root)
           expect(

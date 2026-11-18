@@ -11,9 +11,13 @@ import {
   type DisplayProjectTarget,
   validateDisplayProjectSnapshot,
 } from '@jigging/display-model'
-import { projectPrivateRunComposition, type PrivateCompositionSource } from './cli-composition.js'
+import { readAdmittedCompositionBehavior } from './cli-admitted-behavior.js'
+import { type PrivateCompositionSource, projectPrivateRunComposition } from './cli-composition.js'
 import { CheckError } from './diagnostics.js'
-import type { PrivateActivationCandidateArtifactV5 } from './internal/activation-admission.js'
+import {
+  type PrivateActivationCandidateArtifactV5,
+  privateActivationCandidateDigestV5,
+} from './internal/activation-admission.js'
 import { inspectPrivateApprovedProject } from './internal/activation-admission-store.js'
 import type { JsonValue } from './json.js'
 import { parseProjectEntrypoint } from './project/entrypoint.js'
@@ -61,6 +65,7 @@ export type PrivateProjectProjectionSource = Readonly<{
   catalogue: JsonValue
   selected: JsonValue
   composition: PrivateCompositionSource
+  behaviorComposition?: DisplayComposition
 }>
 export type PrivateProjectSelection = Readonly<{
   target: RunTargetIdentity
@@ -173,11 +178,13 @@ export function projectPrivateProjectSnapshot(
           }),
     }
   })
-  const privateComposition = projectPrivateRunComposition(source.composition, {
-    nodes: DISPLAY_COMPOSITION_NODE_LIMIT,
-    edges: DISPLAY_COMPOSITION_EDGE_LIMIT,
-    bytes: DISPLAY_COMPOSITION_BYTE_LIMIT,
-  })
+  const privateComposition =
+    source.behaviorComposition ??
+    projectPrivateRunComposition(source.composition, {
+      nodes: DISPLAY_COMPOSITION_NODE_LIMIT,
+      edges: DISPLAY_COMPOSITION_EDGE_LIMIT,
+      bytes: DISPLAY_COMPOSITION_BYTE_LIMIT,
+    })
   const projected: DisplayComposition =
     privateComposition.state === 'unavailable'
       ? privateComposition
@@ -202,6 +209,14 @@ export function projectPrivateProjectSnapshot(
             target: nodeId(edge.target),
             slot: edge.slot,
           })),
+          ...(privateComposition.sourceBehavior === undefined
+            ? {}
+            : {
+                sourceBehavior: privateComposition.sourceBehavior.map((item) => ({
+                  ...item,
+                  nodeId: nodeId(item.nodeId),
+                })),
+              }),
         }
   const composition: DisplayComposition =
     Buffer.byteLength(JSON.stringify(projected)) > DISPLAY_COMPOSITION_BYTE_LIMIT
@@ -242,8 +257,11 @@ export class PrivateProjectProjection {
     return (await this.#read(targetId)).snapshot
   }
 
-  async projectForTarget(selector?: string): Promise<DisplayProjectSnapshot> {
-    return (await this.#read(undefined, selector)).snapshot
+  async projectForTarget(
+    selector?: string,
+    includeBehavior = true,
+  ): Promise<DisplayProjectSnapshot> {
+    return (await this.#read(undefined, selector, undefined, includeBehavior)).snapshot
   }
 
   async selection(
@@ -251,7 +269,7 @@ export class PrivateProjectProjection {
     targetId: string,
     input: JsonValue,
   ): Promise<PrivateProjectSelection> {
-    const result = await this.#read(targetId, undefined, revision)
+    const result = await this.#read(targetId, undefined, revision, false)
     if (result.snapshot.state !== 'approved' || !result.selection)
       throw new PrivateProjectProjectionError(
         'PROJECT_UNREVIEWED',
@@ -288,6 +306,7 @@ export class PrivateProjectProjection {
     targetId?: string,
     initialSelector?: string,
     expectedRevision?: string,
+    includeBehavior = true,
   ): Promise<Readonly<{ snapshot: DisplayProjectSnapshot; selection?: PrivateProjectSelection }>> {
     let candidate: PrivateActivationCandidateArtifactV5 | undefined
     const catalogueValue = await inspectPrivateApprovedProject(
@@ -378,12 +397,25 @@ export class PrivateProjectProjection {
         'PROJECT_CHANGED',
         'The project approval changed. Refresh the project and choose a workflow again.',
       )
+    const composition = { root: chosen.request.target, targets }
+    const behaviorComposition = includeBehavior
+      ? await readAdmittedCompositionBehavior(
+          this.projectRoot,
+          privateActivationCandidateDigestV5(candidate),
+          projectPrivateRunComposition(composition, {
+            nodes: DISPLAY_COMPOSITION_NODE_LIMIT,
+            edges: DISPLAY_COMPOSITION_EDGE_LIMIT,
+            bytes: DISPLAY_COMPOSITION_BYTE_LIMIT,
+          }),
+        )
+      : undefined
     return {
       snapshot: projectPrivateProjectSnapshot(
         {
           catalogue: catalogueValue,
           selected,
-          composition: { root: chosen.request.target, targets },
+          composition,
+          ...(behaviorComposition === undefined ? {} : { behaviorComposition }),
         },
         this.#id,
       ),

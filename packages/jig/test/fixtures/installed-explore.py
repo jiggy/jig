@@ -91,7 +91,13 @@ def main():
                 if state["state"] in wanted:
                     return state
 
-        def inspect_viewer(url, settled):
+        def source_cases(composition):
+            return next((
+                item["cases"] for item in composition.get("sourceBehavior", [])
+                if item["nodeId"] == composition["rootId"]
+            ), None)
+
+        def inspect_viewer(url, settled, expected_cases=None):
             match = VIEWER.fullmatch(url)
             require(match is not None)
             endpoint = (int(match.group(1)), match.group(2))
@@ -99,11 +105,18 @@ def main():
                 snapshot = request("/api/snapshot", endpoint=endpoint)
                 require(snapshot["kind"] == "snapshot" and snapshot["mode"] == "live-run")
                 require(snapshot["composition"]["state"] == "available")
-                if not settled or snapshot["workspace"]["phase"] == "settled":
+                cases = source_cases(snapshot["composition"])
+                if not settled or (
+                    snapshot["workspace"]["phase"] == "settled"
+                    and (expected_cases is None or cases is not None)
+                ):
                     break
                 owner.pump()
+                time.sleep(0.05)
             if settled:
                 require(snapshot["workspace"]["facts"]["execution"]["value"] == "succeeded")
+            if expected_cases is not None:
+                require(cases == expected_cases)
 
         def command_identity(pid):
             require(time.monotonic() < deadline and owner.process.poll() is None)
@@ -139,6 +152,7 @@ def main():
         project = request("/api/project")
         require(project["kind"] == "project" and project["state"] == "approved")
         require(project["selected"]["composition"]["state"] == "available")
+        require(bool(source_cases(project["selected"]["composition"])))
         require(project["selected"]["launch"]["state"] == "available")
         require(request("/api/run") == {"state": "idle"})
         require(not owner.output["stdout"])
@@ -178,7 +192,16 @@ def main():
         first = state_until({"running", "settled"})
         first_url = first["viewerUrl"]
         phase = "ordinary-live-inspector"
-        inspect_viewer(first_url, True)
+        approved_cases = source_cases(current["selected"]["composition"])
+        require(bool(approved_cases))
+        source_path = Path("flows/hello/FLOW.ts")
+        approved_source = source_path.read_text()
+        try:
+            source_path.write_text('throw new Error("Unreviewed greeting source");\n')
+            inspect_viewer(first_url, True, approved_cases)
+            require(source_cases(request("/api/project")["selected"]["composition"]) == approved_cases)
+        finally:
+            source_path.write_text(approved_source)
         require(state_until({"settled"})["requestId"] == "first-run")
 
         phase = "duplicate-request-no-replay"

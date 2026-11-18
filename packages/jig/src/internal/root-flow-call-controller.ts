@@ -743,7 +743,7 @@ function specialistDispatcher(
   })
   return {
     ...(participant === undefined ? {} : { channels: participant }),
-    onCall: (call, state, cause) =>
+    onCall: (call, state, cause, outcome) =>
       input.onCall?.({
         publisher: participant?.id ?? `flow:${input.call.operationId}`,
         operationId: call.operationId,
@@ -752,6 +752,7 @@ function specialistDispatcher(
         state,
         time: Date.now(),
         ...(cause === undefined ? {} : { cause }),
+        ...(outcome === undefined ? {} : { outcome }),
       }),
     ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
     ...(files === undefined

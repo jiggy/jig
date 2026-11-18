@@ -12,9 +12,9 @@ import type {
 } from './cli-explore-launch.js'
 import { PRIVATE_EXPLORER_LIMITS } from './cli-explore-policy.js'
 import {
-  PrivateWebExplorer,
   type PrivateExplorerRunBridge,
   type PrivateExplorerRunEvent,
+  PrivateWebExplorer,
 } from './cli-explorer-web.js'
 import {
   PrivateProjectProjection,
@@ -109,8 +109,8 @@ export class PrivateExploreSession {
     return this.#projection.project(targetId)
   }
 
-  projectForTarget(selector?: string): Promise<DisplayProjectSnapshot> {
-    return this.#projection.projectForTarget(selector)
+  projectForTarget(selector?: string, includeBehavior = true): Promise<DisplayProjectSnapshot> {
+    return this.#projection.projectForTarget(selector, includeBehavior)
   }
 
   snapshot(): DisplayProjectRun {
@@ -358,7 +358,7 @@ export async function privateExecuteExplore(
     ...(options.launch === undefined ? {} : { launch: options.launch }),
   })
   try {
-    await session.projectForTarget(parsed.target)
+    await session.projectForTarget(parsed.target, false)
   } catch (error) {
     if (error instanceof PrivateProjectProjectionError)
       throw new CliDiagnostic('JIG_EXPLORE_TARGET_UNAVAILABLE', error.message, 1)

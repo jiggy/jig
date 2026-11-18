@@ -192,11 +192,19 @@ function unique(values: unknown[], check: (value: unknown) => void, field = 'id'
 }
 
 function composition(value: unknown): void {
-  const data = record(value, ['state', 'provenance', 'rootId', 'nodes', 'edges', 'reason'])
+  const data = record(value, [
+    'state',
+    'provenance',
+    'rootId',
+    'nodes',
+    'edges',
+    'reason',
+    'sourceBehavior',
+  ])
   const state = choice(data.state, ['available', 'unavailable'])
   if (state === 'unavailable') {
     choice(data.reason, ['limit', 'unavailable'])
-    for (const name of ['provenance', 'rootId', 'nodes', 'edges'])
+    for (const name of ['provenance', 'rootId', 'nodes', 'edges', 'sourceBehavior'])
       if (data[name] !== undefined) fail()
     return
   }
@@ -237,7 +245,10 @@ function composition(value: unknown): void {
     if (slots.has(slot)) fail()
     slots.add(slot)
     let children = outgoing.get(source)
-    if (!children) outgoing.set(source, (children = []))
+    if (!children) {
+      children = []
+      outgoing.set(source, children)
+    }
     children.push(target)
   })
   const reachable = new Set<string>()
@@ -249,6 +260,24 @@ function composition(value: unknown): void {
     pending.push(...(outgoing.get(id) ?? []))
   }
   if (reachable.size !== nodes.length) fail()
+  if (data.sourceBehavior !== undefined)
+    unique(
+      list(data.sourceBehavior, 24),
+      (value) => {
+        const behavior = record(value, ['nodeId', 'cases', 'gaps', 'omitted'])
+        const node = byId.get(identity(behavior.nodeId))
+        if (!node || node.kind === 'resource') fail()
+        count(behavior.omitted)
+        for (const gap of list(behavior.gaps, 3)) text(gap, 256, 1)
+        list(behavior.cases, 4).forEach((value) => {
+          const path = record(value, ['result', 'calls', 'effects', 'checks'])
+          text(path.result, 256, 1)
+          for (const key of ['calls', 'effects', 'checks'])
+            for (const item of list(path[key], 6)) text(item, 256, 1)
+        })
+      },
+      'nodeId',
+    )
   // The outer inert-data copy has already refused accessors and custom prototypes.
   if (new TextEncoder().encode(JSON.stringify(data)).byteLength > DISPLAY_COMPOSITION_BYTE_LIMIT)
     fail()
@@ -449,6 +478,7 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
         'firstObservedAt',
         'observedAt',
         'cause',
+        'outcome',
       ])
       identity(call.id)
       identity(call.sourceId)
@@ -459,6 +489,10 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
       text(call.slot, 128)
       optional(call.intent, (value) => text(value, 1024))
       optional(call.cause, (value) => text(value, 4096))
+      if (call.outcome !== undefined) {
+        if (call.state !== 'returned') fail()
+        if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(text(call.outcome, 64, 1))) fail()
+      }
       choice(call.state, [
         'requested',
         'active',
@@ -528,7 +562,7 @@ function json(value: unknown): void {
     if (!Number.isFinite(value)) fail()
     return
   }
-  if (!value || typeof value !== 'object') return fail()
+  if (!value || typeof value !== 'object') fail()
   for (const child of Object.values(value)) json(child)
 }
 

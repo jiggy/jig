@@ -18,7 +18,10 @@ import {
   RunHostSession,
   type RunHostTerminal,
 } from '../run/session.js'
-import { findPrivateActivationCandidateTargetV5 } from './activation-admission.js'
+import {
+  findPrivateActivationCandidateTargetV5,
+  privateActivationCandidateDigestV5,
+} from './activation-admission.js'
 import {
   closePrivateRootExecution,
   isPrivateAttemptRunRevoked,
@@ -211,7 +214,11 @@ export async function executePrivateRootRunLaunch(input: {
         edges: DISPLAY_COMPOSITION_EDGE_LIMIT,
         bytes: DISPLAY_COMPOSITION_BYTE_LIMIT,
       },
-      (composition) => input.channelOutput!.composition!(composition),
+      (composition) =>
+        input.channelOutput!.composition!(
+          composition,
+          privateActivationCandidateDigestV5(work.candidate),
+        ),
     )
   }
   try {
@@ -1460,7 +1467,7 @@ function operationDispatcher(
   }
   return Object.freeze({
     channels: channels.root,
-    onCall: (call, state, cause) =>
+    onCall: (call, state, cause, outcome) =>
       input.channelOutput?.call?.({
         publisher: channels.root.id,
         operationId: call.operationId,
@@ -1469,6 +1476,7 @@ function operationDispatcher(
         state,
         time: Date.now(),
         ...(cause === undefined ? {} : { cause }),
+        ...(outcome === undefined ? {} : { outcome }),
       }),
     onCancellation: (code) => channels.broker.abort(code),
     releaseArtifact: (reference) => releasePrivateFlowArtifact(files, reference),

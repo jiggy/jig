@@ -38,6 +38,18 @@ export type DisplayCompositionEdge = Readonly<{
   target: string
   slot: string
 }>
+/** Representative source paths through a component's admitted implementation. */
+export type DisplaySourceBehavior = Readonly<{
+  nodeId: string
+  cases: readonly Readonly<{
+    result: string
+    calls: readonly string[]
+    effects: readonly string[]
+    checks: readonly string[]
+  }>[]
+  gaps: readonly string[]
+  omitted: number
+}>
 /** Complete admitted configuration for a selected target, without execution guarantees. */
 export type DisplayComposition = Immutable<
   | {
@@ -46,6 +58,7 @@ export type DisplayComposition = Immutable<
       rootId: string
       nodes: DisplayCompositionNode[]
       edges: DisplayCompositionEdge[]
+      sourceBehavior?: DisplaySourceBehavior[]
     }
   | { state: 'unavailable'; reason: 'limit' | 'unavailable' }
 >
@@ -203,6 +216,8 @@ export type DisplaySnapshot = Immutable<{
     firstObservedAt: number
     observedAt: number
     cause?: string
+    /** Admitted application outcome carried by a returned call. */
+    outcome?: string
   }[]
   activities: {
     id: string

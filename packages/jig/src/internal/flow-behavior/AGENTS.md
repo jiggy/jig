@@ -7,6 +7,7 @@ Explain conditional behavior from a captured Jig project without running its met
 ## Ownership
 
 - `captured-input.ts` borrows source and interface facts from working-tree inspection.
+- `admitted-input.ts` reads exact stored source and recognized dependency bytes for an approved composition.
 - `source.ts` resolves parsed source and call identities inside one captured package.
 - `source-syntax.ts` owns shared TypeScript syntax helpers and bounded source walks.
 - `slot-selection.ts` traces authored lookup rows and key origins into computed slot references.

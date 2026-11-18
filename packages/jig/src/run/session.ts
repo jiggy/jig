@@ -143,6 +143,7 @@ export interface RunHostOperationDispatcher {
     call: Pick<RunHostCall, 'operationId' | 'slot' | 'intent'>,
     state: 'requested' | 'active' | 'cancel-requested' | 'returned' | 'failed' | 'uncertain',
     cause?: string,
+    outcome?: string,
   ): void
 }
 
@@ -699,6 +700,7 @@ export class RunHostSession {
               ? 'uncertain'
               : 'failed',
           terminal.status === 'failed' ? terminal.message : undefined,
+          terminal.status === 'succeeded' ? terminal.result.outcome : undefined,
         )
         this.settleOperation(record, terminal)
       })
@@ -709,6 +711,7 @@ export class RunHostSession {
     call: RunHostCall,
     state: Parameters<NonNullable<RunHostOperationDispatcher['onCall']>>[1],
     cause?: string,
+    outcome?: string,
   ): void {
     const scalars = call.intent === undefined ? undefined : [...call.intent]
     const intent =
@@ -726,6 +729,7 @@ export class RunHostSession {
         },
         state,
         cause,
+        outcome,
       )
     } catch {
       // Optional private observation is never dispatch or settlement authority.

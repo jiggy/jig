@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { realpath } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { CheckError } from '../../diagnostics.js'
-import { captureOpenedPackageDirectory } from '../../package/capture.js'
+import { type CapturedPackage, captureOpenedPackageDirectory } from '../../package/capture.js'
 import { isProtectedProjectPath } from '../../project/paths.js'
 import { openPrivateProjectRoot } from '../../project/root.js'
 
@@ -54,26 +54,7 @@ export async function captureReportingProfile(
           },
         )
         try {
-          const manifest = JSON.parse(
-            new TextDecoder('utf-8', { fatal: true }).decode(
-              await captured.read('package.json', 8192),
-            ),
-          )
-          const entry = manifest?.exports?.['.']
-          if (
-            manifest?.name !== '@jigging/reporting' ||
-            manifest.type !== 'module' ||
-            entry?.import !== './dist/index.js' ||
-            Object.keys(entry).some((condition) => condition !== 'types' && condition !== 'import')
-          )
-            return undefined
-          for (const [file, hash] of profile)
-            if (
-              createHash('sha256')
-                .update(await captured.read(file, 32 * 1024))
-                .digest('hex') !== hash
-            )
-              return undefined
+          if (!(await matchesReportingProfile(captured))) return undefined
           await root.verify()
           return (await realpath(selected)) === path ? captured.digest : undefined
         } finally {
@@ -100,4 +81,37 @@ export async function captureReportingProfile(
     }
   }
   return undefined
+}
+
+/** Check the exact Reporting import closure within an inert package image. */
+export async function matchesReportingProfile(
+  captured: CapturedPackage,
+  directory = '',
+): Promise<boolean> {
+  const at = (path: string) => (directory === '' ? path : directory + '/' + path)
+  const files = new Map(captured.files.map((file) => [file.path, file.size]))
+  if (
+    (files.get(at('package.json')) ?? Infinity) > 8192 ||
+    [...profile.keys()].some((file) => (files.get(at(file)) ?? Infinity) > 32 * 1024)
+  )
+    return false
+  const manifest = JSON.parse(
+    new TextDecoder('utf-8', { fatal: true }).decode(await captured.read(at('package.json'), 8192)),
+  )
+  const entry = manifest?.exports?.['.']
+  if (
+    manifest?.name !== '@jigging/reporting' ||
+    manifest.type !== 'module' ||
+    entry?.import !== './dist/index.js' ||
+    Object.keys(entry).some((condition) => condition !== 'types' && condition !== 'import')
+  )
+    return false
+  for (const [file, hash] of profile)
+    if (
+      createHash('sha256')
+        .update(await captured.read(at(file), 32 * 1024))
+        .digest('hex') !== hash
+    )
+      return false
+  return true
 }
