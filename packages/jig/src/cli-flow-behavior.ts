@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { compareFlowBehavior } from './internal/flow-behavior/comparison.js'
 import {
   isFileOperation,
   type BehaviorGuard,
@@ -21,6 +22,139 @@ type CallDetails = ReadonlyMap<string, ReadonlyMap<string, CallCase>>
 
 const directions = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu
 const controls = /[\p{Cc}\u2028\u2029]/gu
+
+export function renderFlowBehaviorComparison(
+  report: ReturnType<typeof compareFlowBehavior>,
+  all = false,
+): string {
+  const lines = [
+    '# Behavior changes',
+    '',
+    'Baseline ' + text(report.before) + ' → current ' + text(report.after),
+    '',
+    'Comparison covers captured source evidence and modeled alternatives. Use Runs to verify actual effects.',
+    '',
+  ]
+  if (report.entrypoint) {
+    const [previous, current] = report.entrypoint
+    lines.push('Entrypoint · ' + text(previous ?? 'none') + ' → ' + text(current ?? 'none'), '')
+  }
+  const changeCount = report.changes.length
+  lines.push(
+    changeCount +
+      ' changed · ' +
+      report.matched +
+      ' with matching captured facts · ' +
+      report.limited +
+      ' with current coverage gaps',
+    '',
+  )
+  for (const change of report.changes) {
+    lines.push('## ' + text(change.id), '')
+    if (change.coverageLimited) lines.push('Coverage is incomplete in at least one capture.', '')
+    if (change.settingsChanged) lines.push('- Configured settings changed.')
+    for (const [label, items] of [
+      ['Before configuration', change.previousConfiguration],
+      ['After configuration', change.currentConfiguration],
+      ['Before coverage gap', change.previousGaps],
+      ['After coverage gap', change.currentGaps],
+    ] as const) {
+      for (const item of all ? items : items.slice(0, 8))
+        lines.push('- ' + label + ' · ' + text(item))
+      if (!all && items.length > 8)
+        lines.push('- ' + (items.length - 8) + ' additional ' + label.toLowerCase() + ' entries.')
+    }
+    const callDetails = (paths: typeof change.removedPaths) =>
+      new Set(
+        paths.flatMap(([, facts]) =>
+          facts.filter(([type]) => type === 'call').map(([, detail]) => detail),
+        ),
+      )
+    const beforeCalls = callDetails(change.removedPaths)
+    const afterCalls = callDetails(change.addedPaths)
+    for (const [label, paths] of [
+      ['Before', change.removedPaths],
+      ['After', change.addedPaths],
+    ] as const) {
+      if (all) {
+        for (const [kind, facts] of paths)
+          lines.push(
+            '- **' +
+              label +
+              ' · ' +
+              kind +
+              '** · ' +
+              facts.map(([, detail]) => text(detail)).join(' → '),
+          )
+        continue
+      }
+      const groups = new Map<
+        string,
+        { kind: string; summary: string; count: number; checks: string[] }
+      >()
+      for (const [kind, facts] of paths) {
+        const progress = facts
+          .filter(
+            ([type, detail]) =>
+              type === 'effect' &&
+              detail.startsWith('view update · ') &&
+              detail.endsWith(' (' + change.id + ')'),
+          )
+          .at(-1)
+        const events = facts.filter(
+          ([type, detail]) =>
+            type !== 'check' && (type !== 'effect' || !detail.startsWith('view update · ')),
+        )
+        const shown = events.length > 10 ? [...events.slice(0, 4), ...events.slice(-6)] : events
+        const summary =
+          shown
+            .map(([type, detail]) =>
+              type === 'call' && beforeCalls.has(detail) && afterCalls.has(detail)
+                ? detail.split(' · ', 1)[0]
+                : detail,
+            )
+            .join(' → ') +
+          (events.length > shown.length
+            ? ' · ' + (events.length - shown.length) + ' intermediate steps omitted'
+            : '') +
+          (progress ? ' · Last requested here: ' + progress[1] : '')
+        const key = JSON.stringify([kind, summary])
+        const group = groups.get(key)
+        if (group) group.count++
+        else
+          groups.set(key, {
+            kind,
+            summary,
+            count: 1,
+            checks: facts.filter(([type]) => type === 'check').map(([, detail]) => detail),
+          })
+      }
+      for (const { kind, summary, count, checks } of [...groups.values()].slice(0, 6)) {
+        lines.push(
+          '- **' +
+            label +
+            ' · ' +
+            kind +
+            '** · ' +
+            text(summary) +
+            (count > 1 ? ' · ' + count + ' variants' : ''),
+        )
+        if (checks.length)
+          lines.push(
+            (count > 1 ? '  - Representative checks · ' : '  - Checks · ') +
+              checks.slice(-3).map(text).join(' → ') +
+              (checks.length > 3 ? ' · ' + (checks.length - 3) + ' earlier checks omitted' : ''),
+          )
+      }
+      if (groups.size > 6)
+        lines.push(
+          '- ' + (groups.size - 6) + ' more changed ' + label.toLowerCase() + ' path summaries.',
+        )
+    }
+    lines.push('')
+  }
+  return lines.join('\n') + '\n'
+}
 
 function text(value: string): string {
   return value

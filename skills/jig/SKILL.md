@@ -18,10 +18,10 @@ Use the FLOW skill when designing, creating, composing, or reviewing the project
 If it is unavailable, follow its [canonical design guidance](https://flow.jig.md/guide/design) and the task's FLOW specifications.
 Keep portable method guidance with FLOW and host configuration with Jig.
 
-For conditional handoffs, child outcomes, or shared methods, check whether the installed CLI supports `--behavior`.
-Use `jig inspect --flow --all --behavior` to prepare the application map when available.
-Follow configured target and call links to locate affected paths.
-Verify the affected conditions in source and test the alternatives that must remain.
+For edits to conditional handoffs, child outcomes, or shared methods, start with `jig inspect --flow <target>`.
+Use `jig inspect --flow --snapshot` to capture a task-local baseline before changing behavior.
+After editing, use `jig inspect --flow --compare BASELINE` to check changes to callers, outcomes, progress, and effects.
+Follow reported gaps to source and verify the affected alternatives with representative Runs.
 See [source behavior inspection](reference/build/results.md#inspect-source-behavior).
 Complete this step when the outcome, existing project state, and execution prerequisites are clear.
 
@@ -31,7 +31,7 @@ Read the [project design guide](reference/build/design.md) before choosing bound
 Apply its responsibility and configuration guidance to the actual application.
 Use FLOW's naming and decomposition principles for the methods themselves.
 
-Use `jig inspect --flow` for current configured connections, including distinct Bindings and selected resources.
+Use `jig inspect --flow --topology` for configured connections, including distinct Bindings and selected resources.
 This topology does not establish execution order, conditions, or caller reactions.
 Use `--approved` when investigating retained authorized configuration.
 

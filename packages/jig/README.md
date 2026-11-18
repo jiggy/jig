@@ -48,7 +48,9 @@ jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run [flow:path|npm:package|binding:id] [options]
 jig inspect [flow:path|npm:package|binding:id] [--json]
-jig inspect --flow [target | --all] --behavior
+jig inspect --flow [target | --all] [--topology] [--approved] [--json]
+jig inspect --flow --snapshot
+jig inspect --flow --compare BASELINE [--all]
 jig inspect --result <directory> [--display plain|tui|web] [--json]
 jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>
 jig import-contract --list
@@ -180,7 +182,8 @@ It checks that approval against current local execution identities and reports
 changed or unverifiable environments. It does not check visible source edits,
 launch readiness or remote availability; Run still revalidates before execution.
 
-Use `jig inspect --flow --behavior` to read supported source routes before a Run.
+Use `jig inspect --flow` to read supported source routes before a Run.
+Add `--topology` for a configured connection map.
 Focus on a target to see its caller continuations and other uses of the same implementation.
 The [source behavior guide](https://jig.md/build/results#inspect-source-behavior) explains partial coverage and how to verify a route.
 

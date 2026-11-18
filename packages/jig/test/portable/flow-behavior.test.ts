@@ -1,5 +1,11 @@
 import { expect, test } from 'bun:test'
-import { renderFlowBehavior } from '../../src/cli-flow-behavior.js'
+import { renderFlowBehavior, renderFlowBehaviorComparison } from '../../src/cli-flow-behavior.js'
+import {
+  compareFlowBehavior,
+  decodeFlowBehaviorSnapshot,
+  encodeFlowBehaviorSnapshot,
+  flowBehaviorSnapshot,
+} from '../../src/internal/flow-behavior/comparison.js'
 import { analyzeFlowBehavior } from '../../src/internal/flow-behavior/compose.js'
 import type {
   BehaviorInput,
@@ -84,6 +90,56 @@ test('a callee-only change alters the unchanged caller continuation', () => {
   expect(after.flat().some((s) => s.kind === 'call' && s.slot === 'exporter')).toBe(false)
   expect(after.flat()).toContainEqual(
     expect.objectContaining({ kind: 'end', detail: 'outcome "done", status = "attention"' }),
+  )
+})
+
+test('comparison round-trips a baseline and localizes changed effects to the configured use', () => {
+  const caller = handlerSource(`
+    const result = await run.call({slot:'converter',operationId:'convert',input:{}})
+    if (run.settings.preview !== false)
+      await run.call({slot:'exporter',operationId:'export',input:result.output})
+    return {outcome:'done',output:result.output}
+  `)
+  const project = snapshot(method(handlerSource(`return {outcome:'done',output:{status:'ready'}}`)))
+  const [code, ...direct] = project.targets
+  const capture = (preview: boolean, shift: string) => {
+    const targets = [
+      code!,
+      { ...code!, id: 'binding:validation', settings: { preview } },
+      ...direct,
+    ]
+    return flowBehaviorSnapshot(
+      analyzeFlowBehavior({
+        ...project,
+        revision: 'sha256:' + (preview ? 'a' : 'b').repeat(64),
+        focus: undefined,
+        visible: targets.map((item) => item.id),
+        targets,
+        packages: new Map([...project.packages, ['flows/import', method(shift + caller)]]),
+      }),
+    )
+  }
+  const bytes = Buffer.from(encodeFlowBehaviorSnapshot(capture(true, '')))
+  const before = decodeFlowBehaviorSnapshot(bytes)
+  const unchanged = compareFlowBehavior(before, capture(true, '\n// Shift source locations.\n'))
+  expect(unchanged.changes).toHaveLength(0)
+
+  const diff = compareFlowBehavior(before, capture(false, '\n'))
+  expect(diff.changes.map((change) => change.id)).toEqual(['binding:validation'])
+  expect(diff.changes[0]?.settingsChanged).toBe(true)
+  expect(
+    diff.changes[0]?.removedPaths.some(([, facts]) =>
+      facts.some(([kind, detail]) => kind === 'call' && detail.includes('exporter')),
+    ),
+  ).toBe(true)
+  expect(
+    diff.changes[0]?.addedPaths.every(([, facts]) =>
+      facts.every(([kind, detail]) => kind !== 'call' || !detail.includes('exporter')),
+    ),
+  ).toBe(true)
+  expect(renderFlowBehaviorComparison(diff)).toContain('## binding:validation')
+  expect(() => decodeFlowBehaviorSnapshot(Buffer.from('{"format":"jig.flow-behavior/1"}'))).toThrow(
+    'Jig behavior snapshot',
   )
 })
 

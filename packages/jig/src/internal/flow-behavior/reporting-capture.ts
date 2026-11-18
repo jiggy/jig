@@ -6,8 +6,8 @@ import { captureOpenedPackageDirectory } from '../../package/capture.js'
 import { isProtectedProjectPath } from '../../project/paths.js'
 import { openPrivateProjectRoot } from '../../project/root.js'
 
-const version = '0.1.0-alpha.6'
-// Local import closure of the recognized Reporting entrypoint.
+// Local import closure of the recognized Reporting entrypoint. A version
+// change with identical bytes retains the same behavior evidence.
 const profile = new Map([
   ['dist/bundle.js', '22b8db13e2eb5f56b09b6e807b093ce94c0d7426d5664bc3ba174ae33ecc3f20'],
   ['dist/index.js', 'e2da67791f615666185d5174705dd31ada69fe964656d8e167933daa3b0ab07c'],
@@ -62,7 +62,6 @@ export async function captureReportingProfile(
           const entry = manifest?.exports?.['.']
           if (
             manifest?.name !== '@jigging/reporting' ||
-            manifest.version !== version ||
             manifest.type !== 'module' ||
             entry?.import !== './dist/index.js' ||
             Object.keys(entry).some((condition) => condition !== 'types' && condition !== 'import')

@@ -10,6 +10,7 @@ It also checks exact Jig requirements before evaluating working-tree declaration
 The installed lifecycle case verifies relative Flow selectors in current and approved inspection.
 
 It also inspects a consumer before and after a callee edit, then verifies the unchanged caller through a native Run.
+The behavior snapshot comparison verifies changed caller routes and preserves unrelated Binding facts.
 
 `portable/flow-behavior.test.ts` checks inert interpretation, reporting payloads, and conditional composition.
 An inherited assumption stays conditional. An opaque continuation retains established effects.

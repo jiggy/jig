@@ -12,6 +12,7 @@ Explain conditional behavior from a captured Jig project without running its met
 - `data.ts` checks which data computations can safely lose value precision.
 - `file-access.ts` recognizes read-only opens and strict UTF-8 decoding. The interpreter keeps file handles and bytes inert.
 - `compose.ts` owns configured handoffs, caller continuations, and coverage.
+- `comparison.ts` owns the bounded snapshot format and comparison of represented paths.
 - `reporting-capture.ts` recognizes local installed Reporting bytes.
 - `reporting.ts` describes supported authored progress payloads.
 
@@ -44,6 +45,7 @@ Explain conditional behavior from a captured Jig project without running its met
 - Preserve authored call sites after a cut in their active function frame. Keep lexical
   conditions and result checks separate from interpreted routes.
 - Keep the private result independent of CLI and display rendering.
+- Compare ordered facts without deriving execution or authority from a supplied baseline.
 
 ## Verification
 

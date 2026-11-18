@@ -214,7 +214,7 @@ Read the caller's guard, dispatch, and return handling to establish the behavior
 Use `jig inspect --flow --all` for the complete project, including disconnected targets.
 Use `jig inspect --flow <target>` to retain other callers, entrypoints, and uses of a shared method.
 
-Use `jig inspect --flow <target> --behavior` when the installed command supports it.
+Use `jig inspect --flow <target>` to examine source behavior in the configured target's context.
 Read the prepared routes to locate the decision, affected handoff, and preserved alternatives.
 Verify unresolved conditions, effects, and continuations in the source.
 Use source directly when the view cannot describe the relevant behavior.
