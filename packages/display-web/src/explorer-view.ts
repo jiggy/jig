@@ -1,4 +1,8 @@
-import type { DisplayProjectRun, DisplayProjectSnapshot } from '@jigging/display-model'
+import type {
+  DisplayProjectRun,
+  DisplayProjectRunComparison,
+  DisplayProjectSnapshot,
+} from '@jigging/display-model'
 import { type ComponentChildren, h } from 'preact'
 import { CompositionPage } from './composition-view.js'
 import { type PrivateExplorerConnection, privateExplorerInput } from './explorer-client.js'
@@ -10,6 +14,9 @@ export type PrivateExplorerViewProps = {
   projectError: string
   projectNotice: string
   run?: DisplayProjectRun | undefined
+  recent?: readonly Readonly<{ requestId: string; comparison: DisplayProjectRunComparison }>[]
+  comparisonOpen?: boolean
+  onComparisonToggle?: (open: boolean) => void
   runCurrent: boolean
   runError: string
   requestError: string
@@ -19,6 +26,8 @@ export type PrivateExplorerViewProps = {
   closing: boolean
   filter: string
   input: string
+  files?: ReadonlyMap<string, readonly File[]>
+  previousInput?: string | undefined
   inputOpen: boolean
   inputTouched: boolean
   draftNotice: string
@@ -31,6 +40,7 @@ export type PrivateExplorerViewProps = {
   onRefresh: () => void
   onRefreshRun: () => void
   onInput: (value: string) => void
+  onFiles?: (port: string, files: readonly File[]) => void
   onInputTouched: () => void
   onInputOpen: () => void
   onInputClose: () => void
@@ -51,6 +61,165 @@ const button = (
   action: () => void,
   props: Record<string, unknown> = {},
 ) => h('button', { type: 'button', onClick: action, ...props }, label)
+
+function RunComparison(
+  props: Pick<PrivateExplorerViewProps, 'recent' | 'comparisonOpen' | 'onComparisonToggle'>,
+): ComponentChildren {
+  if (props.recent?.length !== 2) return null
+  const [first, second] = props.recent.map((item) => item.comparison)
+  if (!first || !second) return null
+  const rows = [
+    ['Execution', (item: DisplayProjectRunComparison) => literal(item.evidence.execution)],
+    ['Application outcome', (item: DisplayProjectRunComparison) => literal(item.evidence.outcome)],
+    [
+      'Reported progress',
+      ({ evidence: { progress } }: DisplayProjectRunComparison) =>
+        progress === undefined
+          ? 'Unavailable'
+          : progress.completed + (progress.total === undefined ? '' : '/' + progress.total),
+    ],
+    [
+      'Recorded calls',
+      ({ evidence }: DisplayProjectRunComparison) =>
+        evidence.calls.length || evidence.callsOmitted
+          ? h(
+              'ul',
+              {},
+              evidence.calls.map((call, index) =>
+                h(
+                  'li',
+                  { key: index },
+                  literal(call.slot),
+                  ' · ',
+                  literal(call.outcome ?? call.state),
+                ),
+              ),
+              evidence.callsOmitted ? h('li', {}, evidence.callsOmitted + ' omitted') : null,
+            )
+          : 'No retained calls',
+    ],
+    ['Delivery', (item: DisplayProjectRunComparison) => literal(item.evidence.delivery)],
+    [
+      'Verified files',
+      ({ evidence: { files } }: DisplayProjectRunComparison) =>
+        files === undefined
+          ? 'Unavailable'
+          : files.total
+            ? h(
+                'div',
+                {},
+                files.total + (files.total === 1 ? ' file' : ' files'),
+                h(
+                  'ul',
+                  {},
+                  files.paths.map((path) => h('li', { key: path }, literal(path))),
+                ),
+              )
+            : 'None',
+    ],
+  ] as const
+  return h(
+    'details',
+    {
+      class: 'explorer-comparison',
+      open: props.comparisonOpen,
+      onToggle: (event: Event) =>
+        props.onComparisonToggle?.((event.currentTarget as HTMLDetailsElement).open),
+    },
+    h('summary', {}, 'Compare last two Runs'),
+    h(
+      'p',
+      { class: 'secondary' },
+      first.inputId === second.inputId ? 'Same submitted input.' : 'Different submitted input.',
+    ),
+    h(
+      'table',
+      { 'aria-label': 'Compare last two Runs' },
+      h(
+        'thead',
+        {},
+        h(
+          'tr',
+          {},
+          h('th', { scope: 'col' }, 'Evidence'),
+          [first, second].map((item, index) =>
+            h(
+              'th',
+              { scope: 'col' },
+              h('span', {}, index === 0 ? 'Earlier · ' : 'Later · ', literal(item.label)),
+              h('small', { title: item.revision }, 'Approval ' + item.revision.slice(0, 12)),
+            ),
+          ),
+        ),
+      ),
+      h(
+        'tbody',
+        {},
+        rows.map(([label, value]) =>
+          h(
+            'tr',
+            { key: label },
+            h('th', { scope: 'row' }, label),
+            h('td', {}, value(first)),
+            h('td', {}, value(second)),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+function AttachmentFields(
+  props: PrivateExplorerViewProps,
+  item: NonNullable<DisplayProjectSnapshot['selected']>['attachments'][number],
+): ComponentChildren {
+  if (item.mode === 'read-write' || item.bound)
+    return h(
+      'span',
+      { class: 'secondary' },
+      item.bound ? 'Input captured by the Binding' : 'Output captured for this run',
+    )
+  const selected = props.files?.get(item.name) ?? []
+  return h(
+    'div',
+    { class: 'explorer-file-picker' },
+    h(
+      'label',
+      { class: 'explorer-file-picker-label' },
+      h(
+        'span',
+        {},
+        selected.length ? 'Replace files for ' : 'Choose files for ',
+        literal(item.name),
+      ),
+      h('input', {
+        type: 'file',
+        multiple: true,
+        disabled: props.sending,
+        onChange: (event: Event) => {
+          const input = event.currentTarget as HTMLInputElement
+          if (input.files?.length) props.onFiles?.(item.name, [...input.files])
+          input.value = ''
+        },
+      }),
+    ),
+    selected.length
+      ? h(
+          'div',
+          {},
+          h(
+            'ul',
+            {},
+            selected.map((file, index) => h('li', { key: index }, literal(file.name))),
+          ),
+          button('Clear files', () => props.onFiles?.(item.name, []), {
+            disabled: props.sending,
+            'aria-label': 'Clear files for ' + item.name,
+          }),
+        )
+      : null,
+  )
+}
 const paths = {
   map: 'M 4 4 H 10 V 10 H 4 Z M 14 14 H 20 V 20 H 14 Z M 14 4 H 20 V 10 H 14 Z M 10 7 H 14 M 7 10 V 17 H 14',
   play: 'M 8 5 L 19 12 L 8 19 Z',
@@ -207,11 +376,16 @@ function InputPanel(props: PrivateExplorerViewProps): ComponentChildren {
         'div',
         { class: 'explorer-input-toolbar' },
         h('label', { htmlFor: 'explorer-input' }, 'Input JSON'),
+        props.previousInput === undefined || props.previousInput === props.input
+          ? null
+          : button('Reuse last JSON', () => props.onInput(props.previousInput!), {
+              disabled: props.sending,
+            }),
       ),
       h('textarea', {
         id: 'explorer-input',
         value: props.input,
-        rows: 14,
+        rows: 8,
         spellCheck: false,
         autoComplete: 'off',
         autoCapitalize: 'off',
@@ -267,15 +441,7 @@ function InputPanel(props: PrivateExplorerViewProps): ComponentChildren {
                   'li',
                   { key: item.name },
                   h('code', {}, literal(item.name)),
-                  h(
-                    'span',
-                    { class: 'secondary' },
-                    item.mode === 'read-write'
-                      ? 'Output captured for this run'
-                      : item.bound
-                        ? 'Input captured by the Binding'
-                        : 'Input files required',
-                  ),
+                  AttachmentFields(props, item),
                 ),
               ),
             ),
@@ -529,6 +695,7 @@ export function ExplorerPage(props: PrivateExplorerViewProps): ComponentChildren
           ? h('div', { class: 'explorer-notice', role: 'status' }, literal(props.projectNotice))
           : null,
         ExplorerRunStatus(props),
+        RunComparison(props),
         target && selected
           ? h(
               'div',

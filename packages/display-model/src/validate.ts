@@ -10,6 +10,7 @@ import {
   DISPLAY_PROJECT_TARGET_LIMIT,
   DISPLAY_SNAPSHOT_LIMIT,
   type DisplayProjectRun,
+  type DisplayProjectRunEvidence,
   type DisplayProjectRunRequest,
   type DisplayProjectSnapshot,
   type DisplaySnapshotEnvelope,
@@ -667,8 +668,6 @@ export function validateDisplayProjectSnapshot(value: unknown): DisplayProjectSn
       else {
         if (launch.reason !== undefined || target!.availability !== 'ready') fail()
         if ((selected.input as Data).schema === false) fail()
-        if (attachments.some((value) => (value as Data).mode === 'read' && !(value as Data).bound))
-          fail()
         if (receives.some((value) => (value as Data).required)) fail()
       }
     }
@@ -700,11 +699,68 @@ export function validateDisplayProjectRunRequest(value: unknown): DisplayProject
   }
 }
 
+function runEvidence(value: unknown): void {
+  const data = record(value, [
+    'execution',
+    'outcome',
+    'progress',
+    'calls',
+    'callsOmitted',
+    'delivery',
+    'files',
+  ])
+  for (const key of ['execution', 'outcome', 'delivery']) text(data[key], 128, 1)
+  optional(data.progress, (value) => {
+    const progress = record(value, ['completed', 'total'])
+    for (const key of ['completed', 'total']) {
+      const quantity = progress[key]
+      if (key === 'total' && quantity === undefined) continue
+      if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity < 0) fail()
+    }
+  })
+  for (const value of list(data.calls, 8)) {
+    const call = record(value, ['slot', 'state', 'outcome'])
+    text(call.slot, 128, 1)
+    choice(call.state, [
+      'requested',
+      'active',
+      'cancel-requested',
+      'returned',
+      'failed',
+      'uncertain',
+    ])
+    if (call.outcome !== undefined) {
+      if (call.state !== 'returned') fail()
+      text(call.outcome, 64, 1)
+    }
+  }
+  count(data.callsOmitted)
+  optional(data.files, (value) => {
+    const files = record(value, ['total', 'paths'])
+    const paths = list(files.paths, 8)
+    if (count(files.total) < paths.length) fail()
+    for (const path of paths) text(path, 128, 1)
+  })
+}
+
+export function validateDisplayProjectRunEvidence(value: unknown): DisplayProjectRunEvidence {
+  const owned = copy(value, 12 * 1024)
+  runEvidence(owned.value)
+  return owned.value as DisplayProjectRunEvidence
+}
+
 /** The only navigable launch handoff is another capability-bound numeric loopback viewer. */
 export function validateDisplayProjectRun(value: unknown): DisplayProjectRun {
   try {
     const owned = copy(value, 16 * 1024)
-    const data = record(owned.value, ['state', 'requestId', 'targetId', 'viewerUrl', 'reason'])
+    const data = record(owned.value, [
+      'state',
+      'requestId',
+      'targetId',
+      'viewerUrl',
+      'reason',
+      'comparison',
+    ])
     const state = choice(data.state, [
       'idle',
       'starting',
@@ -719,6 +775,14 @@ export function validateDisplayProjectRun(value: unknown): DisplayProjectRun {
     }
     requestId(data.requestId)
     identity(data.targetId)
+    if (data.comparison !== undefined) {
+      if (state !== 'settled') fail()
+      const comparison = record(data.comparison, ['revision', 'inputId', 'label', 'evidence'])
+      identity(comparison.revision)
+      if (!/^[a-f0-9]{64}$/u.test(text(comparison.inputId, 64, 64))) fail()
+      text(comparison.label, 256, 1)
+      runEvidence(comparison.evidence)
+    }
     if (state === 'refused' || state === 'uncertain') {
       text(data.reason, 1024, 1)
       if (data.viewerUrl !== undefined) fail()

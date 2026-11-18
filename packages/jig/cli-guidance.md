@@ -191,6 +191,8 @@ All selected domain requirements still apply.
 
 ### Retained application views
 
+- `src/cli-explore-files.ts` owns flat browser file selection, input identity and private write-once staging for the ordinary attachment capture.
+  Only the current approval's unbound read attachments accept supplied files.
 - `src/cli-display-archive.ts` owns explicit final-bundle selection and the `views` commands.
   The command adapts the protected archive into bounded presentation without acquiring execution authority.
   Read [retained application views](../../docs/jig/spec/display-archive.md) before changing this boundary.

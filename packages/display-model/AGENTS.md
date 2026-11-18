@@ -54,6 +54,8 @@ with their producer. This package owns readonly display data and pure meaning.
   Their validators do not submit, retry, admit, cancel or verify input schemas.
   Viewer handoffs accept only the exact numeric-loopback capability URL profile.
   Keep catalogue, schema, complete payload and request bounds explicit.
+- Run comparison accepts bounded trusted settlement evidence and an opaque input comparison identity.
+  Keep it free of prior viewer capabilities and original input bytes.
 - Composition bounds have one canonical owner in `src/types.ts`.
   Validation enforces node, edge and encoded UTF-8 byte capacities.
   Valid configuration does not guarantee executability or observed execution.

@@ -32,6 +32,8 @@ export type {
   DisplayPreviewReply,
   DisplayProjectInput,
   DisplayProjectRun,
+  DisplayProjectRunComparison,
+  DisplayProjectRunEvidence,
   DisplayProjectRunRequest,
   DisplayProjectSelection,
   DisplayProjectSnapshot,
@@ -56,6 +58,7 @@ export {
 } from './types.js'
 export {
   validateDisplayProjectRun,
+  validateDisplayProjectRunEvidence,
   validateDisplayProjectRunRequest,
   validateDisplayProjectSnapshot,
   validateDisplaySnapshot,

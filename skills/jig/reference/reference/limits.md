@@ -259,7 +259,7 @@ Fixed exploration bounds retain complete approved configuration and bounded laun
 | Remembered request identities per session | 128 | Fixed |
 | Concurrent HTTP requests / project responses | 8 / 2 | Fixed |
 | Request body read allowance | 10 seconds | Fixed |
-| Private child handoff event | 2 KiB (2,048 bytes) | Fixed |
+| Private child handoff event | 16 KiB (16,384 bytes) | Fixed |
 
 Policy owners: [`packages/display-model/src/types.ts`](https://github.com/jiggy/jig/blob/main/packages/display-model/src/types.ts), [`cli-explore-policy.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/src/cli-explore-policy.ts).
 

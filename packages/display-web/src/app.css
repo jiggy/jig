@@ -249,7 +249,7 @@
 .explorer-input-panel textarea {
   display: block;
   width: 100%;
-  min-height: 230px;
+  min-height: 150px;
   resize: vertical;
   padding: 14px;
   border: 1px solid var(--line);
@@ -298,6 +298,62 @@
 .explorer-input-requirements ul {
   list-style: none;
   padding: 0;
+}
+.explorer-file-picker {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.explorer-file-picker .explorer-file-picker-label {
+  display: inline-block;
+  position: relative;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  width: fit-content;
+}
+.explorer-file-picker-label:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.explorer-file-picker-label input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.explorer-comparison {
+  margin: 8px 0;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.explorer-comparison summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+.explorer-comparison table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.explorer-comparison th,
+.explorer-comparison td {
+  text-align: left;
+  vertical-align: top;
+  padding: 7px;
+  border-top: 1px solid var(--line);
+}
+.explorer-comparison small {
+  display: block;
+  color: var(--secondary);
+}
+.explorer-comparison ul {
+  margin: 0;
+  padding-inline-start: 15px;
 }
 .explorer-input-requirements li {
   display: flex;

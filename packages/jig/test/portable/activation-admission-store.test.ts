@@ -2201,7 +2201,7 @@ describe.serial('direct alpha activation store', () => {
       )
       expect(
         await explorer.selection(explored.revision, explored.selected!.targetId, { value: 'test' }),
-      ).toEqual({ target: { kind: 'flow', path: 'flows/run' }, approval: approved })
+      ).toEqual({ target: { kind: 'flow', path: 'flows/run' }, approval: approved, label: 'run' })
       // Browsing an entrypoint never reads its job file or executes its defaults.
       expect(JSON.stringify(explored)).not.toContain('job.json')
       const newer = insertCandidate(fixture, 'entrypoint-race', false)
@@ -2320,6 +2320,7 @@ describe.serial('direct alpha activation store', () => {
       ).toEqual({
         target: { kind: 'flow', path: 'flows/run' },
         approval: approved,
+        label: 'run',
       })
       await expect(
         explorer.selection(project.revision, project.selected!.targetId, 'private-rejected-value'),

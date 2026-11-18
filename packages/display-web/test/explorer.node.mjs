@@ -149,26 +149,31 @@ test('explorer selects approved workflows before execution and leaves input blan
   assert.doesNotMatch(text(page), /Run phase|elapsed|0 requests|Ready to execute/)
 })
 
-test('unavailable file or channel requirements stay actionable beside Run input', () => {
+test('unbound read attachments can be selected and required channels still gate launch', () => {
   const data = project()
   data.selected.attachments = [{ name: 'source', mode: 'read', bound: false }]
-  data.selected.receives = [{ name: 'events', required: true }]
-  data.selected.launch = {
-    state: 'unavailable',
-    reason:
-      'This workflow needs input files named source. Supply them through a Flow caller or jig run.',
-  }
-  const page = ExplorerPage({
+  const inputs = {
     ...props(),
     project: data,
     input: '{"issue":"check"}',
     inputOpen: true,
+  }
+  const page = ExplorerPage(inputs)
+  assert.match(text(page), /Choose files for source/)
+  assert.equal(walk(page).find((node) => node.props.type === 'file').props.multiple, true)
+
+  data.selected.receives = [{ name: 'events', required: true }]
+  data.selected.launch = {
+    state: 'unavailable',
+    reason: 'This workflow needs an explicit channel receiver. Run it with jig run --receive.',
+  }
+  const unavailable = ExplorerPage({
+    ...inputs,
     canLaunch: false,
   })
-  assert.match(text(page), /input files named source/)
-  assert.match(text(page), /Input files required/)
-  assert.match(text(page), /Declared output streams/)
-  assert.equal(walk(page).find((node) => node.props.type === 'submit').props.disabled, true)
+  assert.match(text(unavailable), /explicit channel receiver/)
+  assert.match(text(unavailable), /Declared output streams/)
+  assert.equal(walk(unavailable).find((node) => node.props.type === 'submit').props.disabled, true)
 })
 
 test('settled Run is distinct from success and opens only its separate observer', () => {

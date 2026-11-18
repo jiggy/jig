@@ -3,6 +3,6 @@ export const PRIVATE_EXPLORER_LIMITS = Object.freeze({
   requestIdentities: 128,
   httpRequests: 8,
   projectResponses: 2,
-  handoffBytes: 2048,
+  handoffBytes: 16 * 1024,
   bodyReadMs: 10_000,
 })

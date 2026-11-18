@@ -1,6 +1,7 @@
 import type {
   DisplayJsonValue,
   DisplayProjectRun,
+  DisplayProjectRunComparison,
   DisplayProjectSnapshot,
 } from '@jigging/display-model'
 import {
@@ -103,6 +104,7 @@ export class PrivateExplorerClient {
   run: DisplayProjectRun | undefined
   runCurrent = false
   runError = ''
+  recent: readonly Readonly<{ requestId: string; comparison: DisplayProjectRunComparison }>[] = []
   requestError = ''
   sending = false
   closing = false
@@ -240,6 +242,7 @@ export class PrivateExplorerClient {
     const run = validateDisplayProjectRun(value)
     if (!run) throw new Error('Run response is invalid')
     this.run = run
+    this.#retainComparison(run)
     this.runCurrent = true
     this.runError = this.#closeRequested ? CLOSE_UNCONFIRMED : ''
     if (
@@ -262,7 +265,16 @@ export class PrivateExplorerClient {
       throw new Error('Request status does not match its identity')
     if (this.unresolvedRequest === requestId) this.unresolvedRequest = undefined
     if (run.state === 'refused') this.requestError = run.reason
+    this.#retainComparison(run)
     return run
+  }
+
+  #retainComparison(run: DisplayProjectRun): void {
+    if (run.state !== 'settled' || !run.comparison) return
+    const finished = { requestId: run.requestId, comparison: run.comparison }
+    const prior = this.recent.findIndex((item) => item.requestId === run.requestId)
+    if (prior === -1) this.recent = [...this.recent.slice(-1), finished]
+    else this.recent = this.recent.map((item, index) => (index === prior ? finished : item))
   }
 
   async refreshRun(): Promise<void> {
@@ -341,7 +353,11 @@ export class PrivateExplorerClient {
     }
   }
 
-  async launch(input: string, requestId: string): Promise<boolean> {
+  async launch(
+    input: string,
+    requestId: string,
+    files: ReadonlyMap<string, readonly File[]> = new Map(),
+  ): Promise<boolean> {
     const project = this.project
     const selected = project?.selected
     if (!this.canLaunch || !project || !selected || privateExplorerInput(input).state !== 'valid')
@@ -349,11 +365,22 @@ export class PrivateExplorerClient {
     const request = { requestId, revision: project.revision, targetId: selected.targetId }
     // Preserve the exact JSON text so the host can reject duplicate object members.
     const body = JSON.stringify(request).slice(0, -1) + ',"input":' + input + '}'
-    if (new TextEncoder().encode(body).byteLength > DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT) {
+    const fileBytes = [...files.values()].flat().reduce((sum, file) => sum + file.size, 0)
+    if (
+      new TextEncoder().encode(body).byteLength + fileBytes >
+      DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT
+    ) {
       this.requestError =
         'Input and request metadata exceed the 16 MiB request limit. Reduce the input before running.'
       this.#changed()
       return false
+    }
+    let submission: string | FormData = body
+    if (files.size) {
+      const form = new FormData()
+      form.append('_intent', new Blob([body], { type: 'application/json' }), 'intent.json')
+      for (const [port, entries] of files) for (const file of entries) form.append(port, file)
+      submission = form
     }
     const controller = new AbortController()
     this.#runGeneration++
@@ -371,8 +398,11 @@ export class PrivateExplorerClient {
     try {
       const response = await fetch(this.#base + '/api/run', {
         method: 'POST',
-        headers: { ...this.#headers(), 'Content-Type': 'application/json' },
-        body,
+        headers: {
+          ...this.#headers(),
+          ...(typeof submission === 'string' ? { 'Content-Type': 'application/json' } : {}),
+        },
+        body: submission,
         credentials: 'omit',
         cache: 'no-store',
         signal: controller.signal,
@@ -463,6 +493,7 @@ export class PrivateExplorerClient {
     this.#capability = undefined
     this.project = undefined
     this.run = undefined
+    this.recent = []
     this.#submitted = undefined
     this.runCurrent = false
   }

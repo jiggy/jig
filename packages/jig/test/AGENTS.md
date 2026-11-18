@@ -16,6 +16,7 @@ It also inspects a consumer before and after a callee edit, then verifies the un
 The behavior snapshot comparison verifies changed caller routes and preserves unrelated Binding facts.
 Portable behavior comparison checks source-linked progress changes and keeps ambiguous paths available in the detailed output.
 Installed exploration verifies that the Run map retains its approved source cases after a working-tree edit.
+Explorer HTTP checks bind repeated multipart request identities to exact file bytes and reject duplicate names.
 
 `portable/flow-behavior.test.ts` checks inert interpretation, reporting payloads, and conditional composition.
 An inherited assumption stays conditional. An opaque continuation retains established effects.

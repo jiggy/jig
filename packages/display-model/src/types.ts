@@ -115,6 +115,21 @@ export type DisplayProjectRunRequest = Readonly<{
   targetId: string
   input: DisplayJsonValue
 }>
+export type DisplayProjectRunEvidence = Readonly<{
+  execution: string
+  outcome: string
+  progress?: Readonly<{ completed: number; total?: number }>
+  calls: readonly Readonly<{ slot: string; state: DisplayCallState; outcome?: string }>[]
+  callsOmitted: number
+  delivery: string
+  files?: Readonly<{ total: number; paths: readonly string[] }>
+}>
+export type DisplayProjectRunComparison = Readonly<{
+  revision: string
+  inputId: string
+  label: string
+  evidence: DisplayProjectRunEvidence
+}>
 export type DisplayProjectRun =
   | Readonly<{ state: 'idle' }>
   | Readonly<{ state: 'starting'; requestId: string; targetId: string }>
@@ -123,6 +138,7 @@ export type DisplayProjectRun =
       requestId: string
       targetId: string
       viewerUrl?: string
+      comparison?: DisplayProjectRunComparison
     }>
   | Readonly<{
       state: 'refused' | 'uncertain'

@@ -2,17 +2,24 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import {
   DISPLAY_PROJECT_BYTE_LIMIT,
   DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT,
-  validateDisplayProjectRun,
-  validateDisplayProjectRunRequest,
-  validateDisplayProjectSnapshot,
   type DisplayProjectRun,
+  type DisplayProjectRunEvidence,
   type DisplayProjectRunRequest,
   type DisplayProjectSnapshot,
+  validateDisplayProjectRun,
+  validateDisplayProjectRunEvidence,
+  validateDisplayProjectRunRequest,
+  validateDisplayProjectSnapshot,
   type WebAssets,
 } from '@jigging/display-model'
-import { decodeJson1 } from './json.js'
+import {
+  explorerFileIdentity,
+  explorerFiles,
+  type PrivateExploreUpload,
+} from './cli-explore-files.js'
 import { PRIVATE_EXPLORER_LIMITS } from './cli-explore-policy.js'
 import { PrivateProjectProjectionError } from './cli-project-projection.js'
+import { decodeJson1 } from './json.js'
 
 type Server = {
   readonly port: number
@@ -50,7 +57,7 @@ const assetPaths = ['/', '/assets/app.js', '/assets/app.css']
 
 export type PrivateExplorerRunEvent =
   | Readonly<{ event: 'viewer'; url: string }>
-  | Readonly<{ event: 'settled' }>
+  | Readonly<{ event: 'settled'; evidence?: DisplayProjectRunEvidence }>
 export type PrivateExplorerRunBridge = Readonly<{
   url: string
   capability: string
@@ -60,7 +67,7 @@ export type PrivateWebExplorerOptions = Readonly<{
   assets: WebAssets
   project(targetId?: string): Promise<DisplayProjectSnapshot>
   session(requestId?: string): DisplayProjectRun | undefined
-  run(request: DisplayProjectRunRequest): Promise<DisplayProjectRun>
+  run(request: DisplayProjectRunRequest, upload?: PrivateExploreUpload): Promise<DisplayProjectRun>
   onClose(): void | Promise<void>
 }>
 
@@ -297,16 +304,44 @@ export class PrivateWebExplorer {
           this.#submitting = true
           try {
             let value: DisplayProjectRunRequest
+            let upload: PrivateExploreUpload | undefined
             try {
-              value = validateDisplayProjectRunRequest(
-                await this.#body(request, DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT),
-              )
+              const contentType = request.headers.get('content-type') ?? ''
+              if (/^multipart\/form-data;\s*boundary=[A-Za-z0-9_-]{1,70}$/i.test(contentType)) {
+                const bytes = await this.#bodyBytes(
+                  request,
+                  DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT,
+                  this.#bodies,
+                )
+                try {
+                  const form = await new Response(bytes, {
+                    headers: { 'Content-Type': contentType },
+                  }).formData()
+                  const intents = form.getAll('_intent')
+                  const intent = intents[0]
+                  if (intents.length !== 1 || typeof intent === 'string' || !intent)
+                    throw new Error('Missing input')
+                  value = validateDisplayProjectRunRequest(
+                    decodeJson1(new Uint8Array(await intent.arrayBuffer())),
+                  )
+                  const files = explorerFiles(form)
+                  upload = { files, identity: await explorerFileIdentity(files) }
+                } finally {
+                  bytes.fill(0)
+                }
+              } else
+                value = validateDisplayProjectRunRequest(
+                  await this.#body(request, DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT),
+                )
             } catch {
-              return failure('Supply one bounded JSON input and a current workflow selection.', 400)
+              return failure(
+                'Supply valid JSON and unique file names within the 16 MiB request limit.',
+                400,
+              )
             }
             if (this.#closing || request.signal.aborted)
               return failure('The explorer request ended.', 410)
-            const state = await this.options.run(value)
+            const state = await this.options.run(value, upload)
             return reply(JSON.stringify(validateDisplayProjectRun(state)))
           } finally {
             this.#submitting = false
@@ -351,6 +386,12 @@ export class PrivateWebExplorer {
       let event: PrivateExplorerRunEvent
       if (data.event === 'settled' && Object.keys(data).length === 1) event = { event: 'settled' }
       else if (
+        data.event === 'settled' &&
+        Object.keys(data).length === 2 &&
+        data.evidence !== undefined
+      )
+        event = { event: 'settled', evidence: validateDisplayProjectRunEvidence(data.evidence) }
+      else if (
         data.event === 'viewer' &&
         Object.keys(data).length === 2 &&
         typeof data.url === 'string'
@@ -375,12 +416,23 @@ export class PrivateWebExplorer {
 
   async #body(request: Request, limit: number, owners = this.#bodies): Promise<unknown> {
     if (
-      !/^application\/json(?:;\s*charset=utf-8)?$/i.test(
-        request.headers.get('content-type') ?? '',
-      ) ||
-      request.headers.has('content-encoding')
+      !/^application\/json(?:;\s*charset=utf-8)?$/i.test(request.headers.get('content-type') ?? '')
     )
       throw new Error('Invalid request encoding')
+    const bytes = await this.#bodyBytes(request, limit, owners)
+    try {
+      return decodeJson1(bytes)
+    } finally {
+      bytes.fill(0)
+    }
+  }
+
+  async #bodyBytes(
+    request: Request,
+    limit: number,
+    owners: Set<() => void>,
+  ): Promise<Uint8Array<ArrayBuffer>> {
+    if (request.headers.has('content-encoding')) throw new Error('Invalid request encoding')
     const length = request.headers.get('content-length')
     if (length !== null && (!/^(0|[1-9][0-9]*)$/.test(length) || Number(length) > limit))
       throw new Error('Invalid request size')
@@ -413,7 +465,7 @@ export class PrivateWebExplorer {
         bytes.set(chunk, offset)
         offset += chunk.byteLength
       }
-      return decodeJson1(bytes)
+      return bytes
     } finally {
       clearTimeout(timer)
       owners.delete(cancel)

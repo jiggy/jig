@@ -121,6 +121,8 @@ An unconfirmed Close also keeps launch disabled. Only an explicit action retries
 
 Open run follows a separately scoped numeric-loopback observer link in another tab.
 The explorer retains workflow input and map position without transferring its control capability.
+Choose files for unbound read attachments and reuse that selection across workflows under the same approval.
+The last two settled Runs can be compared using retained outcomes, calls, progress, and verified files.
 It retains up to sixteen drafts within sixteen MiB and explains eviction of older drafts.
 Closing the explorer requests host cleanup of active work. Closing the ordinary observer remains presentation-only.
 These routes belong to the local trusted adapter, not a portable execution API.

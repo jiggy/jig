@@ -101,9 +101,17 @@ Other projection overflow refuses that projection without dropping workflow or i
 
 The operator supplies explicit JSON input, including valid scalar values.
 The editor must not invent required values or silently remove duplicate object members.
-One launch envelope, including its selection and request identity, allows 16 MiB.
+One launch envelope, including its selection, request identity, and supplied files, allows 16 MiB.
 Ordinary JSON and invocation-schema validation still apply before execution.
-Required unbound input files and required channels make browser launch unavailable, with an explanation and the ordinary invocation path.
+Required channels make browser launch unavailable, with an explanation and the ordinary invocation path.
+
+For each unbound read attachment, the operator chooses regular files by name in the browser.
+The explorer stages their supplied bytes in a private temporary directory and the ordinary Run captures them through `--attach`.
+The browser cannot name a host directory or replace a reviewed attachment.
+
+Flat file names must be unique within each attachment. The request accepts at most 64 files.
+The explorer shares selected files by attachment name across workflows under the same approval.
+The input panel shows the files that will be supplied and offers the previous submitted JSON for reuse.
 Reviewed file bindings and ordinary automatic output delivery retain their existing behavior.
 
 Run is an explicit action under a separate project control capability.
@@ -128,7 +136,11 @@ The explorer preserves the input draft and exposes an explicit link to the ordin
 That inspector receives its own observation capability on its own loopback listener.
 It receives no project control capability.
 Closing a settled inspector before the next launch releases its command owner.
-Earlier run history is not an explorer archive.
+
+The explorer tab can compare its last two settled Runs with available evidence.
+Each summary retains its selected approval, execution, application outcome, reported progress, observed calls, and verified delivery.
+Submitted input equality covers canonical JSON, attachment names, file names, and uploaded bytes. It excludes files supplied by approved Bindings.
+The comparison stays in browser memory and retains no previous observer URL.
 
 Close explorer prevents new launches and cancels active owned work through ordinary cancellation and cleanup.
 It waits for owned command settlement before releasing its listener.
@@ -171,13 +183,15 @@ Terminal-link navigation accepts `Sec-Fetch-Site: none`.
 Explorer project reads accept only one opaque target selector.
 Run status reads accept only one optional request identity, distinct from the global current state.
 Launch and Close require an explicit exact Origin and the project control capability.
-Launch accepts one bounded JSON body with a ten-second read allowance and one active submission.
-Compressed bodies and malformed JSON are refused before dispatch.
+
+Launch accepts one bounded JSON body or a multipart body containing JSON intent and separately named file parts.
+Both formats share a ten-second read allowance and one active submission.
+Compressed bodies, malformed JSON, and invalid attachment names are refused before dispatch.
 The explorer retains at most eight ordinary requests and two project responses, without a waiting queue.
 
-It owns one separately authenticated child handoff, limited to 2 KiB per event.
+It owns one separately authenticated child handoff, limited to 16 KiB per event.
 Browser capabilities cannot authenticate that handoff, and child capabilities cannot authenticate browser control requests.
-The handoff accepts only the ordinary numeric-loopback viewer URL or a confirmed settlement event.
+The handoff accepts the ordinary numeric-loopback viewer URL or a confirmed settlement event with optional bounded comparison evidence.
 
 Serve only fixed bundled host assets and the authenticated endpoints belonging to the selected mode.
 Use a restrictive same-origin content-security policy without inline/evaluated
