@@ -50,6 +50,8 @@ Explain conditional behavior from a captured Jig project without running its met
 - Keep the private result independent of CLI and display rendering.
 - Package inspection uses source analysis to add call-site locations to configured caller slots.
   Caller slots remain visible without source interpretation.
+- Supplement cutoffs with source references whose receiver is an SDK context parameter.
+  Keep computed slot expressions separate from exact configured handoffs.
 - Compare ordered facts without deriving execution or authority from a supplied baseline.
   Keep source coordinates outside path identity. Pair changed paths only when their captured checks and evidence kind correspond uniquely.
   A call-order summary needs both slots on one captured source path. Preserve unresolved baseline order.

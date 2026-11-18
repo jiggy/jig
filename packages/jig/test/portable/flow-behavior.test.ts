@@ -230,6 +230,47 @@ test('package inspection joins source sites to exact configured caller slots', (
   expect(opaque).toContain('- binding:code · converter\n')
 })
 
+test('source navigation retains computed caller sites after an opaque wrapper', () => {
+  const importer = method(`
+    import { handle, type RunContext as Context } from '@jigging/flow'
+    async function invoke(run: Context, method: {slot: string}) {
+      const other = { call() {} }
+      await other.call({slot: 'converter'})
+      await run.call({slot: method.slot, operationId: 'a', input: {}}, { signal: run.signal })
+      await run.call({slot: 'converter', operationId: 'b', input: {}})
+      await run.call({slot: 'exporter', operationId: 'c', input: {}})
+      return { outcome: 'done', output: {} }
+    }
+    await handle(async run => {
+      opaque()
+      return invoke(run, {slot: 'converter'})
+    })
+  `)
+  const input = snapshot(method(handlerSource('return { outcome: "done", output: {} }')), importer)
+  const selected = analyzeFlowBehavior(input)
+  expect(selected.scopes[0]!.callReferences).toMatchObject([
+    {
+      kind: 'computed',
+      expression: 'method.slot',
+      site: { path: 'flows/import/FLOW.ts', line: 6 },
+    },
+    { kind: 'literal', slot: 'converter', site: { line: 7 } },
+    { kind: 'literal', slot: 'exporter', site: { line: 8 } },
+  ])
+  expect(selected.scopes[0]!.routes.flat().some((step) => step.kind === 'call')).toBe(false)
+  const narrow = renderFlowBehavior(
+    analyzeFlowBehavior({
+      ...input,
+      focus: undefined,
+      packagePath: 'flows/convert',
+      visible: ['binding:code', 'flow:flows/convert'],
+    }),
+  )
+  expect(narrow).toContain('computed slot method.slot (flows/import/FLOW.ts:6)')
+  expect(narrow).toContain('slot converter (flows/import/FLOW.ts:7)')
+  expect(narrow).not.toContain('slot exporter')
+})
+
 test('comparison round-trips a baseline and localizes changed effects to the configured use', () => {
   const caller = handlerSource(`
     const result = await run.call({slot:'converter',operationId:'convert',input:{}})

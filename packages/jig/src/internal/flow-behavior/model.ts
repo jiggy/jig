@@ -127,6 +127,11 @@ export interface AuthoredHandoff {
   }[]
 }
 
+export type CallReference = { readonly site: SourceSite } & (
+  | { readonly kind: 'literal'; readonly slot: string }
+  | { readonly kind: 'computed'; readonly expression: string }
+)
+
 export interface BehaviorReport {
   readonly unavailable?: string
   readonly revision: string
@@ -142,6 +147,8 @@ export interface BehaviorReport {
     readonly gaps: readonly (SourceSite & { readonly reason: string })[]
     readonly authoredHandoffs?: readonly AuthoredHandoff[]
     readonly authoredHandoffsOmitted?: number
+    readonly callReferences?: readonly CallReference[]
+    readonly callReferencesOmitted?: number
   }[]
 }
 

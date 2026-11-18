@@ -314,6 +314,9 @@ Use these connections to locate the right handoff before changing a shared imple
 
 When you know the package path, use `--package` to see every configured use and its direct caller slots.
 This works for packages that require a Binding. The report shows settings that differ across uses and adds source locations where available.
+
+When analysis stops early, caller source references can point to literal slots and computed slot expressions.
+Use computed expressions to find where the caller chooses its slot.
 Use an exact project-relative package path or an installed `npm:` package selector.
 Select a listed target for its behavior, or add `--json` to get the exact configuration records.
 

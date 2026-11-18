@@ -264,6 +264,9 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Link each retained child path to the continuation of its own caller.
 
   Working-tree package inspection adds source locations to the same configured caller slots.
+  A captured package that lacks a direct target points the reader to package inspection.
+  Focused and package reports can show authored call references beyond the analyzed routes.
+  Keep computed slot expressions distinct from exact selected targets.
 
   Lead with route consequences and attach their unresolved checks.
   Give main routes their own analysis budget and disclose omissions and opaque regions.

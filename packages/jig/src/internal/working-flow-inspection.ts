@@ -211,8 +211,18 @@ async function captureWorkingFlow<T>(
     if (
       options.target !== undefined &&
       !requests.some((r) => selector(r.target) === options.target)
-    )
+    ) {
+      const packagePath = [...flowByPath.keys()].find(
+        (path) => flowSelector(path) === options.target,
+      )
+      if (packagePath !== undefined)
+        invalid(
+          'INSPECTION_PACKAGE_SCOPE_REQUIRED',
+          'This package has no direct target in the captured configuration.',
+          packagePath,
+        )
       invalid('INSPECTION_TARGET_MISSING', 'target is absent from the working-tree configuration')
+    }
     const targets: JsonValue[] = []
     for (const request of requests) {
       targets.push({
