@@ -14,6 +14,7 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
 - `src/observations.ts` owns quiet synchronization and actual observation spans.
 - `src/composition.ts` owns pure map layout and exact Run/component selection.
   `src/composition-view.ts` renders approved calls, with matching observations only when a Run snapshot is supplied.
+  Both views show the selected component's possible source paths when available.
   Shared model helpers own attribution. The browser never joins component labels.
 - `src/application.ts` composes authored reading, media, gallery, document and comparison surfaces.
   Gallery metadata uses a disclosure without dropping supplied columns.

@@ -42,7 +42,9 @@ with their producer. This package owns readonly display data and pure meaning.
   through labels or retained reports.
   Composition is complete or explicitly unavailable. Nodes expose opaque
   identities, labels, target kinds and native resource kinds only.
-  They omit settings, policies, selectors and private paths.
+  They omit settings records, policies, selectors and private paths.
+- Optional bounded source cases join exact non-resource composition nodes.
+  A returned request may supply its admitted application outcome.
 - `DisplayProjectSnapshot` supplies approved configuration before a Run exists.
   It has no workspace, elapsed clock, invocation observations or synthetic Run.
   Root and ordinary component IDs join the bounded catalogue exactly. Selected

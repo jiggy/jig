@@ -4964,7 +4964,10 @@ export async function inspectPrivateApprovedProject(
   checkEnvironment?: PrivateInspectionEnvironmentCheck,
   describeTargets = false,
   onAdmission?: (digest: string, writableTargets: readonly string[]) => void,
-  onCandidate?: (candidate: PrivateActivationCandidateArtifactV5) => void,
+  onCandidate?: (
+    candidate: PrivateActivationCandidateArtifactV5,
+    store: PrivateFileLocation,
+  ) => void | Promise<void>,
   flowContext?: Readonly<{ target?: string; packagePath?: string }>,
 ): Promise<JsonValue> {
   let owner: StateOwner
@@ -4994,7 +4997,10 @@ export async function inspectPrivateApprovedProject(
     owner.database.exec('COMMIT')
     // This inert retained value is for command-private projection only. It does
     // not acquire a coordinator or replace submission's admission comparison.
-    onCandidate?.(candidate)
+    await onCandidate?.(
+      candidate,
+      descriptorChild(owner.directory, PRIVATE_PACKAGE_STORE_DIRECTORY),
+    )
     const targets = candidate.candidate.targets.map(({ request, disposition }) => ({
       target:
         request.target.kind === 'flow'

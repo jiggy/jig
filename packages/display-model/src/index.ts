@@ -39,6 +39,7 @@ export type {
   DisplayReferenceRecord,
   DisplaySnapshot,
   DisplaySnapshotEnvelope,
+  DisplaySourceBehavior,
   RecordedViewRole,
   WebAssets,
 } from './types.js'

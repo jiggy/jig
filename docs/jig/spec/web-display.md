@@ -77,6 +77,7 @@ pressed state; selection requires no Flow declarations, storage or new endpoint.
 
 `jig explore [target]` opens an operator-owned project session before any Run.
 It presents approved workflows, their configured composition, and each selected workflow's declared input contract.
+When a supported source path is available, selecting a component reveals representative alternatives from its approved packages.
 Opening, selecting, refreshing, and editing an input draft do not start work.
 An unreviewed project has an explicit empty state with `jig review` guidance.
 The browser cannot review, apply, edit source, or change grants.
@@ -277,11 +278,15 @@ Each Binding retains its own identity, even when several Bindings select the sam
 Resources retain distinct caller-slot identities, including implicit checkpoint resources.
 Labels describe components but never establish identity.
 
-The observation model accepts only opaque component identifiers, bounded labels, component kinds, resource kinds, and caller-slot connections.
-It carries no settings, grant policy, private paths, execution requests, or authority tickets.
+The observation model accepts opaque component identifiers, bounded labels, component kinds, resource kinds, and caller-slot connections.
+Optional source summaries refer to these component identities. They describe conditional returns, calls, requested progress, attempted writes, and coverage gaps.
+Jig derives these summaries from stored package bytes for the selected candidate.
+They can include package-relative source references. Settings records, grant policy, private absolute paths, and authority tickets stay outside the browser payload.
+
 The fixed map allowance is 256 components, 1,024 connections, and 256 KiB of encoded composition per snapshot.
 Exceeding any allowance makes the complete map explicitly unavailable, without trimming connections or affecting execution.
 Missing admitted composition remains unavailable rather than being inferred from call history.
+If the exact source analysis is unavailable or would exceed the map allowance, the configured composition remains available.
 
 A call matches through its accepted caller source and exact configured slot.
 Only an observed child source extends that correspondence to nested calls.
@@ -292,6 +297,10 @@ An unmatched call remains reachable through Execution.
 
 Selecting a component reveals its configured connections and exactly matched retained calls.
 Each observed call can open the existing invocation inspector.
+Returned calls may carry their admitted application outcome.
+The Run root can show retained reported progress and names from verified delivery.
+Source checks remain conditional even when the Run records matching calls.
+
 Counts describe retained observations, not complete history or execution duration.
 Absent observations do not prove a component was skipped or cannot execute.
 Observation loss and unmatched calls remain visible beside the map.
@@ -313,7 +322,7 @@ Missing child identity remains explicitly unavailable.
 Stale or incomplete observations disable these links.
 
 The Run map supplies no editing, test submission, replay, or execution controls.
-Project exploration places explicit input and launch controls beside its configuration-only map.
+Project exploration places explicit input and launch controls beside its approved map.
 Saved result packets and retained application views contain no admitted composition.
 They never reconstruct a map from recorded prose or familiar field names.
 

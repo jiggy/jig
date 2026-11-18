@@ -6,9 +6,9 @@ import {
   parseChannelContract,
   requireChannelReference,
 } from '../channel-contract.js'
-import type { PrivateCallEvent } from '../cli-run-model.js'
 import type { PrivateRunComposition } from '../cli-composition.js'
 import type { PrivateReportingSource } from '../cli-reporting.js'
+import type { PrivateCallEvent } from '../cli-run-model.js'
 import type { JsonValue } from '../json.js'
 import type { CapturedPackage } from '../package/capture.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
@@ -34,7 +34,7 @@ export interface PrivateRunChannelOutput {
   /** Trusted root admission crossed the execution boundary; not a Flow claim. */
   dispatched?(): void
   /** Complete selected-root composition from the Run-pinned admitted candidate. */
-  composition?(value: PrivateRunComposition): void
+  composition?(value: PrivateRunComposition, candidate: string): void
   call?(event: PrivateCallEvent): void
   readonly updates?: {
     open(port: string): PrivateReportingSource

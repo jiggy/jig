@@ -1043,6 +1043,26 @@
   margin: -3px 0 12px;
   font-size: 11px;
 }
+.composition-source-path {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.composition-source-path summary {
+  cursor: pointer;
+  line-height: 1.5;
+}
+.composition-source-path h4 {
+  margin: 10px 0 4px;
+  font-size: inherit;
+}
+.composition-source-path ol {
+  margin: 0;
+  padding-inline-start: 24px;
+  color: var(--secondary);
+  line-height: 1.5;
+}
 .composition-detail-section > .composition-request-summary {
   margin-bottom: 12px;
 }

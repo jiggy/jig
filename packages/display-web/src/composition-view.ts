@@ -3,17 +3,18 @@ import type {
   DisplayCompositionNode,
   DisplayCompositionResourceKind,
   DisplaySnapshot,
+  DisplaySourceBehavior,
 } from '@jigging/display-model'
 import { compositionObservations } from '@jigging/display-model'
 import { type ComponentChildren, h } from 'preact'
 import {
+  type PrivateCompositionRequestFocus,
+  type PrivateCompositionRequestSummary,
   privateCompositionFocusedRequests,
   privateCompositionLayout,
   privateCompositionRequestRows,
   privateCompositionRequestStateLabel,
   privateCompositionRequestSummary,
-  type PrivateCompositionRequestFocus,
-  type PrivateCompositionRequestSummary,
 } from './composition.js'
 import { privateBrowserLiteral } from './navigation.js'
 
@@ -39,6 +40,82 @@ type Props = (
 
 const literal = (value: string): ComponentChildren =>
   h('bdi', { class: 'literal' }, privateBrowserLiteral(value))
+
+function sourcePaths(behavior: DisplaySourceBehavior | undefined): ComponentChildren {
+  return h(
+    'section',
+    { class: 'composition-detail-section composition-source-paths' },
+    h('h3', {}, 'Possible behavior'),
+    behavior === undefined
+      ? h('p', { class: 'secondary' }, 'Source paths are unavailable for this component.')
+      : [
+          ...behavior.cases.map((path) =>
+            h(
+              'details',
+              { class: 'composition-source-path' },
+              h('summary', {}, literal(path.result)),
+              ...(
+                [
+                  ['Calls', path.calls],
+                  ['Effects', path.effects],
+                  ['Source checks', path.checks],
+                ] as const
+              ).flatMap(([label, items]) =>
+                items.length
+                  ? [
+                      h('h4', {}, label),
+                      h(
+                        'ol',
+                        {},
+                        items.map((item) => h('li', {}, literal(item))),
+                      ),
+                    ]
+                  : [],
+              ),
+            ),
+          ),
+          ...behavior.gaps.map((gap) => h('p', { class: 'secondary' }, literal(gap))),
+          behavior.omitted > 0
+            ? h('p', { class: 'secondary' }, behavior.omitted + ' other analyzed cases.')
+            : null,
+        ],
+  )
+}
+
+function runConsequences(snapshot: DisplaySnapshot): ComponentChildren {
+  const report = snapshot.views
+    .filter((view) => view.sourceId === snapshot.rootSourceId)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .flatMap((view) => view.value.sections.flatMap((section) => section.blocks))
+    .find((block) => block.kind === 'progress')
+  const files = snapshot.artifacts
+  return [
+    report?.kind === 'progress'
+      ? h(
+          'p',
+          {},
+          'Reported progress ',
+          report.completed,
+          report.total === undefined ? '' : '/' + report.total,
+        )
+      : null,
+    ...(snapshot.workspace.facts === undefined
+      ? []
+      : [
+          h('p', {}, 'Application · ', literal(snapshot.workspace.facts.application.value)),
+          h('p', {}, 'Delivery · ', literal(snapshot.workspace.facts.delivery.value)),
+        ]),
+    files.phase === 'ready' && files.provenance === 'verified-delivery'
+      ? files.files.length
+        ? h(
+            'ul',
+            {},
+            files.files.slice(0, 5).map((file) => h('li', {}, literal(file.path))),
+          )
+        : h('p', {}, 'No files in the verified delivery.')
+      : null,
+  ]
+}
 const resourceLabels: Record<DisplayCompositionResourceKind, string> = {
   'http-request': 'HTTP request',
   'project-command': 'Project command',
@@ -176,9 +253,8 @@ export function CompositionPage(props: Props): ComponentChildren {
   const allRequests = privateCompositionRequestSummary([...requests.values()].flat())
   const requestFocus = snapshot ? (props.requestFocus ?? 'all') : 'all'
   // Includes unplaced requests; missing observations never establish that a call was skipped.
-  const attentionRequests = snapshot?.calls.filter(
-    (call) => call.state === 'failed' || call.state === 'uncertain',
-  ) ?? []
+  const attentionRequests =
+    snapshot?.calls.filter((call) => call.state === 'failed' || call.state === 'uncertain') ?? []
   const attentionMatches = new Map(attribution?.matches.map((match) => [match.callId, match]) ?? [])
   const attentionUnmatched = new Map(
     attribution?.unmatched.map((item) => [item.callId, item.reason]) ?? [],
@@ -212,6 +288,7 @@ export function CompositionPage(props: Props): ComponentChildren {
   const selectedRequests = selected ? (requests.get(selected.id) ?? []) : []
   const incoming = selected ? composition.edges.filter((edge) => edge.target === selected.id) : []
   const outgoing = selected ? composition.edges.filter((edge) => edge.source === selected.id) : []
+  const outgoingRequests = outgoing.flatMap((edge) => edgeRequests.get(edge.id) ?? [])
   const layout = privateCompositionLayout(
     {
       ...composition,
@@ -596,7 +673,10 @@ export function CompositionPage(props: Props): ComponentChildren {
       snapshot && requestFocus === 'attention'
         ? h(
             'section',
-            { class: 'composition-attention-index', 'aria-label': 'Retained requests needing attention' },
+            {
+              class: 'composition-attention-index',
+              'aria-label': 'Retained requests needing attention',
+            },
             h(
               'header',
               {},
@@ -616,7 +696,9 @@ export function CompositionPage(props: Props): ComponentChildren {
                     const location = target
                       ? target.label + ' · ' + (route?.slot ?? call.slot)
                       : 'Not placed on map · ' +
-                        unmatchedReason(attentionUnmatched.get(call.id) ?? 'composition-unavailable')
+                        unmatchedReason(
+                          attentionUnmatched.get(call.id) ?? 'composition-unavailable',
+                        )
                     return h(
                       'li',
                       { key: call.id },
@@ -637,9 +719,14 @@ export function CompositionPage(props: Props): ComponentChildren {
                           'data-attention-call': call.id,
                           disabled: !props.referencesEnabled,
                           'aria-label':
-                            'Inspect ' + call.state + ' invocation ' +
-                            privateBrowserLiteral(call.operationId) + ': ' +
-                            privateBrowserLiteral(call.intent ?? call.slot) + '. ' + location,
+                            'Inspect ' +
+                            call.state +
+                            ' invocation ' +
+                            privateBrowserLiteral(call.operationId) +
+                            ': ' +
+                            privateBrowserLiteral(call.intent ?? call.slot) +
+                            '. ' +
+                            location,
                         },
                       ),
                     )
@@ -654,7 +741,8 @@ export function CompositionPage(props: Props): ComponentChildren {
               ? h(
                   'p',
                   { class: 'unavailable-note' },
-                  snapshot.omissions.calls + ' call observations are omitted; this index is incomplete.',
+                  snapshot.omissions.calls +
+                    ' call observations are omitted; this index is incomplete.',
                 )
               : null,
             attentionRequests.length && !props.referencesEnabled
@@ -849,8 +937,8 @@ export function CompositionPage(props: Props): ComponentChildren {
           'p',
           {},
           snapshot
-            ? 'The host supplies this Run’s admitted composition. Internal steps, branch conditions, and data transformations are not included.'
-            : 'The host supplies the locally approved configuration. Internal steps, branch conditions, and data transformations are not included.',
+            ? 'Possible behavior comes from this Run’s admitted source where analysis is available.'
+            : 'Possible behavior comes from locally approved source where analysis is available.',
         ),
         snapshot
           ? h(
@@ -919,6 +1007,7 @@ export function CompositionPage(props: Props): ComponentChildren {
                 h('h3', {}, 'Run observation'),
                 h('p', {}, 'Run phase: ', snapshot.workspace.phase),
                 h('p', {}, literal(snapshot.workspace.hostStage)),
+                runConsequences(snapshot),
                 snapshot.workspace.facts?.execution
                   ? h(
                       'p',
@@ -939,6 +1028,39 @@ export function CompositionPage(props: Props): ComponentChildren {
                   'p',
                   { class: 'secondary' },
                   'Run root. Child requests appear on their target components.',
+                ),
+              )
+            : null,
+          selected.kind === 'resource'
+            ? null
+            : sourcePaths(composition.sourceBehavior?.find((item) => item.nodeId === selected.id)),
+          outgoingRequests.length
+            ? h(
+                'section',
+                { class: 'composition-detail-section' },
+                h('h3', {}, 'Observed child calls'),
+                h(
+                  'ul',
+                  { class: 'composition-route-list' },
+                  outgoingRequests.map((call) =>
+                    h(
+                      'li',
+                      { key: call.id },
+                      button(
+                        h('span', {}, literal(call.slot), icon('arrow')),
+                        () => props.onCall?.(call.id),
+                        { disabled: !props.referencesEnabled },
+                      ),
+                      h('small', { class: 'secondary' }, literal(call.operationId)),
+                      h(
+                        'small',
+                        {},
+                        call.outcome === undefined
+                          ? literal(call.state)
+                          : h('span', {}, 'Outcome: ', literal(call.outcome)),
+                      ),
+                    ),
+                  ),
                 ),
               )
             : null,
@@ -976,6 +1098,9 @@ export function CompositionPage(props: Props): ComponentChildren {
                                 { class: 'composition-request-state call-' + call.state },
                                 'Observed state: ' + call.state,
                               ),
+                              call.outcome === undefined
+                                ? null
+                                : h('small', {}, 'Outcome: ', literal(call.outcome)),
                               h(
                                 'small',
                                 { class: 'secondary' },

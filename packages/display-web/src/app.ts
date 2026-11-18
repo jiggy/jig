@@ -1933,7 +1933,9 @@ function Overview(): ComponentChildren {
   const matches = new Set(
     snapshot.calls
       .filter((call) =>
-        privateBrowserLiteral(`${call.intent ?? ''} ${call.slot} ${call.state}`)
+        privateBrowserLiteral(
+          `${call.intent ?? ''} ${call.slot} ${call.state} ${call.outcome ?? ''}`,
+        )
           .toLowerCase()
           .includes(callFilter.toLowerCase()),
       )
@@ -2195,6 +2197,9 @@ function Overview(): ComponentChildren {
               literal(selected.intent ?? selected.slot),
             ),
             h('p', { class: `call-${selected.state}` }, `Observed state: ${selected.state}`),
+            selected.outcome === undefined
+              ? null
+              : h('p', {}, 'Outcome: ', h('code', {}, literal(selected.outcome))),
             h(
               'dl',
               { class: 'fields' },

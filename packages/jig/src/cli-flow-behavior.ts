@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { DisplaySourceBehavior } from '@jigging/display-model'
 import {
   type ConfiguredConnection,
   renderFlowOrientation,
@@ -24,6 +25,62 @@ type CallCase = {
   sources: Set<number | undefined>
 }
 type CallDetails = ReadonlyMap<string, ReadonlyMap<string, CallCase>>
+
+/** The browser uses the same selected source paths as the plain Markdown view. */
+export function projectSourceBehavior(
+  report: BehaviorReport,
+  nodes: ReadonlyMap<string, string>,
+): readonly DisplaySourceBehavior[] {
+  const clip = (value: string) => {
+    const chars = [...value]
+    return chars.length <= 256 ? value : chars.slice(0, 255).join('') + '…'
+  }
+  return report.scopes.flatMap((scope) => {
+    const nodeId = nodes.get(scope.target)
+    if (nodeId === undefined) return []
+    const choices = selectRoutes(scope)
+    const cases = choices.slice(0, 4).map((route) => {
+      const end = route.at(-1)
+      const reported = progress(route, scope.target)
+      return {
+        result: clip(end?.kind === 'end' ? label(end) : 'Continuation unresolved'),
+        calls: route
+          .flatMap((step) =>
+            step.kind === 'call' && step.caller === scope.target ? [clip(label(step))] : [],
+          )
+          .slice(0, 6),
+        effects: [
+          ...route.flatMap((step) =>
+            step.kind === 'effect' && step.operation === 'writeFile' ? [clip(label(step))] : [],
+          ),
+          ...(reported === '—' ? [] : [clip('Requests ' + reported)]),
+        ].slice(0, 6),
+        checks: route
+          .flatMap((step) =>
+            (step.kind === 'condition' ? [step] : 'guards' in step ? (step.guards ?? []) : [])
+              .filter((guard) => guard.unresolved)
+              .map((guard) =>
+                clip(
+                  guard.code + (guard.taken ? ' · true' : ' · false') + ' · ' + site(guard.site),
+                ),
+              ),
+          )
+          .slice(-6),
+      }
+    })
+    return [
+      {
+        nodeId,
+        cases,
+        gaps: [...new Set(scope.gaps.map((gap) => clip(gap.reason + ' · ' + site(gap))))].slice(
+          0,
+          3,
+        ),
+        omitted: scope.routes.length - cases.length,
+      },
+    ]
+  })
+}
 
 const directions = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu
 const controls = /[\p{Cc}\u2028\u2029]/gu

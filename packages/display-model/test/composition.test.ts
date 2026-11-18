@@ -1,13 +1,13 @@
 import { expect, test } from 'bun:test'
 import {
+  compositionObservations,
   DISPLAY_COMPOSITION_BYTE_LIMIT,
   DISPLAY_COMPOSITION_EDGE_LIMIT,
   DISPLAY_COMPOSITION_NODE_LIMIT,
-  compositionObservations,
-  validateDisplaySnapshot,
   type DisplayComposition,
   type DisplayCompositionResourceKind,
   type DisplaySnapshot,
+  validateDisplaySnapshot,
 } from '@jigging/display-model'
 import { fixture } from './fixture.js'
 
@@ -95,6 +95,24 @@ test('complete composition is an owned immutable value with separate Binding, Fl
     value.composition.nodes.filter((node) => node.label === 'Reference').map((node) => node.id),
   ).toEqual(['fast-reference', 'full-reference'])
   expect(compositionObservations(value)).toEqual({ matches: [], unmatched: [] })
+})
+
+test('source cases bind to exact components and outcomes bind to returned calls', () => {
+  const source = {
+    nodeId: 'fast',
+    cases: [{ result: 'Returns blocked', calls: [], effects: [], checks: ['Permission missing'] }],
+    gaps: [],
+    omitted: 0,
+  }
+  const returned = call('first', 'root', 'fast', { state: 'returned', outcome: 'blocked' })
+  const value = supplied([returned], { ...graph(), sourceBehavior: [source] })
+  expect(value.calls[0]?.outcome).toBe('blocked')
+  expect(value.composition).toMatchObject({ sourceBehavior: [source] })
+  expect(() => supplied([{ ...returned, state: 'active' }])).toThrow()
+  expect(() => supplied([{ ...returned, outcome: 'not valid' }])).toThrow()
+  for (const nodeId of ['missing', 'fast-reference'])
+    expect(() => supplied([], { ...graph(), sourceBehavior: [{ ...source, nodeId }] })).toThrow()
+  expect(() => supplied([], { ...graph(), sourceBehavior: [source, source] })).toThrow()
 })
 
 test('exact source and slot joins retain repeated requests, independent of labels, state and arrival order', () => {

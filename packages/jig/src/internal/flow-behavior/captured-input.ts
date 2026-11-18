@@ -1,5 +1,7 @@
 import { dirname, join } from 'node:path'
 import type { JsonValue } from '../../json.js'
+import type { CapturedPackage } from '../../package/capture.js'
+import type { InspectedPackage } from '../../package/inspect.js'
 import type { CapturedFlowMember } from '../../project/flow-source.js'
 import { resolveInvocationSlots } from '../../project/invocation-slots.js'
 import type { PackageProjectValue } from '../../project/package-project.js'
@@ -82,60 +84,95 @@ export async function prepareFlowBehavior(
     if (implementation === undefined || packages.has(implementation)) continue
     const member = qualified.get(implementation)
     if (member === undefined) continue
-    const entry = member.inspected.entrypoint.path
-    const sources = new Map<string, string>()
-    const reportingFiles = new Set<string>()
-    const files = member.captured.files.filter(
-      (f) => f.path.endsWith('.ts') && !f.path.endsWith('.d.ts'),
+    const read = await readBehaviorPackage(
+      implementation,
+      member.captured,
+      member.inspected,
+      { bytes, packages: packages.size },
+      async (file) => {
+        const from = dirname(join(directory, implementation, file))
+        if (!reporting.has(from))
+          reporting.set(
+            from,
+            (await captureReportingProfile(directory, from, signal)) !== undefined,
+          )
+        return reporting.get(from) ?? false
+      },
+      signal,
     )
-    const unavailable = !entry.endsWith('.ts')
-      ? 'This entrypoint language is outside the supported subset.'
-      : implementation.startsWith('npm:')
-        ? 'Installed implementation is opaque to source behavior inspection.'
-        : packages.size >= BEHAVIOR_LIMITS.packages ||
-            files.length > BEHAVIOR_LIMITS.filesPerPackage ||
-            files.some((f) => f.size > BEHAVIOR_LIMITS.fileBytes) ||
-            files.reduce((n, f) => n + f.size, 0) > bytes
-          ? 'The implementation exceeds source analysis limits.'
-          : undefined
-    if (unavailable === undefined)
-      for (const file of files) {
-        signal?.throwIfAborted()
-        const data = await member.captured.read(file.path, BEHAVIOR_LIMITS.fileBytes)
-        bytes -= data.byteLength
-        sources.set(file.path, new TextDecoder('utf-8', { fatal: true }).decode(data))
-      }
-    if (
-      [...sources.values()].some((source) => source.includes('@jigging/reporting')) &&
-      member.captured.files.some((file) => file.path === 'package.json' && file.size <= 8192)
-    ) {
-      try {
-        const manifest = JSON.parse(
-          new TextDecoder('utf-8', { fatal: true }).decode(
-            await member.captured.read('package.json', 8192),
-          ),
-        )
-        if (typeof manifest?.dependencies?.['@jigging/reporting'] === 'string')
-          for (const [file, source] of sources) {
-            if (!source.includes('@jigging/reporting')) continue
-            const from = dirname(join(directory, implementation, file))
-            if (!reporting.has(from))
-              reporting.set(
-                from,
-                (await captureReportingProfile(directory, from, signal)) !== undefined,
-              )
-            if (reporting.get(from)) reportingFiles.add(file)
-          }
-      } catch (error) {
-        if (!(error instanceof SyntaxError)) throw error
-      }
+    bytes -= read.bytes
+    packages.set(implementation, read.package)
+  }
+  return analyzeFlowBehavior(
+    {
+      revision,
+      focus,
+      ...(packagePath === undefined ? {} : { packagePath }),
+      ...(entrypoint === undefined ? {} : { entrypoint }),
+      targets,
+      visible,
+      packages,
+    },
+    signal,
+  )
+}
+
+/** Decode bounded TypeScript and contract facts from an already-owned capture. */
+export async function readBehaviorPackage(
+  implementation: string,
+  captured: CapturedPackage,
+  inspected: InspectedPackage,
+  budget: Readonly<{ bytes: number; packages: number }>,
+  reporting: (file: string) => Promise<boolean>,
+  signal?: AbortSignal,
+): Promise<{ bytes: number; package: BehaviorPackage }> {
+  let bytes = 0
+  const entry = inspected.entrypoint.path
+  const sources = new Map<string, string>()
+  const reportingFiles = new Set<string>()
+  const files = captured.files.filter((f) => f.path.endsWith('.ts') && !f.path.endsWith('.d.ts'))
+  const unavailable = !entry.endsWith('.ts')
+    ? 'This entrypoint language is outside the supported subset.'
+    : implementation.startsWith('npm:')
+      ? 'Installed implementation is opaque to source behavior inspection.'
+      : budget.packages >= BEHAVIOR_LIMITS.packages ||
+          files.length > BEHAVIOR_LIMITS.filesPerPackage ||
+          files.some((f) => f.size > BEHAVIOR_LIMITS.fileBytes) ||
+          files.reduce((n, f) => n + f.size, 0) > budget.bytes
+        ? 'The implementation exceeds source analysis limits.'
+        : undefined
+  if (unavailable === undefined)
+    for (const file of files) {
+      signal?.throwIfAborted()
+      const data = await captured.read(file.path, BEHAVIOR_LIMITS.fileBytes)
+      bytes += data.byteLength
+      sources.set(file.path, new TextDecoder('utf-8', { fatal: true }).decode(data))
     }
-    const schema = member.inspected.schemas.result
-    packages.set(implementation, {
+  if (
+    [...sources.values()].some((source) => source.includes('@jigging/reporting')) &&
+    captured.files.some((file) => file.path === 'package.json' && file.size <= 8192)
+  ) {
+    try {
+      const manifest = JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(await captured.read('package.json', 8192)),
+      )
+      if (typeof manifest?.dependencies?.['@jigging/reporting'] === 'string')
+        for (const [file, source] of sources) {
+          if (!source.includes('@jigging/reporting')) continue
+          if (await reporting(file)) reportingFiles.add(file)
+        }
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error
+    }
+  }
+  const schema = inspected.schemas.result
+  return {
+    bytes,
+    package: {
       entry,
       sources,
       reportingFiles,
-      ...(member.captured.files.some((file) => file.path === 'FLOW.contract.json')
+      ...(captured.files.some((file) => file.path === 'FLOW.contract.json')
         ? { contractPath: implementation + '/FLOW.contract.json' }
         : {}),
       ...(unavailable === undefined ? {} : { unavailable }),
@@ -152,18 +189,6 @@ export async function prepareFlowBehavior(
               }
             },
           }),
-    })
-  }
-  return analyzeFlowBehavior(
-    {
-      revision,
-      focus,
-      ...(packagePath === undefined ? {} : { packagePath }),
-      ...(entrypoint === undefined ? {} : { entrypoint }),
-      targets,
-      visible,
-      packages,
     },
-    signal,
-  )
+  }
 }

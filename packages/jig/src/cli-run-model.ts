@@ -9,8 +9,8 @@ import {
   VIEW_LIMITS,
   type ViewItem,
 } from '@jigging/reporting'
-import { privateCliHeading } from './cli-presentation.js'
 import type { PrivateRunComposition } from './cli-composition.js'
+import { privateCliHeading } from './cli-presentation.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
 
 export type PrivateCallState =
@@ -28,6 +28,7 @@ export type PrivateCallEvent = Readonly<{
   state: PrivateCallState
   time: number
   cause?: string
+  outcome?: string
   childPublisher?: string
 }>
 export type PrivateCallNode = PrivateCallEvent & {
@@ -281,6 +282,20 @@ export class PrivateRunModel {
     this.#semantic()
     this.onChange()
   }
+  observeSourceBehavior(original: PrivateRunComposition, expanded: PrivateRunComposition): void {
+    if (
+      this.#closed ||
+      this.#stopped ||
+      this.#composition !== original ||
+      original.state !== 'available' ||
+      expanded.state !== 'available' ||
+      expanded.sourceBehavior === undefined
+    )
+      return
+    this.#composition = { ...original, sourceBehavior: expanded.sourceBehavior }
+    this.#semantic()
+    this.onChange()
+  }
   sourceParent(publisher: string): string | undefined {
     return this.#parents.get(publisher)
   }
@@ -476,6 +491,9 @@ export class PrivateRunModel {
         : { childPublisher: (event.childPublisher ?? old?.childPublisher)! }),
       ...(intent === undefined ? {} : { intent }),
       ...(cause === undefined ? {} : { cause }),
+      ...(event.state === 'returned' && event.outcome !== undefined
+        ? { outcome: event.outcome }
+        : {}),
     }
     const bytes = Buffer.byteLength(JSON.stringify(node)),
       prior = old ? Buffer.byteLength(JSON.stringify(old)) : 0

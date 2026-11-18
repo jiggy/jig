@@ -85,10 +85,20 @@ export class PrivateDisplayProjection {
         target: node(edge.target),
         slot: edge.slot,
       })),
+      ...(value.sourceBehavior === undefined
+        ? {}
+        : {
+            sourceBehavior: value.sourceBehavior.map((item) => ({
+              ...item,
+              nodeId: node(item.nodeId),
+            })),
+          }),
     }
-    return encoded(composition) > DISPLAY_COMPOSITION_BYTE_LIMIT
-      ? { state: 'unavailable', reason: 'limit' }
-      : composition
+    if (encoded(composition) <= DISPLAY_COMPOSITION_BYTE_LIMIT) return composition
+    const { sourceBehavior: _, ...topology } = composition
+    return encoded(topology) <= DISPLAY_COMPOSITION_BYTE_LIMIT
+      ? topology
+      : { state: 'unavailable', reason: 'limit' }
   }
   #attribution(admission: PrivateAdmission, label: string): DisplayAttribution {
     const sourceLabel = bounded(label, 256).value
@@ -339,6 +349,7 @@ export class PrivateDisplayProjection {
       observedAt: call.time,
       ...(call.intent === undefined ? {} : { intent: call.intent }),
       ...(call.cause === undefined ? {} : { cause: call.cause }),
+      ...(call.outcome === undefined ? {} : { outcome: call.outcome }),
     }))
     const activities = [...model.activities.values()].map((activity) => ({
       id: this.#id('activity', activity.publisher, activity.value.id),
