@@ -12,13 +12,13 @@ import {
   validateWorkflowRun,
   verifyArtifactMetadata,
 } from './candidate-transfer.mjs'
+import { readMacApiJson, readMacDecisionArtifact, selectMacPrDecisions } from './macos-pr-race.mjs'
 import {
   MACOS_COMPATIBILITY_MAJORS,
   macJobName,
   validateMacCoverage,
 } from './macos-qualification.mjs'
 import { allRunJobs, latestJob } from './merge-attempts.mjs'
-import { readMacDecisionArtifact, selectMacPrDecisions } from './macos-pr-race.mjs'
 import { readMacReports } from './test-reports.mjs'
 
 export { MACOS_COMPATIBILITY_MAJORS, macJobName } from './macos-qualification.mjs'
@@ -285,7 +285,11 @@ export function requireMacDecisionBinding(binding, { decision, decisionArtifact 
     throw new Error('Mac shard evidence used a different allocation decision')
 }
 
-export async function collectMacHost({ env = process.env, client = githubClient(), extract } = {}) {
+export async function collectMacHost({
+  env = process.env,
+  client = githubClient(env.GITHUB_REPOSITORY, { readApiJson: readMacApiJson }),
+  extract,
+} = {}) {
   let state = await snapshot(env, client)
   const { context, run } = state
   let { jobs, artifacts } = state
