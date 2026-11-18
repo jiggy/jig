@@ -93,6 +93,123 @@ test('a callee-only change alters the unchanged caller continuation', () => {
   )
 })
 
+test('Boolean guards keep both continuations visible and respect local shadowing', () => {
+  const callee = method(handlerSource('return { outcome: "done", output: {} }'))
+  const analyze = (body: string) =>
+    analyzeFlowBehavior(snapshot(callee, method(handlerSource(body)))).scopes[0]!
+  const guard = analyze(`
+    if (Boolean(run.input.commission) === Boolean(run.input.continuation))
+      return { outcome: 'done', output: { status: 'select one' } }
+    await run.call({ slot: 'converter', operationId: 'convert', input: {} })
+    return { outcome: 'done', output: { status: 'handled' } }
+  `)
+  expect(guard.routes.some((route) => route.some((step) => step.kind === 'call'))).toBe(true)
+  expect(guard.routes.flat()).toContainEqual(
+    expect.objectContaining({ kind: 'end', detail: 'outcome "done", status = "select one"' }),
+  )
+  const shadowed = analyze(`
+    const Boolean = (_value: unknown) => false
+    if (Boolean('yes')) throw new Error('wrong branch')
+    return { outcome: 'done', output: {} }
+  `)
+  expect(shadowed.routes).toHaveLength(1)
+  expect(shadowed.routes[0]!.at(-1)).toMatchObject({ kind: 'end', detail: 'outcome "done"' })
+})
+
+test('directly returned helper promises settle at the returning function boundary', () => {
+  const callee = method(handlerSource('return { outcome: "done", output: {} }'))
+  const check = (expression: string, finalizer = '') => {
+    const source = handlerSource(`
+      async function readingPlan(run, fail) {
+        await run.call({ slot: 'converter', operationId: 'convert', input: {} })
+        if (fail) throw new Error('rejected')
+        return { outcome: 'done', output: { status: 'planned' } }
+      }
+      function argument() { throw new Error('argument') }
+      try { ${expression} } catch {
+        return { outcome: 'done', output: { status: 'caught' } }
+      } ${finalizer}
+    `)
+    return analyzeFlowBehavior(snapshot(callee, method(source))).scopes[0]!
+  }
+  const direct = check('return readingPlan(run, run.input.fail)')
+  expect(direct.routes.flat()).toContainEqual(
+    expect.objectContaining({ kind: 'end', detail: 'outcome "done", status = "planned"' }),
+  )
+  expect(direct.routes.flat()).toContainEqual(
+    expect.objectContaining({ kind: 'end', completion: 'throw' }),
+  )
+  expect(
+    direct.routes.flat().some((step) => step.kind === 'end' && step.detail.includes('caught')),
+  ).toBe(false)
+  const awaited = check('return await readingPlan(run, true)')
+  const argument = check('return readingPlan(run, argument())')
+  for (const scope of [awaited, argument])
+    expect(scope.routes.flat()).toContainEqual(
+      expect.objectContaining({ kind: 'end', detail: 'outcome "done", status = "caught"' }),
+    )
+  expect(argument.routes.flat().some((step) => step.kind === 'call')).toBe(false)
+  expect(check('readingPlan(run, true)').gaps[0]?.reason).toContain('unawaited helper')
+  expect(check('return readingPlan(run, true)', 'finally {}').gaps[0]?.reason).toContain(
+    'finalizer',
+  )
+})
+
+test('focused orientation shows distinct slots and variant callers before analysis', () => {
+  const focus = 'binding:chapter-reading'
+  const baseline = 'binding:chapter-reading-baseline'
+  const producer = 'binding:produce-book'
+  const compare = 'binding:compare-writing'
+  const target = (
+    id: string,
+    implementation: string,
+    slots: [string, string][] = [],
+    settings = {},
+  ) => ({
+    id,
+    implementation,
+    slots: new Map(slots),
+    settings,
+    outcomes: ['done'],
+  })
+  const targets = [
+    target(compare, 'flows/compare', [
+      ['current', focus],
+      ['baseline', baseline],
+    ]),
+    target(focus, 'flows/draft-chapter', [], { prompt: 'reading' }),
+    target(baseline, 'flows/draft-chapter', [], { prompt: 'baseline' }),
+    target(producer, 'flows/produce', [
+      ['chapter', focus],
+      ['polish', focus],
+    ]),
+  ]
+  const report = analyzeFlowBehavior({
+    revision: 'capture',
+    targets,
+    focus,
+    entrypoint: producer,
+    visible: targets.map(({ id }) => id),
+    packages: new Map(),
+  })
+  const orientation = renderFlowBehavior(report).split('## Configured targets')[0]!
+  expect(orientation).toContain('binding:chapter-reading uses flows/draft-chapter.')
+  expect(orientation).toContain('binding:produce-book · chapter')
+  expect(orientation).toContain('binding:produce-book · polish')
+  expect(orientation).toContain('binding:compare-writing · current')
+  expect(orientation).toContain(
+    'binding:chapter-reading-baseline · called by binding:compare-writing · baseline · settings differ: prompt = "baseline"',
+  )
+  const application = renderFlowBehavior({ ...report, focus: undefined })
+  const opening = application.split('| Configured target')[0]!
+  expect(opening).toContain('[binding:produce-book]')
+  expect(opening).toContain('chapter → [binding:chapter-reading]')
+  expect(opening).toContain('polish → [binding:chapter-reading]')
+  expect(application.split('| --- | --- | --- | --- |\n')[1]).toStartWith(
+    '| [binding:produce-book]',
+  )
+})
+
 test('comparison round-trips a baseline and localizes changed effects to the configured use', () => {
   const caller = handlerSource(`
     const result = await run.call({slot:'converter',operationId:'convert',input:{}})

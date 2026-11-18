@@ -18,11 +18,9 @@ Use the FLOW skill when designing, creating, composing, or reviewing the project
 If it is unavailable, follow its [canonical design guidance](https://flow.jig.md/guide/design) and the task's FLOW specifications.
 Keep portable method guidance with FLOW and host configuration with Jig.
 
-For edits to conditional handoffs, child outcomes, or shared methods, start with `jig inspect --flow <target>`.
-Use `jig inspect --flow --snapshot` to capture a task-local baseline before changing behavior.
-After editing, use `jig inspect --flow --compare BASELINE` to check changes to callers, outcomes, progress, and effects.
-Follow reported gaps to source and verify the affected alternatives with representative Runs.
-See [source behavior inspection](reference/build/results.md#inspect-source-behavior).
+For workflow edits, start with `jig inspect --flow`, or supply the target if known.
+Use the configured callers, slots, and shared implementations to find the source that owns the change.
+See [source behavior inspection](reference/build/results.md#inspect-source-behavior) for tracing a route or comparing specific revisions.
 Complete this step when the outcome, existing project state, and execution prerequisites are clear.
 
 ## 2. Design the project before its configuration

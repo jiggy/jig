@@ -486,7 +486,10 @@ test('focused topology retains upstream paths, caller slots and other uses of th
   expect(graph).toContain('Focus: binding:checked.\nEntrypoint: binding:factory.')
   expect(graph).toContain('binding_factory -->|"router"| binding_router')
   expect(graph).toContain('binding_other_entry -->|"single"| binding_single')
-  expect(graph).toContain('Shared implementation with binding:checked: binding:single.')
+  const orientation = graph.split('```mermaid')[0]!
+  expect(orientation).toContain('binding:checked uses flows/repair.')
+  expect(orientation).toContain('Other configured uses of flows/repair')
+  expect(orientation).toContain('binding:single · called by binding:other-entry · single')
   expect(graph).toContain(
     'binding:other: 0 incoming and 1 outgoing configured connections outside this view.',
   )

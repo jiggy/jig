@@ -302,9 +302,14 @@ jig inspect --flow
 jig inspect --flow binding:code
 ```
 
-The application overview lists its entrypoint, independent direct Flows, and configured Bindings.
+The application overview leads with the declared entrypoint and its configured handoffs.
+The inventory includes independent direct Flows and configured Bindings.
 Follow an overview link to see a Flow chart or a specific configured use.
 Each configured use keeps its own conditions, child results, and caller continuations.
+
+When you select a target, start with its configured callers and their exact slots.
+Other configured uses of the same Flow include their own callers and relevant settings differences.
+Use these connections to locate the right handoff before changing a shared implementation.
 
 The consequences list calls, requested progress, and attempted file writes.
 The diagram labels unresolved checks on the affected connections. Source details point to the checks and publications.
@@ -312,7 +317,7 @@ Follow a call link to see the inputs, supported child path, and continuation for
 Select another target to inspect it independently.
 The configured inventory lists declared outcomes, attachments, and artifact results.
 
-Capture a baseline before an edit. Compare it with the current application afterward.
+When you need to compare behavior before and after a specific edit, capture a baseline first.
 
 ```sh
 jig inspect --flow --snapshot > before.json

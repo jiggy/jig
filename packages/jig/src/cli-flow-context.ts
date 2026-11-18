@@ -1,11 +1,12 @@
-import { PRIVATE_FLOW_CONTEXT_LIMITS } from './internal/inspection-policy.js'
-import type { JsonValue } from './json.js'
+import { renderFlowOrientation } from './cli-flow-orientation.js'
 import {
   type FlowContextOptions,
   list,
   record,
   selectFlowContext,
 } from './internal/flow-inspection-scope.js'
+import { PRIVATE_FLOW_CONTEXT_LIMITS } from './internal/inspection-policy.js'
+import type { JsonValue } from './json.js'
 
 const visibleDirections = (value: string): string =>
   value.replace(
@@ -59,17 +60,8 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
   const snapshot = record(value)
   if (snapshot.state === 'unreviewed' && snapshot.basis !== 'working-tree')
     return '# Configured topology\n\nNo locally approved revision. Use jig inspect --flow for current configuration.\n'
-  const {
-    included,
-    edges,
-    focus,
-    entrypoint,
-    shared,
-    boundaries,
-    state,
-    omitted,
-    omittedConnections,
-  } = selectFlowContext(value, options)
+  const { included, edges, focus, entrypoint, boundaries, state, omitted, omittedConnections } =
+    selectFlowContext(value, options)
   if (
     included.length > PRIVATE_FLOW_CONTEXT_LIMITS.targets ||
     edges.length > PRIVATE_FLOW_CONTEXT_LIMITS.connections
@@ -96,6 +88,30 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
       `Environment: ${markdown(state)}. Source freshness and execution readiness remain unchecked.`,
       '',
     )
+  lines.push(
+    ...renderFlowOrientation(
+      included.flatMap((item) =>
+        typeof item.package === 'string'
+          ? [
+              {
+                id: String(item.target),
+                implementation: item.package,
+                settings: record(item.flow).settings ?? {},
+              },
+            ]
+          : [],
+      ),
+      edges.flatMap((edge) => {
+        const slot = String(edge.slot)
+        if (typeof edge.target === 'string') return [{ from: edge.from, slot, to: edge.target }]
+        if (typeof edge.resource === 'string')
+          return [{ from: edge.from, slot, to: edge.resource, resource: true }]
+        return []
+      }),
+      focus ?? entrypoint,
+      { text: markdown, includeCallers: options.target !== undefined },
+    ),
+  )
   const graph = ['flowchart LR']
   const ids = diagramIds(snapshot)
   for (const item of included)
@@ -115,11 +131,6 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
     }
   }
   lines.push('```mermaid', ...graph, '```', '')
-  if (shared.length && focus !== undefined)
-    lines.push(
-      `Shared implementation with ${markdown(focus)}: ${shared.map(markdown).join(', ')}. These are separate configured uses, not calls between them.`,
-      '',
-    )
   for (const item of included) {
     const flow = record(item.flow)
     const settings = record(flow.settings)
