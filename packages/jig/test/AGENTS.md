@@ -657,6 +657,10 @@ Codex Responses and Claude require their executable, model, and provider key.
 Codex Responses accepts an OpenRouter fallback key only for the OpenRouter endpoint.
 The protected release workflow can select the documented first-party endpoints for Codex Responses and Claude.
 
+`portable/claude-agent-provider.test.ts` checks the installed adapter's auth
+reporter. The reporter keeps local auth state and suppresses both wire
+notifications when Jig disables nonessential traffic.
+
 The protected native API workflow selects only its matching file.
 Restoration is an independent explicit opt-in.
 

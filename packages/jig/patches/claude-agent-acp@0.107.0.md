@@ -10,9 +10,18 @@ Jig's Claude provider always sets
 `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and
 `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1`. This targeted distribution patch
 makes `supportsTitleGeneration` respect the same restriction, covering
-both prompt-time and idle-time title requests without changing the adapter's
-ACP v2 protocol behavior.
+both prompt-time and idle-time title requests.
+
+The adapter also emits `_auth/status_update` and `auth/status_update` during
+startup. Jig selects and projects credentials before launch. These unsolicited
+identity notifications are outside its finite ACP exchange and can cause the
+host to fence the client before the task prompt. When nonessential traffic is
+disabled, the patch keeps the reporter's internal authentication state and
+suppresses both wire notifications. The ordinary ACP v2 handshake and session
+configuration remain required.
 
 The patch is version-pinned in the workspace, applied during dependency
 installation, and checked against the installed published distribution by
-portable source tests. The next adapter upgrade must requalify this guard.
+portable source tests. An adapter upgrade can remove these hunks when its
+bundled configuration suppresses separate title inference and unsolicited
+authentication-status notices and passes the corresponding qualification.
