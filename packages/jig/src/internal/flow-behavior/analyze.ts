@@ -809,12 +809,13 @@ export class Interpreter {
               )
                 return [withValue(s, object([['size', unknown]]))]
               const seen = new Set<string | number | boolean | null | undefined>()
-              const items = entries.items.filter((item) => {
+              const items: Value[] = []
+              for (const item of entries.items) {
                 const scalar = item.kind === 'literal' ? item.value : undefined
-                if (seen.has(scalar)) return false
+                if (seen.has(scalar)) continue
                 seen.add(scalar)
-                return true
-              })
+                items.push(scalar === 0 ? literal(0) : item)
+              }
               return [withValue(s, { kind: 'set', items })]
             })
           }

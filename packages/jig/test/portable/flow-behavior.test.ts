@@ -329,8 +329,8 @@ test('finite Set spreads and formatting preserve progress before an opaque impor
     import { open } from 'node:fs/promises'
     const total = 2 * 3
     function panel() {
-      const marks = [...new Set(['check', 'check', 'ready'])]
-      const sections = [{ blocks: [{ kind: 'progress', completed: marks.length, total }] }]
+      const marks = [...new Set(['check', 'check', -0, 0])]
+      const sections = [{ blocks: [{ kind: 'progress', completed: marks.length, total: 1 / marks[1] > 0 ? total : 1 }] }]
       if (marks.length > total) sections.push(...sections.splice(0, 1))
       return { sections }
     }
