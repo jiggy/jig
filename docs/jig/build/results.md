@@ -317,6 +317,7 @@ This works for packages that require a Binding. The report shows settings that d
 
 When analysis stops early, caller source references can point to literal slots and computed slot expressions.
 Use computed expressions to find where the caller chooses its slot.
+For supported literal lookups, the report shows the configured destinations, the key sources, and related early returns.
 Use an exact project-relative package path or an installed `npm:` package selector.
 Select a listed target for its behavior, or add `--json` to get the exact configuration records.
 

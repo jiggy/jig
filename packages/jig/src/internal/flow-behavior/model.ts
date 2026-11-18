@@ -127,9 +127,29 @@ export interface AuthoredHandoff {
   }[]
 }
 
+interface SourceExpression {
+  readonly code: string
+  readonly site: SourceSite
+}
+
+export interface SlotSelection {
+  readonly lookup: SourceExpression
+  readonly table: SourceExpression
+  readonly key: string
+  readonly member: string
+  readonly rows: readonly { readonly key: string; readonly slot: string }[]
+  readonly origins: readonly {
+    readonly value: SourceExpression
+    readonly enclosing?: { readonly condition: SourceExpression; readonly taken: boolean }
+    readonly producer?: SourceExpression
+    readonly inputSlot?: { readonly name: string; readonly site: SourceSite }
+    readonly guard?: { readonly condition: SourceExpression; readonly exit: SourceExpression }
+  }[]
+}
+
 export type CallReference = { readonly site: SourceSite } & (
   | { readonly kind: 'literal'; readonly slot: string }
-  | { readonly kind: 'computed'; readonly expression: string }
+  | { readonly kind: 'computed'; readonly expression: string; readonly selection?: SlotSelection }
 )
 
 export interface BehaviorReport {

@@ -8,6 +8,8 @@ Explain conditional behavior from a captured Jig project without running its met
 
 - `captured-input.ts` borrows source and interface facts from working-tree inspection.
 - `source.ts` resolves parsed source and call identities inside one captured package.
+- `source-syntax.ts` owns shared TypeScript syntax helpers and bounded source walks.
+- `slot-selection.ts` traces authored lookup rows and key origins into computed slot references.
 - `analyze.ts` evaluates a bounded TypeScript subset through inert values.
 - `data.ts` checks which data computations can safely lose value precision.
 - `file-access.ts` recognizes read-only opens and strict UTF-8 decoding. The interpreter keeps file handles and bytes inert.
@@ -52,6 +54,8 @@ Explain conditional behavior from a captured Jig project without running its met
   Caller slots remain visible without source interpretation.
 - Supplement cutoffs with source references whose receiver is an SDK context parameter.
   Keep computed slot expressions separate from exact configured handoffs.
+  Attach literal lookup rows only when a strict-equality lookup and its helper argument are identifiable.
+  Keep source assignments, conditions, and early returns distinct from analyzed paths.
 - Compare ordered facts without deriving execution or authority from a supplied baseline.
   Keep source coordinates outside path identity. Pair changed paths only when their captured checks and evidence kind correspond uniquely.
   A call-order summary needs both slots on one captured source path. Preserve unresolved baseline order.

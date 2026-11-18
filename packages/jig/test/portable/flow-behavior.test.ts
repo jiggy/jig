@@ -271,6 +271,100 @@ test('source navigation retains computed caller sites after an opaque wrapper', 
   expect(narrow).not.toContain('slot exporter')
 })
 
+test('authored slot selection traces lookup keys and a preceding router exit through a helper', () => {
+  const source = `
+    import { handle, type RunContext as Context } from '@jigging/flow'
+    import { methods } from './methods.ts'
+    async function invoke(run: Context, method: {slot: string}) {
+      return run.call({slot: method.slot, operationId: 'work', input: {}}, {signal: run.signal})
+    }
+    async function dispatch(run: Context, job: {method?: string}) {
+      let choice = job.method
+      if (choice === undefined) {
+        const response = await run.call({slot: 'router', operationId: 'route', input: {}})
+        const route = check(response)
+        if (route.outcome !== 'done' || route.output.candidateId === null) {
+          return {status: 'unrouted'}
+        }
+        choice = route.output.candidateId
+      }
+      const method = methods.find((candidate) => candidate.id === choice)
+      return invoke(run, method!)
+    }
+    await handle(async run => { opaque(); return dispatch(run, {}) })
+  `
+  function report(body = source, secondKey = 'p2') {
+    const pack = method(body, {
+      sources: new Map([
+        ['FLOW.ts', body],
+        [
+          'methods.ts',
+          `export const methods = [
+          { id: 'p1', slot: 'converter' },
+          { id: '${secondKey}', slot: 'exporter' },
+        ] as const`,
+        ],
+      ]),
+    })
+    const input = snapshot(method(handlerSource('return { outcome: "done", output: {} }')), pack)
+    const caller = input.targets[0]!
+    const slots = new Map([...caller.slots, ['router', 'flow:flows/convert']])
+    return analyzeFlowBehavior({
+      ...input,
+      targets: [{ ...caller, slots }, ...input.targets.slice(1)],
+    })
+  }
+
+  const captured = report()
+  const computed = captured.scopes[0]!.callReferences?.find(
+    (reference) => reference.kind === 'computed',
+  )
+  expect(computed?.selection).toMatchObject({
+    key: 'choice',
+    member: 'id',
+    table: { code: 'methods', site: { path: 'flows/import/methods.ts' } },
+    rows: [
+      { key: 'p1', slot: 'converter' },
+      { key: 'p2', slot: 'exporter' },
+    ],
+    origins: [
+      { value: { code: 'job.method' } },
+      {
+        value: { code: 'route.output.candidateId' },
+        enclosing: { condition: { code: 'choice === undefined' }, taken: true },
+        producer: { code: 'check(response)' },
+        inputSlot: { name: 'router' },
+        guard: {
+          condition: { code: "route.outcome !== 'done' || route.output.candidateId === null" },
+          exit: { code: "return {status: 'unrouted'}" },
+        },
+      },
+    ],
+  })
+  const rendered = renderFlowBehavior(captured)
+  expect(rendered).toContain('p1 → converter → flow:flows/convert')
+  expect(rendered).toContain('Input from slot router')
+  expect(rendered).toContain("leads to return \\{status: 'unrouted'\\}")
+  const edited = report(
+    source
+      .replace(' || route.output.candidateId === null', '')
+      .replace('choice = route.output.candidateId', "choice = route.output.candidateId ?? 'p1'"),
+  )
+  expect(renderFlowBehavior(edited)).toContain("Key source route.output.candidateId ?? 'p1'")
+  expect(renderFlowBehavior(edited)).toContain('Input from slot router')
+  expect(renderFlowBehavior(report(source, 'p1'))).not.toContain('Authored slot selection')
+  expect(
+    renderFlowBehavior(
+      report(
+        source.replace(
+          'return invoke(run, method!)',
+          'await invoke(run, method!); return invoke(run, method!)',
+        ),
+      ),
+    ),
+  ).not.toContain('Authored slot selection')
+})
+
 test('comparison round-trips a baseline and localizes changed effects to the configured use', () => {
   const caller = handlerSource(`
     const result = await run.call({slot:'converter',operationId:'convert',input:{}})

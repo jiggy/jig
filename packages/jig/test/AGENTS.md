@@ -40,6 +40,8 @@ The alternatives bound preserves available continuations and distinct exits, and
 
 Authored fallback retains literal configured handoffs and result exit checks without treating shadowed receivers as Flow calls.
 Navigation references can include a typed helper's computed slot after the interpreter stops.
+Slot selection retains literal rows, key sources, and a preceding router exit through a local helper.
+
 Finite Set spreads retain visible progress before an opaque file operation.
 A known configured early return excludes later call sites from the authored fallback.
 Read-only file validation preserves attempts and finalizer order.
