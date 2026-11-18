@@ -1,5 +1,32 @@
 # @jigging/jig
 
+## 0.1.0-alpha.55
+
+### Minor Changes
+
+- 767d40e: Add explicit Markdown inspection of current configured topology, including distinct Bindings, caller slots, selected resources, and approved-snapshot selection.
+  Focused inspection retains caller paths, other caller slots and shared package uses, with explicit counts for connections outside the view.
+  Inspection preserves unresolved Agent selection, normalizes Flow selectors, checks project compatibility, and identifies each Binding's implementing package.
+- e63b8e9: Support native Apple Silicon macOS 15+ through required process identity,
+  coalition accounting and sandbox capabilities instead of exact OS build pins.
+  Record each host's observed identity and fail closed when enforcement is unavailable.
+  Retire Intel macOS support while requiring genuine native ARM Codex session
+  creation, containment and cleanup on macOS 15 and 26. Preserve fresh bounded
+  preference-policy observation and refuse unavailable or configured forced policy.
+- bfa09cd: Replace the Codex ACP v1 compatibility adapter with upstream native ACP v2.
+  Preserve private subscription bootstrap, finite inference, cancellation,
+  native failure diagnostics, and truthful shutdown results. Remove Jig's direct
+  ACP v1 SDK dependency. Rebuild the canonical archives affected by the patch.
+- 74981e7: Remove the legacy Pi ACP v1 compatibility bridge rather than preserving protocol
+  translation in Jig's native Agent support. Only qualified direct ACP v2
+  implementations are eligible as Codex or Claude Code clients. Pi requires a
+  native ACP v2 adapter and independent conformance before admission can return.
+
+### Patch Changes
+
+- c8ded9d: Explain settled child artifact failures with safe step and reason diagnostics while preserving file rejection, cleanup precedence and retained checkpoints.
+- 2aaf262: Add `jig inspect --flow --all` to inspect every configured target and connection, including targets disconnected from the default entrypoint.
+
 ## 0.1.0-alpha.54
 
 ### Patch Changes
