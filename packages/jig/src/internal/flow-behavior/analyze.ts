@@ -98,6 +98,7 @@ export class Interpreter {
     readonly input: Value,
     readonly budget: AnalysisBudget,
     readonly invokeChild: InvokeChild,
+    readonly retainLimitedPaths = true,
   ) {}
 
   run(depth: number): State[] {
@@ -149,6 +150,7 @@ export class Interpreter {
           : ts.isExportDeclaration(n)
             ? n.moduleSpecifier === undefined
             : ts.isFunctionDeclaration(n) ||
+              (ts.isClassDeclaration(n) && this.source.emptyErrorSubclass(n) !== undefined) ||
               ts.isInterfaceDeclaration(n) ||
               ts.isTypeAliasDeclaration(n) ||
               ts.isEmptyStatement(n) ||
@@ -191,7 +193,8 @@ export class Interpreter {
   private stop(state: State, node: ts.Node, detail: string): State {
     const site = this.source.site(node)
     return {
-      ...add(state, { kind: 'end', site, completion: 'unknown', detail }),
+      ...state,
+      steps: [...state.steps, { kind: 'end', site, completion: 'unknown', detail }],
       site,
       mode: 'unknown',
       value: unknown,
@@ -269,13 +272,56 @@ export class Interpreter {
 
   private block(statements: readonly ts.Statement[], states: State[], depth: number): State[] {
     for (const statement of statements) {
-      states = this.budget.variants(
+      states = this.retainVariants(
+        statement,
         states.flatMap((state) =>
-          state.mode === 'next' ? this.statement(statement, state, depth) : [state],
+          state.mode === 'next' ? this.advance(statement, state, depth) : [state],
         ),
       )
     }
     return states
+  }
+
+  private advance(statement: ts.Statement, state: State, depth: number): State[] {
+    try {
+      return this.statement(statement, state, depth)
+    } catch (error) {
+      if (!(error instanceof AnalysisLimit) || !this.retainLimitedPaths) throw error
+      return [this.stop(state, statement, error.message)]
+    }
+  }
+
+  private retainVariants(node: ts.Node, states: State[]): State[] {
+    if (states.length <= BEHAVIOR_LIMITS.variants) return states
+    if (!this.retainLimitedPaths) return this.budget.variants(states)
+    // Keep room for continuations as well as already established exits.
+    const capacity = BEHAVIOR_LIMITS.variants - 1
+    const continuing = states.filter((state) => state.mode === 'next')
+    const completed = states.filter((state) => state.mode !== 'next')
+    const keep = Math.min(
+      continuing.length,
+      Math.max(Math.floor(capacity / 2), capacity - completed.length),
+    )
+    const sample = [...continuing.slice(0, keep), ...completed.slice(0, capacity - keep)]
+    const omitted = [...continuing.slice(keep), ...completed.slice(capacity - keep)]
+    const first = omitted[0]!
+    const prefix: BehaviorStep[] = []
+    for (const [index, step] of first.steps.entries()) {
+      if (!omitted.every((state) => state.steps[index] === step)) break
+      if (step.kind === 'end') break
+      prefix.push(step)
+    }
+    const assumptions = first.assumptions.filter((fact) =>
+      omitted.every((state) => state.assumptions.includes(fact)),
+    )
+    return [
+      ...sample,
+      this.stop(
+        { ...first, steps: prefix, assumptions },
+        node,
+        'Analysis reached the limit on alternatives. Other continuations here are unknown.',
+      ),
+    ]
   }
 
   private branch<T extends State>(
@@ -287,7 +333,8 @@ export class Interpreter {
   ): State[] {
     const condition = truth(value)
     const possible = condition === undefined ? [true, false] : [condition]
-    return this.budget.variants(
+    return this.retainVariants(
+      n,
       possible.flatMap((taken) =>
         alternatives(
           add(state, {
@@ -315,7 +362,8 @@ export class Interpreter {
           return states.map((s) =>
             this.stop(s, n, 'Function-scoped variables are outside the supported subset.'),
           )
-        states = this.budget.variants(
+        states = this.retainVariants(
+          declaration,
           states.flatMap((s) => {
             if (s.mode !== 'next') return [s]
             const expr = declaration.initializer
@@ -332,7 +380,7 @@ export class Interpreter {
       return this.continue(this.expression(n.expression, state, depth), (s, value) =>
         this.branch(n.expression, value, s, (branch, taken) => {
           const selected = taken ? n.thenStatement : n.elseStatement
-          return selected === undefined ? [branch] : this.statement(selected, branch, depth)
+          return selected === undefined ? [branch] : this.advance(selected, branch, depth)
         }),
       )
     if (ts.isReturnStatement(n)) {
@@ -344,35 +392,21 @@ export class Interpreter {
       )
     }
     if (ts.isThrowStatement(n)) {
-      const error = unwrap(n.expression)
-      const ordinaryError =
-        ts.isNewExpression(error) &&
-        ts.isIdentifier(error.expression) &&
-        ['Error', 'TypeError', 'RangeError'].includes(error.expression.text) &&
-        this.source.declaration(error.expression) === undefined &&
-        (error.arguments ?? []).every((arg) => this.staticInitializer(arg))
-      const message = ts.isNewExpression(error) ? error.arguments?.[0] : undefined
-      const results = ordinaryError
-        ? [
-            withValue(
-              state,
-              message && ts.isStringLiteralLike(message) ? literal(message.text) : unknown,
-            ),
-          ]
-        : this.expression(error, state, depth)
+      const results = this.expression(n.expression, state, depth)
       return results.map((s) =>
         s.mode === 'next' ? { ...s, mode: 'throw' as const, site: this.source.site(n) } : s,
       )
     }
     if (ts.isTryStatement(n)) {
       const caught = n.catchClause
-      let results = this.statement(n.tryBlock, state, depth)
+      let results = this.advance(n.tryBlock, state, depth)
       if (caught !== undefined)
-        results = this.budget.variants(
+        results = this.retainVariants(
+          caught,
           results.flatMap((s) => {
             if (s.mode !== 'throw') return [s]
             const resumed = next(s)
-            return this.statement(
+            return this.advance(
               caught.block,
               caught.variableDeclaration
                 ? this.bind(resumed, caught.variableDeclaration.name, s.value)
@@ -383,11 +417,12 @@ export class Interpreter {
         )
       const finalizer = n.finallyBlock
       if (finalizer !== undefined)
-        results = this.budget.variants(
+        results = this.retainVariants(
+          finalizer,
           results.flatMap((s) =>
             s.mode === 'unknown'
               ? [s]
-              : this.statement(finalizer, next(s), depth).map((fin) =>
+              : this.advance(finalizer, next(s), depth).map((fin) =>
                   fin.mode !== 'next'
                     ? fin
                     : { ...s, values: fin.values, steps: fin.steps, assumptions: fin.assumptions },
@@ -403,44 +438,91 @@ export class Interpreter {
       ts.isEmptyStatement(n)
     )
       return [state]
-    if (ts.isForOfStatement(n)) {
-      const proof = dataEffects(this.source, n, state.values)
-      if (proof) {
-        const arrays = new Set<Value | undefined>(
-          [...proof.writes]
-            .map((key) => state.values.get(key))
-            .filter((value) => value?.kind === 'array'),
+    if (ts.isForOfStatement(n) && !n.awaitModifier) {
+      const declaration =
+        ts.isVariableDeclarationList(n.initializer) &&
+        (n.initializer.flags & ts.NodeFlags.Const) !== 0 &&
+        n.initializer.declarations.length === 1
+          ? n.initializer.declarations[0]
+          : undefined
+      const collection = n.expression.getText().replace(/\s+/g, ' ').slice(0, 80)
+      const site = this.source.site(n)
+      if (declaration && !declaration.initializer) {
+        // The body cannot already hold an alias to a fresh literal array.
+        const array = unwrap(n.expression)
+        const fixed =
+          ts.isArrayLiteralExpression(array) &&
+          array.elements.every((item) => this.staticInitializer(item))
+        const iterables = this.expression(n.expression, state, depth)
+        return this.retainVariants(
+          n,
+          iterables.flatMap((iterable) => {
+            if (iterable.mode !== 'next') return [iterable]
+            if (
+              iterable.value.kind === 'array' &&
+              iterable.value.items.length <= BEHAVIOR_LIMITS.loopItems &&
+              fixed
+            ) {
+              const { items } = iterable.value
+              let paths = [add(iterable, { kind: 'repeat', site, collection, count: items.length })]
+              for (const item of items)
+                paths = this.retainVariants(
+                  n,
+                  paths.flatMap((path) => {
+                    if (path.mode !== 'next') return [path]
+                    const bound = this.bind(path, declaration.name, item)
+                    return bound.mode === 'next' ? this.advance(n.statement, bound, depth) : [bound]
+                  }),
+                )
+              return paths
+            }
+            return [this.dataLoop(n, add(iterable, { kind: 'repeat', site, collection }))]
+          }),
         )
-        const invalidate = (value: Value): Value =>
-          arrays.has(value)
-            ? unknown
-            : value.kind === 'array'
-              ? { kind: 'array', items: value.items.map(invalidate) }
-              : value.kind === 'object'
-                ? object(
-                    [...value.fields].map(([key, field]) => [key, invalidate(field)]),
-                    value.open,
-                  )
-                : value
-        return [
-          {
-            ...add(state, {
-              kind: 'gap',
-              site: this.source.site(n),
-              detail:
-                'Iteration details unknown. This continuation assumes the data loop completes.',
-            }),
-            values: new Map(
-              [...state.values].map(([key, value]) => [
-                key,
-                proof.writes.has(key as ts.Declaration) ? unknown : invalidate(value),
-              ]),
-            ),
-          },
-        ]
       }
+      return [this.dataLoop(n, add(state, { kind: 'repeat', site, collection }))]
     }
     return [this.stop(state, n, 'Unsupported statement: ' + ts.SyntaxKind[n.kind] + '.')]
+  }
+
+  private dataLoop(n: ts.ForOfStatement, state: State): State {
+    const proof = dataEffects(this.source, n, state.values)
+    if (proof) {
+      const arrays = new Set<Value | undefined>(
+        [...proof.writes]
+          .map((key) => state.values.get(key))
+          .filter((value) => value?.kind === 'array'),
+      )
+      const invalidate = (value: Value): Value =>
+        arrays.has(value)
+          ? unknown
+          : value.kind === 'array'
+            ? { kind: 'array', items: value.items.map(invalidate) }
+            : value.kind === 'object'
+              ? object(
+                  [...value.fields].map(([key, field]) => [key, invalidate(field)]),
+                  value.open,
+                )
+              : value
+      return {
+        ...add(state, {
+          kind: 'gap',
+          site: this.source.site(n),
+          detail: 'Iteration details unknown. This continuation assumes the data loop completes.',
+        }),
+        values: new Map(
+          [...state.values].map(([key, value]) => [
+            key,
+            proof.writes.has(key as ts.Declaration) ? unknown : invalidate(value),
+          ]),
+        ),
+      }
+    }
+    return this.stop(
+      state,
+      n,
+      'The loop body or number of iterations is outside the supported subset.',
+    )
   }
 
   private bind(state: State, name: ts.BindingName, value: Value): State {
@@ -628,14 +710,34 @@ export class Interpreter {
               ),
         ),
       ])
-    if (
-      ts.isNewExpression(e) &&
-      ts.isIdentifier(e.expression) &&
-      e.expression.text === 'Set' &&
-      this.source.declaration(e.expression) === undefined &&
-      (e.arguments ?? []).every((arg) => dataEffects(this.source, arg, state.values) !== undefined)
-    ) {
-      return result(object([['size', unknown]]))
+    if (ts.isNewExpression(e)) {
+      const error = this.source.errorClass(e.expression)
+      const args = e.arguments ?? []
+      if (error && args.length <= 1 && !args.some(ts.isSpreadElement)) {
+        const message = args[0]
+        return message === undefined
+          ? result({ kind: 'error', type: error, message: literal('') })
+          : this.continue(this.expression(message, state, depth), (s, value) => [
+              withValue(s, {
+                kind: 'error',
+                type: error,
+                message:
+                  value.kind === 'literal'
+                    ? literal(String(value.value))
+                    : value.kind === 'undefined'
+                      ? literal('')
+                      : unknown,
+              }),
+            ])
+      }
+      if (ts.isIdentifier(e.expression) && this.source.declaration(e.expression) === undefined) {
+        if (
+          e.expression.text === 'Set' &&
+          args.every((arg) => dataEffects(this.source, arg, state.values) !== undefined)
+        )
+          return result(object([['size', unknown]]))
+        if (e.expression.text === 'Map' && args.length === 0) return result(unknown)
+      }
     }
     if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.ExclamationToken)
       return this.continue(this.expression(e.operand, state, depth), (s, value) => {
@@ -659,6 +761,22 @@ export class Interpreter {
 
   private binary(e: ts.BinaryExpression, state: State, depth: number): State[] {
     const operator = e.operatorToken.kind
+    if (operator === ts.SyntaxKind.InstanceOfKeyword) {
+      const expected = this.source.errorClass(e.right)
+      if (expected)
+        return this.continue(this.expression(e.left, state, depth), (s, value) => [
+          withValue(
+            s,
+            value.kind !== 'error'
+              ? unknown
+              : literal(
+                  expected.identity !== undefined
+                    ? value.type.identity === expected.identity
+                    : expected.base === 'Error' || value.type.base === expected.base,
+                ),
+          ),
+        ])
+    }
     if (operator === ts.SyntaxKind.EqualsToken) {
       const left = unwrap(e.left)
       const binding = ts.isIdentifier(left) ? this.source.declaration(left) : undefined
@@ -1090,6 +1208,7 @@ export class Interpreter {
       this.input,
       new AnalysisBudget(this.budget.signal, 512, this.budget),
       this.invokeChild,
+      false,
     )
     let observed: State[]
     try {

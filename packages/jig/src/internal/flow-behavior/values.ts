@@ -1,6 +1,6 @@
 import type { JsonValue } from '../../json.js'
 import type { BehaviorReturn } from './model.js'
-import type { LocalFunction } from './source.js'
+import type { ErrorClass, LocalFunction } from './source.js'
 
 export type Value =
   | { readonly kind: 'unknown' | 'undefined' | 'context' | 'reporter' | 'report-view' }
@@ -9,6 +9,7 @@ export type Value =
   | { readonly kind: 'array'; readonly items: readonly Value[] }
   | { readonly kind: 'path'; readonly suffix: string }
   | { readonly kind: 'function'; readonly node: LocalFunction }
+  | { readonly kind: 'error'; readonly type: ErrorClass; readonly message: Value }
 
 export const unknown: Value = { kind: 'unknown' }
 export const missing: Value = { kind: 'undefined' }
@@ -48,6 +49,7 @@ export function toJson(value: Value): JsonValue | undefined {
 }
 
 export function field(value: Value, name: string): Value {
+  if (value.kind === 'error' && name === 'message') return value.message
   if (value.kind === 'object') return value.fields.get(name) ?? (value.open ? unknown : missing)
   if (value.kind === 'array' && name === 'length') return literal(value.items.length)
   if (value.kind === 'array' && /^(0|[1-9][0-9]*)$/.test(name))

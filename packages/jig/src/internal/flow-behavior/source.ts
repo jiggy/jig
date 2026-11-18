@@ -13,6 +13,8 @@ const compilerOptions: ts.CompilerOptions = {
 }
 
 export type LocalFunction = ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration
+type ErrorBase = 'Error' | 'TypeError' | 'RangeError'
+export type ErrorClass = { readonly base: ErrorBase; readonly identity?: string }
 
 export function isLocalFunction(node: ts.Node): node is LocalFunction {
   return ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node)
@@ -109,6 +111,45 @@ export class SourceIndex {
 
   reportingEnabled(node: ts.Node): boolean {
     return this.#reporting.has(node.getSourceFile().fileName.slice(root.length))
+  }
+
+  private builtinError(expression: ts.Expression): ErrorBase | undefined {
+    if (!ts.isIdentifier(expression) || this.declaration(expression) !== undefined) return undefined
+    const name = expression.text
+    return name === 'Error' || name === 'TypeError' || name === 'RangeError' ? name : undefined
+  }
+
+  emptyErrorSubclass(node: ts.ClassDeclaration): ErrorBase | undefined {
+    if (
+      node.members.length ||
+      node.heritageClauses?.length !== 1 ||
+      (ts.canHaveDecorators(node) && ts.getDecorators(node)?.length) ||
+      ts
+        .getModifiers(node)
+        ?.some(
+          (modifier) =>
+            modifier.kind !== ts.SyntaxKind.ExportKeyword &&
+            modifier.kind !== ts.SyntaxKind.DefaultKeyword,
+        )
+    )
+      return undefined
+    const [heritage] = node.heritageClauses
+    if (heritage?.token !== ts.SyntaxKind.ExtendsKeyword || heritage.types.length !== 1)
+      return undefined
+    return this.builtinError(heritage.types[0]!.expression)
+  }
+
+  errorClass(expression: ts.Expression): ErrorClass | undefined {
+    const reference = unwrap(expression)
+    if (!ts.isIdentifier(reference)) return undefined
+    const builtin = this.builtinError(reference)
+    if (builtin) return { base: builtin }
+    const declaration = this.declaration(reference)
+    if (!declaration || !ts.isClassDeclaration(declaration)) return undefined
+    const base = this.emptyErrorSubclass(declaration)
+    if (!base) return undefined
+    const { path, line, column } = this.site(declaration)
+    return { base, identity: JSON.stringify([path, line, column]) }
   }
 
   site(node: ts.Node): SourceSite {

@@ -247,6 +247,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   Lead with route consequences and attach their unresolved checks.
   Give main routes their own analysis budget and disclose omissions and opaque regions.
+  Join chart paths only when all their remaining projected steps and checks agree.
 
 
 - `inspect` compares the last local approval with current local execution

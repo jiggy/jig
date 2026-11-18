@@ -22,6 +22,9 @@ Known result refusals retain prior effects in standalone and child paths.
 The application map links independent targets and distinct configured uses to shared Flow charts.
 An unrelated line insertion preserves the call link.
 
+Finite iteration retains early exits. Join nodes preserve distinct results.
+The alternatives bound preserves available continuations and explicitly ends omitted paths.
+
 `portable/package-project.test.ts` checks source-only linking and refusal to create activation requests.
 Unpinned Agent resources remain unselected for inspection and still require an operator choice for review.
 

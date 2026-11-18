@@ -80,6 +80,10 @@ function label(step: Exclude<BehaviorStep, { kind: 'condition' }>): string {
       return 'Attempts ' + step.operation + ' · ' + step.detail
     case 'gap':
       return step.detail
+    case 'repeat':
+      return step.count === undefined
+        ? 'Iterate over ' + step.collection + ' · count unknown'
+        : 'Iterate over ' + step.collection + ' · up to ' + step.count + ' times'
     case 'end':
       if (step.completion === 'rejected') return 'Jig would reject this result · ' + step.detail
       return step.returned ? 'Returns ' + result(step.returned, true) : step.detail
@@ -90,47 +94,99 @@ function writesFile(step: BehaviorStep): step is Extract<BehaviorStep, { kind: '
   return step.kind === 'effect' && step.operation === 'writeFile'
 }
 
+type ChartStep = Exclude<BehaviorStep, { kind: 'condition' }>
+type ChartNode = {
+  readonly step?: ChartStep
+  readonly edges: Map<
+    string,
+    { readonly guards: readonly BehaviorGuard[]; readonly node: ChartNode }
+  >
+}
+
 function diagramBody(routes: readonly Route[], prefix: string, start: string): string[] {
-  const nodes = new Map<string, number>()
-  const lines = [`  ${prefix}0["${diagramText(start)}"]`]
+  const root: ChartNode = { edges: new Map() }
   for (const route of routes) {
-    let previous = 0
+    let previous = root
     let pending: BehaviorGuard[] = []
     for (const step of route) {
       if (step.kind === 'condition') {
         if (step.unresolved) pending.push(step)
         continue
       }
-      if (step.kind !== 'call' && step.kind !== 'end' && !writesFile(step)) continue
-      const guards =
-        step.kind === 'call' || step.kind === 'effect'
-          ? [...pending, ...(step.guards ?? [])]
-          : pending
-      pending = []
-      const first = guards[0]
-      const edge = first
-        ? 'Unresolved check at ' +
-          site(first.site) +
-          ' · assume ' +
-          first.taken +
-          ' ' +
-          guardLabel(first) +
-          (guards.length > 1 ? ' · +' + (guards.length - 1) + ' checks' : '')
-        : ''
-      // Include the projected guards in the prefix identity. Sharing a node cannot
-      // splice a continuation onto a route with a different preceding check.
-      const key = JSON.stringify([previous, step, guards], withoutChildPath)
-      let id = nodes.get(key)
-      if (id === undefined) {
-        id = nodes.size + 1
-        if (id > 32) return []
-        nodes.set(key, id)
-        const arrow = edge ? '-->|"' + diagramText(edge) + '"|' : '-->'
-        lines.push(`  ${prefix}${previous} ${arrow} ${prefix}${id}["${diagramText(label(step))}"]`)
+      if (
+        step.kind !== 'call' &&
+        step.kind !== 'end' &&
+        step.kind !== 'repeat' &&
+        !writesFile(step)
+      )
+        continue
+      let guards = pending
+      let fact: ChartStep = step
+      if ('guards' in step && step.guards) {
+        const { guards: inherited, ...rest } = step
+        guards = [...pending, ...inherited]
+        fact = rest
       }
-      previous = id
+      pending = []
+      const key = JSON.stringify([fact, guards], withoutChildPath)
+      let link = previous.edges.get(key)
+      if (!link) {
+        link = { guards, node: { step: fact, edges: new Map() } }
+        previous.edges.set(key, link)
+      }
+      previous = link.node
     }
   }
+
+  // A join is valid only when every remaining displayed transition agrees.
+  // Comparing the whole suffix prevents a shared call from mixing continuations.
+  const shared = new Map<string, string>()
+  type Link = { readonly guards: readonly BehaviorGuard[]; readonly target: string }
+  const nodes = new Map<string, { readonly title: string; readonly links: readonly Link[] }>()
+  function fold(node: ChartNode): string {
+    const links = [...node.edges.values()].map(({ guards, node }) => ({
+      guards,
+      target: fold(node),
+    }))
+    const ordered = [...links].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+    const key = JSON.stringify([node.step, ordered], withoutChildPath)
+    const existing = shared.get(key)
+    if (existing !== undefined) return existing
+    const stable = JSON.stringify([node.step, ordered], (name, value) =>
+      name === 'line' || name === 'column' ? undefined : withoutChildPath(name, value),
+    )
+    const base =
+      node.step === undefined ? prefix + '0' : prefix + 's_' + idFor('node', stable).slice(5)
+    let id = base
+    for (let count = 2; nodes.has(id); count++) id = base + '_' + count
+    shared.set(key, id)
+    nodes.set(id, { title: node.step === undefined ? start : label(node.step), links })
+    return id
+  }
+  const first = fold(root)
+  if (nodes.size > 33) return []
+  const lines = [`  ${first}["${diagramText(start)}"]`]
+  const visited = new Set<string>()
+  function output(id: string): void {
+    if (visited.has(id)) return
+    visited.add(id)
+    for (const { guards, target } of nodes.get(id)?.links ?? []) {
+      const guard = guards[0]
+      const edge = guard
+        ? 'Unresolved check at ' +
+          site(guard.site) +
+          ' · assume ' +
+          guard.taken +
+          ' ' +
+          guardLabel(guard) +
+          (guards.length > 1 ? ' · +' + (guards.length - 1) + ' checks' : '')
+        : ''
+      const arrow = edge ? '-->|"' + diagramText(edge) + '"|' : '-->'
+      lines.push(`  ${id} ${arrow} ${target}["${diagramText(nodes.get(target)!.title)}"]`)
+      output(target)
+    }
+  }
+  output(first)
   return lines
 }
 
@@ -153,7 +209,13 @@ function selectRoutes(scope: Scope): Route[] {
   for (const route of scope.routes) {
     const key = JSON.stringify(
       [
-        route.filter((step) => step.kind === 'call' || step.kind === 'end' || writesFile(step)),
+        route.filter(
+          (step) =>
+            step.kind === 'call' ||
+            step.kind === 'end' ||
+            step.kind === 'repeat' ||
+            writesFile(step),
+        ),
         progress(route, scope.target),
       ],
       withoutChildPath,

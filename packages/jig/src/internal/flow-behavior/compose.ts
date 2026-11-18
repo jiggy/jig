@@ -543,8 +543,12 @@ function callerEvidence(steps: Route): { prefix: BehaviorStep[]; guards: Behavio
 }
 
 function failureText(value: Value): string {
-  return value.kind === 'literal' && typeof value.value === 'string' && value.value.length <= 160
-    ? 'Throws: ' + value.value
+  const message = value.kind === 'error' ? value.message : value
+  return message.kind === 'literal' &&
+    typeof message.value === 'string' &&
+    message.value.length <= 160 &&
+    message.value.length > 0
+    ? 'Throws: ' + message.value
     : 'Throws'
 }
 
