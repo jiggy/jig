@@ -38,12 +38,15 @@ export interface State {
   readonly assumptions: readonly BehaviorAssumption[]
   readonly mode: 'next' | 'return' | 'throw' | 'unknown'
   readonly value: Value
-  readonly adoptedRejection?: true
+  readonly consumesReturn?: boolean | undefined
+  readonly returnedPromise?: 'fulfilled' | 'rejected'
   readonly site?: SourceSite
   readonly localCall?: SourceSite | undefined
   readonly stoppedAt?: ts.Node
   readonly closeAttempted?: ReadonlySet<FileHandleValue>
 }
+
+type ReturnedCall = 'direct' | 'with-finalizer'
 
 export interface ChildResult {
   readonly mode: 'next' | 'throw' | 'unknown'
@@ -154,7 +157,10 @@ export class Interpreter {
     const handler = this.functionAt(call.arguments[0]!, initial)
     if (handler === undefined)
       return [this.stop(initial, call, 'The handler body could not be resolved.')]
-    return this.invoke(handler, [this.#context], initial, depth)
+    return this.invoke(handler, [this.#context], initial, depth, { consumesReturn: true }).map(
+      ({ returnedPromise, ...state }) =>
+        returnedPromise === 'rejected' ? { ...state, mode: 'throw' } : state,
+    )
   }
 
   private moduleSupported(file: ts.SourceFile): boolean {
@@ -241,7 +247,7 @@ export class Interpreter {
     args: readonly Value[],
     caller: State,
     depth: number,
-    localCall?: SourceSite,
+    options: { consumesReturn?: boolean; localCall?: SourceSite } = {},
   ): State[] {
     this.budget.check()
     if (depth >= BEHAVIOR_LIMITS.depth)
@@ -275,7 +281,14 @@ export class Interpreter {
         values.set(parameter, evaluated?.value ?? unknown)
       }
     })
-    const inner = { ...caller, values, localCall, mode: 'next' as const, value: missing }
+    const inner = {
+      ...caller,
+      values,
+      localCall: options.localCall,
+      consumesReturn: options.consumesReturn || isAsync(fn),
+      mode: 'next' as const,
+      value: missing,
+    }
     const results = ts.isBlock(fn.body)
       ? this.block(fn.body.statements, [inner], depth)
       : this.returnExpression(fn.body, inner, depth, true).map((state) =>
@@ -314,12 +327,11 @@ export class Interpreter {
         if (previous === undefined) restored.delete(key)
         else restored.set(key, previous)
       }
-      const { adoptedRejection, ...completion } = state
       return {
-        ...completion,
-        mode: adoptedRejection ? 'throw' : completion.mode,
+        ...state,
         values: restored,
         localCall: caller.localCall,
+        consumesReturn: caller.consumesReturn,
         site: state.site ?? this.source.site(fn),
       }
     })
@@ -700,27 +712,47 @@ export class Interpreter {
   ): State[] {
     const owner = originalDeclaration(expression)
     const value = unwrap(expression)
-    if (owner && isAsync(owner) && ts.isCallExpression(value)) {
-      const helper = this.functionAt(unwrap(value.expression), state)
-      if (helper && isAsync(helper)) {
+    if (owner && state.consumesReturn && ts.isCallExpression(value)) {
+      const callee = unwrap(value.expression)
+      const imported = this.source.importOf(callee)
+      if (
+        this.functionAt(callee, state) ||
+        (imported?.module === '@jigging/reporting' && imported.member === 'withReporting')
+      ) {
+        let returned: ReturnedCall = 'direct'
         for (
           let parent = value.parent;
           parent !== undefined && parent !== owner;
           parent = parent.parent
         )
-          if (ts.isTryStatement(parent) && parent.finallyBlock)
-            return [
-              this.stop(
-                state,
-                value,
-                'Returned helper and a surrounding finalizer can interleave.',
-              ),
-            ]
+          if (ts.isTryStatement(parent) && parent.finallyBlock) {
+            returned = 'with-finalizer'
+            break
+          }
         this.budget.check()
-        return this.call(value, state, depth, false, true)
+        return this.call(value, state, depth, false, returned)
       }
     }
-    return this.expression(expression, state, depth, concise)
+    return this.expression(expression, state, depth, concise && state.consumesReturn === true)
+  }
+
+  private promiseCompletion(
+    completion: State,
+    returned: ReturnedCall | undefined,
+    e: ts.CallExpression,
+  ): State {
+    if (completion.mode === 'unknown') return { ...completion, stoppedAt: e }
+    const { returnedPromise, ...settled } = completion
+    const rejected = settled.mode === 'throw' || returnedPromise === 'rejected'
+    const value = settled.mode === 'next' ? missing : settled.value
+    // A direct return leaves the local try before a rejection reaches the caller.
+    return returned === undefined
+      ? { ...settled, value, mode: rejected ? 'throw' : 'next' }
+      : { ...settled, value, mode: 'return', returnedPromise: rejected ? 'rejected' : 'fulfilled' }
+  }
+
+  private returnedWithFinalizer(state: State, call: ts.CallExpression): State {
+    return this.stop(state, call, 'Returned helper and a surrounding finalizer can interleave.')
   }
 
   private expression(
@@ -1116,7 +1148,7 @@ export class Interpreter {
     state: State,
     depth: number,
     awaited: boolean,
-    adopted = false,
+    returned?: ReturnedCall,
   ): State[] {
     const callee = unwrap(e.expression)
     const fn = this.functionAt(callee, state)
@@ -1138,7 +1170,7 @@ export class Interpreter {
       const handler = body === undefined ? undefined : this.functionAt(body, state)
       if (
         !this.source.reportingEnabled(callee) ||
-        !awaited ||
+        (!awaited && returned === undefined) ||
         context === undefined ||
         this.boundValue(context, state)?.kind !== 'context' ||
         channel === undefined ||
@@ -1147,13 +1179,10 @@ export class Interpreter {
         e.arguments.length !== 3
       )
         return [this.stop(state, e, 'Reporting wrapper or installed implementation is opaque.')]
-      return this.invoke(handler, [{ kind: 'reporter' }], state, depth + 1).map((completion) =>
-        completion.mode === 'return'
-          ? { ...completion, mode: 'next' as const }
-          : completion.mode === 'unknown'
-            ? { ...completion, stoppedAt: e }
-            : completion,
-      )
+      if (returned === 'with-finalizer') return [this.returnedWithFinalizer(state, e)]
+      return this.invoke(handler, [{ kind: 'reporter' }], state, depth + 1, {
+        consumesReturn: true,
+      }).map((completion) => this.promiseCompletion(completion, returned, e))
     }
     if (ts.isPropertyAccessExpression(callee)) {
       const receiver = this.boundValue(callee.expression, state)
@@ -1365,10 +1394,16 @@ export class Interpreter {
       args.flatMap(({ state: s, values }) => {
         if (s.mode !== 'next') return [s]
         if (fn !== undefined) {
-          if (isAsync(fn) && !awaited && !adopted)
+          const asyncHelper = isAsync(fn)
+          if (asyncHelper && !awaited && returned === undefined)
             return [this.stop(s, e, 'An unawaited helper may continue independently.')]
+          if (asyncHelper && returned === 'with-finalizer')
+            return [this.returnedWithFinalizer(s, e)]
           const proof = values.every(isData) && dataEffects(this.source, fn, s.values)
-          return this.invoke(fn, values, s, depth + 1, this.source.site(e)).map((body) => {
+          return this.invoke(fn, values, s, depth + 1, {
+            consumesReturn: awaited || returned !== undefined,
+            localCall: this.source.site(e),
+          }).map((body) => {
             if (proof && body.mode === 'unknown')
               return withValue(
                 add(s, {
@@ -1379,11 +1414,12 @@ export class Interpreter {
                 unknown,
               )
             if (body.mode === 'unknown') return { ...body, stoppedAt: e }
-            // Argument errors above still throw locally. The adopted promise rejects at the function boundary.
-            if (adopted && body.mode === 'throw')
-              return { ...body, mode: 'return' as const, adoptedRejection: true as const }
             if (body.mode === 'return' && body.value.kind === 'function')
               return this.stop(body, e, 'Escaping closures are outside the supported subset.')
+            if (asyncHelper || body.returnedPromise !== undefined)
+              return returned === 'with-finalizer'
+                ? this.returnedWithFinalizer(s, e)
+                : this.promiseCompletion(body, returned, e)
             return body.mode === 'return'
               ? { ...body, mode: 'next' as const }
               : body.mode === 'next'

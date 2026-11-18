@@ -9,3 +9,5 @@ Use `jig inspect --flow --package PATH` to find a Flow package's configured uses
 Package lookup errors show the inspection command. Focused reports retain authored call locations, including computed slots, after source analysis stops.
 
 Inspection can trace a computed slot through a local helper to an authored lookup table, its key sources, and related early exits.
+
+Follow returned Reporting wrappers and helper promises through block-bodied functions. Working-tree inspection explains evaluator failures and points to retained topology when an approval exists.
