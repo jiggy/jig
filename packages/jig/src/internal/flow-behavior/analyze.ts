@@ -175,6 +175,8 @@ export class Interpreter {
     if (ts.isIdentifier(e))
       return e.text === 'undefined' && this.source.declaration(e) === undefined
     if (ts.isStringLiteralLike(e) || ts.isNumericLiteral(e) || isLocalFunction(e)) return true
+    if (ts.isBinaryExpression(e) && e.operatorToken.kind === ts.SyntaxKind.AsteriskToken)
+      return ts.isNumericLiteral(unwrap(e.left)) && ts.isNumericLiteral(unwrap(e.right))
     if (
       [ts.SyntaxKind.TrueKeyword, ts.SyntaxKind.FalseKeyword, ts.SyntaxKind.NullKeyword].includes(
         e.kind,
@@ -707,7 +709,10 @@ export class Interpreter {
               const prefix = array.kind === 'array' ? array.items : []
               if (!ts.isSpreadElement(item))
                 return [withValue(ss, { kind: 'array', items: [...prefix, value] })]
-              if (value.kind === 'array' && value.items.length <= BEHAVIOR_LIMITS.loopItems)
+              if (
+                (value.kind === 'array' || value.kind === 'set') &&
+                value.items.length <= BEHAVIOR_LIMITS.loopItems
+              )
                 return [withValue(ss, { kind: 'array', items: [...prefix, ...value.items] })]
               return [
                 this.stop(
@@ -772,11 +777,33 @@ export class Interpreter {
             ])
       }
       if (ts.isIdentifier(e.expression) && this.source.declaration(e.expression) === undefined) {
-        if (
-          e.expression.text === 'Set' &&
-          args.every((arg) => dataEffects(this.source, arg, state.values) !== undefined)
-        )
-          return result(object([['size', unknown]]))
+        if (e.expression.text === 'Set') {
+          if (!args.length) return result({ kind: 'set', items: [] })
+          const arg = args[0]
+          if (arg && args.length === 1 && dataEffects(this.source, arg, state.values)) {
+            return this.continue(this.expression(arg, state, depth), (s, entries) => {
+              if (
+                entries.kind === 'undefined' ||
+                (entries.kind === 'literal' && entries.value === null)
+              )
+                return [withValue(s, { kind: 'set', items: [] })]
+              if (
+                entries.kind !== 'array' ||
+                entries.items.length > BEHAVIOR_LIMITS.loopItems ||
+                !entries.items.every((item) => item.kind === 'literal' || item.kind === 'undefined')
+              )
+                return [withValue(s, object([['size', unknown]]))]
+              const seen = new Set<string | number | boolean | null | undefined>()
+              const items = entries.items.filter((item) => {
+                const scalar = item.kind === 'literal' ? item.value : undefined
+                if (seen.has(scalar)) return false
+                seen.add(scalar)
+                return true
+              })
+              return [withValue(s, { kind: 'set', items })]
+            })
+          }
+        }
         if (e.expression.text === 'Map' && args.length === 0) return result(unknown)
       }
     }

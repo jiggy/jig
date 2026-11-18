@@ -6,7 +6,7 @@ export type Value =
   | { readonly kind: 'unknown' | 'undefined' | 'context' | 'reporter' | 'report-view' }
   | { readonly kind: 'literal'; readonly value: string | number | boolean | null }
   | { readonly kind: 'object'; readonly fields: ReadonlyMap<string, Value>; readonly open?: true }
-  | { readonly kind: 'array'; readonly items: readonly Value[] }
+  | { readonly kind: 'array' | 'set'; readonly items: readonly Value[] }
   | { readonly kind: 'path'; readonly suffix: string }
   | { readonly kind: 'function'; readonly node: LocalFunction }
   | { readonly kind: 'error'; readonly type: ErrorClass; readonly message: Value }
@@ -52,6 +52,7 @@ export function field(value: Value, name: string): Value {
   if (value.kind === 'error' && name === 'message') return value.message
   if (value.kind === 'object') return value.fields.get(name) ?? (value.open ? unknown : missing)
   if (value.kind === 'array' && name === 'length') return literal(value.items.length)
+  if (value.kind === 'set' && name === 'size') return literal(value.items.length)
   if (value.kind === 'array' && /^(0|[1-9][0-9]*)$/.test(name))
     return value.items[Number(name)] ?? missing
   if (value.kind === 'literal' && typeof value.value === 'string' && name === 'length')

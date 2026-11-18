@@ -25,6 +25,7 @@ Explain conditional behavior from a captured Jig project without running its met
 - Retain distinct exits before further variants of the same exit.
 - Interpret finite literal-array loops and empty error subclasses without executing source.
 - Evaluate small inert array transformations through proven data-only callbacks.
+- Interpret spreads of small, known scalar sets and literal numeric products.
 - Mark successful continuation of unresolved data mappings as conditional.
 - Keep contextual presentation records outside semantic path deduplication.
 - Analyze the application within a shared work allowance while preserving each configured use.
