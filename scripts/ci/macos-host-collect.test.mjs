@@ -1,23 +1,29 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { digest } from './candidate-provenance.mjs'
 import {
+  latestMacDecisionArtifacts,
+  MACOS_WORKFLOW,
   macExecutionTiming,
   macJobName,
-  requireMacInputBinding,
   requireMacDecisionBinding,
+  requireMacInputBinding,
   selectMacShardArtifacts,
   waitForMacPrWinners,
   waitForMacReleaseWorkers,
-  latestMacDecisionArtifacts,
 } from './macos-host-collect.mjs'
 import {
   createFrozenMacPlan,
   INSTALLED_STARTUP_TEST,
   NATIVE_PREREQUISITE_TESTS,
 } from './macos-host-test-shards.mjs'
-import { macQualificationJobNames, validateMacCoverage } from './macos-qualification.mjs'
 import { selectorJobName } from './macos-pr-race.mjs'
+import { macQualificationJobNames, validateMacCoverage } from './macos-qualification.mjs'
 
 const source = 'a'.repeat(40)
 const now = Date.parse('2026-11-17T00:30:00Z')
@@ -28,6 +34,69 @@ const run = {
   event: 'pull_request',
   created_at: '2026-11-17T00:00:00Z',
 }
+
+test('release collector retries transient jobs API errors before validating the metadata', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-mac-collector-api-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const repository = 'jiggy/jig'
+  const fixture = JSON.stringify({
+    ...run,
+    event: 'push',
+    path: MACOS_WORKFLOW,
+    repository: { full_name: repository },
+    head_repository: { full_name: repository },
+    head_branch: 'main',
+  })
+  const requests = join(directory, 'requests')
+  await writeFile(
+    join(directory, 'gh'),
+    `#!/bin/sh
+case "$2" in
+  */runs/42) printf '%s\\n' '${fixture}' ;;
+  */runs/42/jobs*)
+    if [ ! -e "$MOCK_REQUESTS" ]; then
+      printf '%s\\n' unavailable > "$MOCK_REQUESTS"
+      printf '%s\\n' 'gh: Server Error (HTTP 502)' >&2
+      exit 1
+    fi
+    if [ ! -e "$MOCK_REQUESTS.cancelled" ]; then
+      printf '%s\\n' interrupted >> "$MOCK_REQUESTS"
+      : > "$MOCK_REQUESTS.cancelled"
+      printf '%s\\n' 'stream error: stream ID 1; CANCEL; received from peer' >&2
+      exit 1
+    fi
+    printf '%s\\n' recovered >> "$MOCK_REQUESTS"
+    printf '%s\\n' '{"jobs":[]}' ;;
+  */runs/42/artifacts*) printf '%s\\n' '{"artifacts":[]}' ;;
+  *) exit 2 ;;
+esac
+`,
+    { mode: 0o700 },
+  )
+  const result = spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL('./macos-host-collect.mjs', import.meta.url)), 'collect'],
+    {
+      encoding: 'utf8',
+      timeout: 10_000,
+      env: {
+        PATH: `${directory}${delimiter}${process.env.PATH}`,
+        GITHUB_REPOSITORY: repository,
+        GITHUB_EVENT_NAME: 'push',
+        GITHUB_REF: 'refs/heads/main',
+        GITHUB_SHA: source,
+        GITHUB_WORKFLOW_REF: `${repository}/${MACOS_WORKFLOW}@refs/heads/main`,
+        GITHUB_RUN_ID: String(run.id),
+        GITHUB_RUN_ATTEMPT: String(run.run_attempt),
+        MOCK_REQUESTS: requests,
+      },
+    },
+  )
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /Missing merge job: Prepare Mac inputs/)
+  assert.equal(await readFile(requests, 'utf8'), 'unavailable\ninterrupted\nrecovered\n')
+})
+
 const job = (shard, attempt = 1, id = shard + 100) => ({
   id,
   name: macJobName(26, shard),

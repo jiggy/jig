@@ -228,7 +228,7 @@ function transientRead(error, allow404 = false) {
       'ENOTFOUND',
       'EPIPE',
     ].includes(error?.code) ||
-    /TLS handshake timeout|i\/o timeout|connection reset by peer|unexpected EOF|temporary failure in name resolution/i.test(
+    /TLS handshake timeout|i\/o timeout|connection reset by peer|unexpected EOF|temporary failure in name resolution|stream error: stream ID \d+; CANCEL; received from peer/i.test(
       detail,
     )
   )

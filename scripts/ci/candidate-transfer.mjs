@@ -15,12 +15,15 @@ import {
 import { allRunJobs, latestJob } from './merge-attempts.mjs'
 import { LINUX_QUALIFICATION_JOBS, requireJobs, verifyQualification } from './release-readiness.mjs'
 
-export function githubClient(repository = process.env.GITHUB_REPOSITORY) {
+export function githubClient(
+  repository = process.env.GITHUB_REPOSITORY,
+  { readApiJson = (read) => JSON.parse(read()) } = {},
+) {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? ''))
     throw new Error('Invalid GitHub repository')
   return {
     api: async (path) =>
-      JSON.parse(
+      readApiJson(() =>
         execFileSync('gh', ['api', path], {
           encoding: 'utf8',
           timeout: 60_000,

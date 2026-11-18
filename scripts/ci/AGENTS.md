@@ -372,6 +372,7 @@ They consume frozen package exports with tracked test helpers and installed
   Release readiness derives required job names from this complete receipt and verifies actual current-attempt job identities.
 - `macos-host-collect.mjs` reconciles immutable per-shard artifacts against the complete plan for every required macOS major.
   It rejects missing or failed reports, changed inputs, foreign jobs, ambiguous artifacts, and unconfirmed completion.
+  GitHub metadata reads reuse the selector's bounded transport retries, including HTTP 5xx and HTTP/2 stream cancellation, before validating the response.
   PR failed-job retries may retain successful shard evidence within the original run and unchanged qualification session.
   A queued retry of a selected worker keeps collection pending before it receives a runner.
   An unrelated queued candidate does not delay an accepted winner.
@@ -597,6 +598,7 @@ They consume frozen package exports with tracked test helpers and installed
   require every Linux hostile test file in provisioned host conformance.
 - `node --test scripts/ci/macos-host-collect.test.mjs` checks complete generated matrices and original-run retry lineage.
   It rejects changed inputs, failed latest executions, missing shards, and stale qualification sessions.
+  The collector CLI test verifies recovery from a transient GitHub jobs response before evidence validation.
 - `node --test scripts/ci/macos-pr-race.test.mjs scripts/ci/macos-qualification.test.mjs` verifies bounded offers and sole-writer decisions, pre-test worker selection, failed-winner refusal, retry no-ops and explicit mixed-major PR scope.
   Real ZIP transports test record digests and exact contents. These portable checks establish no native enforcement or GitHub service atomicity.
 - `node --test scripts/ci/macos-host-profiles.test.mjs` checks behavioral prerequisites, pinned runtimes, unsupported architecture refusal, and bounded evidence. Ordinary input records establish no native qualification.
