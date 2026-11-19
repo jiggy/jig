@@ -916,10 +916,11 @@ Markdown retains its presentation bounds. JSON returns the complete configured r
 `--package PATH` selects every configured use of the same Flow package and its direct callers.
 Supply a project-relative package directory or an exact declared `npm:` package selector.
 An unprefixed positional path also selects the package scope.
+An exact package with no configured use yields an empty list.
+
 The Markdown report lists each configured use, its caller slots, and the settings that differ across uses.
 It includes a focused inspection command for each use, retaining `--approved` when applicable.
 Working-tree source analysis adds available call-site locations.
-An exact package with no configured use yields an empty list.
 
 Package scope supports current and approved topology.
 With `--json`, `scope.package` identifies the package and `scope.configuredUses` lists the configured selectors.
