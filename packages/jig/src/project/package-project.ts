@@ -26,7 +26,7 @@ import {
   parseProjectEntrypoint,
   validateEntrypointInterface,
 } from './entrypoint.js'
-import { isDirectRunEligible } from './flow-source.js'
+import { type CapturedFlowMember, isDirectRunEligible } from './flow-source.js'
 import { type GrantPolicy, grantName, type NativeAcpClient, normalizeGrant } from './grants.js'
 import {
   type InvocationIdentity,
@@ -58,17 +58,16 @@ export interface InjectedBindingDeclaration {
   readonly capturedEvaluations?: Readonly<Record<string, PrivateRetainedProjectEvaluation>>
 }
 
-export interface PackageProjectInput {
+export interface PackageProjectInput<Flow = RetainedFlowInput> {
   readonly entrypoint?: string
-  readonly flows: readonly RetainedFlowInput[]
+  readonly flows: readonly Flow[]
   readonly bindings: readonly InjectedBindingDeclaration[]
   readonly grants?: Readonly<Record<string, GrantPolicy>>
   readonly defaultProviders?: Readonly<Record<string, string>>
 }
 
-export interface LinkedFlow {
+interface ConfiguredFlow {
   readonly provenance: RetainedFlowInput['provenance']
-  readonly package: RetainedFlowInput['package']
   readonly mode: 'run'
   readonly metadata: InspectedPackage['metadata']
   readonly uses: Readonly<Record<string, InvocationRequirement>>
@@ -78,6 +77,10 @@ export interface LinkedFlow {
   readonly directRun: boolean
   /** Ordinary routes resolved from project defaults; absent when empty. */
   readonly slots?: Readonly<Record<string, RunTargetIdentity>>
+}
+
+export interface LinkedFlow extends ConfiguredFlow {
+  readonly package: RetainedFlowInput['package']
 }
 
 export type RunTargetIdentity =
@@ -94,10 +97,14 @@ export interface LinkedPackageBinding {
   readonly boundAttachments?: BoundAttachments
 }
 
-export interface PackageProjectValue {
+export interface PackageProjectInspection {
   readonly entrypoint?: string
-  readonly flows: readonly LinkedFlow[]
+  readonly flows: readonly ConfiguredFlow[]
   readonly bindings: readonly LinkedPackageBinding[]
+}
+
+export interface PackageProjectValue extends PackageProjectInspection {
+  readonly flows: readonly LinkedFlow[]
 }
 
 interface PreparedBinding {
@@ -110,7 +117,7 @@ interface PreparedBinding {
 }
 
 interface PreparedFlow {
-  readonly value: LinkedFlow
+  readonly value: ConfiguredFlow
   readonly inspected: InspectedPackage
 }
 
@@ -120,23 +127,70 @@ export function linkPackageProject(
   maximumActivationTargets?: number,
   agentOverride?: NativeAcpClient,
 ): PackageProjectValue {
-  return resolvePackageProject(input, maximumActivationTargets, agentOverride, false)
+  const packages = new Map<string, RetainedFlowInput['package']>()
+  const composition = resolvePackageProject(
+    input,
+    (value) => {
+      let retained: RetainedFlowInput
+      try {
+        retained = requireRetainedFlowInput(value)
+      } catch (error) {
+        invalid('PROJECT_FLOW_NOT_RETAINED', errorText(error))
+      }
+      if (retained.package.digest !== retained.inspected.digest) {
+        throw new Error(
+          'retained Flow invariant violated: Package/0 digest differs from inspection',
+        )
+      }
+      packages.set(retained.provenance.projectPath, retained.package)
+      return retained
+    },
+    maximumActivationTargets,
+    agentOverride,
+    false,
+  )
+  const linked = Object.freeze({
+    ...composition,
+    flows: Object.freeze(
+      composition.flows.map((flow) =>
+        Object.freeze({ ...flow, package: packages.get(flow.provenance.projectPath)! }),
+      ),
+    ),
+  })
+  authenticPackageProjects.add(linked)
+  return linked
 }
 
 /** Resolve declarations for inspection only. Its output cannot become an execution request. */
 export function inspectPackageProject(
-  input: PackageProjectInput,
+  input: PackageProjectInput<CapturedFlowMember>,
   maximumTargets?: number,
-): PackageProjectValue {
-  return resolvePackageProject(input, maximumTargets, undefined, true)
+): PackageProjectInspection {
+  return resolvePackageProject(
+    input,
+    (member) => {
+      if (member.captured.digest !== member.inspected.digest) {
+        throw new Error(
+          'captured Flow invariant violated: Package/0 digest differs from inspection',
+        )
+      }
+      return member
+    },
+    maximumTargets,
+    undefined,
+    true,
+  )
 }
 
-function resolvePackageProject(
-  input: PackageProjectInput,
+type FlowSource = Pick<CapturedFlowMember, 'provenance' | 'inspected'>
+
+function resolvePackageProject<Flow>(
+  input: PackageProjectInput<Flow>,
+  checkFlow: (value: Flow) => FlowSource,
   maximumActivationTargets: number | undefined,
   agentOverride: NativeAcpClient | undefined,
   inspection: boolean,
-): PackageProjectValue {
+): PackageProjectInspection {
   if (agentOverride !== undefined && !['codex', 'claude'].includes(agentOverride))
     throw new TypeError('review Agent selection must be codex or claude')
   if (
@@ -168,7 +222,11 @@ function resolvePackageProject(
     ),
   )
   const budget = new WorkBudget()
-  let flows = prepareFlows(readBoundedArray(root.flows, 'flows'), budget)
+  let flows = prepareFlows(
+    readBoundedArray(root.flows, 'flows') as readonly Flow[],
+    checkFlow,
+    budget,
+  )
   let flowByPath = new Map(flows.map((flow) => [flow.value.provenance.projectPath, flow]))
   let preparedBindings = prepareBindings(
     readBoundedArray(root.bindings, 'bindings'),
@@ -272,7 +330,7 @@ function resolvePackageProject(
       invalid('PROJECT_ENTRYPOINT_INVALID', errorText(error), 'jig.ts', '/entrypoint')
     }
   }
-  let value: PackageProjectValue = Object.freeze({
+  let value: PackageProjectInspection = Object.freeze({
     ...(root.entrypoint === undefined ? {} : { entrypoint: root.entrypoint as string }),
     flows: Object.freeze(flows.map((flow) => flow.value)),
     bindings: Object.freeze(
@@ -376,7 +434,6 @@ function resolvePackageProject(
       )
     value = Object.freeze({ ...value, bindings: Object.freeze(bindings) })
   }
-  if (!inspection) authenticPackageProjects.add(value)
   return value
 }
 
@@ -387,26 +444,22 @@ export function requirePackageProjectValue(value: unknown): PackageProjectValue 
   return value as PackageProjectValue
 }
 
-function prepareFlows(values: readonly unknown[], budget: WorkBudget): readonly PreparedFlow[] {
+function prepareFlows<Flow>(
+  values: readonly Flow[],
+  checkFlow: (value: Flow) => FlowSource,
+  budget: WorkBudget,
+): readonly PreparedFlow[] {
   const flows = values.map((value) => {
-    let retained: RetainedFlowInput
-    try {
-      retained = requireRetainedFlowInput(value)
-    } catch (error) {
-      invalid('PROJECT_FLOW_NOT_RETAINED', errorText(error))
-    }
-    if (retained.package.digest !== retained.inspected.digest) {
-      throw new Error('retained Flow invariant violated: Package/0 digest differs from inspection')
-    }
-    if (retained.inspected.mode !== 'run') {
+    const { inspected, provenance } = checkFlow(value)
+    if (inspected.mode !== 'run') {
       invalid(
         'PROJECT_FLOW_MODE_UNSUPPORTED',
         'the direct alpha supports Run packages only',
-        retained.provenance.projectPath,
+        provenance.projectPath,
       )
     }
-    const uses = projectInvocationRequirements(retained.inspected, retained.provenance.projectPath)
-    const attachments = Object.values(retained.inspected.invocation?.attachments ?? {})
+    const uses = projectInvocationRequirements(inspected, provenance.projectPath)
+    const attachments = Object.values(inspected.invocation?.attachments ?? {})
     if (
       attachments.filter((access) => access === 'read-write').length > 1 ||
       attachments.length > 8
@@ -414,32 +467,29 @@ function prepareFlows(values: readonly unknown[], budget: WorkBudget): readonly 
       invalid(
         'PROJECT_ATTACHMENTS_UNSUPPORTED',
         'Jig supports at most eight root attachments and one initially empty writable attachment',
-        retained.provenance.projectPath,
+        provenance.projectPath,
       )
     }
-    budget.consume(1 + Object.keys(retained.inspected.invocation?.attachments ?? {}).length)
+    budget.consume(1 + attachments.length)
     const linked = Object.freeze({
-      provenance: retained.provenance,
-      package: retained.package,
+      provenance,
       mode: 'run' as const,
-      metadata: retained.inspected.metadata,
-      invocation: retained.inspected.invocation ?? {},
-      ...(retained.inspected.contract?.descriptor.id === undefined
+      metadata: inspected.metadata,
+      invocation: inspected.invocation ?? {},
+      ...(inspected.contract?.descriptor.id === undefined
         ? {}
         : {
             offeredContract: {
-              id: retained.inspected.contract.descriptor.id,
-              version: retained.inspected.contract.descriptor.version!,
-              digest: retained.inspected.contract.digest,
+              id: inspected.contract.descriptor.id,
+              version: inspected.contract.descriptor.version!,
+              digest: inspected.contract.digest,
             },
           }),
       uses,
-      ...(retained.inspected.entrypoint === undefined
-        ? {}
-        : { entrypoint: retained.inspected.entrypoint }),
-      directRun: isDirectRunEligible(retained.inspected),
+      ...(inspected.entrypoint === undefined ? {} : { entrypoint: inspected.entrypoint }),
+      directRun: isDirectRunEligible(inspected),
     })
-    return Object.freeze({ value: linked, inspected: retained.inspected })
+    return Object.freeze({ value: linked, inspected })
   })
   flows.sort((left, right) =>
     compareProjectPaths(left.value.provenance.projectPath, right.value.provenance.projectPath),

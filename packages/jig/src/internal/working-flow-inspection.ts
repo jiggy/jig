@@ -1,5 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { realpath } from 'node:fs/promises'
 import { dirname, join, posix, resolve } from 'node:path'
 import { invalid } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
@@ -16,11 +15,9 @@ import { type CapturedFlowMember, captureOpenedFlowSource } from '../project/flo
 import { captureGrantSource } from '../project/grant-source.js'
 import { resolveInvocationSlots } from '../project/invocation-slots.js'
 import { captureProjectJigRequirement } from '../project/jig-version.js'
-import type { PackageProjectValue } from '../project/package-project.js'
-import { inspectPackageProject } from '../project/package-project.js'
+import { inspectPackageProject, type PackageProjectInspection } from '../project/package-project.js'
 import { flowSelector, npmPackageName } from '../project/package-selector.js'
 import { isProtectedProjectPath } from '../project/paths.js'
-import { retainFlowSourcePackages } from '../project/retained-flow.js'
 import { openPrivateProjectRoot } from '../project/root.js'
 import type { BehaviorReport } from './flow-behavior/model.js'
 import { findFlowImportBoundary } from './flow-import-boundary.js'
@@ -68,7 +65,7 @@ async function inspectBehavior(
   project: string,
   options: FlowContextOptions,
   selection: ReturnType<typeof selectFlowContext>,
-  linked: PackageProjectValue,
+  linked: PackageProjectInspection,
   members: readonly CapturedFlowMember[],
   signal?: AbortSignal,
 ): Promise<BehaviorReport> {
@@ -130,13 +127,12 @@ async function captureWorkingFlow<T>(
   options: FlowContextOptions,
   projectResult: (
     topology: JsonValue,
-    linked: PackageProjectValue,
+    linked: PackageProjectInspection,
     members: readonly CapturedFlowMember[],
   ) => T | Promise<T>,
   signal?: AbortSignal,
 ): Promise<T> {
   const root = await openPrivateProjectRoot(project)
-  let temporary: string | undefined
   let authoring: Awaited<ReturnType<typeof captureProjectAuthoring>> | undefined
   let metadata: Awaited<ReturnType<typeof captureOpenedPackageDirectory>> | undefined
   let flows: Awaited<ReturnType<typeof captureOpenedFlowSource>> | undefined
@@ -146,10 +142,6 @@ async function captureWorkingFlow<T>(
     signal?.throwIfAborted()
     const jigRequirement = await captureProjectJigRequirement(root)
     authoring = await captureProjectAuthoring(root, evaluator, signal)
-    temporary = await mkdtemp(join(tmpdir(), 'jig-flow-inspection-'))
-    temporary = await realpath(temporary)
-    const store = join(temporary, 'packages')
-    await mkdir(store, { mode: 0o700 })
     const { project: declaration, bindingSource, evaluations, closure } = authoring
     const grants = await captureGrantSource(root, declaration.value.grants)
     const selectors = new Set<string>()
@@ -204,14 +196,9 @@ async function captureWorkingFlow<T>(
       signal?.throwIfAborted()
       dependencies.push(await captureInstalledFlow(root.requestedPath, selector, declarations))
     }
-    const source = {
-      observations: [],
-      members: [...flows.members, ...dependencies],
-      async dispose() {},
-    }
-    const retained = await retainFlowSourcePackages(store, source)
+    const members = [...flows.members, ...dependencies]
     const linked = inspectPackageProject({
-      flows: retained,
+      flows: members,
       bindings,
       grants: grants.grants,
       ...(declaration.value.entrypoint === undefined
@@ -266,22 +253,22 @@ async function captureWorkingFlow<T>(
       invalid('INSPECTION_TARGET_MISSING', 'target is absent from the working-tree configuration')
     }
     const targets: JsonValue[] = []
+    const memberByPath = new Map(members.map((member) => [member.provenance.projectPath, member]))
+    const dependencyByPath = new Map(
+      dependencies.map((member) => [member.provenance.projectPath, member]),
+    )
     for (const request of requests) {
+      const dependency = dependencyByPath.get(request.packagePath)
       targets.push({
         target: selector(request.target),
         package: request.packagePath,
         state: 'unreviewed',
         flow: {
-          digest: retained.find((member) => member.provenance.projectPath === request.packagePath)!
-            .package.digest,
-          ...(dependencies.find(
-            (dependency) => dependency.provenance.projectPath === request.packagePath,
-          )
+          digest: memberByPath.get(request.packagePath)!.captured.digest,
+          ...(dependency
             ? {
                 installedDependency: {
-                  version: dependencies.find(
-                    (dependency) => dependency.provenance.projectPath === request.packagePath,
-                  )!.installedVersion,
+                  version: dependency.installedVersion,
                   agreement: 'unchecked',
                 },
               }
@@ -306,9 +293,9 @@ async function captureWorkingFlow<T>(
       revision: privateDomainDigest('JIG-Working-Flow-Inspection/1', {
         declarations: closure.closureDigest,
         evaluations: evaluations.map((value) => value.outputDigest),
-        packages: retained.map((value) => ({
+        packages: members.map((value) => ({
           path: value.provenance.projectPath,
-          digest: value.package.digest,
+          digest: value.captured.digest,
         })),
         grants: grants.grants as unknown as JsonValue,
         dependencyDeclarations: metadata?.digest ?? null,
@@ -318,7 +305,7 @@ async function captureWorkingFlow<T>(
         : { entrypoint: declaration.value.entrypoint }),
       targets,
     }
-    return await projectResult(topology, linked, source.members)
+    return await projectResult(topology, linked, members)
   } catch (error) {
     operationFailure = error
     throw error
@@ -334,13 +321,6 @@ async function captureWorkingFlow<T>(
     const failures = results.flatMap((result) =>
       result.status === 'rejected' ? [result.reason] : [],
     )
-    if (temporary !== undefined) {
-      try {
-        await rm(temporary, { recursive: true, force: true })
-      } catch (error) {
-        failures.push(error)
-      }
-    }
     if (failures.length)
       // biome-ignore lint/correctness/noUnsafeFinally: Cleanup failure prevents success and preserves the original operation error.
       throw new AggregateError(

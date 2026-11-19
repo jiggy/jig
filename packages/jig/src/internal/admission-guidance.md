@@ -23,6 +23,7 @@ Behavior analysis borrows this capture until rendering data is ready for disposa
 It consumes source as inert data and has no path to admission or execution.
 
 It uses the existing contained evaluator and linker, never the review planner or admission store.
+The inspection links captured package metadata and reports captured digests without publishing temporary Package/0 archives.
 Installed npm sources require declared dependencies, canonical package identity and protected-state refusal.
 No dependency install, contract generation, provider readiness, recipe preparation or project-state write is permitted.
 

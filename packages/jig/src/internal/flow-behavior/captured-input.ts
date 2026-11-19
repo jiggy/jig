@@ -4,7 +4,7 @@ import type { CapturedPackage } from '../../package/capture.js'
 import type { InspectedPackage } from '../../package/inspect.js'
 import type { CapturedFlowMember } from '../../project/flow-source.js'
 import { resolveInvocationSlots } from '../../project/invocation-slots.js'
-import type { PackageProjectValue } from '../../project/package-project.js'
+import type { PackageProjectInspection } from '../../project/package-project.js'
 import { flowSelector } from '../../project/package-selector.js'
 import { SchemaDiagnostic } from '../../schema/index.js'
 import { analyzeFlowBehavior } from './compose.js'
@@ -24,7 +24,7 @@ export async function prepareFlowBehavior(
   focus: string | undefined,
   entrypoint: string | undefined,
   visible: readonly string[],
-  project: PackageProjectValue,
+  project: PackageProjectInspection,
   members: readonly CapturedFlowMember[],
   signal?: AbortSignal,
   packagePath?: string,
@@ -35,7 +35,7 @@ export async function prepareFlowBehavior(
     id: string,
     implementation: string,
     settings: JsonValue,
-    configured?: PackageProjectValue['bindings'][number]['slots'],
+    configured?: PackageProjectInspection['bindings'][number]['slots'],
   ) {
     const flow = byPackage.get(implementation)!
     const slots = new Map(
