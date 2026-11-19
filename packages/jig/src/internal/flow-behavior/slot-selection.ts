@@ -1,7 +1,13 @@
 import ts from 'typescript-parser'
 import type { SlotSelection } from './model.js'
 import type { SourceIndex } from './source.js'
-import { isLocalFunction, shortText, sourceNodes, unwrap } from './source-syntax.js'
+import {
+  constInitializer,
+  isLocalFunction,
+  shortText,
+  sourceNodes,
+  unwrap,
+} from './source-syntax.js'
 
 type Source = Pick<SourceIndex, 'site' | 'declaration' | 'literalCallSlot'>
 type Calls = ReadonlyMap<ts.Declaration, readonly ts.CallExpression[]>
@@ -120,16 +126,6 @@ function tableRows(
     rows.set(id.text, target.text)
   }
   return [...rows].map(([key, slot]) => ({ key, slot }))
-}
-
-function constInitializer(declaration: ts.Declaration | undefined): ts.Expression | undefined {
-  return declaration &&
-    ts.isVariableDeclaration(declaration) &&
-    ts.isIdentifier(declaration.name) &&
-    declaration.parent.flags & ts.NodeFlags.Const &&
-    declaration.initializer
-    ? unwrap(declaration.initializer)
-    : undefined
 }
 
 function helperArgument(

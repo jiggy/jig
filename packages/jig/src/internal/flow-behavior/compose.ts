@@ -17,6 +17,7 @@ import {
   type BehaviorStep,
   type BehaviorTarget,
   isFileOperation,
+  type RelatedCall,
   type SourceSite,
 } from './model.js'
 import { SourceIndex } from './source.js'
@@ -200,15 +201,38 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
           .map(([, candidate]) => candidate)
       : []
     const callReferences =
-      !handoff && evidence.size && (target.id === focus || packagePath !== undefined)
+      !handoff && (target.id === focus || (evidence.size && packagePath !== undefined))
         ? sources
             .get(target.implementation)
-            ?.callReferences(
-              target.slots,
-              new Set([...analyzedHandoffs, ...authored.keys()]),
-              BEHAVIOR_LIMITS.authoredHandoffs,
-            )
+            ?.callReferences(target.slots, new Set([...analyzedHandoffs, ...authored.keys()]), {
+              limit: BEHAVIOR_LIMITS.authoredHandoffs,
+              fallback: evidence.size > 0,
+              focused: target.id === focus,
+            })
         : undefined
+    const selected = callReferences?.selected
+    const related = new Map<string, { calls: RelatedCall[]; omitted: number }>()
+    if (selected?.sites.length) {
+      for (const { slot } of selected.sites) {
+        if (related.has(slot)) continue
+        const child = targets.get(target.slots.get(slot) ?? '')
+        if (!child) continue
+        const uses = { calls: [] as RelatedCall[], omitted: 0 }
+        for (const caller of targets.values()) {
+          for (const [otherSlot, destination] of caller.slots) {
+            if (
+              (caller.id === target.id && otherSlot === slot) ||
+              targets.get(destination)?.implementation !== child.implementation
+            )
+              continue
+            if (uses.calls.length < BEHAVIOR_LIMITS.focusedRelatedCalls)
+              uses.calls.push({ caller: caller.id, slot: otherSlot, target: destination })
+            else uses.omitted++
+          }
+        }
+        if (uses.calls.length) related.set(slot, uses)
+      }
+    }
     return {
       target: target.id,
       routes: [...routes.values()],
@@ -222,6 +246,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
         : {}),
       ...(callReferences?.references.length ? { callReferences: callReferences.references } : {}),
       ...(callReferences?.omitted ? { callReferencesOmitted: callReferences.omitted } : {}),
+      ...(selected?.sites.length ? { callSelections: { ...selected, related } } : {}),
     }
   }
 

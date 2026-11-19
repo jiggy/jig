@@ -275,6 +275,82 @@ test('focused orientation shows distinct slots and variant callers before analys
   )
 })
 
+test('focused caller decisions join helper arguments, lexical branches, and shared configured uses', () => {
+  const importer = method(`
+    import { handle } from '@jigging/flow'
+    await handle(async run => {
+      const dispatch = (slot: string, input: unknown) => run.call({slot, operationId: slot, input})
+      opaque()
+      if (run.input.reuse) {
+        const mode = run.input.action ?? 'review'
+        return dispatch('converter', {
+          ...defaults(),
+          mode,
+          ignored: run.input.flag ? 1 : 2,
+          ...(run.input.retry ? {ignored: 0} : {}),
+        })
+      }
+      return run.call({slot: 'exporter', operationId: 'export', input: {}})
+    })
+  `)
+  const input = snapshot(method(handlerSource('return { outcome: "done", output: {} }')), importer)
+  const variant = {
+    ...input.targets[1]!,
+    id: 'binding:variant',
+    settings: { mode: 'other' },
+  }
+  const other = {
+    ...input.targets[0]!,
+    id: 'binding:other',
+    slots: new Map([['review', variant.id]]),
+  }
+  const report = analyzeFlowBehavior({ ...input, targets: [...input.targets, variant, other] })
+  expect(report.scopes[0]?.callSelections?.sites).toMatchObject([
+    {
+      slot: 'converter',
+      site: { line: 8 },
+      dispatch: { line: 4 },
+      guards: [{ code: 'run.input.reuse', taken: true, site: { line: 6 } }],
+      inputChoices: [{ field: 'mode', code: "run.input.action ?? 'review'", site: { line: 7 } }],
+    },
+  ])
+  const markdown = renderFlowBehavior(report)
+  expect(markdown.indexOf('### Caller decisions')).toBeLessThan(
+    markdown.indexOf('### Coverage gaps'),
+  )
+  expect(markdown).toContain('binding:other · review → binding:variant')
+  expect(markdown).toContain('run.call in helper at flows/import/FLOW.ts:4')
+})
+
+test('focused source sites decline reassigned slots and still show supported direct decisions', () => {
+  const importer = method(`
+    import { handle } from '@jigging/flow'
+    await handle(async run => {
+      const dispatch = (slot: string) => {
+        ;({ slot } = { slot: 'exporter' })
+        return run.call({slot, operationId: 'helper', input: {}})
+      }
+      if (run.input.convert) {
+        return run.call({slot: 'converter', operationId: 'direct',
+          input: {mode: run.input.extra ? 'full' : 'short'}})
+      } else {
+        return dispatch('converter')
+      }
+    })
+  `)
+  const input = snapshot(method(handlerSource('return { outcome: "done", output: {} }')), importer)
+  const scope = analyzeFlowBehavior(input).scopes[0]!
+  expect(scope.callSelections?.sites).toMatchObject([
+    {
+      slot: 'converter',
+      site: { line: 9 },
+      guards: [{ code: 'run.input.convert', taken: true }],
+      inputChoices: [{ field: 'mode', code: "run.input.extra ? 'full' : 'short'" }],
+    },
+  ])
+  expect(scope.callSelections?.sites[0]?.dispatch).toBeUndefined()
+})
+
 test('package inspection joins source sites to exact configured caller slots', () => {
   const input = snapshot(
     method(handlerSource(`return { outcome: 'done', output: { status: 'ready' } }`)),

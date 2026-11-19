@@ -1,5 +1,5 @@
-import type { FlowImportBoundary } from '../flow-import-boundary.js'
 import type { JsonValue } from '../../json.js'
+import type { FlowImportBoundary } from '../flow-import-boundary.js'
 
 export interface SourceSite {
   readonly path: string
@@ -133,6 +133,20 @@ interface SourceExpression {
   readonly site: SourceSite
 }
 
+export interface AuthoredCallSelection {
+  readonly slot: string
+  readonly site: SourceSite
+  readonly dispatch?: SourceSite
+  readonly guards: readonly BehaviorGuard[]
+  readonly inputChoices: readonly (SourceExpression & { readonly field: string })[]
+}
+
+export interface RelatedCall {
+  readonly caller: string
+  readonly slot: string
+  readonly target: string
+}
+
 export interface SlotSelection {
   readonly lookup: SourceExpression
   readonly table: SourceExpression
@@ -174,6 +188,14 @@ export interface BehaviorReport {
     readonly authoredHandoffsOmitted?: number
     readonly callReferences?: readonly CallReference[]
     readonly callReferencesOmitted?: number
+    readonly callSelections?: {
+      readonly sites: readonly AuthoredCallSelection[]
+      readonly omitted: number
+      readonly related: ReadonlyMap<
+        string,
+        { readonly calls: readonly RelatedCall[]; readonly omitted: number }
+      >
+    }
   }[]
 }
 
@@ -191,4 +213,6 @@ export const BEHAVIOR_LIMITS = {
   retainedChildPaths: 256,
   retainedChildSteps: 4_096,
   authoredHandoffs: 24,
+  focusedCallSelections: 6,
+  focusedRelatedCalls: 6,
 } as const

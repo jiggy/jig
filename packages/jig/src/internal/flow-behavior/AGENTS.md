@@ -10,6 +10,8 @@ Explain conditional behavior from a captured Jig project without running its met
 - `admitted-input.ts` reads exact stored source and recognized dependency bytes for an approved composition.
 - `source.ts` resolves parsed source and call identities inside one captured package.
 - `source-syntax.ts` owns shared TypeScript syntax helpers and bounded source walks.
+- `call-selection.ts` relates literal slot arguments to a local dispatch helper.
+  It keeps conditional request fields and enclosing branches at their authored sites.
 - `slot-selection.ts` traces authored lookup rows and key origins into computed slot references.
 - `analyze.ts` evaluates a bounded TypeScript subset through inert values.
 - `data.ts` checks which data computations can safely lose value precision.
@@ -55,6 +57,10 @@ Explain conditional behavior from a captured Jig project without running its met
 - Keep the private result independent of CLI and display rendering.
 - Package inspection uses source analysis to add call-site locations to configured caller slots.
   Caller slots remain visible without source interpretation.
+- Focused source inspection puts authored call decisions before route details.
+  The decision shows where the caller supplies its slot and conditional fields.
+  Use configured targets to identify other callers of the same implementation.
+  Keep source locations available when argument forwarding is unresolved.
 - Supplement cutoffs with source references whose receiver is an SDK context parameter.
   Keep computed slot expressions separate from exact configured handoffs.
   Attach literal lookup rows only when a strict-equality lookup and its helper argument are identifiable.
