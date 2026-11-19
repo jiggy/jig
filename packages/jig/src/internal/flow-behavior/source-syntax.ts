@@ -24,6 +24,11 @@ export function shortText(node: ts.Node): string {
   return code.length <= 140 ? code : code.slice(0, 139) + '…'
 }
 
+export function functionFrame(node: ts.Node): ts.Node {
+  while (node.parent && !ts.isFunctionLike(node)) node = node.parent
+  return node
+}
+
 export function constInitializer(
   declaration: ts.Declaration | undefined,
 ): ts.Expression | undefined {

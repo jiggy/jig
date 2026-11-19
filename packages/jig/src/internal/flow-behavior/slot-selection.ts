@@ -3,6 +3,7 @@ import type { SlotSelection } from './model.js'
 import type { SourceIndex } from './source.js'
 import {
   constInitializer,
+  functionFrame,
   isLocalFunction,
   shortText,
   sourceNodes,
@@ -171,18 +172,13 @@ function identityRoot(expression: ts.Expression): ts.Expression {
   return root
 }
 
-function frame(node: ts.Node): ts.Node {
-  while (node.parent && !ts.isFunctionLike(node)) node = node.parent
-  return node
-}
-
 function writesBefore(source: Source, name: ts.Expression, use: ts.Node) {
   const writes: { value: ts.Expression; write: ts.Node }[] = []
   if (!ts.isIdentifier(name)) return writes
   const declaration = source.declaration(name)
   if (!declaration || !ts.isVariableDeclaration(declaration)) return writes
-  const sameFrame = frame(declaration)
-  if (sameFrame !== frame(use) || declaration.getStart() >= use.getStart()) return writes
+  const sameFrame = functionFrame(declaration)
+  if (sameFrame !== functionFrame(use) || declaration.getStart() >= use.getStart()) return writes
   if (declaration.initializer)
     writes.push({ value: unwrap(declaration.initializer), write: declaration })
   for (const node of sourceNodes(

@@ -3,6 +3,7 @@ import { type AuthoredCallSelection, BEHAVIOR_LIMITS } from './model.js'
 import type { SourceIndex } from './source.js'
 import {
   constInitializer,
+  functionFrame,
   isLocalFunction,
   lexicalGuards,
   shortText,
@@ -27,6 +28,11 @@ export function selectCallSites(
   hasEval: boolean,
 ): { sites: AuthoredCallSelection[]; omitted: number } {
   const sites: AuthoredCallSelection[] = []
+  const dispatches = new Map<ts.Node, ts.CallExpression | null>()
+  for (const { call } of requests) {
+    const frame = functionFrame(call)
+    dispatches.set(frame, dispatches.has(frame) ? null : call)
+  }
   let omitted = 0
   const append = (
     slot: string,
@@ -74,14 +80,12 @@ export function selectCallSites(
       !isLocalFunction(fn) ||
       fn.asteriskToken ||
       !fn.body ||
+      dispatches.get(fn) !== call ||
       fn.parameters.some((item) => item.dotDotDotToken || item.initializer) ||
       !ts.isVariableDeclaration(fn.parent) ||
       constInitializer(fn.parent) !== fn
     )
       continue
-    let frame: ts.Node = call
-    while (frame.parent && !ts.isFunctionLike(frame)) frame = frame.parent
-    if (frame !== fn) continue
     const inputParameter = input && ts.isIdentifier(input) ? source.declaration(input) : undefined
     const inputIndex =
       inputParameter && ts.isParameter(inputParameter) && !writes.has(inputParameter)
@@ -137,7 +141,7 @@ function selectedInputs(source: Source, input: ts.Expression | undefined) {
         choice.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
     ) {
       fields.push({
-        field: name,
+        field: shortText(property.name),
         code: shortText(choice),
         site: source.site(choice),
       })

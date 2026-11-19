@@ -322,7 +322,7 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
   expect(markdown).toContain('run.call in helper at flows/import/FLOW.ts:4')
 })
 
-test('focused source sites decline reassigned slots and still show supported direct decisions', () => {
+test('focused source sites decline reassigned or ambiguous requests and retain direct decisions', () => {
   const importer = method(`
     import { handle } from '@jigging/flow'
     await handle(async run => {
@@ -336,6 +336,11 @@ test('focused source sites decline reassigned slots and still show supported dir
       } else {
         return dispatch('converter')
       }
+      const twice = (slot: string) => {
+        run.call({slot, operationId: 'first', input: {}})
+        return run.call({slot, operationId: 'second', input: {}})
+      }
+      twice('converter')
     })
   `)
   const input = snapshot(method(handlerSource('return { outcome: "done", output: {} }')), importer)
