@@ -300,6 +300,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   Before the route chart, link incoming call results to the configured caller's checks and next step.
   Apply the same projection to outgoing calls with distinct displayed results.
+  Label the returning Flow and the acting caller. Put child conditions in their own column.
   Call-case links lead to the full caller-local expansion.
 
   Lead with route consequences and attach the conditions that select them.

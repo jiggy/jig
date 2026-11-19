@@ -714,6 +714,13 @@ function detailLine(step: BehaviorStep): string {
   return text(stepDescription(step) + ' (' + site(step.site) + ')')
 }
 
+function linkedCheck(check: BehaviorGuard): string {
+  const branch = check.validation
+    ? conditionLabel(check)
+    : (check.unresolved ? 'Assumes ' : 'Predicate is ') + check.taken
+  return text(branch + ' · ' + guardLabel(check)) + ' (' + sourceLink(check.site) + ')'
+}
+
 function nextSteps(after: readonly BehaviorStep[], linkSource = false): string {
   const first = after.slice(0, -1)
   const relevant = first.filter((step) => step.kind !== 'condition' || step.unresolved)
@@ -724,6 +731,7 @@ function nextSteps(after: readonly BehaviorStep[], linkSource = false): string {
     after
       .filter((step, index) => index === after.length - 1 || shown.has(step))
       .map((step) => {
+        if (linkSource && step.kind === 'condition') return linkedCheck(step)
         const description =
           step.kind === 'call' ? 'Call ' + step.slot + ' → ' + step.target : stepDescription(step)
         if (!linkSource) return text(description + ' (' + site(step.site) + ')')
@@ -753,28 +761,29 @@ function renderCallContinuations(details: CallDetails, incoming: boolean, omitte
         sourceLink(call.site) +
         ')',
       '',
+      '| Result from ' +
+        text(call.target) +
+        ' | Next in ' +
+        text(call.caller) +
+        ' | Conditions inside the child |',
+      '| --- | --- | --- |',
     )
     const seen = new Set<string>()
     for (const [id, { call, after, representativeChecks }] of visible) {
       const title = text(label(call))
       const checks = (call.guards ?? []).filter((guard) => guard.unresolved)
-      const childChecks = checks
-        .slice(0, 2)
-        .map((guard) => text(conditionLabel(guard)) + ' (' + sourceLink(guard.site) + ')')
+      const childChecks = checks.slice(0, 2).map(linkedCheck)
       if (checks.length > 2) childChecks.push(checks.length - 2 + ' additional child checks')
-      const steps = [...childChecks, nextSteps(after, true)].join(' → ')
-      const key = title + '\n' + steps
+      const steps =
+        (representativeChecks ? 'Representative checks · ' : '') + nextSteps(after, true)
+      const conditions = childChecks.join(' → ') || '—'
+      const key = JSON.stringify([title, steps, conditions])
       if (seen.has(key)) continue
       seen.add(key)
-      lines.push(
-        '- ' +
-          (incoming ? title : '[' + title + '](#' + id + ')') +
-          (representativeChecks ? ' · Representative checks' : '') +
-          (childChecks.length ? ' · Conditional child path' : '') +
-          ' → ' +
-          steps,
-      )
+      const result = incoming ? title : '[' + title + '](#' + id + ')'
+      lines.push('| ' + result + ' | ' + steps + ' | ' + conditions + ' |')
     }
+    lines.push('')
     if (cases.size > callCaseLimit)
       lines.push('- ' + (cases.size - callCaseLimit) + ' additional call paths omitted.')
     lines.push('')

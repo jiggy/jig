@@ -190,11 +190,14 @@ test('focused continuations retain an unresolved check inside the returned child
   const input = snapshot(child, caller)
   const output = renderFlowBehavior(analyzeFlowBehavior({ ...input, focus: 'flow:flows/convert' }))
   const continuations = output.split('### Caller continuations')[1]?.split('### Consequences')[0]
-  expect(continuations).toMatch(
-    /status = "needs[^\n]+Conditional child path[^\n]+When [^\n]+uncertain[^\n]+is true[^\n]+flows\/convert\/FLOW.ts#L2[^\n]+status = "review"/,
+  expect(continuations).toContain(
+    '| Result from flow:flows/convert | Next in binding:code | Conditions inside the child |',
   )
   expect(continuations).toMatch(
-    /status = "ready"[^\n]+Conditional child path[^\n]+is false[^\n]+Call exporter/,
+    /status = "needs[^\n]+status = "review"[^\n]+ \| Assumes true[^\n]+uncertain[^\n]+flows\/convert\/FLOW.ts#L2/,
+  )
+  expect(continuations).toMatch(
+    /status = "ready"[^\n]+Predicate is false[^\n]+Call exporter[^\n]+ \| Assumes false[^\n]+uncertain/,
   )
 })
 
