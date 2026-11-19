@@ -10,9 +10,11 @@ import {
 import type { AuthoredHandoff, BehaviorPackage, CallReference, SourceSite } from './model.js'
 import { slotSelection } from './slot-selection.js'
 import {
+  branchExit,
   isLocalFunction,
   type LocalFunction,
   lexicalGuards,
+  priorBranchExits,
   shortText,
   sourceNodes,
   unwrap,
@@ -337,12 +339,18 @@ export class SourceIndex {
     if (!slot) return undefined
     const intentValue = fields.get('intent')
     const intent = intentValue && ts.isStringLiteralLike(intentValue) ? intentValue.text : undefined
+    const priorExits = priorBranchExits(call).map(({ condition, taken, statement }) => ({
+      condition: { code: shortText(condition), site: this.site(condition) },
+      taken,
+      statement: { code: shortText(statement), site: this.site(statement) },
+    }))
     return {
       receiver,
       slot,
       site: this.callSite(call),
       ...(intent ? { intent: intent.length <= 140 ? intent : intent.slice(0, 139) + '…' } : {}),
       guards: lexicalGuards(call, (node) => this.site(node)).slice(0, 4),
+      ...(priorExits.length ? { priorExits } : {}),
       exitChecks: this.resultExitChecks(call),
     }
   }
@@ -368,8 +376,8 @@ export class SourceIndex {
         [following.thenStatement, true],
         [following.elseStatement, false],
       ] as const) {
-        const exit = branch && (ts.isBlock(branch) ? branch.statements.at(-1) : branch)
-        if (!exit || (!ts.isReturnStatement(exit) && !ts.isThrowStatement(exit))) continue
+        const exit = branchExit(branch)
+        if (!exit) continue
         checks.push({
           site: this.site(following.expression),
           code: shortText(following.expression),

@@ -311,16 +311,19 @@ export class Interpreter {
       )
         continue
       const cut = this.source.site(stoppedAt)
-      for (const { receiver, ...handoff } of this.source.handoffsIn(fn)) {
-        if (result.values.get(receiver)?.kind !== 'context' || handoff.site.path !== cut.path)
-          continue
-        if (
-          handoff.site.line < cut.line ||
-          (handoff.site.line === cut.line && (handoff.site.column ?? 0) <= (cut.column ?? 0))
-        )
-          continue
+      const afterCut = (site: SourceSite) =>
+        site.path === cut.path &&
+        (site.line > cut.line || (site.line === cut.line && (site.column ?? 0) > (cut.column ?? 0)))
+      for (const { receiver, priorExits, ...handoff } of this.source.handoffsIn(fn)) {
+        if (result.values.get(receiver)?.kind !== 'context' || !afterCut(handoff.site)) continue
         const target = this.target.slots.get(handoff.slot)
-        if (target !== undefined) this.recordAuthoredHandoff({ ...handoff, target })
+        if (target === undefined) continue
+        const exits = priorExits?.filter(({ condition }) => afterCut(condition.site))
+        this.recordAuthoredHandoff({
+          ...handoff,
+          target,
+          ...(exits?.length ? { priorExits: exits } : {}),
+        })
       }
     }
     return results.map((state) => {

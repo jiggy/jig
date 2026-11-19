@@ -133,12 +133,19 @@ export interface AuthoredHandoff {
   readonly site: SourceSite
   readonly intent?: string
   readonly guards: readonly BehaviorGuard[]
+  readonly priorExits?: readonly AuthoredPriorExit[]
   readonly exitChecks: readonly {
     readonly site: SourceSite
     readonly code: string
     readonly taken: boolean
     readonly exit: 'return' | 'throw'
   }[]
+}
+
+export interface AuthoredPriorExit {
+  readonly condition: SourceExpression
+  readonly taken: boolean
+  readonly statement: SourceExpression
 }
 
 interface SourceExpression {

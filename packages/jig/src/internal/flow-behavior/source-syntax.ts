@@ -66,6 +66,46 @@ export function lexicalGuards(
   return guards
 }
 
+/** A direct branch exit, never an exit found inside a nested statement. */
+export function branchExit(statement: ts.Statement | undefined) {
+  const exit = statement && (ts.isBlock(statement) ? statement.statements.at(-1) : statement)
+  return exit && (ts.isReturnStatement(exit) || ts.isThrowStatement(exit)) ? exit : undefined
+}
+
+/** Earlier sibling exits in the same function. An exit bypasses the later statement in that block. */
+export function priorBranchExits(expression: ts.Expression) {
+  const exits: {
+    condition: ts.Expression
+    taken: boolean
+    statement: ts.ReturnStatement | ts.ThrowStatement
+  }[] = []
+  let budget = 40
+  for (
+    let node: ts.Node = expression;
+    node.parent && !ts.isFunctionLike(node) && budget > 0;
+    node = node.parent
+  ) {
+    const block: ts.Node = node.parent
+    if (!ts.isBlock(block)) continue
+    const index = block.statements.indexOf(node as ts.Statement)
+    for (let at = index - 1; at >= 0 && budget > 0; at--, budget--) {
+      const candidate = block.statements[at]
+      if (!candidate || !ts.isIfStatement(candidate)) continue
+      const yes = branchExit(candidate.thenStatement)
+      const no = branchExit(candidate.elseStatement)
+      if (yes) exits.push({ condition: candidate.expression, taken: true, statement: yes })
+      if (no) exits.push({ condition: candidate.expression, taken: false, statement: no })
+    }
+  }
+  // Preserve normal exits when a sequence of later rejection checks occupies the bound.
+  return exits
+    .sort(
+      (a, b) =>
+        Number(ts.isReturnStatement(b.statement)) - Number(ts.isReturnStatement(a.statement)),
+    )
+    .slice(0, 4)
+}
+
 export function* sourceNodes(
   root: ts.Node,
   descend: (node: ts.Node) => boolean = () => true,

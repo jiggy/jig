@@ -7,6 +7,7 @@ import {
 } from './cli-flow-orientation.js'
 import type { ComparisonFact, compareFlowBehavior } from './internal/flow-behavior/comparison.js'
 import {
+  type AuthoredPriorExit,
   type BehaviorGuard,
   type BehaviorReport,
   type BehaviorReturn,
@@ -962,6 +963,37 @@ function authoredHandoffs(scope: Scope, linkedTargets?: ReadonlySet<string>): st
     'These call sites use the configured slots below. Reachability, order, and results remain unresolved.',
     '',
   ]
+  const priorExits = new Map<string, { exit: AuthoredPriorExit; slots: Set<string> }>()
+  for (const handoff of scope.authoredHandoffs) {
+    for (const exit of handoff.priorExits ?? []) {
+      const key = JSON.stringify(exit)
+      const entry = priorExits.get(key)
+      if (entry) entry.slots.add(handoff.slot)
+      else priorExits.set(key, { exit, slots: new Set([handoff.slot]) })
+    }
+  }
+  if (priorExits.size) {
+    lines.push('**Earlier exits before these call sites**', '')
+    for (const { exit, slots } of [...priorExits.values()].slice(0, 8)) {
+      lines.push(
+        '- If ' +
+          text(exit.condition.code) +
+          ' is ' +
+          exit.taken +
+          ' (' +
+          sourceLink(exit.condition.site) +
+          '), the branch ends with ' +
+          text(exit.statement.code) +
+          ' (' +
+          sourceLink(exit.statement.site) +
+          ') and bypasses the listed call sites for ' +
+          brief([...slots]) +
+          '.',
+      )
+    }
+    if (priorExits.size > 8) lines.push(`- ${priorExits.size - 8} earlier exits omitted.`)
+    lines.push('')
+  }
   for (const handoff of scope.authoredHandoffs) {
     const target = linkedTargets?.has(handoff.target)
       ? `[${text(handoff.target)}](#${idFor('target', handoff.target)})`

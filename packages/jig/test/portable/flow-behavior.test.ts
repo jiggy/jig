@@ -926,7 +926,12 @@ test('short-circuited values keep their truth without becoming Booleans', () => 
 test('authored handoffs retain caller exit checks beyond an opaque operation', () => {
   const caller = method(
     handlerSource(`
+    if (run.input.beforeCut) return { outcome: 'done', output: {} }
     opaque()
+    if (run.input.unrelated) {
+      if (run.input.inner) return { outcome: 'done', output: {} }
+    }
+    if (run.settings.preview) return { outcome: 'done', output: { status: 'preview' } }
     if (run.input.confirmed) {
       const result = await run.call({ slot: 'converter', intent: 'Check records' })
       if (result.outcome === 'blocked') return { outcome: 'done', output: {} }
@@ -949,6 +954,7 @@ test('authored handoffs retain caller exit checks beyond an opaque operation', (
       target: 'flow:flows/convert',
       intent: 'Check records',
       guards: [{ code: 'run.input.confirmed', taken: true }],
+      priorExits: [{ condition: { code: 'run.settings.preview' }, taken: true }],
       exitChecks: [{ code: "result.outcome === 'blocked'", taken: true, exit: 'return' }],
     },
     { slot: 'exporter', target: 'flow:flows/export', intent: 'Write checked records' },
@@ -957,7 +963,16 @@ test('authored handoffs retain caller exit checks beyond an opaque operation', (
   expect(rendered).toContain('Reachability, order, and results remain unresolved.')
   expect(rendered).toMatch(/converter → \[flow:flows\/convert\]\(#target-/)
   expect(rendered).toContain('true branch ends with return')
+  expect(rendered).toMatch(
+    /If run\.settings\.preview is true [^\n]+ bypasses the listed call sites for converter, exporter/,
+  )
+  expect(rendered).not.toContain('If run.input.beforeCut is true')
+  expect(rendered).not.toContain('If run.input.unrelated is true')
+  expect(rendered).not.toContain('If run.input.inner is true')
   expect(rendered).not.toContain('Unrelated receiver')
+  expect(JSON.stringify(flowBehaviorSnapshot(report))).toContain(
+    'Earlier exit if run.settings.preview is true',
+  )
 })
 
 test('a known configured early return leaves no speculative exporter handoff', () => {
