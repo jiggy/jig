@@ -993,10 +993,11 @@ Diagrams label conditional edges with their predicates or the result of a direct
 When outgoing edges share an earlier condition, diagrams show the later conditions that distinguish them.
 Source checks identify evaluated predicates and predicates that remain conditional.
 
-Focused source output shows supported caller decisions before analyzed routes.
+Focused source output and configured-use expansions show supported caller decisions before analyzed routes.
 It can link a literal slot argument at a local helper call to the corresponding request.
 The decision can include enclosing branches, conditional fields, and other slots that use the same Flow.
 It identifies authored request metadata at `run.call` and locates the child input or its identifiable helper argument.
+When an argument is directly forwarded, the report names its position and the request field it supplies.
 
 Focused and package reports may show additional authored call references after an analysis cutoff.
 Computed slot expressions remain separate from exact configured routes.

@@ -136,10 +136,21 @@ interface SourceExpression {
   readonly site: SourceSite
 }
 
+export interface AuthoredDispatch extends SourceSite {
+  readonly helper: string
+  readonly declaration: SourceSite
+  readonly request: string
+  readonly arguments: readonly {
+    readonly field: 'slot' | 'operationId' | 'intent' | 'input'
+    readonly index: number
+    readonly parameter: string
+  }[]
+}
+
 export interface AuthoredCallSelection {
   readonly slot: string
   readonly site: SourceSite
-  readonly dispatch?: SourceSite
+  readonly dispatch?: AuthoredDispatch
   readonly guards: readonly BehaviorGuard[]
   readonly requestMetadata: readonly (SourceExpression & {
     readonly field: 'operationId' | 'intent'

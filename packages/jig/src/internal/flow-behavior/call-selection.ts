@@ -39,7 +39,7 @@ export function selectCallSites(
     call: ts.CallExpression,
     input: ts.Expression | undefined,
     requestMetadata: AuthoredCallSelection['requestMetadata'],
-    dispatch?: ts.CallExpression,
+    dispatch?: AuthoredCallSelection['dispatch'],
   ) => {
     if (!slots.has(slot)) return
     const guards = lexicalGuards(call, (node) => source.site(node)).slice(-2)
@@ -48,7 +48,7 @@ export function selectCallSites(
     const item: AuthoredCallSelection = {
       slot,
       site: source.site(call),
-      ...(dispatch ? { dispatch: source.site(dispatch) } : {}),
+      ...(dispatch ? { dispatch } : {}),
       guards,
       requestMetadata,
       ...(input ? { inputSite: source.site(input) } : {}),
@@ -90,14 +90,26 @@ export function selectCallSites(
       dispatches.get(fn) !== call ||
       fn.parameters.some((item) => item.dotDotDotToken || item.initializer) ||
       !ts.isVariableDeclaration(fn.parent) ||
+      !ts.isIdentifier(fn.parent.name) ||
       constInitializer(fn.parent) !== fn
     )
       continue
-    const inputParameter = input && ts.isIdentifier(input) ? source.declaration(input) : undefined
-    const inputIndex =
-      inputParameter && ts.isParameter(inputParameter) && !writes.has(inputParameter)
-        ? fn.parameters.indexOf(inputParameter)
-        : -1
+    const forwarded = (['slot', 'operationId', 'intent', 'input'] as const).flatMap((field) => {
+      const value = request.fields.get(field)
+      if (!value || !ts.isIdentifier(value)) return []
+      const declaration = source.declaration(value)
+      if (!declaration || !ts.isParameter(declaration) || writes.has(declaration)) return []
+      const index = fn.parameters.indexOf(declaration)
+      return index < 0 ? [] : [{ field, index, parameter: shortText(value) }]
+    })
+    const inputIndex = forwarded.find((argument) => argument.field === 'input')?.index
+    const dispatch = {
+      ...source.site(call),
+      helper: shortText(fn.parent.name),
+      declaration: source.site(fn.parent.name),
+      request: shortText(call),
+      arguments: forwarded,
+    }
     for (const invocation of calls.get(fn.parent) ?? []) {
       if (invocation.questionDotToken || invocation.arguments.some(ts.isSpreadElement)) continue
       const slotArgument = invocation.arguments[fn.parameters.indexOf(parameter)]
@@ -106,9 +118,9 @@ export function selectCallSites(
       append(
         selected.text,
         invocation,
-        inputIndex < 0 ? input : invocation.arguments[inputIndex],
+        inputIndex === undefined ? input : invocation.arguments[inputIndex],
         requestMetadata,
-        call,
+        dispatch,
       )
     }
   }

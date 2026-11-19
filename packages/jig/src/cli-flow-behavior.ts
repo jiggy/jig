@@ -1124,15 +1124,31 @@ export function renderFlowBehavior(report: BehaviorReport): string {
 function renderCallSelections(
   scope: Scope,
   slots: ReadonlyMap<string, string> | undefined,
+  heading = '### Caller decisions',
 ): string[] {
   const selections = scope.callSelections
   if (!selections || !slots) return []
-  const lines = ['### Caller decisions', '']
+  const lines = [
+    heading,
+    '',
+    'The `intent` option of the `run.call` request sets the displayed call label.',
+    '',
+  ]
+  const dispatches = new Set<string>()
   const shown = new Set<string>()
   for (const selection of selections.sites) {
     const { slot, dispatch, guards, requestMetadata, inputSite, inputChoices } = selection
     const target = slots.get(slot)
     if (target === undefined) continue
+    const dispatchKey = dispatch && JSON.stringify([dispatch.path, dispatch.line, dispatch.column])
+    if (dispatch && dispatchKey && !dispatches.has(dispatchKey)) {
+      dispatches.add(dispatchKey)
+      lines.push(
+        `- Helper ${text(dispatch.helper)} (${text(site(dispatch.declaration))}) issues ${text(dispatch.request)} (${text(site(dispatch))}).`,
+      )
+      for (const { field, index, parameter } of dispatch.arguments)
+        lines.push(`  - Argument ${index + 1} ${text(parameter)} → request field ${field}.`)
+    }
     lines.push(
       `- ${text(slot)} → ${text(target)} · ${text(site(selection.site))}` +
         (dispatch ? ` · run.call in helper at ${text(site(dispatch))}` : ''),
@@ -1160,7 +1176,6 @@ function renderCallSelections(
   if (selections.omitted) lines.push(`- ${selections.omitted} additional caller sites omitted.`)
   lines.push(
     '',
-    'A displayed call intent comes from `intent` on the `run.call` request, alongside `operationId` and `input`.',
     'These locations describe authored choices. Reachability depends on the caller and its input.',
     '',
   )
@@ -1406,6 +1421,7 @@ function applicationMap(report: BehaviorReport): string[] {
       if (routes.length && !body.length)
         lines.push('This configured target exceeds the diagram limit.', '')
       const details = callDetails(report, [...routes, ...scope.alternatives])
+      lines.push(...renderCallSelections(scope, target.slots, '#### Caller decisions'))
       lines.push(...contractChecks(scope))
       if (routes.length) lines.push(...consequences(report, scope, routes, details.shown))
       if (scope.routes.length > routes.length)

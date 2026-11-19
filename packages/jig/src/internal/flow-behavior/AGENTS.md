@@ -61,12 +61,12 @@ Explain conditional behavior from a captured Jig project without running its met
 - Keep the private result independent of CLI and display rendering.
 - Package inspection uses source analysis to add call-site locations to configured caller slots.
   Caller slots remain visible without source interpretation.
-- Focused source inspection puts authored call decisions before route details.
+- Focused source and configured-use expansions put authored call decisions before route details.
   The decision shows where the caller supplies its slot and conditional fields.
   Keep request metadata at the resolved `run.call` and child input at its authored expression or proven forwarding argument.
   Pair helper arguments with one identifiable request in the helper's function body.
+  Retain the request field and formal parameter together for each directly forwarded argument.
   Use configured targets to identify other callers of the same implementation.
-  Keep source locations available when argument forwarding is unresolved.
 - Supplement cutoffs with source references whose receiver is an SDK context parameter.
   Keep computed slot expressions separate from exact configured handoffs.
   Attach literal lookup rows only when a strict-equality lookup and its helper argument are identifiable.
