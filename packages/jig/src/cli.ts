@@ -72,6 +72,7 @@ import {
   encodeFlowBehaviorSnapshot,
   flowBehaviorSnapshot,
 } from './internal/flow-behavior/comparison.js'
+import type { FlowContextOptions, FlowInspectionOptions } from './internal/flow-inspection-scope.js'
 import { PrivateInputInspectionCapture } from './internal/input-inspection.js'
 import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
 import { PrivateAttemptError } from './internal/prepared-attempt-store.js'
@@ -87,7 +88,7 @@ import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
 import { PrivateSavedResultError, privateCaptureSavedResult } from './internal/saved-result.js'
 import { JIG_STANDARD_CONTRACTS } from './internal/standard-contracts.js'
-import type { WorkingFlowReport } from './internal/working-flow-inspection.js'
+import type { inspectWorkingFlow, WorkingFlowReport } from './internal/working-flow-inspection.js'
 import {
   PRIVATE_WORKSPACE_SOURCE_ROOT_LIMIT,
   PRIVATE_WORKSPACE_SOURCE_ROOT_PATH_BYTES,
@@ -254,7 +255,7 @@ The destination parent must exist; existing destinations are never replaced.
 Example:
   jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
-       jig inspect --flow [target | package-path | --package PATH | --all] [--topology] [--approved] [--json]
+       jig inspect --flow [target | path | --package PATH | --all] [--topology] [--approved] [--json]
        jig inspect --flow --snapshot
        jig inspect --flow --compare BASELINE [--all]
        jig inspect --result DIRECTORY [--display plain|tui|web] [--json]
@@ -417,12 +418,12 @@ export interface PrivateCliCommandHost {
   readonly prepareRun?: typeof preparePrivateCliRun
   readonly inspectFlow?: (
     project: string,
-    options: import('./internal/flow-inspection-scope.js').FlowContextOptions,
+    options: FlowInspectionOptions,
     signal?: AbortSignal,
-  ) => Promise<JsonValue>
+  ) => ReturnType<typeof inspectWorkingFlow>
   readonly inspectFlowReport?: (
     project: string,
-    options: import('./internal/flow-inspection-scope.js').FlowContextOptions,
+    options: FlowInspectionOptions,
     signal?: AbortSignal,
   ) => Promise<WorkingFlowReport>
   acquire(
@@ -1097,13 +1098,17 @@ function parseInspect(arguments_: readonly string[]) {
     else usage('inspect', 'Specify at most one target and one --json option.')
   }
   let selector: string | undefined
+  let pathOperand: string | undefined
   if (targetOperand !== undefined && flow && !targetOperand.includes(':')) {
     if (packagePath !== undefined)
       usage('inspect', '--package selects a scope. Omit --all and the target.')
     try {
-      packagePath = normalizeFlowPackage(targetOperand)
+      pathOperand = normalizeFlowPackage(targetOperand)
     } catch {
-      usage('inspect', 'Use a project-relative Flow package path or an exact target selector.')
+      usage(
+        'inspect',
+        'Use a project-relative Flow package or file path, or an exact target selector.',
+      )
     }
   } else if (targetOperand !== undefined) {
     try {
@@ -1129,13 +1134,15 @@ function parseInspect(arguments_: readonly string[]) {
       json ||
       selector !== undefined ||
       packagePath !== undefined ||
+      pathOperand !== undefined ||
       (snapshot && (all || comparison !== undefined)))
   )
     usage(
       'inspect',
       'Use --flow --snapshot or --flow --compare BASELINE to inspect the complete working tree.',
     )
-  if (all && selector !== undefined) usage('inspect', '--all cannot be combined with a target.')
+  if (all && targetOperand !== undefined)
+    usage('inspect', '--all cannot be combined with a target or path.')
   if (packagePath !== undefined && (all || selector !== undefined))
     usage('inspect', '--package selects a scope. Omit --all and the target.')
   if (flow && resultDirectory !== undefined)
@@ -1143,6 +1150,7 @@ function parseInspect(arguments_: readonly string[]) {
   return {
     selector,
     packagePath,
+    pathOperand,
     json,
     verification,
     resultDirectory,
@@ -1232,12 +1240,13 @@ async function executeSavedResultInspect(
 async function executeInspect(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   const parsed = parseInspect(arguments_)
   if (parsed.resultDirectory !== undefined) return executeSavedResultInspect(parsed, runtime)
-  const { selector, packagePath, json } = parsed
-  const flowScope = {
+  const { selector, packagePath, pathOperand, json } = parsed
+  let flowView: FlowContextOptions = {
     ...(selector === undefined ? {} : { target: selector }),
     ...(packagePath === undefined ? {} : { packagePath }),
+    ...(parsed.all ? { all: true } : {}),
   }
-  const flowView = { ...flowScope, ...(parsed.all ? { all: true } : {}) }
+  const flowScope = { ...flowView, ...(pathOperand === undefined ? {} : { pathOperand }) }
   let snapshot: JsonValue
   runtime.signal?.throwIfAborted()
   try {
@@ -1296,7 +1305,13 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
           'Working-tree inspection needs the installed Jig declaration evaluator on a supported host. Use the installed jig command; --approved selects only retained approval.',
           2,
         )
-      snapshot = await runtime.host.inspectFlow(runtime.currentDirectory, flowScope, runtime.signal)
+      const inspected = await runtime.host.inspectFlow(
+        runtime.currentDirectory,
+        flowScope,
+        runtime.signal,
+      )
+      snapshot = inspected.topology
+      flowView = inspected.scope
     } else {
       snapshot = await inspectPrivateApprovedProject(
         runtime.currentDirectory,
@@ -1305,7 +1320,14 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
         !parsed.flow && runtime.humanOutput && !json && selector === undefined,
         undefined,
         undefined,
-        parsed.flow ? flowScope : undefined,
+        parsed.flow
+          ? {
+              ...flowScope,
+              onScope: (scope) => {
+                flowView = scope
+              },
+            }
+          : undefined,
       )
     }
   } catch (error) {
@@ -1317,8 +1339,18 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
       ['PROJECT_JIG_VERSION_MISMATCH', 'PROJECT_JIG_REQUIREMENT_INVALID'].includes(error.code)
     )
       throw error
-    if (error instanceof CheckError && error.code === 'INSPECTION_PACKAGE_MISSING')
-      throw new CliDiagnostic('JIG_PACKAGE_NOT_FOUND', error.message, 1)
+    if (
+      parsed.flow &&
+      error instanceof CheckError &&
+      (error.code === 'INSPECTION_PACKAGE_MISSING' || error.code === 'INSPECTION_TARGET_MISSING')
+    )
+      throw new CliDiagnostic(
+        error.code === 'INSPECTION_PACKAGE_MISSING'
+          ? 'JIG_PACKAGE_NOT_FOUND'
+          : 'JIG_TARGET_NOT_FOUND',
+        `${error.message} List configured targets and packages with this command.\n\n  $ jig inspect --flow --topology --all${parsed.approved ? ' --approved' : ''}`,
+        1,
+      )
     if (
       error instanceof CheckError &&
       error.code === 'INSPECTION_PACKAGE_SCOPE_REQUIRED' &&

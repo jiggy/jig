@@ -21,7 +21,12 @@ import { isProtectedProjectPath } from '../project/paths.js'
 import { openPrivateProjectRoot } from '../project/root.js'
 import type { BehaviorReport } from './flow-behavior/model.js'
 import { findFlowImportBoundary } from './flow-import-boundary.js'
-import { type FlowContextOptions, selectFlowContext } from './flow-inspection-scope.js'
+import {
+  type FlowContextOptions,
+  type FlowInspectionOptions,
+  resolveFlowInspectionPath,
+  selectFlowContext,
+} from './flow-inspection-scope.js'
 import { privateDomainDigest } from './identity.js'
 import { PRIVATE_FLOW_CONTEXT_LIMITS } from './inspection-policy.js'
 
@@ -29,10 +34,16 @@ import { PRIVATE_FLOW_CONTEXT_LIMITS } from './inspection-policy.js'
 export function inspectWorkingFlow(
   project: string,
   evaluator: PrivateAuthorEvaluatorOptions,
-  options: FlowContextOptions = {},
+  options: FlowInspectionOptions = {},
   signal?: AbortSignal,
-): Promise<JsonValue> {
-  return captureWorkingFlow(project, evaluator, options, (topology) => topology, signal)
+): Promise<{ topology: JsonValue; scope: FlowContextOptions }> {
+  return captureWorkingFlow(
+    project,
+    evaluator,
+    options,
+    (topology, scope) => ({ topology, scope }),
+    signal,
+  )
 }
 
 export type WorkingFlowReport =
@@ -42,19 +53,19 @@ export type WorkingFlowReport =
 export function inspectWorkingFlowReport(
   project: string,
   evaluator: PrivateAuthorEvaluatorOptions,
-  options: FlowContextOptions,
+  options: FlowInspectionOptions,
   signal?: AbortSignal,
 ): Promise<WorkingFlowReport> {
   return captureWorkingFlow<WorkingFlowReport>(
     project,
     evaluator,
     options,
-    async (topology, linked, members) => {
-      const selection = selectFlowContext(topology, options)
-      if (selection.focus === undefined && options.packagePath === undefined && !options.all)
+    async (topology, scope, linked, members) => {
+      const selection = selectFlowContext(topology, scope)
+      if (selection.focus === undefined && scope.packagePath === undefined && !scope.all)
         return { kind: 'index', topology }
 
-      const behavior = await inspectBehavior(project, options, selection, linked, members, signal)
+      const behavior = await inspectBehavior(project, scope, selection, linked, members, signal)
       return { kind: 'behavior', behavior }
     },
     signal,
@@ -124,9 +135,10 @@ async function inspectBehavior(
 async function captureWorkingFlow<T>(
   project: string,
   evaluator: PrivateAuthorEvaluatorOptions,
-  options: FlowContextOptions,
+  options: FlowInspectionOptions,
   projectResult: (
     topology: JsonValue,
+    scope: FlowContextOptions,
     linked: PackageProjectInspection,
     members: readonly CapturedFlowMember[],
   ) => T | Promise<T>,
@@ -252,7 +264,7 @@ async function captureWorkingFlow<T>(
         )
       invalid('INSPECTION_TARGET_MISSING', 'target is absent from the working-tree configuration')
     }
-    const targets: JsonValue[] = []
+    const targets: ({ target: string; package: string } & Record<string, JsonValue>)[] = []
     const memberByPath = new Map(members.map((member) => [member.provenance.projectPath, member]))
     const dependencyByPath = new Map(
       dependencies.map((member) => [member.provenance.projectPath, member]),
@@ -305,7 +317,19 @@ async function captureWorkingFlow<T>(
         : { entrypoint: declaration.value.entrypoint }),
       targets,
     }
-    return await projectResult(topology, linked, members)
+    const { pathOperand, ...requested } = options
+    const scope =
+      pathOperand === undefined
+        ? requested
+        : await resolveFlowInspectionPath(
+            pathOperand,
+            targets,
+            (path) => memberByPath.has(path),
+            (path, file) =>
+              memberByPath.get(path)!.captured.files.some((entry) => entry.path === file),
+            'working-tree configuration',
+          )
+    return await projectResult(topology, scope, linked, members)
   } catch (error) {
     operationFailure = error
     throw error

@@ -1,3 +1,5 @@
+import { posix } from 'node:path'
+import { invalid } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
 import { parseProjectEntrypoint } from '../project/entrypoint.js'
 import { flowSelector } from '../project/package-selector.js'
@@ -10,6 +12,25 @@ export const list = (value: JsonValue | undefined): JsonValue[] =>
   Array.isArray(value) ? value : []
 
 export type FlowContextOptions = Readonly<{ target?: string; packagePath?: string; all?: boolean }>
+
+export type FlowInspectionOptions = FlowContextOptions & Readonly<{ pathOperand?: string }>
+
+/** Resolve a positional path using one captured configuration and its own file inventory. */
+export async function resolveFlowInspectionPath(
+  path: string,
+  targets: readonly { target: string; package: string }[],
+  hasPackage: (path: string) => boolean,
+  hasFile: (packagePath: string, file: string) => boolean | Promise<boolean>,
+  basis: 'working-tree configuration' | 'approved revision',
+): Promise<FlowContextOptions> {
+  if (hasPackage(path)) return { packagePath: path }
+  for (let parent = posix.dirname(path); parent !== '.'; parent = posix.dirname(parent)) {
+    if (!hasPackage(parent) || !(await hasFile(parent, path.slice(parent.length + 1)))) continue
+    const uses = targets.filter((item) => item.package === parent)
+    return uses.length === 1 ? { target: uses[0]!.target } : { packagePath: parent }
+  }
+  invalid('INSPECTION_PACKAGE_MISSING', `No Flow package or captured file matches in the ${basis}.`)
+}
 
 export function selectFlowContext(value: JsonValue, options: FlowContextOptions) {
   const snapshot = record(value)

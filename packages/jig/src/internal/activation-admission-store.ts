@@ -75,6 +75,11 @@ import {
   unlinkPrivateFile as unlink,
 } from './descriptor-files.js'
 import type { PrivateCapturedAttachment } from './file-input.js'
+import {
+  type FlowContextOptions,
+  type FlowInspectionOptions,
+  resolveFlowInspectionPath,
+} from './flow-inspection-scope.js'
 import { requiresAuthorityApproval } from './grant-review.js'
 import { privateDomainDigest } from './identity.js'
 import {
@@ -4968,14 +4973,22 @@ export async function inspectPrivateApprovedProject(
     candidate: PrivateActivationCandidateArtifactV5,
     store: PrivateFileLocation,
   ) => void | Promise<void>,
-  flowContext?: Readonly<{ target?: string; packagePath?: string }>,
+  flowContext?: FlowInspectionOptions & {
+    onScope?: (scope: FlowContextOptions) => void
+  },
 ): Promise<JsonValue> {
+  const unreviewed = (): JsonValue => {
+    if (flowContext?.pathOperand !== undefined || flowContext?.packagePath !== undefined)
+      invalid('INSPECTION_PACKAGE_MISSING', 'The project has no approved revision to inspect.')
+    if (flowContext?.target !== undefined)
+      invalid('INSPECTION_TARGET_MISSING', 'The project has no approved revision to inspect.')
+    return { state: 'unreviewed', targets: [] }
+  }
   let owner: StateOwner
   try {
     owner = await openStateOwner(projectRoot, false, 'read-only')
   } catch (error) {
-    if (hasCode(error, 'ENOENT') || hasCode(error, 'ADMISSION_STATE_MISSING'))
-      return { state: 'unreviewed', targets: [] }
+    if (hasCode(error, 'ENOENT') || hasCode(error, 'ADMISSION_STATE_MISSING')) return unreviewed()
     throw error
   }
   try {
@@ -4983,7 +4996,7 @@ export async function inspectPrivateApprovedProject(
     if (head.revision === null) {
       owner.database.exec('COMMIT')
       await owner.finish()
-      return { state: 'unreviewed', targets: [] }
+      return unreviewed()
     }
     const receipt = loadAndCrossCheckAdmission(
       owner.database,
@@ -5194,6 +5207,29 @@ export async function inspectPrivateApprovedProject(
     await owner.finish()
     // Supplemental presentation borrows only the directory descriptor after
     // the database and state turn have been released.
+    if (flowContext?.pathOperand !== undefined) {
+      const scope = await resolveFlowInspectionPath(
+        flowContext.pathOperand,
+        targets,
+        (path) => Object.hasOwn(candidate.lock.packages, path),
+        async (path, file) => {
+          const captured = await captureStoredPackage(
+            descriptorChild(owner.directory, PRIVATE_PACKAGE_STORE_DIRECTORY),
+            normalizePackageArtifactRef({
+              kind: 'flow-package/0',
+              digest: candidate.lock.packages[path]!.digest,
+            }),
+          )
+          try {
+            return captured.files.some((entry) => entry.path === file)
+          } finally {
+            await captured.dispose()
+          }
+        },
+        'approved revision',
+      )
+      flowContext.onScope?.(scope)
+    }
     await onCandidate?.(
       candidate,
       descriptorChild(owner.directory, PRIVATE_PACKAGE_STORE_DIRECTORY),

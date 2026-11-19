@@ -301,6 +301,7 @@ jig inspect --flow --all
 jig inspect --flow
 jig inspect --flow binding:code
 jig inspect --flow flows/import
+jig inspect --flow flows/convert/FLOW.ts
 ```
 
 The application overview leads with the declared entrypoint and its configured handoffs.
@@ -328,6 +329,10 @@ For shared code, declare a dependency. Review checks supported imports against t
 
 Pass the package path directly or with `--package` to see every configured use and its direct caller slots.
 This works for packages that require a Binding. The report shows settings that differ across uses and adds source locations where available.
+Pass a project-relative file path to open its sole configured target or list the uses of its package.
+
+For an unknown path or selector, run `jig inspect --flow --topology --all` to see the available targets and packages.
+Add `--approved` to inspect the retained configuration.
 Use the command under a configured use to open its focused report.
 
 When analysis stops early, caller source references can point to literal slots and computed slot expressions.

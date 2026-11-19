@@ -15,6 +15,7 @@ import {
   invocationGuide,
 } from '../../src/cli-discovery.js'
 import { flowContextRecord, renderFlowContext } from '../../src/cli-flow-context.js'
+import { CheckError } from '../../src/diagnostics.js'
 import type { JsonValue } from '../../src/json.js'
 
 import { checkPackageDirectory } from '../../src/package/inspect.js'
@@ -768,12 +769,55 @@ test('inspection grammar rejects conflicting scopes before host acquisition', as
   expect(privateCliRequiresHost(['inspect', '--flow', '--all', '--approved'])).toBe(false)
 })
 
-test('a bare package path selects package inspection with --flow', () => {
+test('positional package and file paths select flow inspection', () => {
   for (const args of [
     ['inspect', '--flow', 'flows/repair'],
     ['inspect', './flows/repair', '--flow'],
+    ['inspect', '--flow', 'flows/repair/FLOW.ts'],
   ]) {
     expect(privateCliRequiresHost(args)).toBe(true)
     expect(privateCliRequiresHost([...args, '--approved'])).toBe(false)
+  }
+})
+
+test('unknown Flow selectors direct the reader to complete topology on the same basis', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-flow-selector-'))
+  try {
+    for (const approved of [false, true]) {
+      for (const [selector, kind] of [
+        ['flows/missing/FLOW.ts', 'PACKAGE'],
+        ['binding:missing', 'TARGET'],
+      ]) {
+        let stderr = ''
+        const args = ['inspect', '--flow', selector]
+        if (approved) args.push('--approved')
+        const code = await main(args, {
+          currentDirectory: directory,
+          terminalError: false,
+          writeError: (value) => {
+            stderr += value
+          },
+          host: {
+            acquire: async () => {
+              throw new Error('Inspection cannot acquire Run authority')
+            },
+            inspectFlowReport: async () => {
+              throw new CheckError(
+                'invalid',
+                `INSPECTION_${kind}_MISSING`,
+                'Selector did not match.',
+              )
+            },
+          },
+        })
+        expect(code).toBe(1)
+        expect(stderr).toContain(`Diagnostic code: JIG_${kind}_NOT_FOUND`)
+        expect(stderr).toContain(
+          `$ jig inspect --flow --topology --all${approved ? ' --approved' : ''}\n`,
+        )
+      }
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
   }
 })
