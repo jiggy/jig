@@ -973,9 +973,13 @@ Supported guarantees include required objects, strings, enumerated strings, and 
 An optional integer can use its literal default. Child analysis follows the supplied argument.
 
 The declared entrypoint selects the default focus.
+Without an entrypoint or a scope selector, plain working-tree Markdown inspection opens a navigation index.
+It groups targets by package and lists configured slots with a command for each target.
+Packages containing callers appear first, beginning with those that have a caller without upstream slots.
+The index uses captured topology and skips source behavior analysis.
+
 An exact target retains its configured context, including other uses of its implementation and callers.
 With `--all`, the document shows the project entrypoint and includes every configured target within the topology limits.
-A project without a declared entrypoint also opens this application view.
 
 The overview links each target to a Flow chart and to the details for that configured use.
 Each chart keeps its configured uses separate and shares the same route selections as their details.

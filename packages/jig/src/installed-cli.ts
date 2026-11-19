@@ -47,10 +47,7 @@ import {
   recoverPrivateCheckpointRun,
 } from './internal/project-session-controller.js'
 import { privatePresentationDeadline } from './internal/root-run-timeout-policy.js'
-import {
-  inspectWorkingFlow,
-  inspectWorkingFlowBehavior,
-} from './internal/working-flow-inspection.js'
+import { inspectWorkingFlow, inspectWorkingFlowReport } from './internal/working-flow-inspection.js'
 import { canonicalJson } from './json.js'
 
 interface InstalledCliOutcome {
@@ -320,12 +317,12 @@ async function runWithEnvironment(
             signal,
           ),
         ...(delivery === undefined ? {} : { delivery }),
-        inspectBehavior: async (
+        inspectFlowReport: async (
           project: string,
           options: import('./internal/flow-inspection-scope.js').FlowContextOptions,
           signal?: AbortSignal,
         ) =>
-          inspectWorkingFlowBehavior(
+          inspectWorkingFlowReport(
             project,
             await openPrivateInstalledDeclarationEvaluator(location, project),
             options,

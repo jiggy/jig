@@ -1,5 +1,6 @@
 import {
   type ConfiguredConnection,
+  renderFlowNavigationIndex,
   renderFlowOrientation,
   renderFlowPackageUses,
 } from './cli-flow-orientation.js'
@@ -60,7 +61,10 @@ function diagramIds(snapshot: Record<string, JsonValue>) {
   )
 }
 /** Configured topology only. No method interpretation or invocation history. */
-export function renderFlowContext(value: JsonValue, options: FlowContextOptions = {}): string {
+export function renderFlowContext(
+  value: JsonValue,
+  options: FlowContextOptions & { presentation?: 'index' } = {},
+): string {
   const snapshot = record(value)
   if (snapshot.state === 'unreviewed' && snapshot.basis !== 'working-tree')
     return '# Configured topology\n\nNo locally approved revision. Use jig inspect --flow for current configuration.\n'
@@ -70,9 +74,11 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
     included.length > PRIVATE_FLOW_CONTEXT_LIMITS.targets ||
     edges.length > PRIVATE_FLOW_CONTEXT_LIMITS.connections
   )
-    return options.packagePath === undefined
-      ? '# Configured topology unavailable\n\nThe selected view exceeds fixed presentation bounds. Choose a smaller target. No graph was truncated.\n'
-      : '# Flow package uses unavailable\n\nThe selected view exceeds fixed presentation bounds. Add --json for the complete configured records.\n'
+    return options.presentation === 'index'
+      ? '# Flow navigation unavailable\n\nThe project exceeds fixed presentation bounds. Inspect a target or package, or add --json for the complete configured records.\n'
+      : options.packagePath === undefined
+        ? '# Configured topology unavailable\n\nThe selected view exceeds fixed presentation bounds. Choose a smaller target. No graph was truncated.\n'
+        : '# Flow package uses unavailable\n\nThe selected view exceeds fixed presentation bounds. Add --json for the complete configured records.\n'
   const working = snapshot.basis === 'working-tree'
   const basis = `Basis: ${working ? 'captured working tree (unapproved)' : 'last locally approved configuration'}. Revision ${markdown(String(snapshot.revision))}.`
   const configuredTargets = included.flatMap((item) =>
@@ -93,6 +99,14 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
       return [{ from: edge.from, slot, to: edge.resource, resource: true }]
     return []
   })
+  if (options.presentation === 'index')
+    return [
+      '# Flow navigation',
+      '',
+      basis,
+      '',
+      ...renderFlowNavigationIndex(configuredTargets, configuredConnections, markdown),
+    ].join('\n')
   if (options.packagePath !== undefined)
     return [
       '# Flow package uses',
