@@ -445,6 +445,10 @@ export class Interpreter {
       condition === undefined && enteringValues && sourceCode.length <= 140
         ? this.comparisonNumbers(n, enteringValues)
         : []
+    const setting =
+      condition !== undefined && enteringValues && this.target.declarationPath
+        ? this.source.settingRead(n, (receiver) => enteringValues.get(receiver)?.kind === 'context')
+        : undefined
     return this.retainVariants(
       n,
       possible.flatMap((taken) =>
@@ -457,6 +461,7 @@ export class Interpreter {
             unresolved: condition === undefined,
             ...(validation ? { validation } : {}),
             ...(enteringNumbers.length > 0 ? { enteringNumbers } : {}),
+            ...(setting === undefined ? {} : { setting: { owner: this.target.id, name: setting } }),
             ...(readOperation ? { readOperation } : {}),
           }),
           taken,

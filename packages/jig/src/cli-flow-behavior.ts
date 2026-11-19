@@ -18,6 +18,7 @@ import {
   varyingInputFields,
   withoutReportingLocations,
 } from './internal/flow-behavior/model.js'
+import { record } from './internal/flow-inspection-scope.js'
 
 type Route = BehaviorReport['scopes'][number]['routes'][number]
 type Scope = BehaviorReport['scopes'][number]
@@ -747,9 +748,20 @@ function nextSteps(after: readonly BehaviorStep[], linkSource = false): string {
 function renderCallContinuations(details: CallDetails, incoming: boolean, omitted = 0): string[] {
   const lines: string[] = []
   for (const cases of details.values()) {
-    const visible = [...cases]
+    const returned = ([, { call, after }]: [string, CallCase]) =>
+      call.returned !== undefined && after.length > 0
+    const entries = [...cases]
+    const distinct = new Map<string, [string, CallCase]>()
+    if (incoming) {
+      for (const entry of entries.filter(returned)) {
+        const { call } = entry[1]
+        const key = call.completion + ':' + call.returned!.outcome
+        if (!distinct.has(key)) distinct.set(key, entry)
+      }
+    }
+    const visible = [...new Set([...distinct.values(), ...entries])]
       .slice(0, callCaseLimit)
-      .filter(([, { call, after }]) => call.returned !== undefined && after.length > 0)
+      .filter(returned)
     if (!visible.length) continue
     if (!incoming && new Set(visible.map(([, { call }]) => label(call))).size < 2) continue
     const { call } = visible[0]![1]
@@ -1044,7 +1056,38 @@ function authoredFileWrites(scope: Scope): string[] {
   return [...lines, '']
 }
 
-function authoredHandoffs(scope: Scope, linkedTargets?: ReadonlySet<string>): string[] {
+function capturedSetting(target: BehaviorTarget | undefined, name: string): string {
+  if (target?.declarationPath === undefined) return ''
+  const settings = record(target.settings)
+  const value = Object.hasOwn(settings, name) ? JSON.stringify(settings[name]) : 'unset'
+  const detail = value.length > 100 ? name : name + ' = ' + value
+  return ' · Captured setting ' + text(detail) + ' from ' + sourcePathLink(target.declarationPath)
+}
+
+function configuredChecks(scope: Scope, target: BehaviorTarget | undefined): string[] {
+  if (target?.declarationPath === undefined) return []
+  const checks = new Set<string>()
+  for (const route of scope.routes) {
+    for (const step of route) {
+      if (step.kind === 'condition' && step.setting?.owner === target.id)
+        checks.add('- ' + linkedCheck(step) + capturedSetting(target, step.setting.name))
+    }
+  }
+  if (!checks.size) return []
+  return [
+    '### Checks that read Binding settings',
+    '',
+    ...[...checks].slice(0, 4),
+    ...(checks.size > 4 ? ['- ' + (checks.size - 4) + ' additional checks in route details.'] : []),
+    '',
+  ]
+}
+
+function authoredHandoffs(
+  scope: Scope,
+  linkedTargets?: ReadonlySet<string>,
+  target?: BehaviorTarget,
+): string[] {
   if (!scope.authoredHandoffs?.length) return []
   const lines = [
     '#### Authored handoffs beyond analyzed routes',
@@ -1077,7 +1120,7 @@ function authoredHandoffs(scope: Scope, linkedTargets?: ReadonlySet<string>): st
           sourceLink(exit.statement.site) +
           ') and bypasses the listed call sites for ' +
           brief([...slots]) +
-          '.',
+          (exit.setting === undefined ? '.' : capturedSetting(target, exit.setting) + '.'),
       )
     }
     if (scope.authoredPriorExitsOmitted)
@@ -1217,11 +1260,13 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   )
   const selected = scopes.find((scope) => scope.target === focus)
   if (selected) {
+    const target = inventory.find((item) => item.id === focus)
     lines.push(
-      ...renderCallSelections(selected, inventory.find((target) => target.id === focus)?.slots),
+      ...renderCallSelections(selected, target?.slots),
+      ...configuredChecks(selected, target),
     )
     lines.push(...renderCallReferences([selected], inventory))
-    lines.push(...authoredHandoffs(selected))
+    lines.push(...authoredHandoffs(selected, undefined, target))
     lines.push(...contractChecks(selected))
     const routes = selectRoutes(selected)
     const details = callDetails(report, [...routes, ...selected.alternatives])
@@ -1229,14 +1274,17 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       report,
       scopes
         .filter((scope) => scope.target !== focus)
-        .flatMap((scope) =>
-          selectRoutes({
-            ...scope,
-            routes: scope.routes.filter((route) =>
-              route.some((step) => step.kind === 'call' && step.target === focus),
-            ),
-          }),
-        ),
+        .flatMap((scope) => {
+          const reachesFocus = (route: Route) =>
+            route.some((step) => step.kind === 'call' && step.target === focus)
+          return [
+            ...selectRoutes({
+              ...scope,
+              routes: scope.routes.filter(reachesFocus),
+            }),
+            ...scope.alternatives.filter(reachesFocus),
+          ]
+        }),
       focus,
     )
     lines.push(

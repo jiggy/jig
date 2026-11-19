@@ -987,6 +987,8 @@ The index uses captured topology and skips source behavior analysis.
 An exact target retains its configured context, including other uses of its implementation and callers.
 Focused source inspection links to the captured Binding declaration and shows the selected values for settings that differ across uses.
 It identifies peers with the same slot selections and names slots that select differently.
+Supported direct setting checks link the checked expression to the selected value and Binding declaration.
+An authored exit can link the same configuration while its reachability remains unresolved.
 With `--all`, the document shows the project entrypoint and includes every configured target within the topology limits.
 
 Focused reports and configured-use details list the Flow's required slots.
@@ -1065,6 +1067,9 @@ When the displayed progress remains unknown, it may link a possible calculation 
 The focused view shows when a selected Flow's result reaches a caller's check and next step.
 Each row identifies which Flow returns the value and which caller acts on it.
 Conditional checks inside the child have their own column. Caller checks state the selected truth value before the predicate.
+
+The callee view includes supported reactions to hypothetical results at its analyzed caller slots.
+Source returns and contract alternatives retain separate labels.
 From the caller's view, distinct results link to their own call expansions.
 Checks and subsequent calls link to their source locations.
 

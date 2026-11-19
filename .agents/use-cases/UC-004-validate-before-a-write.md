@@ -27,5 +27,5 @@ If a target is chosen dynamically, it can point to the selection that needs insp
 [JOB-001](JOB-001-locate-a-workflow-edit.md) · [FEAT-001 Flow inspection](JOB-001-locate-a-workflow-edit.md#feat-001-flow-inspection)
 
 The [importer](../../examples/contact-import/flows/import/method.ts) and [exporter](../../examples/contact-import/flows/export-preview/method.ts) show the order of the write, return, and metadata check.
-The scenario `a guard before a child write labels the incoming edge and later guards stay after the write` checks this ordering. [Inspection scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L1758)
+The scenario `a guard before a child write labels the incoming edge and later guards stay after the write` checks this ordering. [Inspection scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L1841)
 The scenario `the independent exporter writes the complete preview without overwriting files` exercises the direct path. [Contact Import scenario](../../examples/contact-import/test/import.test.ts#L162)

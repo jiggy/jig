@@ -25,5 +25,5 @@ Before editing, it can identify the repeat, both exits, and the caller that can 
 
 [JOB-001](JOB-001-locate-a-workflow-edit.md) · [FEAT-001 Flow inspection](JOB-001-locate-a-workflow-edit.md#feat-001-flow-inspection)
 
-The scenario `a finite array repeats the same call site and an early return skips later iterations` covers repetition and early exit. [Repeat scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L2063)
-The scenario `equivalent suffixes converge while different return values keep separate continuations` checks when paths may share a continuation. [Convergence scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L2199)
+The scenario `a finite array repeats the same call site and an early return skips later iterations` covers repetition and early exit. [Repeat scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L2146)
+The scenario `equivalent suffixes converge while different return values keep separate continuations` checks when paths may share a continuation. [Convergence scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L2282)

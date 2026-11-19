@@ -202,6 +202,88 @@ test('focused continuations retain an unresolved check inside the returned child
   )
 })
 
+test('callee inspection shows conditional caller reactions alongside source returns', () => {
+  const input = snapshot(
+    method(handlerSource(`return { outcome: 'done', output: {} }`)),
+    method(
+      handlerSource(`
+      const answer = await run.call({ slot: 'converter', operationId: 'convert', input: {} })
+      if (answer.outcome === 'blocked' || answer.outcome === 'limit') return answer
+      return await run.call({ slot: 'exporter', operationId: 'export', input: {} })
+    `),
+    ),
+  )
+  const report = analyzeFlowBehavior({
+    ...input,
+    focus: 'flow:flows/convert',
+    targets: input.targets.map((target) => ({ ...target, outcomes: ['done', 'blocked', 'limit'] })),
+  })
+  const incoming = renderFlowBehavior(report)
+    .split('### Caller continuations')[1]
+    ?.split('### Consequences')[0]
+  expect(incoming).toMatch(/converter returns "done"[^\n]+Call exporter/)
+  expect(incoming).toMatch(
+    /converter if admitted "blocked"[^\n]+answer.outcome[^\n]+Returns "blocked"/,
+  )
+  expect(incoming).toMatch(/converter if admitted "limit"[^\n]+answer.outcome[^\n]+Returns "limit"/)
+  const caller = report.scopes.find((scope) => scope.target === 'binding:code')
+  expect(
+    caller?.alternatives
+      .flat()
+      .filter((step) => step.kind === 'call' && step.completion === 'if-returned')
+      .every((step) => step.slot === 'converter'),
+  ).toBe(true)
+  expect(
+    caller?.routes.flat().some((step) => step.kind === 'call' && step.completion === 'if-returned'),
+  ).toBe(false)
+})
+
+test('focused checks link the selected Binding setting without attributing shadowed or rewritten receivers', () => {
+  const makeReport = (body: string, preview: boolean) => {
+    const input = snapshot(
+      method(handlerSource(`return { outcome: 'done', output: {} }`)),
+      method(handlerSource(body)),
+    )
+    return renderFlowBehavior(
+      analyzeFlowBehavior({
+        ...input,
+        targets: input.targets.map((target) =>
+          target.id === 'binding:code'
+            ? {
+                ...target,
+                settings: { preview },
+                declarationPath: 'bindings/code.ts',
+              }
+            : target,
+        ),
+      }),
+    )
+  }
+  const guard = `if (run.settings?.preview === true) return { outcome: 'done', output: {} }`
+  const call = `return await run.call({ slot: 'converter', operationId: 'convert', input: {} })`
+  const linked = '[bindings/code.ts](./bindings/code.ts)'
+  for (const preview of [true, false]) {
+    const analyzed = makeReport(`${guard}\n${call}`, preview)
+    expect(analyzed).toContain('### Checks that read Binding settings')
+    expect(analyzed).toMatch(
+      new RegExp(`Predicate is ${preview}[^\n]+Captured setting preview = ${preview}`),
+    )
+    expect(analyzed).toContain(`Captured setting preview = ${preview} from ${linked}`)
+  }
+  const authored = makeReport(`opaque()\n${guard}\n${call}`, true)
+  expect(authored).toContain(
+    `bypasses the listed call sites for converter · Captured setting preview = true from ${linked}`,
+  )
+  const rewritten = makeReport(`opaque()\nrun = anotherRun\n${guard}\n${call}`, true)
+  expect(rewritten).toContain('If run.settings?.preview === true is true')
+  expect(rewritten).not.toContain(`Captured setting preview = true from ${linked}`)
+  const shadowed = makeReport(
+    `opaque()\n{ const run = { settings: { preview: true } }; ${guard} }\n${call}`,
+    true,
+  )
+  expect(shadowed).not.toContain(`Captured setting preview = true from ${linked}`)
+})
+
 test('Boolean guards keep both continuations visible and respect local shadowing', () => {
   const callee = method(handlerSource('return { outcome: "done", output: {} }'))
   const analyze = (body: string) =>
@@ -1729,7 +1811,8 @@ test('a shared child keeps the inputs and continuations of its configured caller
   const inCode = continuations?.split('**binding:code · converter**')[1]?.split('**')[0]
   const inAudit = continuations?.split('**binding:audit · converter**')[1]?.split('**')[0]
   expect(inCode).toMatch(/status = "ready"[^\n]+child.outcome[^\n]+Call exporter[^\n]+FLOW.ts#L4/)
-  expect(inCode).not.toContain('status = "refused"')
+  expect(inCode).toMatch(/if admitted "blocked"[^\n]+status = "refused"/)
+  expect(inCode).not.toContain('converter returns "blocked"')
   expect(inAudit).toMatch(/returns "blocked"[^\n]+child.outcome[^\n]+status = "refused"/)
   expect(inAudit).not.toContain('Call exporter')
 })

@@ -66,6 +66,7 @@ export interface BehaviorGuard {
   readonly validation?: true
   readonly readOperation?: true
   readonly enteringNumbers?: readonly (readonly [name: string, value: number])[]
+  readonly setting?: { readonly owner: string; readonly name: string }
 }
 
 export interface BehaviorReturn {
@@ -160,6 +161,7 @@ export interface AuthoredPriorExit {
   readonly condition: SourceExpression
   readonly taken: boolean
   readonly statement: SourceExpression
+  readonly setting?: string
 }
 
 interface SourceExpression {
