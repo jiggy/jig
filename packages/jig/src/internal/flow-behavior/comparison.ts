@@ -145,6 +145,13 @@ export function flowBehaviorSnapshot(report: BehaviorReport): Snapshot {
             kind: 'authored',
             facts: [
               ...call.guards.map(check),
+              ...(call.priorExits ?? []).map(
+                ({ condition, taken, statement }): ComparisonFact => [
+                  'check',
+                  'Earlier exit if ' + condition.code + ' is ' + taken + ' · ' + statement.code,
+                  location(condition.site),
+                ],
+              ),
               ['call', call.slot + ' → ' + call.target + located(call.site), location(call.site)],
               ...call.exitChecks.map(
                 (guard): ComparisonFact => [

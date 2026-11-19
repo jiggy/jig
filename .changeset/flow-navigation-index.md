@@ -13,3 +13,5 @@ Keep authored caller decisions beyond the application route limit and show the s
 Link identifiable progress expressions and preserve call-case links when a proved check leaves the continuation intact.
 
 Show required slot wiring beside source routes and link local package declarations.
+
+Connect earlier authored exits to the call sites they bypass when route analysis stops first.

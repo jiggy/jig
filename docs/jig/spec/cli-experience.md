@@ -1025,6 +1025,8 @@ When alternatives exceed the allowance, the map retains supported continuations 
 
 When route analysis stops in a function, inspection can show later authored calls at configured slots.
 This part shows local branch predicates and result checks with their source locations.
+An earlier branch ending in a direct return or throw can identify which later call sites it bypasses in the same block.
+This source evidence does not assert that the earlier branch is reached.
 Reachability, execution order, and returned values remain unresolved there.
 
 Supported read-only file opens and subsequent metadata, read, and close operations appear as attempts.
