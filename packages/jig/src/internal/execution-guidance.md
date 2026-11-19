@@ -53,6 +53,8 @@ These links locate module rules. All selected domain requirements still apply.
   text for the existing closed compiler plugin. `project-evaluator-child.ts`
   starts a fresh stdin worker for each entry with the original independent
   timer, output caps and reaping. Compiler, guest realm and SDK remain fresh.
+  The build minifies the captured worker and SDK to reduce repeated parsing.
+  Keep the authoring SDK's observable function names.
 
   Bootstrap discovery and complete-closure evaluation remain separate. No
   evaluated result is reused. Their existing native envelopes and aggregate

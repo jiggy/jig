@@ -1,6 +1,7 @@
 from pathlib import Path
 import hashlib
 import argparse
+import json
 parser=argparse.ArgumentParser(description='Generate pinned Unicode 15.1 NFC tables and conformance vectors')
 parser.add_argument('data_directory',type=Path)
 base=parser.parse_args().data_directory
@@ -26,9 +27,28 @@ composition={a*0x110000+b:cp for cp,parts in decomp.items() if len(parts)==2 and
 s='// Generated from Unicode 15.1.0 UnicodeData.txt and DerivedNormalizationProps.txt.\n// Unicode License v3; see THIRD_PARTY_NOTICES.\n'
 for name in ['UnicodeData.txt','DerivedNormalizationProps.txt']:
  s+='// '+name+' SHA-256 '+hashlib.sha256((base/name).read_bytes()).hexdigest()+'\n'
-s+='export const CANONICAL_CLASS_15_1: ReadonlyMap<number, number> = new Map([\n'+''.join(f'  [0x{k:x}, {v}],\n' for k,v in ccc.items())+'])\n'
-s+='export const CANONICAL_DECOMPOSITION_15_1: ReadonlyMap<number, readonly number[]> = new Map<number, readonly number[]>([\n'+''.join('  [0x%x, [%s]],\n'%(k,', '.join(f'0x{cp:x}' for cp in v)) for k,v in decomp.items())+'])\n'
-s+='export const CANONICAL_COMPOSITION_15_1: ReadonlyMap<number, number> = new Map([\n'+''.join(f'  [{k}, 0x{v:x}],\n' for k,v in composition.items())+'])\n'
+
+def encode_table(table):
+    rows = [json.dumps(row, separators=(',', ':')) for row in table.items()]
+    return ',\n'.join(','.join(rows[i:i + 8]) for i in range(0, len(rows), 8))
+
+s += """// Keep the data in strings so declaration workers compile fewer JS literals.
+type NormalizationTables = {
+  readonly classes: ReadonlyMap<number, number>
+  readonly decompositions: ReadonlyMap<number, readonly number[]>
+  readonly compositions: ReadonlyMap<number, number>
+}
+
+const Table = Map
+const parse = JSON.parse
+let tables: NormalizationTables | undefined
+
+export function unicodeNormalizationTables15_1(): NormalizationTables {
+  tables ??= {
+"""
+for name, table in [('classes', ccc), ('decompositions', decomp), ('compositions', composition)]:
+    s += f'    {name}: new Table(\n      parse(`[\n{encode_table(table)}\n]`),\n    ),\n'
+s += '  }\n  return tables\n}\n'
 Path(root/'packages/jig/src/package/normalization-data-15.1.ts').write_text(s)
 rows=[]
 for line in (base/'NormalizationTest.txt').read_text().splitlines():
