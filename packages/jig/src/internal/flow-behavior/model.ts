@@ -145,6 +145,16 @@ export interface AuthoredHandoff {
   }[]
 }
 
+export interface AuthoredFileWrite {
+  readonly site: SourceSite
+  readonly destination: string
+  readonly guards: readonly BehaviorGuard[]
+}
+
+export type AuthoredContinuation =
+  | { readonly kind: 'handoff'; readonly value: AuthoredHandoff }
+  | { readonly kind: 'file-write'; readonly value: AuthoredFileWrite }
+
 export interface AuthoredPriorExit {
   readonly condition: SourceExpression
   readonly taken: boolean
@@ -225,6 +235,8 @@ export interface BehaviorReport {
     readonly authoredHandoffs?: readonly AuthoredHandoff[]
     readonly authoredHandoffsOmitted?: number
     readonly authoredPriorExitsOmitted?: number
+    readonly authoredFileWrites?: readonly AuthoredFileWrite[]
+    readonly authoredFileWritesOmitted?: number
     readonly callReferences?: readonly CallReference[]
     readonly callReferencesOmitted?: number
     readonly callSelections?: {
@@ -253,6 +265,7 @@ export const BEHAVIOR_LIMITS = {
   retainedChildSteps: 4_096,
   authoredHandoffs: 24,
   authoredPriorExits: 8,
+  authoredFileWrites: 8,
   focusedCallSelections: 6,
   focusedRelatedCalls: 6,
 } as const

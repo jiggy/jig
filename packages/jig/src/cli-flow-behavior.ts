@@ -957,6 +957,32 @@ function otherResults(routes: readonly Route[], shown: readonly Route[]): string
   return [...lines, '']
 }
 
+function authoredFileWrites(scope: Scope): string[] {
+  if (!scope.authoredFileWrites?.length) return []
+  const lines = [
+    '#### Authored file writes beyond analyzed routes',
+    '',
+    'Whether these writes are attempted depends on the unresolved continuation.',
+    '',
+  ]
+  for (const write of scope.authoredFileWrites) {
+    lines.push('- writeFile(' + text(write.destination) + ') (' + sourceLink(write.site) + ')')
+    for (const guard of write.guards)
+      lines.push(
+        '  - Enclosing branch takes ' +
+          text(guard.code) +
+          ' as ' +
+          guard.taken +
+          ' (' +
+          sourceLink(guard.site) +
+          ')',
+      )
+  }
+  if (scope.authoredFileWritesOmitted)
+    lines.push('- ' + scope.authoredFileWritesOmitted + ' additional write sites omitted.')
+  return [...lines, '']
+}
+
 function authoredHandoffs(scope: Scope, linkedTargets?: ReadonlySet<string>): string[] {
   if (!scope.authoredHandoffs?.length) return []
   const lines = [
@@ -1159,6 +1185,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       ...otherResults(selected.routes, routes),
       ...alternatives(selected),
       ...authoredHandoffs(selected),
+      ...authoredFileWrites(selected),
     )
     if (selected.gaps.length) {
       lines.push('### Coverage gaps', '')
@@ -1535,6 +1562,7 @@ function applicationMap(report: BehaviorReport): string[] {
         ...otherResults(scope.routes, routes),
         ...alternatives(scope),
         ...authoredHandoffs(scope, linkedTargets),
+        ...authoredFileWrites(scope),
       )
       if (scope.gaps.length) {
         lines.push('#### Coverage gaps', '')

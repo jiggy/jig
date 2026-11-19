@@ -7,7 +7,13 @@ import {
   recordWrites,
   selectCallSites,
 } from './call-selection.js'
-import type { AuthoredHandoff, BehaviorPackage, CallReference, SourceSite } from './model.js'
+import type {
+  AuthoredFileWrite,
+  AuthoredHandoff,
+  BehaviorPackage,
+  CallReference,
+  SourceSite,
+} from './model.js'
 import { slotSelection } from './slot-selection.js'
 import {
   branchExit,
@@ -34,6 +40,10 @@ const compilerOptions: ts.CompilerOptions = {
 type ErrorBase = 'Error' | 'TypeError' | 'RangeError' | 'SyntaxError'
 export type ErrorClass = { readonly base: ErrorBase; readonly identity?: string }
 type HandoffSite = Omit<AuthoredHandoff, 'target'> & { receiver: ts.Declaration }
+type ContinuationSites = {
+  handoffs: readonly HandoffSite[]
+  fileWrites: readonly AuthoredFileWrite[]
+}
 
 export class SourceIndex {
   readonly #files: ReadonlyMap<string, string>
@@ -42,7 +52,7 @@ export class SourceIndex {
   readonly #reporting: ReadonlySet<string>
   readonly #callIdentities = new Map<ts.CallExpression, string>()
   readonly #indexedCalls = new Set<ts.SourceFile>()
-  readonly #handoffs = new Map<LocalFunction, readonly HandoffSite[]>()
+  readonly #continuations = new Map<LocalFunction, ContinuationSites>()
   readonly entry: ts.SourceFile | undefined
 
   constructor(
@@ -171,20 +181,30 @@ export class SourceIndex {
     }
   }
 
-  handoffsIn(fn: LocalFunction): readonly HandoffSite[] {
-    const cached = this.#handoffs.get(fn)
+  continuationSites(fn: LocalFunction): ContinuationSites {
+    const cached = this.#continuations.get(fn)
     if (cached !== undefined) return cached
-    const sites: HandoffSite[] = []
+    const handoffs: HandoffSite[] = []
+    const fileWrites: AuthoredFileWrite[] = []
     const visit = (node: ts.Node): void => {
       if (ts.isFunctionLike(node) || ts.isClassLike(node)) return
       if (ts.isCallExpression(node)) {
         const handoff = this.handoffSite(node)
-        if (handoff) sites.push(handoff)
+        if (handoff) handoffs.push(handoff)
+        const callee = this.importOf(unwrap(node.expression))
+        const destination = node.arguments[0]
+        if (callee?.module === 'node:fs/promises' && callee.member === 'writeFile' && destination)
+          fileWrites.push({
+            site: this.site(node),
+            destination: shortText(unwrap(destination)),
+            guards: lexicalGuards(node, (guard) => this.site(guard)),
+          })
       }
       ts.forEachChild(node, visit)
     }
     if (fn.body) visit(fn.body)
-    this.#handoffs.set(fn, sites)
+    const sites = { handoffs, fileWrites }
+    this.#continuations.set(fn, sites)
     return sites
   }
 

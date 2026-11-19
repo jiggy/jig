@@ -65,6 +65,8 @@ Explain conditional behavior from a captured Jig project without running its met
   conditions and result checks separate from interpreted routes.
   A direct prior branch exit can explain bypassed sibling call sites without resolving reachability.
   Bound the distinct exits after gathering their associated call sites.
+  A named file write in the same frame can remain visible as an authored destination.
+  Keep authored destinations separate from interpreted attempts.
 - Keep the private result independent of CLI and display rendering.
 - Package inspection uses source analysis to add call-site locations to configured caller slots.
   Caller slots remain visible without source interpretation.
