@@ -9,7 +9,7 @@ import {
 } from './data.js'
 import { readOnlyOpen, strictUtf8Decoder } from './file-access.js'
 import {
-  type AuthoredHandoff,
+  type AuthoredContinuation,
   BEHAVIOR_LIMITS,
   type BehaviorAssumption,
   type BehaviorStep,
@@ -120,7 +120,7 @@ export class Interpreter {
     readonly budget: AnalysisBudget,
     readonly invokeChild: InvokeChild,
     readonly retainLimitedPaths = true,
-    readonly recordAuthoredHandoff?: (handoff: AuthoredHandoff) => void,
+    readonly recordAuthoredContinuation?: (item: AuthoredContinuation) => void,
     private readonly reportingTrace = new ReportingTrace(),
   ) {}
 
@@ -303,28 +303,34 @@ export class Interpreter {
     for (const result of results) {
       const stoppedAt = result.stoppedAt
       if (
-        !this.recordAuthoredHandoff ||
+        !this.recordAuthoredContinuation ||
         result.mode !== 'unknown' ||
         !stoppedAt ||
-        originalDeclaration(stoppedAt) !== fn ||
-        ![...result.values.values()].some((value) => value.kind === 'context')
+        originalDeclaration(stoppedAt) !== fn
       )
         continue
       const cut = this.source.site(stoppedAt)
       const afterCut = (site: SourceSite) =>
         site.path === cut.path &&
         (site.line > cut.line || (site.line === cut.line && (site.column ?? 0) > (cut.column ?? 0)))
-      for (const { receiver, priorExits, ...handoff } of this.source.handoffsIn(fn)) {
+      const { handoffs, fileWrites } = this.source.continuationSites(fn)
+      for (const { receiver, priorExits, ...handoff } of handoffs) {
         if (result.values.get(receiver)?.kind !== 'context' || !afterCut(handoff.site)) continue
         const target = this.target.slots.get(handoff.slot)
         if (target === undefined) continue
         const exits = priorExits?.filter(({ condition }) => afterCut(condition.site))
-        this.recordAuthoredHandoff({
-          ...handoff,
-          target,
-          ...(exits?.length ? { priorExits: exits } : {}),
+        this.recordAuthoredContinuation({
+          kind: 'handoff',
+          value: {
+            ...handoff,
+            target,
+            ...(exits?.length ? { priorExits: exits } : {}),
+          },
         })
       }
+      for (const write of fileWrites)
+        if (afterCut(write.site))
+          this.recordAuthoredContinuation({ kind: 'file-write', value: write })
     }
     return results.map((state) => {
       const restored = new Map(state.values)

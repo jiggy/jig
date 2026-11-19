@@ -6,6 +6,8 @@ import {
   type State,
 } from './analyze.js'
 import {
+  type AuthoredContinuation,
+  type AuthoredFileWrite,
   type AuthoredHandoff,
   BEHAVIOR_LIMITS,
   type BehaviorAssumption,
@@ -203,9 +205,14 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     const routes = new Map<string, Route>()
     const alternate = new Map<string, Route>()
     const authored = new Map<string, AuthoredHandoff>()
+    const writes = new Map<string, AuthoredFileWrite>()
     const record = handoff
       ? undefined
-      : (candidate: AuthoredHandoff) => authored.set(JSON.stringify(candidate.site), candidate)
+      : (item: AuthoredContinuation) => {
+          const key = JSON.stringify(item.value.site)
+          if (item.kind === 'handoff') authored.set(key, item.value)
+          else writes.set(key, item.value)
+        }
     try {
       const argument = input.packages.get(target.implementation)?.acceptedInput ?? unknown
       const states = evaluate(target, argument, 0, new Set(), budget, handoff, record)
@@ -242,9 +249,13 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     }
     const analyzedHandoffs = new Set<string>()
     for (const route of routes.values())
-      for (const step of route)
+      for (const step of route) {
         if (step.kind === 'call' && step.caller === target.id)
           analyzedHandoffs.add(JSON.stringify(step.site))
+        if (step.kind === 'effect' && step.owner === target.id && step.operation === 'writeFile')
+          writes.delete(JSON.stringify(step.site))
+      }
+    const fileWrites = evidence.size ? [...writes.values()] : []
     const authoredHandoffs = evidence.size
       ? [...authored]
           .filter(([key]) => !analyzedHandoffs.has(key))
@@ -263,6 +274,12 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
         ? { authoredHandoffsOmitted: authoredHandoffs.length - BEHAVIOR_LIMITS.authoredHandoffs }
         : {}),
       ...(visibleAuthored.omitted ? { authoredPriorExitsOmitted: visibleAuthored.omitted } : {}),
+      ...(fileWrites.length
+        ? { authoredFileWrites: fileWrites.slice(0, BEHAVIOR_LIMITS.authoredFileWrites) }
+        : {}),
+      ...(fileWrites.length > BEHAVIOR_LIMITS.authoredFileWrites
+        ? { authoredFileWritesOmitted: fileWrites.length - BEHAVIOR_LIMITS.authoredFileWrites }
+        : {}),
       ...(!handoff
         ? authoredContext(
             target,
@@ -334,7 +351,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     active: ReadonlySet<string>,
     budget: AnalysisBudget,
     handoff: Handoff | undefined,
-    recordAuthoredHandoff?: (handoff: AuthoredHandoff) => void,
+    recordAuthoredContinuation?: (item: AuthoredContinuation) => void,
   ): State[] {
     budget.check()
     if (active.has(target.id) || depth >= BEHAVIOR_LIMITS.depth) return []
@@ -366,7 +383,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
         )
       },
       true,
-      recordAuthoredHandoff,
+      recordAuthoredContinuation,
     ).run(depth)
   }
 

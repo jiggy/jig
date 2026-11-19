@@ -162,6 +162,18 @@ export function flowBehaviorSnapshot(report: BehaviorReport): Snapshot {
               ),
             ],
           })
+        for (const write of scope.authoredFileWrites ?? [])
+          paths.push({
+            kind: 'authored',
+            facts: [
+              ...write.guards.map(check),
+              [
+                'effect',
+                'Authored writeFile to ' + write.destination + located(write.site),
+                location(write.site),
+              ],
+            ],
+          })
       }
       const coverage = scope
         ? distinct(scope.gaps.map((gap) => gap.reason + located(gap)))
@@ -170,6 +182,8 @@ export function flowBehaviorSnapshot(report: BehaviorReport): Snapshot {
         coverage.push(scope.authoredHandoffsOmitted + ' authored handoffs omitted.')
       if (scope?.authoredPriorExitsOmitted !== undefined)
         coverage.push(scope.authoredPriorExitsOmitted + ' earlier authored exits omitted.')
+      if (scope?.authoredFileWritesOmitted !== undefined)
+        coverage.push(scope.authoredFileWritesOmitted + ' authored file writes omitted.')
       return {
         id: target.id,
         configuration: [

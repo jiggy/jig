@@ -1042,6 +1042,9 @@ An opaque loop can leave its body or continuation unknown.
 The analyzer follows data-only callbacks on small known arrays, including explicit validation failures.
 When validation callbacks operate on unresolved contents, the displayed continuation assumes mapping completes.
 
+A later authored file write can remain visible with its destination expression and source location.
+The caller continuation still depends on the unresolved work.
+
 Small known scalar sets and literal numeric products can contribute to reported progress.
 Route consequences give the final requested progress alongside its recorded helper call or update location.
 For a single evaluated progress block, the report links count and total expressions shared by the represented payloads.

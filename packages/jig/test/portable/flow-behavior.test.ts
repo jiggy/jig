@@ -1733,6 +1733,56 @@ test('a grandchild contract alternative remains conditional in its callers', () 
   )
 })
 
+test('an opaque helper keeps later authored file writes separate from attempted effects', () => {
+  const input = snapshot(
+    method(`
+      import { handle } from '@jigging/flow'
+      import { writeFile as save } from 'node:fs/promises'
+      async function produce(input) {
+        await save('before.csv', 'checked')
+        opaque()
+        if (input.publish) await save('published.csv', 'checked')
+        if (input.local) {
+          const save = async () => {}
+          await save('local.csv', 'checked')
+        }
+        async function delayed() { await save('nested.csv', 'checked') }
+        return { outcome: 'done', output: {} }
+      }
+      await handle(run => produce(run.input))
+    `),
+  )
+  const report = analyzeFlowBehavior({ ...input, focus: 'flow:flows/convert' })
+  const scope = report.scopes.find((scope) => scope.target === 'flow:flows/convert')!
+  expect(scope.authoredFileWrites).toEqual([
+    expect.objectContaining({
+      destination: "'published.csv'",
+      guards: [expect.objectContaining({ code: 'input.publish', taken: true })],
+    }),
+  ])
+  const output = renderFlowBehavior(report)
+  expect(output).toContain('Authored file writes beyond analyzed routes')
+  expect(output).toContain("writeFile('published.csv')")
+  expect(output).toContain('Attempts writeFile')
+  expect(output).not.toContain('nested.csv')
+  expect(output).not.toContain('local.csv')
+  const paths = flowBehaviorSnapshot(report).targets.find(
+    (target) => target.id === scope.target,
+  )!.paths
+  expect(paths).toContainEqual(
+    expect.objectContaining({
+      kind: 'authored',
+      facts: expect.arrayContaining([
+        [
+          'effect',
+          expect.stringContaining("Authored writeFile to 'published.csv'"),
+          expect.any(Array),
+        ],
+      ]),
+    }),
+  )
+})
+
 test('opaque completion carries an earlier write without assigning it to every failure', () => {
   const input = snapshot(
     method(`
