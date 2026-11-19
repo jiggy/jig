@@ -358,7 +358,7 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
   const importer = method(`
     import { handle } from '@jigging/flow'
     await handle(async run => {
-      const dispatch = (slot: string, input: unknown) => run.call({slot, operationId: slot, input})
+      const dispatch = (slot: string, input: unknown) => run.call({slot, operationId: slot, intent: 'Choose a review route', input})
       opaque()
       if (run.input.reuse) {
         const mode = run.input.action ?? 'review'
@@ -389,6 +389,11 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
       slot: 'converter',
       site: { line: 8 },
       dispatch: { line: 4 },
+      requestMetadata: [
+        { field: 'operationId', code: 'slot', site: { line: 4 } },
+        { field: 'intent', code: "'Choose a review route'", site: { line: 4 } },
+      ],
+      inputSite: { line: 8 },
       guards: [{ code: 'run.input.reuse', taken: true, site: { line: 6 } }],
       inputChoices: [{ field: 'mode', code: "run.input.action ?? 'review'", site: { line: 7 } }],
     },
@@ -399,6 +404,11 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
   )
   expect(markdown).toContain('binding:other · review → binding:variant')
   expect(markdown).toContain('run.call in helper at flows/import/FLOW.ts:4')
+  expect(markdown).toContain(
+    "Request metadata intent = 'Choose a review route' (flows/import/FLOW.ts:4)",
+  )
+  expect(markdown).toContain('Child input at flows/import/FLOW.ts:8')
+  expect(markdown).toContain('mode = run.input.action ??')
 })
 
 test('focused source sites decline reassigned or ambiguous requests and retain direct decisions', () => {
@@ -428,6 +438,8 @@ test('focused source sites decline reassigned or ambiguous requests and retain d
     {
       slot: 'converter',
       site: { line: 9 },
+      requestMetadata: [{ field: 'operationId', code: "'direct'", site: { line: 9 } }],
+      inputSite: { line: 10 },
       guards: [{ code: 'run.input.convert', taken: true }],
       inputChoices: [{ field: 'mode', code: "run.input.extra ? 'full' : 'short'" }],
     },
