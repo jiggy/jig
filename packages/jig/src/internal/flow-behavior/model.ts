@@ -248,7 +248,7 @@ export const BEHAVIOR_LIMITS = {
   variants: 32,
   loopItems: 8,
   scopes: 24,
-  stepsPerRoute: 72,
+  stepsPerRoute: 96,
   retainedChildPaths: 256,
   retainedChildSteps: 4_096,
   authoredHandoffs: 24,

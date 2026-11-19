@@ -240,6 +240,28 @@ await handle(async run => {
     [],
   )
   assert.deepEqual(await foundationResidue(qualification, command, directory), before)
+  // Qualify an ordinary editing checkout after the lock-only native assertions.
+  await command(
+    [
+      process.execPath,
+      'install',
+      '--frozen-lockfile',
+      '--ignore-scripts',
+      '--no-progress',
+      '--backend',
+      'copyfile',
+    ],
+    project,
+  )
+  const prepared = await command([cli, 'inspect', '--flow', 'binding:roster'], project)
+  const readyRoute = prepared.stdout
+    .split('\n')
+    .find((line) => line.startsWith('| Returns "done" · status = "ready"'))
+  assert.ok(readyRoute, 'The prepared roster route reaches its conditional ready result')
+  assert.match(readyRoute, /offers schedule/)
+  assert.match(readyRoute, /read-roster.*propose-roster.*check-roster.*export-roster/)
+  assert.match(readyRoute, /progress 4\/4/)
+  assert.equal(await readFile(join(project, 'bun.lock'), 'utf8'), sourceLock)
   assert.deepEqual(await Promise.all([archives.jig, archives.flow, reporting].map(hash)), frozen)
   await put(directory, 'verified.json', {
     application: 'kitchen-roster',
