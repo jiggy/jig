@@ -50,11 +50,24 @@ export async function prepareFlowBehavior(
         ],
       ),
     )
+    const requiredSlots = Object.entries(flow.uses)
+      .filter(([, requirement]) => requirement.optional !== true)
+      .map(([name]) => name)
+      .sort()
+    const declaration = implementation.startsWith('npm:')
+      ? undefined
+      : implementation + (flow.entrypoint?.suffix === 'md' ? '/FLOW.md' : '/FLOW.meta.json')
     targets.push({
       id,
       implementation,
       settings,
       slots,
+      ...(requiredSlots.length
+        ? {
+            requiredSlots,
+            ...(declaration === undefined ? {} : { slotDeclarationPath: declaration }),
+          }
+        : {}),
       outcomes: ['done', ...Object.keys(flow.invocation.outcomes ?? {})],
       attachments: flow.invocation.attachments ?? {},
       artifactResults: flow.invocation.artifactResults ?? [],

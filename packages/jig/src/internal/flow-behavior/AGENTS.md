@@ -58,6 +58,7 @@ Explain conditional behavior from a captured Jig project without running its met
 - Bound proven data-only reporting work within the enclosing analysis allowance.
 - Source analysis grants no admission, execution, or retry authority.
 - Preserve source references, call context, and explicit unsupported regions.
+- Explain required slot resolution from captured invocation requirements independently of call reachability.
 - Preserve authored call sites after a cut in their active function frame. Keep lexical
   conditions and result checks separate from interpreted routes.
 - Keep the private result independent of CLI and display rendering.

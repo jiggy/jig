@@ -981,6 +981,10 @@ The index uses captured topology and skips source behavior analysis.
 An exact target retains its configured context, including other uses of its implementation and callers.
 With `--all`, the document shows the project entrypoint and includes every configured target within the topology limits.
 
+Focused reports and configured-use details list the Flow's required slots.
+These slots still need resolved wiring when a depicted route omits their calls.
+Local packages link to their captured package interface.
+
 The overview links each target to a Flow chart and to the details for that configured use.
 Each chart keeps its configured uses separate and shares the same route selections as their details.
 Direct Flows appear even when no other target calls them.
