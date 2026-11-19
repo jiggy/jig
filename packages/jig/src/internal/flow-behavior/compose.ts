@@ -201,14 +201,17 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
           .filter(([key]) => !analyzedHandoffs.has(key))
           .map(([, candidate]) => candidate)
       : []
+    const showDecisions = target.id === focus || (focus === undefined && packagePath === undefined)
     const callReferences =
-      !handoff && (target.id === focus || (evidence.size && packagePath !== undefined))
+      !handoff &&
+      target.slots.size > 0 &&
+      (showDecisions || (evidence.size && packagePath !== undefined))
         ? sources
             .get(target.implementation)
             ?.callReferences(target.slots, new Set([...analyzedHandoffs, ...authored.keys()]), {
               limit: BEHAVIOR_LIMITS.authoredHandoffs,
               fallback: evidence.size > 0,
-              focused: target.id === focus,
+              focused: showDecisions,
             })
         : undefined
     const selected = callReferences?.selected

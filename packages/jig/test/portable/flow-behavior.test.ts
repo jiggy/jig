@@ -388,7 +388,17 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
     {
       slot: 'converter',
       site: { line: 8 },
-      dispatch: { line: 4 },
+      dispatch: {
+        line: 4,
+        helper: 'dispatch',
+        declaration: { line: 4 },
+        request: "run.call({slot, operationId: slot, intent: 'Choose a review route', input})",
+        arguments: [
+          { field: 'slot', index: 0, parameter: 'slot' },
+          { field: 'operationId', index: 0, parameter: 'slot' },
+          { field: 'input', index: 1, parameter: 'input' },
+        ],
+      },
       requestMetadata: [
         { field: 'operationId', code: 'slot', site: { line: 4 } },
         { field: 'intent', code: "'Choose a review route'", site: { line: 4 } },
@@ -404,11 +414,17 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
   )
   expect(markdown).toContain('binding:other · review → binding:variant')
   expect(markdown).toContain('run.call in helper at flows/import/FLOW.ts:4')
+  expect(markdown).toContain('Argument 2 input → request field input.')
   expect(markdown).toContain(
     "Request metadata intent = 'Choose a review route' (flows/import/FLOW.ts:4)",
   )
   expect(markdown).toContain('Child input at flows/import/FLOW.ts:8')
   expect(markdown).toContain('mode = run.input.action ??')
+  const application = renderFlowBehavior(analyzeFlowBehavior({ ...input, focus: undefined }))
+  const owner = application.split('\n### binding:code\n')[1]?.split('\n## ')[0]
+  expect(owner).toContain('#### Caller decisions')
+  expect(owner).toContain('Argument 2 input → request field input.')
+  expect(owner).toContain('flows/import/FLOW.ts:8')
 })
 
 test('focused source sites decline reassigned or ambiguous requests and retain direct decisions', () => {
