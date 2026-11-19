@@ -677,6 +677,7 @@ function consequences(
       : route.filter(writesFile).map((step) => step.detail)
     const update = lastViewUpdate(route, scope.target)
     const origin = update?.reportingCall
+    const authored = update?.authoredProgressFields ?? []
     const values = [
       terminal && terminal.kind !== 'condition' ? text(label(terminal)) : 'Unknown',
       calls.join(' → ') || '—',
@@ -684,7 +685,8 @@ function consequences(
         ? text(update.detail) +
           '<br>' +
           (origin ? `${text(origin.code)} (${sourceLink(origin)})` : sourceLink(update.site)) +
-          (update.progressFields ?? [])
+          (authored.length ? '<br>Possible progress calculation' : '') +
+          (update.progressFields ?? authored)
             .map(
               (field) =>
                 '<br>' + text(field.field + ' = ' + field.code) + ' (' + sourceLink(field) + ')',

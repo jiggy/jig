@@ -1027,7 +1027,6 @@ When route analysis stops in a function, inspection can show later authored call
 This part shows local branch predicates and result checks with their source locations.
 An earlier branch ending in a direct return or throw can identify which later call sites it bypasses in the same block.
 The bounded list preserves the call sites associated with each retained exit and discloses omitted exits.
-Reachability of those branches remains unresolved.
 Reachability, execution order, and returned values remain unresolved there.
 
 Supported read-only file opens and subsequent metadata, read, and close operations appear as attempts.
@@ -1045,8 +1044,8 @@ When validation callbacks operate on unresolved contents, the displayed continua
 
 Small known scalar sets and literal numeric products can contribute to reported progress.
 Route consequences give the final requested progress alongside its recorded helper call or update location.
-For a single progress block, the report links identifiable expressions for the completed count and total.
-If the analysis cannot establish a shared expression across the represented payloads, the link is omitted.
+For a single evaluated progress block, the report links count and total expressions shared by the represented payloads.
+When the displayed progress remains unknown, it may link a possible calculation from the payload or its local helper.
 
 The focused view summarizes selected route consequences and evidence.
 It prioritizes distinct return outcomes and consequential differences before further variants.

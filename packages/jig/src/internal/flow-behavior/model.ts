@@ -13,7 +13,9 @@ export type ReportingCall = SourceSite & { readonly code: string }
 export type ProgressFieldSource = ReportingCall & { readonly field: 'completed' | 'total' }
 
 export function withoutReportingLocations(key: string, value: unknown): unknown {
-  return key === 'reportingCall' || key === 'progressFields' ? undefined : value
+  return key === 'reportingCall' || key === 'progressFields' || key === 'authoredProgressFields'
+    ? undefined
+    : value
 }
 
 export interface BehaviorPackage {
@@ -96,6 +98,7 @@ export type BehaviorStep =
       readonly guards?: readonly BehaviorGuard[]
       readonly reportingCall?: ReportingCall
       readonly progressFields?: readonly ProgressFieldSource[]
+      readonly authoredProgressFields?: readonly ProgressFieldSource[]
     }
   | { readonly kind: 'gap'; readonly site: SourceSite; readonly detail: string }
   | {

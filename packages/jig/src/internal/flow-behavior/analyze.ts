@@ -1721,8 +1721,12 @@ export class Interpreter {
               severity && ts.isStringLiteralLike(severity) ? severity.text : 'default severity',
             sources: [],
           }
-    const record = (s: State, { detail, sources }: ReturnType<typeof summarize>) =>
-      view
+    const record = (s: State, { detail, sources }: ReturnType<typeof summarize>) => {
+      const authored =
+        update && detail === 'display effect unknown'
+          ? this.reportingTrace.authoredProgress(argument, this.source)
+          : []
+      return view
         ? withValue(s, { kind: 'report-view' })
         : withValue(
             add(s, {
@@ -1733,9 +1737,11 @@ export class Interpreter {
               site: this.source.site(e),
               ...(s.localCall === undefined ? {} : { reportingCall: s.localCall }),
               ...(sources.length ? { progressFields: sources } : {}),
+              ...(authored.length ? { authoredProgressFields: authored } : {}),
             }),
             missing,
           )
+    }
     if (!pure)
       return this.expression(argument, state, depth).map((result) =>
         result.mode === 'next' ? record(result, summarize(result)) : result,
