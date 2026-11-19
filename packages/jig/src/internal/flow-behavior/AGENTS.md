@@ -3,6 +3,7 @@
 ## Purpose
 
 Explain conditional behavior from a captured Jig project without running its methods.
+The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate-a-workflow-edit.md) describe the decisions a coding agent needs to make before editing.
 
 ## Ownership
 

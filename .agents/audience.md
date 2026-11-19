@@ -114,6 +114,7 @@ remain governed by [design judgment](doctrine/design-judgment.md#1-place-each-re
 | --- | --- |
 | **Flow author** | Package a method with readable purpose and the code, Skills, resources, schemas, or contracts it needs. |
 | **Application or Starter builder** | Combine specialists, customize meaningful choices, and keep domain checks and consequences explicit. |
+| **Coding agent editing an application** | Find the decision a workflow owner wants to change and the other routes that depend on it. [Workflow editing use cases](use-cases/JOB-001-locate-a-workflow-edit.md) |
 | **Operator** | Choose Agents, credentials, infrastructure, powers, and limits; understand the accepted work and the host's guarantees. |
 | **Software consumer** | Invoke bounded work, consume its result, and handle failure within established authority. |
 | **End user** | Receive a useful outcome with the evidence and decisions relevant to them. |

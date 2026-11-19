@@ -15,6 +15,8 @@ and project-maintained skills for external libraries.
   intended product experience, and the decision test.
 - `audience.md` owns the initial ICP, felt problems, domain understanding,
   participant needs, and adoption hypotheses.
+- `use-cases/` records the jobs and use cases behind product features.
+  It links user goals to the specifications and scenarios that support them.
 - `communication.md` owns positioning, narrative progression, vocabulary, and
   public editorial judgment, drawing on the audience and doctrine.
 - `brand.md` owns the selected Jig and FLOW names, emblems, wordmarks, colors,
@@ -95,6 +97,7 @@ and project-maintained skills for external libraries.
 
 - [brand.md](brand.md) — Selected Jig and FLOW product identity and visual
   system.
+- [use-cases/AGENTS.md](use-cases/AGENTS.md) — Product intent and use cases for editing connected workflows.
 - [doctrine/AGENTS.md](doctrine/AGENTS.md) — Product purpose, FLOW and Jig
   reasoning, and cross-product judgment. The compass remains the entrypoint.
 - [coordination/AGENTS.md](coordination/AGENTS.md) — Project roadmap and
