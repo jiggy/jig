@@ -4,6 +4,7 @@ import {
   type AuthoredInputField,
   BEHAVIOR_LIMITS,
   type BehaviorGuard,
+  type OmittedCallSites,
   type SourceSite,
   varyingInputFields,
 } from './model.js'
@@ -33,8 +34,11 @@ export function selectCallSites(
   slots: ReadonlyMap<string, string>,
   writes: ReadonlySet<ts.Declaration>,
   hasEval: boolean,
-): { sites: AuthoredCallSelection[]; omittedBySlot: ReadonlyMap<string, number> } {
-  const groups = new Map<string, { sites: AuthoredCallSelection[]; count: number }>()
+): { sites: AuthoredCallSelection[]; omittedBySlot: ReadonlyMap<string, OmittedCallSites> } {
+  const groups = new Map<
+    string,
+    { sites: AuthoredCallSelection[]; count: number; dropped: SourceSite[] }
+  >()
   const dispatches = new Map<ts.Node, ts.CallExpression | null>()
   for (const { call } of requests) {
     const frame = functionFrame(call)
@@ -61,13 +65,17 @@ export function selectCallSites(
       ...(input ? { inputSite: source.site(input) } : {}),
       inputFields: selectedInputs(source, input),
     }
-    const group = groups.get(slot) ?? { sites: [], count: 0 }
+    const group = groups.get(slot) ?? { sites: [], count: 0, dropped: [] }
     group.count++
     groups.set(slot, group)
     const insert = hasChoice(item) ? group.sites.findIndex((entry) => !hasChoice(entry)) : -1
     if (insert >= 0) group.sites.splice(insert, 0, item)
-    else if (group.sites.length < limit) group.sites.push(item)
-    if (group.sites.length > limit) group.sites.pop()
+    else group.sites.push(item)
+    if (group.sites.length > limit) {
+      const dropped = group.sites.pop()!
+      if (group.dropped.length < BEHAVIOR_LIMITS.focusedOmittedCallLocations)
+        group.dropped.push(dropped.site)
+    }
   }
   for (const { call, request } of requests) {
     const slot = request.fields.get('slot')
@@ -133,17 +141,26 @@ export function selectCallSites(
   }))
   ranked.sort((left, right) => right.priority - left.priority)
   const sites: AuthoredCallSelection[] = []
-  const omittedBySlot = new Map<string, number>()
+  const omittedBySlot = new Map<string, OmittedCallSites>()
+  const byLocation = (left: SourceSite, right: SourceSite) =>
+    left.path.localeCompare(right.path) ||
+    left.line - right.line ||
+    (left.column ?? 0) - (right.column ?? 0)
   for (const { slot, group } of ranked) {
     const selected = group.sites.slice(0, limit - sites.length)
-    selected.sort(
-      (left, right) =>
-        left.site.path.localeCompare(right.site.path) ||
-        left.site.line - right.site.line ||
-        (left.site.column ?? 0) - (right.site.column ?? 0),
-    )
+    selected.sort((left, right) => byLocation(left.site, right.site))
     sites.push(...selected)
-    if (group.count > selected.length) omittedBySlot.set(slot, group.count - selected.length)
+    const count = group.count - selected.length
+    if (count > 0)
+      omittedBySlot.set(slot, {
+        count,
+        locations: group.sites
+          .slice(selected.length)
+          .map((entry) => entry.site)
+          .concat(group.dropped)
+          .sort(byLocation)
+          .slice(0, BEHAVIOR_LIMITS.focusedOmittedCallLocations),
+      })
   }
   return { sites, omittedBySlot }
 }

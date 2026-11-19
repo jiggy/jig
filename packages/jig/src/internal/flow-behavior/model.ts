@@ -262,13 +262,18 @@ export interface BehaviorReport {
     readonly callReferencesOmitted?: number
     readonly callSelections?: {
       readonly sites: readonly AuthoredCallSelection[]
-      readonly omittedBySlot: ReadonlyMap<string, number>
+      readonly omittedBySlot: ReadonlyMap<string, OmittedCallSites>
       readonly related: ReadonlyMap<
         string,
         { readonly calls: readonly RelatedCall[]; readonly omitted: number }
       >
     }
   }[]
+}
+
+export interface OmittedCallSites {
+  readonly count: number
+  readonly locations: readonly SourceSite[]
 }
 
 export const BEHAVIOR_LIMITS = {
@@ -288,5 +293,6 @@ export const BEHAVIOR_LIMITS = {
   authoredPriorExits: 8,
   authoredFileWrites: 8,
   focusedCallSelections: 6,
+  focusedOmittedCallLocations: 3,
   focusedRelatedCalls: 6,
 } as const

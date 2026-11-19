@@ -1299,13 +1299,15 @@ function renderCallSelections(
         lines.push(`  - ${text(call.caller)} · ${text(call.slot)} → ${text(call.target)}`)
       if (related.omitted) lines.push(`  - ${related.omitted} more configured slots.`)
     }
-    const omitted = selections.omittedBySlot.get(slot)
-    if (omitted)
-      lines.push(`- Additional authored call sites omitted for ${text(slot)} (${omitted}).`)
   }
   for (const [slot, omitted] of selections.omittedBySlot) {
-    if (!groups.has(slot))
-      lines.push('', `- Authored call sites omitted for ${text(slot)} (${omitted}).`)
+    const locations = omitted.locations.map(sourceLink)
+    const remaining = omitted.count - locations.length
+    if (remaining > 0) locations.push(`${remaining} more`)
+    lines.push(
+      '',
+      `- Additional call sites for ${text(slot)} (${omitted.count}) · ${locations.join(' · ')}`,
+    )
   }
   lines.push(
     '',
