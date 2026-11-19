@@ -158,7 +158,8 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       ? undefined
       : (candidate: AuthoredHandoff) => authored.set(JSON.stringify(candidate.site), candidate)
     try {
-      const states = evaluate(target, unknown, 0, new Set(), budget, handoff, record)
+      const argument = input.packages.get(target.implementation)?.acceptedInput ?? unknown
+      const states = evaluate(target, argument, 0, new Set(), budget, handoff, record)
       if (!handoff && states.length === 0)
         evidence.set('entry', {
           ...site,

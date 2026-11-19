@@ -7,6 +7,7 @@ Explain conditional behavior from a captured Jig project without running its met
 ## Ownership
 
 - `captured-input.ts` borrows source and interface facts from working-tree inspection.
+- `input-contract.ts` projects guarantees from captured input schemas into inert values.
 - `admitted-input.ts` reads exact stored source and recognized dependency bytes for an approved composition.
 - `source.ts` resolves parsed source and call identities inside one captured package.
 - `source-syntax.ts` owns shared TypeScript syntax helpers and bounded source walks.
@@ -24,6 +25,9 @@ Explain conditional behavior from a captured Jig project without running its met
 ## Local Contracts
 
 - Keep analyzer inputs in memory. Use the existing capture owners for filesystem reads.
+- Start standalone analysis with supported input guarantees from the captured contract.
+  Keep unknown fields open. Preserve absent optional integers until a numeric default narrows them.
+  Follow child calls with the argument supplied by the caller.
 - Carry hypothetical results and known effects through caller continuations.
 - Keep incomplete values distinct from unknown control flow.
 - Follow directly returned helper and qualified Reporting promises through callers

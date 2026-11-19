@@ -282,7 +282,9 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Keep computed slot expressions distinct from exact selected targets.
   Supported literal lookups can show their authored rows, source assignments, and preceding returns.
 
-  Lead with route consequences and attach their unresolved checks.
+  Lead with route consequences and attach the conditions that select them.
+  Name the passing and rejecting branches of a direct validation guard.
+  Show source locations and whether the displayed routes resolve each predicate.
   Give main routes their own analysis budget and disclose omissions and opaque regions.
   Join chart paths only when all their remaining projected steps and checks agree.
 

@@ -306,6 +306,11 @@ function guardLabel(guard: BehaviorGuard): string {
   return '(' + short + guardContext(guard) + ')'
 }
 
+function conditionLabel(guard: BehaviorGuard): string {
+  if (guard.validation) return guard.taken ? 'Validation rejects' : 'Validation passes'
+  return 'When ' + guardLabel(guard) + ' is ' + guard.taken
+}
+
 function guardContext(guard: BehaviorGuard): string {
   return guard.enteringNumbers
     ? ' · before check: ' +
@@ -433,12 +438,9 @@ function diagramBody(routes: readonly Route[], prefix: string, start: string): s
           links.some((link) => JSON.stringify(link.guards[index]) !== JSON.stringify(candidate)),
         ) ?? guards[0]
       const edge = guard
-        ? 'Unresolved check at ' +
+        ? conditionLabel(guard) +
+          ' · ' +
           site(guard.site) +
-          ' · assume ' +
-          guard.taken +
-          ' ' +
-          guardLabel(guard) +
           (guards.length > 1 ? ' · +' + (guards.length - 1) + ' checks' : '')
         : ''
       const arrow = edge ? '-->|"' + diagramText(edge) + '"|' : '-->'
@@ -643,7 +645,9 @@ function consequences(
 function detailLine(step: BehaviorStep): string {
   return text(
     (step.kind === 'condition'
-      ? (step.unresolved ? 'Assume ' : 'Check ') + guardLabel(step) + ' is ' + step.taken
+      ? step.unresolved
+        ? conditionLabel(step)
+        : 'Check ' + guardLabel(step) + ' is ' + step.taken
       : step.kind === 'call'
         ? label(step) + ' · ' + step.target
         : label(step)) +
@@ -736,18 +740,22 @@ function renderCallDetails(
 }
 
 function evidence(routes: readonly Route[]): string[] {
-  const checks = new Set<string>()
+  const checks = new Map<string, Set<'conditional' | boolean>>()
+  const addCheck = (guard: BehaviorGuard) => {
+    const key = text(guard.code + guardContext(guard)) + ' (' + text(site(guard.site)) + ')'
+    const evaluations = checks.get(key) ?? new Set<'conditional' | boolean>()
+    evaluations.add(guard.unresolved ? 'conditional' : guard.taken)
+    checks.set(key, evaluations)
+  }
   const effects = new Set<string>()
   const handoffs = new Set<string>()
   for (const route of routes)
     for (const step of route) {
-      if (step.kind === 'condition')
-        checks.add(text(step.code + guardContext(step)) + ' (' + text(site(step.site)) + ')')
+      if (step.kind === 'condition') addCheck(step)
       if (step.kind === 'effect')
         effects.add(text(label(step)) + ' (' + text(site(step.site)) + ')')
       if (step.kind === 'call' || step.kind === 'effect')
-        for (const guard of step.guards ?? [])
-          checks.add(text(guard.code + guardContext(guard)) + ' (' + text(site(guard.site)) + ')')
+        for (const guard of step.guards ?? []) addCheck(guard)
       if (step.kind === 'call') {
         handoffs.add(
           text(step.slot + ' → ' + step.target + ' · ' + step.result) +
@@ -762,9 +770,20 @@ function evidence(routes: readonly Route[]): string[] {
       }
     }
   const lines: string[] = []
+  const sourceChecks = new Set(
+    [...checks].map(([code, evaluations]) => {
+      const status =
+        evaluations.size !== 1 || evaluations.has('conditional')
+          ? 'Conditional'
+          : evaluations.has(true)
+            ? 'Evaluated true'
+            : 'Evaluated false'
+      return status + ' · ' + code
+    }),
+  )
   for (const [title, entries] of [
     ['Handoffs', handoffs],
-    ['Source checks', checks],
+    ['Source checks', sourceChecks],
     ['Reported and file effects', effects],
   ] as const) {
     if (entries.size) {
@@ -996,6 +1015,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     )
     return lines.join('\n')
   }
+  lines.push('Standalone routes start with inputs that satisfy the captured contract.', '')
   if (focus === undefined) return [...lines, ...applicationMap(report)].join('\n') + '\n'
   lines.push(
     '## ' + text(focus),

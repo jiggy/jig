@@ -1,5 +1,6 @@
 import type { JsonValue } from '../../json.js'
 import type { FlowImportBoundary } from '../flow-import-boundary.js'
+import type { Value } from './values.js'
 
 export interface SourceSite {
   readonly path: string
@@ -14,6 +15,7 @@ export interface BehaviorPackage {
   readonly reportingFiles?: ReadonlySet<string>
   readonly unavailable?: string
   readonly contractPath?: string
+  readonly acceptedInput?: Value
   readonly checkResult?: (result: JsonValue) => boolean
 }
 
@@ -49,6 +51,7 @@ export interface BehaviorGuard {
   readonly code: string
   readonly taken: boolean
   readonly unresolved: boolean
+  readonly validation?: true
   readonly readOperation?: true
   readonly enteringNumbers?: readonly (readonly [name: string, value: number])[]
 }

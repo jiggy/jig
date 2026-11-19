@@ -107,6 +107,7 @@ export function evaluateIntrinsic(name: string, args: readonly Value[]): Value {
     return values.every((n) => n !== undefined) ? literal(Math.max(...values)) : unknown
   }
   if (name === 'Number.isInteger') {
+    if (first.kind === 'integer-range' && !first.optional) return literal(true)
     return first.kind === 'literal' ? literal(Number.isInteger(first.value)) : unknown
   }
   if (name === 'Object.keys' && first.kind === 'object' && !first.open)
@@ -167,6 +168,17 @@ export function evaluateDataMethod(name: string, receiver: Value, args: readonly
       return literal(array.join(args[0].value))
     if (name === 'includes' || name === 'indexOf') {
       const arg = args[0]
+      if (
+        name === 'includes' &&
+        args.length === 1 &&
+        arg?.kind === 'input-string' &&
+        arg.choices?.length
+      ) {
+        const included = array.includes(arg.choices[0]!)
+        return arg.choices.every((choice) => array.includes(choice) === included)
+          ? literal(included)
+          : unknown
+      }
       if (args.length !== 1 || arg?.kind !== 'literal') return unknown
       return literal(name === 'includes' ? array.includes(arg.value) : array.indexOf(arg.value))
     }

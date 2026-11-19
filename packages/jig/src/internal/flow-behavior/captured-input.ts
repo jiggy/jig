@@ -8,6 +8,7 @@ import type { PackageProjectValue } from '../../project/package-project.js'
 import { flowSelector } from '../../project/package-selector.js'
 import { SchemaDiagnostic } from '../../schema/index.js'
 import { analyzeFlowBehavior } from './compose.js'
+import { inputFromContract } from './input-contract.js'
 import {
   BEHAVIOR_LIMITS,
   type BehaviorPackage,
@@ -172,6 +173,9 @@ export async function readBehaviorPackage(
       entry,
       sources,
       reportingFiles,
+      ...(inspected.invocation?.input === undefined
+        ? {}
+        : { acceptedInput: inputFromContract(inspected.invocation.input) }),
       ...(captured.files.some((file) => file.path === 'FLOW.contract.json')
         ? { contractPath: implementation + '/FLOW.contract.json' }
         : {}),

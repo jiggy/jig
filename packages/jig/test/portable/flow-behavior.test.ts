@@ -7,6 +7,7 @@ import {
   flowBehaviorSnapshot,
 } from '../../src/internal/flow-behavior/comparison.js'
 import { analyzeFlowBehavior } from '../../src/internal/flow-behavior/compose.js'
+import { inputFromContract } from '../../src/internal/flow-behavior/input-contract.js'
 import type {
   BehaviorInput,
   BehaviorPackage,
@@ -74,6 +75,65 @@ function snapshot(
     ]),
   }
 }
+
+test('standalone inspection uses proven input bounds and preserves undeclared brief checks', () => {
+  const acceptedInput = inputFromContract({
+    type: 'object',
+    required: ['brief', 'scope', 'budget'],
+    properties: {
+      brief: { type: 'object' },
+      scope: { enum: ['sample', 'book'] },
+      budget: { type: 'integer', minimum: 1, maximum: 128 },
+      count: { type: 'integer', minimum: 2, maximum: 10 },
+    },
+  })
+  const caller = method(
+    handlerSource(`
+      const input = run.input
+      if (!input.brief || !['sample', 'book'].includes(input.scope)) throw new TypeError('Shape')
+      if (
+        typeof input.brief.promise !== 'string' ||
+        typeof input.brief.audience !== 'string' ||
+        typeof input.brief.language !== 'string'
+      ) throw new TypeError('Supply brief fields')
+      const count = input.count ?? 6
+      if (!Number.isInteger(count) || count < 2 || 10 < count ||
+          input.budget < 1 || 128 < input.budget || !Number.isInteger(input.budget))
+        throw new RangeError('Numeric bounds')
+      return { outcome: 'done', output: { status: 'verified' } }
+    `),
+    { acceptedInput },
+  )
+  const report = analyzeFlowBehavior(snapshot(method(''), caller))
+  expect(report.scopes[0]?.routes.map((route) => route.at(-1)?.detail).sort()).toEqual([
+    'Throws: Supply brief fields',
+    'outcome "done", status = "verified"',
+  ])
+  const markdown = renderFlowBehavior(report)
+  expect(markdown).toContain('Validation passes · flows/import/FLOW.ts')
+  expect(markdown).toContain('Validation rejects · flows/import/FLOW.ts')
+  expect(markdown).toContain('typeof input.brief.language')
+})
+
+test('an optional integer leaves the default and missing-property behavior in scope', () => {
+  const acceptedInput = inputFromContract({
+    type: 'object',
+    properties: { count: { type: 'integer', minimum: 2, maximum: 10 } },
+  })
+  const caller = method(
+    handlerSource(`
+      if (Object.hasOwn(run.input, 'count')) return { outcome: 'done', output: { status: 'supplied' } }
+      if ((run.input.count ?? 11) > 10) throw new RangeError('Default is out of bounds')
+      return { outcome: 'done', output: {} }
+    `),
+    { acceptedInput },
+  )
+  const routes = analyzeFlowBehavior(snapshot(method(''), caller)).scopes[0]!.routes
+  expect(routes.map((route) => route.at(-1)?.detail)).toContain('Throws: Default is out of bounds')
+  expect(routes.map((route) => route.at(-1)?.detail)).toContain(
+    'outcome "done", status = "supplied"',
+  )
+})
 
 test('a callee-only change alters the unchanged caller continuation', () => {
   const paths = (status: string) =>
@@ -1074,8 +1134,8 @@ test('read-only file validation branches retain cleanup and file effect order', 
   expect(renderFlowBehavior(report)).toContain('File operations attempted')
   const markdown = renderFlowBehavior(report)
   expect(markdown).toContain('Attempts readFile')
-  expect(markdown).toMatch(/assume true \(!metadata\.isFile/)
-  expect(markdown).toMatch(/assume false \(!metadata\.isFile/)
+  expect(markdown).toMatch(/When \(!metadata\.isFile\(\)\) is true/)
+  expect(markdown).toMatch(/When \(!metadata\.isFile\(\)\) is false/)
   expect(markdown).toContain('before check: maximumBytes = 1024')
 })
 
@@ -1293,12 +1353,8 @@ test('the diagram attaches an unresolved callee condition to each affected compl
   )
   const rendered = renderFlowBehavior(analyzeFlowBehavior(input))
   const chart = rendered.match(/```mermaid[\s\S]+?```/)?.[0]
-  expect(chart).toMatch(
-    /Unresolved check at flows\/convert\/FLOW\.ts:2 · assume true.+converter returns/,
-  )
-  expect(chart).toMatch(
-    /Unresolved check at flows\/convert\/FLOW\.ts:2 · assume false.+converter returns/,
-  )
+  expect(chart).toMatch(/When .+ is true · flows\/convert\/FLOW\.ts:2.+converter returns/)
+  expect(chart).toMatch(/When .+ is false · flows\/convert\/FLOW\.ts:2.+converter returns/)
   expect(rendered).toContain('### Consequences')
 })
 
