@@ -14,9 +14,11 @@ import {
   type BehaviorAssumption,
   type BehaviorStep,
   type BehaviorTarget,
+  type ReportingCall,
   type SourceSite,
 } from './model.js'
 import { progressDescription } from './reporting.js'
+import { shortText } from './source-syntax.js'
 import { isLocalFunction, type LocalFunction, type SourceIndex, unwrap } from './source.js'
 import {
   describe,
@@ -42,7 +44,7 @@ export interface State {
   readonly consumesReturn?: boolean | undefined
   readonly returnedPromise?: 'fulfilled' | 'rejected'
   readonly site?: SourceSite
-  readonly localCall?: SourceSite | undefined
+  readonly localCall?: ReportingCall | undefined
   readonly stoppedAt?: ts.Node
   readonly closeAttempted?: ReadonlySet<FileHandleValue>
 }
@@ -248,7 +250,7 @@ export class Interpreter {
     args: readonly Value[],
     caller: State,
     depth: number,
-    options: { consumesReturn?: boolean; localCall?: SourceSite } = {},
+    options: { consumesReturn?: boolean; localCall?: ReportingCall } = {},
   ): State[] {
     this.budget.check()
     if (depth >= BEHAVIOR_LIMITS.depth)
@@ -1448,7 +1450,7 @@ export class Interpreter {
           const proof = values.every(isData) && dataEffects(this.source, fn, s.values)
           return this.invoke(fn, values, s, depth + 1, {
             consumesReturn: awaited || returned !== undefined,
-            localCall: this.source.site(e),
+            localCall: { ...this.source.site(e), code: shortText(e) },
           }).map((body) => {
             if (proof && body.mode === 'unknown')
               return withValue(

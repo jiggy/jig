@@ -483,13 +483,16 @@ function diagram(routes: readonly Route[]): string[] {
   return body.length ? ['```mermaid', 'flowchart TD', ...body, '```', ''] : []
 }
 
+function lastViewUpdate(route: Route, target: string) {
+  for (let index = route.length - 1; index >= 0; index--) {
+    const step = route[index]!
+    if (step.kind === 'effect' && step.owner === target && step.operation === 'view update')
+      return step
+  }
+}
+
 function progress(route: Route, target: string): string {
-  const stated = route.flatMap((step) =>
-    step.kind === 'effect' && step.owner === target && step.operation === 'view update'
-      ? [step.detail]
-      : [],
-  )
-  return stated.at(-1) ?? '—'
+  return lastViewUpdate(route, target)?.detail ?? '—'
 }
 
 function selectRoutes(scope: Scope): Route[] {
@@ -657,10 +660,16 @@ function consequences(
     const fileOperations = hasReads
       ? route.filter(isFileOperation).map((step) => step.operation + ' · ' + step.detail)
       : route.filter(writesFile).map((step) => step.detail)
+    const update = lastViewUpdate(route, scope.target)
+    const origin = update?.reportingCall
     const values = [
       terminal && terminal.kind !== 'condition' ? text(label(terminal)) : 'Unknown',
       calls.join(' → ') || '—',
-      text(progress(route, scope.target)),
+      update
+        ? text(update.detail) +
+          '<br>' +
+          (origin ? `${text(origin.code)} (${text(site(origin))})` : text(site(update.site)))
+        : '—',
       text(fileOperations.join(' → ')) || '—',
     ]
     summaries.add('| ' + values.join(' | ') + ' |')
@@ -1186,6 +1195,7 @@ function renderCallReferences(
   scopes: readonly Scope[],
   inventory: readonly BehaviorTarget[],
   selectedSlots?: (caller: string) => ReadonlySet<string>,
+  heading = '###',
 ): string[] {
   const lines: string[] = []
   const lookups = new Map<string, string[]>()
@@ -1245,7 +1255,7 @@ function renderCallReferences(
   if (!lines.length && !omitted) return []
   if (omitted) lines.push(`- ${omitted} additional source references omitted.`)
   return [
-    '### Caller source references',
+    heading + ' Caller source references',
     '',
     'These are authored call sites. Inspect computed slot expressions in source to determine which slot they select.',
     '',
@@ -1253,7 +1263,7 @@ function renderCallReferences(
     '',
     ...(lookups.size
       ? [
-          '### Authored slot selection',
+          heading + ' Authored slot selection',
           '',
           'These lookup rows and key sources describe the authored decision. Selection depends on the caller input and conditions.',
           '',
@@ -1381,10 +1391,16 @@ function applicationMap(report: BehaviorReport): string[] {
       const handoffs = route.flatMap((step) => (step.kind === 'call' ? [label(step)] : []))
       summaries.add((handoffs.length ? brief(handoffs) + ' → ' : '') + text(label(terminal)))
     }
-    const continuation = [...summaries].slice(0, 2).join('<br>') || 'Unavailable'
-    const hasAuthored = scopes.get(target.id)?.authoredHandoffs?.length
+    const scope = scopes.get(target.id)
+    const hasAuthored =
+      scope?.authoredHandoffs?.length ||
+      scope?.callSelections?.sites.length ||
+      scope?.callReferences?.length
+    const continuation =
+      [...summaries].slice(0, 2).join('<br>') ||
+      (hasAuthored ? 'Authored calls only' : 'Unavailable')
     lines.push(
-      `| [${text(target.id)}](#${idFor('target', target.id)}) | [${text(target.implementation)}](#${idFor('flow', target.implementation)}) | ${role} | ${continuation}${summaries.size > 2 ? '<br>See more routes below.' : ''}${hasAuthored ? '<br>See authored handoffs below.' : ''} |`,
+      `| [${text(target.id)}](#${idFor('target', target.id)}) | [${text(target.implementation)}](#${idFor('flow', target.implementation)}) | ${role} | ${continuation}${summaries.size > 2 ? '<br>See more routes below.' : ''}${summaries.size && hasAuthored ? '<br>See authored handoffs below.' : ''} |`,
     )
   }
   lines.push('')
@@ -1422,6 +1438,7 @@ function applicationMap(report: BehaviorReport): string[] {
         lines.push('This configured target exceeds the diagram limit.', '')
       const details = callDetails(report, [...routes, ...scope.alternatives])
       lines.push(...renderCallSelections(scope, target.slots, '#### Caller decisions'))
+      if (!routes.length) lines.push(...renderCallReferences([scope], [target], undefined, '####'))
       lines.push(...contractChecks(scope))
       if (routes.length) lines.push(...consequences(report, scope, routes, details.shown))
       if (scope.routes.length > routes.length)

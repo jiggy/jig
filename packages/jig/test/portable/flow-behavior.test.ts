@@ -8,10 +8,11 @@ import {
 } from '../../src/internal/flow-behavior/comparison.js'
 import { analyzeFlowBehavior } from '../../src/internal/flow-behavior/compose.js'
 import { inputFromContract } from '../../src/internal/flow-behavior/input-contract.js'
-import type {
-  BehaviorInput,
-  BehaviorPackage,
-  BehaviorTarget,
+import {
+  BEHAVIOR_LIMITS,
+  type BehaviorInput,
+  type BehaviorPackage,
+  type BehaviorTarget,
 } from '../../src/internal/flow-behavior/model.js'
 import { compileEmbeddedSchema, SchemaDiagnostic } from '../../src/schema/index.js'
 
@@ -461,6 +462,46 @@ test('focused source sites decline reassigned or ambiguous requests and retain d
     },
   ])
   expect(scope.callSelections?.sites[0]?.dispatch).toBeUndefined()
+})
+
+test('whole application maps retain authored decisions after reserving route analysis for callers', () => {
+  const input = snapshot(
+    method(handlerSource(`return { outcome: 'done', output: {} }`)),
+    method(
+      handlerSource(`
+      const request = (slot, value) => run.call({slot, operationId: slot, input: value})
+      if (run.input.enabled) await request('converter', {})
+      return { outcome: 'done', output: {} }
+    `),
+    ),
+  )
+  const root = input.targets[0]!
+  const callers = Array.from({ length: BEHAVIOR_LIMITS.scopes }, (_, i) => ({
+    ...root,
+    id: 'binding:caller-' + i,
+  }))
+  const later = { ...root, slots: new Map([['converter', 'flow:flows/convert']]) }
+  const targets = [...input.targets.slice(1), later, ...callers]
+  const report = analyzeFlowBehavior({
+    ...input,
+    focus: undefined,
+    targets,
+    visible: targets.map(({ id }) => id),
+  })
+  expect(report.scopes[0]?.target).toBe(callers[0]!.id)
+  const beyond = report.scopes.find((scope) => scope.target === later.id)
+  expect(beyond?.routes).toEqual([])
+  expect(beyond?.gaps[0]?.reason).toContain('Scope analysis limit')
+  expect(beyond?.callSelections?.sites[0]?.dispatch?.arguments).toContainEqual({
+    field: 'input',
+    index: 1,
+    parameter: 'value',
+  })
+  const output = renderFlowBehavior(report)
+  expect(output).toMatch(/\| \[binding:code\][^\n]+Authored calls only/)
+  const use = output.split('\n### binding:code\n')[1]?.split('\n### binding:')[0]
+  expect(use).toContain('Argument 2 value → request field input.')
+  expect(use).toContain('Scope analysis limit reached.')
 })
 
 test('package inspection joins source sites to exact configured caller slots', () => {
@@ -1068,6 +1109,13 @@ test('conditional publication follows closure state and the computed view payloa
     flowBehaviorSnapshot(repaired),
   )
   const reportingLine = body.split('\n').findIndex((line) => line.includes("show('ready')")) + 1
+  const before = renderFlowBehavior(report)
+  expect(before).toContain(
+    `progress 4/4<br>show\\('ready'\\) (flows/import/FLOW.ts:${reportingLine})`,
+  )
+  expect(renderFlowBehavior(repaired)).toContain(
+    `progress 3/4<br>show\\('checking'\\) (flows/import/FLOW.ts:${reportingLine})`,
+  )
   const rendered = renderFlowBehaviorComparison(comparison)
   expect(rendered).toContain('Requested progress 4/4 → 3/4')
   expect(rendered).toContain(

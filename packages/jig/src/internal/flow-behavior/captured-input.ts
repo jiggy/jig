@@ -7,7 +7,7 @@ import { resolveInvocationSlots } from '../../project/invocation-slots.js'
 import type { PackageProjectInspection } from '../../project/package-project.js'
 import { flowSelector } from '../../project/package-selector.js'
 import { SchemaDiagnostic } from '../../schema/index.js'
-import { analyzeFlowBehavior } from './compose.js'
+import { analyzeFlowBehavior, applicationScopeOrder } from './compose.js'
 import { inputFromContract } from './input-contract.js'
 import {
   BEHAVIOR_LIMITS,
@@ -69,7 +69,13 @@ export async function prepareFlowBehavior(
   const packages = new Map<string, BehaviorPackage>()
   const known = new Map(targets.map((item) => [item.id, item]))
   const qualified = new Map(members.map((member) => [member.provenance.projectPath, member]))
-  const selected = new Set(focus === undefined ? visible : [focus, ...visible])
+  const selected = new Set(
+    focus !== undefined
+      ? [focus, ...visible]
+      : packagePath === undefined
+        ? applicationScopeOrder(visible, known, entrypoint)
+        : visible,
+  )
   const pending = [...selected]
   for (const id of pending)
     for (const child of known.get(id)?.slots.values() ?? [])

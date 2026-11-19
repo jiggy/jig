@@ -283,6 +283,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Show the local helper's request location beside the call that selects a configured slot.
   Show authored request metadata and the child input location under separate labels.
   Show the authored request and the argument positions proven to supply its fields.
+  Continue collecting caller decisions from captured source beyond the route analysis limit.
 
   Keep conditional argument fields, lexical guards, and related configured uses with that decision.
   The opening view relates a captured import outside the Flow package to its matching slots.
@@ -290,6 +291,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Supported literal lookups can show their authored rows, source assignments, and preceding returns.
 
   Lead with route consequences and attach the conditions that select them.
+  Show the source of the final progress request beside the reported count.
+
   Name the passing and rejecting branches of a direct validation guard.
   Show source locations and whether the displayed routes resolve each predicate.
   Include later conditions when earlier conditions leave outgoing edges indistinguishable.

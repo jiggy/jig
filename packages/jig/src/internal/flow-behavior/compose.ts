@@ -38,6 +38,22 @@ type Scope = BehaviorReport['scopes'][number]
 type Route = Scope['routes'][number]
 type Handoff = { readonly caller: string; readonly slot: string; readonly site: SourceSite }
 
+/** Spend the application budget on the entrypoint and configured callers first. */
+export function applicationScopeOrder(
+  visible: readonly string[],
+  targets: ReadonlyMap<string, BehaviorTarget>,
+  entrypoint?: string,
+): string[] {
+  return visible
+    .map((id) => ({
+      id,
+      calls: [...(targets.get(id)?.slots.values() ?? [])].filter((child) => targets.has(child))
+        .length,
+    }))
+    .sort((a, b) => Number(b.id === entrypoint) - Number(a.id === entrypoint) || b.calls - a.calls)
+    .map(({ id }) => id)
+}
+
 export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal): BehaviorReport {
   const targets = new Map(input.targets.map((target) => [target.id, target]))
   const sources = new Map<string, SourceIndex>()
@@ -50,11 +66,14 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   const childKeys = new Map<string, number>()
   let childSteps = 0
   const { focus, entrypoint, packagePath, revision } = input
+  const application = focus === undefined && packagePath === undefined
 
   const primary = new AnalysisBudget(signal, focus === undefined ? 72_000 : BEHAVIOR_LIMITS.steps)
-  const first = focus ?? (packagePath === undefined ? entrypoint : undefined)
-  const visible =
-    first === undefined ? input.visible : [first, ...input.visible.filter((id) => id !== first)]
+  const visible = application
+    ? applicationScopeOrder(input.visible, targets, entrypoint)
+    : focus === undefined
+      ? input.visible
+      : [focus, ...input.visible.filter((id) => id !== focus)]
   // Finish all primary analysis before spending work on secondary alternatives.
   for (const id of visible) {
     signal?.throwIfAborted()
@@ -68,10 +87,13 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
         gaps: [
           {
             ...location(target),
-            reason: 'Scope analysis limit reached. Inspect this target directly.',
+            reason:
+              'Scope analysis limit reached. Inspect this target directly for analyzed routes.',
           },
         ],
+        ...(application ? authoredContext(target, new Set(), true) : {}),
       })
+      if (application) continue
       break
     }
     scopes.push(inspect(target, new AnalysisBudget(signal, BEHAVIOR_LIMITS.steps, primary)))
@@ -201,18 +223,40 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
           .filter(([key]) => !analyzedHandoffs.has(key))
           .map(([, candidate]) => candidate)
       : []
-    const showDecisions = target.id === focus || (focus === undefined && packagePath === undefined)
+    return {
+      target: target.id,
+      routes: [...routes.values()],
+      alternatives: [...alternate.values()],
+      gaps: [...evidence.values()],
+      ...(authoredHandoffs.length
+        ? { authoredHandoffs: authoredHandoffs.slice(0, BEHAVIOR_LIMITS.authoredHandoffs) }
+        : {}),
+      ...(authoredHandoffs.length > BEHAVIOR_LIMITS.authoredHandoffs
+        ? { authoredHandoffsOmitted: authoredHandoffs.length - BEHAVIOR_LIMITS.authoredHandoffs }
+        : {}),
+      ...(!handoff
+        ? authoredContext(
+            target,
+            new Set([...analyzedHandoffs, ...authored.keys()]),
+            evidence.size > 0,
+          )
+        : {}),
+    }
+  }
+
+  function authoredContext(
+    target: BehaviorTarget,
+    represented: ReadonlySet<string>,
+    fallback: boolean,
+  ) {
+    const showDecisions = target.id === focus || application
     const callReferences =
-      !handoff &&
-      target.slots.size > 0 &&
-      (showDecisions || (evidence.size && packagePath !== undefined))
-        ? sources
-            .get(target.implementation)
-            ?.callReferences(target.slots, new Set([...analyzedHandoffs, ...authored.keys()]), {
-              limit: BEHAVIOR_LIMITS.authoredHandoffs,
-              fallback: evidence.size > 0,
-              focused: showDecisions,
-            })
+      target.slots.size > 0 && (showDecisions || (fallback && packagePath !== undefined))
+        ? sourceFor(target)?.callReferences(target.slots, represented, {
+            limit: BEHAVIOR_LIMITS.authoredHandoffs,
+            fallback,
+            focused: showDecisions,
+          })
         : undefined
     const selected = callReferences?.selected
     const related = new Map<string, { calls: RelatedCall[]; omitted: number }>()
@@ -238,20 +282,20 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       }
     }
     return {
-      target: target.id,
-      routes: [...routes.values()],
-      alternatives: [...alternate.values()],
-      gaps: [...evidence.values()],
-      ...(authoredHandoffs.length
-        ? { authoredHandoffs: authoredHandoffs.slice(0, BEHAVIOR_LIMITS.authoredHandoffs) }
-        : {}),
-      ...(authoredHandoffs.length > BEHAVIOR_LIMITS.authoredHandoffs
-        ? { authoredHandoffsOmitted: authoredHandoffs.length - BEHAVIOR_LIMITS.authoredHandoffs }
-        : {}),
       ...(callReferences?.references.length ? { callReferences: callReferences.references } : {}),
       ...(callReferences?.omitted ? { callReferencesOmitted: callReferences.omitted } : {}),
       ...(selected?.sites.length ? { callSelections: { ...selected, related } } : {}),
     }
+  }
+
+  function sourceFor(target: BehaviorTarget): SourceIndex | undefined {
+    const existing = sources.get(target.implementation)
+    if (existing) return existing
+    const pkg = input.packages.get(target.implementation)
+    if (pkg === undefined || pkg.unavailable !== undefined) return undefined
+    const source = new SourceIndex(target.implementation, pkg)
+    sources.set(target.implementation, source)
+    return source
   }
 
   function evaluate(
@@ -264,19 +308,9 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     recordAuthoredHandoff?: (handoff: AuthoredHandoff) => void,
   ): State[] {
     budget.check()
-    const pkg = input.packages.get(target.implementation)
-    if (
-      !pkg ||
-      pkg.unavailable !== undefined ||
-      active.has(target.id) ||
-      depth >= BEHAVIOR_LIMITS.depth
-    )
-      return []
-    let index = sources.get(target.implementation)
-    if (index === undefined) {
-      index = new SourceIndex(target.implementation, pkg)
-      sources.set(target.implementation, index)
-    }
+    if (active.has(target.id) || depth >= BEHAVIOR_LIMITS.depth) return []
+    const index = sourceFor(target)
+    if (index === undefined) return []
     const chain = new Set([...active, target.id])
     return new Interpreter(
       index,

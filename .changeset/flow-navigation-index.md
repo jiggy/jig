@@ -7,3 +7,5 @@ Open a compact Flow navigation index when inspecting a project without a declare
 Link working-tree inspection directly from captured packages and show request metadata separately from child input in focused caller decisions.
 
 Show which local helper arguments supply each authored request field in focused reports and application map expansions.
+
+Keep authored caller decisions beyond the application route limit and show the source of the last progress request beside its count.

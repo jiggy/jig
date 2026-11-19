@@ -9,6 +9,8 @@ export interface SourceSite {
   readonly identity?: string
 }
 
+export type ReportingCall = SourceSite & { readonly code: string }
+
 export interface BehaviorPackage {
   readonly entry: string
   readonly sources: ReadonlyMap<string, string>
@@ -85,7 +87,7 @@ export type BehaviorStep =
       readonly operation: string
       readonly detail: string
       readonly guards?: readonly BehaviorGuard[]
-      readonly reportingCall?: SourceSite
+      readonly reportingCall?: ReportingCall
     }
   | { readonly kind: 'gap'; readonly site: SourceSite; readonly detail: string }
   | {
