@@ -1515,7 +1515,7 @@ test('an unknown reporting payload leaves a later handoff visible', () => {
   ])
 })
 
-test('large data-only view formatting leaves its caller route and progress uncertainty visible', () => {
+test('large data-only views preserve a caller route and link the authored progress calculation', () => {
   const branches = Array.from(
     { length: 7 },
     (_, index) => `if (input.field${index}) { label = 'option ${index}' }`,
@@ -1524,10 +1524,18 @@ test('large data-only view formatting leaves its caller route and progress uncer
     `
     import {handle} from '@jigging/flow'
     import {withReporting} from '@jigging/reporting'
+    function unused() {
+      return {kind: 'progress', completed: 39, total: 47}
+    }
+    function progress(input) {
+      const completed = input.finished ? 2 : 1
+      return {kind: 'progress', completed, total: 4}
+    }
     function render(input) {
+      const unused = {kind: 'progress', completed: 97, total: 99}
       let label = 'default'
       ${branches}
-      return {summary: label, sections: []}
+      return {summary: label, sections: [{blocks: [progress(input)]}]}
     }
     await handle(run => withReporting(run, 'progress', async reporter => {
       reporter.view('progress').update(render(run.input))
@@ -1545,7 +1553,13 @@ test('large data-only view formatting leaves its caller route and progress uncer
   expect(scope?.routes.flat()).toContainEqual(
     expect.objectContaining({ kind: 'call', slot: 'converter' }),
   )
-  expect(renderFlowBehavior(report)).toContain('display effect unknown')
+  const output = renderFlowBehavior(report)
+  expect(output).toContain('display effect unknown')
+  expect(output).toContain('Possible progress calculation')
+  expect(output).toContain('completed = input.finished')
+  expect(output).toContain('total = 4')
+  expect(output).not.toContain('completed = 39')
+  expect(output).not.toContain('completed = 97')
 })
 
 test('the diagram attaches an unresolved callee condition to each affected completion', () => {
