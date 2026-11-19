@@ -703,9 +703,13 @@ test('package inspection retains every configured use and its direct callers', (
   ])
   const output = renderFlowContext(snapshot, options)
   expect(output).toContain('last locally approved configuration')
-  expect(output).toContain('### binding:chapter\n\nSettings that differ: prompt = "chapter".')
+  expect(output).toContain(
+    '### binding:chapter\n\n    jig inspect --flow --approved binding:chapter\n\nSettings that differ: prompt = "chapter".',
+  )
   expect(output).toContain('- binding:producer · chapter\n- binding:producer · polish')
-  expect(output).toContain('### binding:control\n\nSettings that differ: prompt = unset.')
+  expect(output).toContain(
+    '### binding:control\n\n    jig inspect --flow --approved binding:control\n\nSettings that differ: prompt = unset.',
+  )
   expect(output).toContain('- binding:comparison · baseline')
   expect(output).toContain('### binding:standalone')
   expect(output).toContain('No configured callers.')
@@ -727,7 +731,11 @@ test('inspection grammar rejects conflicting scopes before host acquisition', as
     ['inspect', '--flow', '--package', '../flows/repair'],
     ['inspect', '--flow', '--package', 'flows/repair', '--package', 'flows/retry'],
     ['inspect', '--flow', '--package', 'flows/repair', 'binding:main'],
+    ['inspect', '--flow', '--package', 'flows/repair', 'flows/other'],
     ['inspect', '--flow', '--package', 'flows/repair', '--all'],
+    ['inspect', '--flow', 'flows/repair', '--all'],
+    ['inspect', '--flow', '../flows/repair'],
+    ['inspect', 'flows/repair'],
     ['inspect', '--flow', '--package', 'flows/repair', '--snapshot'],
     ['inspect', '--flow', '--package', 'flows/repair', '--compare', 'before.json'],
   ]) {
@@ -760,30 +768,12 @@ test('inspection grammar rejects conflicting scopes before host acquisition', as
   expect(privateCliRequiresHost(['inspect', '--flow', '--all', '--approved'])).toBe(false)
 })
 
-test('a package path used as a flow target gets a copyable inspection command', async () => {
+test('a bare package path selects package inspection with --flow', () => {
   for (const args of [
     ['inspect', '--flow', 'flows/repair'],
     ['inspect', './flows/repair', '--flow'],
   ]) {
-    let stderr = ''
-    expect(privateCliRequiresHost(args)).toBe(false)
-    expect(
-      await main(args, {
-        writeError: (value) => {
-          stderr += value
-        },
-      }),
-    ).toBe(2)
-    expect(stderr).toContain('$ jig inspect --flow --package flows/repair\n')
+    expect(privateCliRequiresHost(args)).toBe(true)
+    expect(privateCliRequiresHost([...args, '--approved'])).toBe(false)
   }
-  let stderr = ''
-  expect(
-    await main(['inspect', '--flow', 'flows/$(repair)'], {
-      writeError: (value) => {
-        stderr += value
-      },
-    }),
-  ).toBe(2)
-  expect(stderr).toContain('$ jig inspect --flow --package PATH\n')
-  expect(stderr).not.toContain('$(repair)')
 })
