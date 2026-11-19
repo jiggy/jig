@@ -985,6 +985,8 @@ Packages containing callers appear first, beginning with those that have a calle
 The index uses captured topology and skips source behavior analysis.
 
 An exact target retains its configured context, including other uses of its implementation and callers.
+Focused source inspection links to the captured Binding declaration and shows the selected values for settings that differ across uses.
+It identifies peers with the same slot selections and names slots that select differently.
 With `--all`, the document shows the project entrypoint and includes every configured target within the topology limits.
 
 Focused reports and configured-use details list the Flow's required slots.
@@ -1016,6 +1018,7 @@ It identifies authored request metadata at `run.call` and locates the child inpu
 When an argument is directly forwarded, the report names its position and the request field it supplies.
 
 Focused and package reports may show additional authored call references after an analysis cutoff.
+Focused reports show authored handoffs and the earlier exits that bypass them before the route details.
 Computed slot expressions remain separate from exact configured routes.
 Supported strict-equality lookups in literal tables may include their authored rows, key sources, and early returns.
 These source facts retain their locations and carry no reachability claim.

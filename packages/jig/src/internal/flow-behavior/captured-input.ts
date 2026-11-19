@@ -34,12 +34,11 @@ export async function prepareFlowBehavior(
   function target(
     id: string,
     implementation: string,
-    settings: JsonValue,
-    configured?: PackageProjectInspection['bindings'][number]['slots'],
+    binding?: PackageProjectInspection['bindings'][number],
   ) {
     const flow = byPackage.get(implementation)!
     const slots = new Map(
-      Object.entries(resolveInvocationSlots(flow.uses, configured ?? flow.slots ?? {})).map(
+      Object.entries(resolveInvocationSlots(flow.uses, binding?.slots ?? flow.slots ?? {})).map(
         ([name, route]) => [
           name,
           route.kind === 'native'
@@ -60,8 +59,9 @@ export async function prepareFlowBehavior(
     targets.push({
       id,
       implementation,
-      settings,
+      settings: binding?.settings ?? {},
       slots,
+      ...(binding === undefined ? {} : { declarationPath: binding.declarationPath }),
       ...(requiredSlots.length
         ? {
             requiredSlots,
@@ -75,9 +75,9 @@ export async function prepareFlowBehavior(
   }
   for (const flow of project.flows)
     if (flow.directRun)
-      target(flowSelector(flow.provenance.projectPath), flow.provenance.projectPath, {})
+      target(flowSelector(flow.provenance.projectPath), flow.provenance.projectPath)
   for (const binding of project.bindings)
-    target('binding:' + binding.id, binding.packagePath, binding.settings, binding.slots)
+    target('binding:' + binding.id, binding.packagePath, binding)
 
   const packages = new Map<string, BehaviorPackage>()
   const known = new Map(targets.map((item) => [item.id, item]))

@@ -8,6 +8,7 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
 ## Ownership
 
 - `captured-input.ts` borrows source and interface facts from working-tree inspection.
+  It retains the captured declaration path for each Binding.
 - `input-contract.ts` projects guarantees from captured input schemas into inert values.
 - `admitted-input.ts` reads exact stored source and recognized dependency bytes for an approved composition.
 - `source.ts` resolves parsed source and call identities inside one captured package.
