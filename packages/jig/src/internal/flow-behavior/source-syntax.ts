@@ -97,13 +97,7 @@ export function priorBranchExits(expression: ts.Expression) {
       if (no) exits.push({ condition: candidate.expression, taken: false, statement: no })
     }
   }
-  // Preserve normal exits when a sequence of later rejection checks occupies the bound.
   return exits
-    .sort(
-      (a, b) =>
-        Number(ts.isReturnStatement(b.statement)) - Number(ts.isReturnStatement(a.statement)),
-    )
-    .slice(0, 4)
 }
 
 export function* sourceNodes(
