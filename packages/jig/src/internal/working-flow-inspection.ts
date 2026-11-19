@@ -38,76 +38,90 @@ export function inspectWorkingFlow(
   return captureWorkingFlow(project, evaluator, options, (topology) => topology, signal)
 }
 
-export function inspectWorkingFlowBehavior(
+export type WorkingFlowReport =
+  | { kind: 'index'; topology: JsonValue }
+  | { kind: 'behavior'; behavior: BehaviorReport }
+
+export function inspectWorkingFlowReport(
   project: string,
   evaluator: PrivateAuthorEvaluatorOptions,
   options: FlowContextOptions,
   signal?: AbortSignal,
-): Promise<BehaviorReport> {
-  return captureWorkingFlow(
+): Promise<WorkingFlowReport> {
+  return captureWorkingFlow<WorkingFlowReport>(
     project,
     evaluator,
     options,
     async (topology, linked, members) => {
       const selection = selectFlowContext(topology, options)
-      if (
-        selection.included.length > PRIVATE_FLOW_CONTEXT_LIMITS.targets ||
-        selection.edges.length > PRIVATE_FLOW_CONTEXT_LIMITS.connections
-      )
-        return {
-          revision: String(selection.snapshot.revision),
-          focus: selection.focus,
-          inventory: [],
-          childPaths: [],
-          scopes: [],
-          unavailable:
-            options.packagePath === undefined
-              ? 'This view exceeds the presentation limits. Inspect a smaller target.'
-              : 'Package inspection exceeds the presentation limits. Add --json for the complete configured records.',
-        }
+      if (selection.focus === undefined && options.packagePath === undefined && !options.all)
+        return { kind: 'index', topology }
 
-      const { prepareFlowBehavior } = await import('./flow-behavior/captured-input.js')
-      const report = await prepareFlowBehavior(
-        resolve(project),
-        String(selection.snapshot.revision),
-        selection.focus,
-        selection.entrypoint,
-        selection.included.map((item) => String(item.target)),
-        linked,
-        members,
-        signal,
-        options.packagePath,
-      )
-      const orientation = selection.focus ?? selection.entrypoint
-      const sourcePackage =
-        options.packagePath ??
-        selection.included.find((item) => item.target === orientation)?.package
-      if (typeof sourcePackage !== 'string' || sourcePackage.startsWith('npm:')) return report
-      const source = members.find((member) => member.provenance.projectPath === sourcePackage)
-      if (source === undefined) return report
-      const boundary = await findFlowImportBoundary(
-        source.captured,
-        source.inspected.entrypoint.path,
-        {
-          signal,
-        },
-      )
-      if (boundary === undefined) return report
-      const importedPath = posix.join(sourcePackage, boundary.target)
-      const targetPackage = linked.flows.find(({ provenance }) =>
-        importedPath.startsWith(provenance.projectPath + '/'),
-      )?.provenance.projectPath
-      return {
-        ...report,
-        importBoundary: {
-          ...boundary,
-          sourcePackage,
-          ...(targetPackage === undefined ? {} : { targetPackage }),
-        },
-      }
+      const behavior = await inspectBehavior(project, options, selection, linked, members, signal)
+      return { kind: 'behavior', behavior }
     },
     signal,
   )
+}
+
+async function inspectBehavior(
+  project: string,
+  options: FlowContextOptions,
+  selection: ReturnType<typeof selectFlowContext>,
+  linked: PackageProjectValue,
+  members: readonly CapturedFlowMember[],
+  signal?: AbortSignal,
+): Promise<BehaviorReport> {
+  if (
+    selection.included.length > PRIVATE_FLOW_CONTEXT_LIMITS.targets ||
+    selection.edges.length > PRIVATE_FLOW_CONTEXT_LIMITS.connections
+  )
+    return {
+      revision: String(selection.snapshot.revision),
+      focus: selection.focus,
+      inventory: [],
+      childPaths: [],
+      scopes: [],
+      unavailable:
+        options.packagePath === undefined
+          ? 'This view exceeds the presentation limits. Inspect a smaller target.'
+          : 'Package inspection exceeds the presentation limits. Add --json for the complete configured records.',
+    }
+
+  const { prepareFlowBehavior } = await import('./flow-behavior/captured-input.js')
+  const report = await prepareFlowBehavior(
+    resolve(project),
+    String(selection.snapshot.revision),
+    selection.focus,
+    selection.entrypoint,
+    selection.included.map((item) => String(item.target)),
+    linked,
+    members,
+    signal,
+    options.packagePath,
+  )
+  const orientation = selection.focus ?? selection.entrypoint
+  const sourcePackage =
+    options.packagePath ?? selection.included.find((item) => item.target === orientation)?.package
+  if (typeof sourcePackage !== 'string' || sourcePackage.startsWith('npm:')) return report
+  const source = members.find((member) => member.provenance.projectPath === sourcePackage)
+  if (source === undefined) return report
+  const boundary = await findFlowImportBoundary(source.captured, source.inspected.entrypoint.path, {
+    signal,
+  })
+  if (boundary === undefined) return report
+  const importedPath = posix.join(sourcePackage, boundary.target)
+  const targetPackage = linked.flows.find(({ provenance }) =>
+    importedPath.startsWith(provenance.projectPath + '/'),
+  )?.provenance.projectPath
+  return {
+    ...report,
+    importBoundary: {
+      ...boundary,
+      sourcePackage,
+      ...(targetPackage === undefined ? {} : { targetPackage }),
+    },
+  }
 }
 
 async function captureWorkingFlow<T>(

@@ -72,7 +72,6 @@ import {
   encodeFlowBehaviorSnapshot,
   flowBehaviorSnapshot,
 } from './internal/flow-behavior/comparison.js'
-import type { BehaviorReport } from './internal/flow-behavior/model.js'
 import { PrivateInputInspectionCapture } from './internal/input-inspection.js'
 import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
 import { PrivateAttemptError } from './internal/prepared-attempt-store.js'
@@ -88,6 +87,7 @@ import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
 import { PrivateSavedResultError, privateCaptureSavedResult } from './internal/saved-result.js'
 import { JIG_STANDARD_CONTRACTS } from './internal/standard-contracts.js'
+import type { WorkingFlowReport } from './internal/working-flow-inspection.js'
 import {
   PRIVATE_WORKSPACE_SOURCE_ROOT_LIMIT,
   PRIVATE_WORKSPACE_SOURCE_ROOT_PATH_BYTES,
@@ -420,11 +420,11 @@ export interface PrivateCliCommandHost {
     options: import('./internal/flow-inspection-scope.js').FlowContextOptions,
     signal?: AbortSignal,
   ) => Promise<JsonValue>
-  readonly inspectBehavior?: (
+  readonly inspectFlowReport?: (
     project: string,
     options: import('./internal/flow-inspection-scope.js').FlowContextOptions,
     signal?: AbortSignal,
-  ) => Promise<BehaviorReport>
+  ) => Promise<WorkingFlowReport>
   acquire(
     project: string,
     options?: {
@@ -1242,7 +1242,7 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
   runtime.signal?.throwIfAborted()
   try {
     if (parsed.flow && !parsed.approved && !parsed.topology && !json) {
-      if (runtime.host.inspectBehavior === undefined)
+      if (runtime.host.inspectFlowReport === undefined)
         throw new CliDiagnostic(
           'JIG_SOURCE_INSPECTION_UNAVAILABLE',
           'Behavior inspection needs the installed Jig declaration evaluator on a supported host. Use the installed jig command.',
@@ -1264,7 +1264,7 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
               : 'Read a regular baseline file produced by jig inspect --flow --snapshot.',
           )
         }
-      const report = await runtime.host.inspectBehavior(
+      const inspected = await runtime.host.inspectFlowReport(
         runtime.currentDirectory,
         {
           ...flowScope,
@@ -1273,6 +1273,11 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
         runtime.signal,
       )
       runtime.signal?.throwIfAborted()
+      if (inspected.kind === 'index') {
+        await runtime.writeRecord(renderFlowContext(inspected.topology, { presentation: 'index' }))
+        return 0
+      }
+      const report = inspected.behavior
       const output = parsed.snapshot
         ? encodeFlowBehaviorSnapshot(flowBehaviorSnapshot(report))
         : before

@@ -254,7 +254,11 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Contained evaluator failures use closed cause-specific guidance and disclose the retained topology option.
 
 - `src/cli-flow-behavior.ts` renders conditional source routes as literal Markdown.
-  Human working-tree `--flow` inspection opens the behavior view by default.
+  Human working-tree `--flow` inspection opens the behavior view for a declared entrypoint or explicit scope.
+  Without either, `src/cli-flow-context.ts` renders a compact navigation index from the captured topology.
+  `src/cli-flow-orientation.ts` groups the index by implementation and puts configured callers first.
+  The installed inspection selects the index before loading the source analyzer.
+
   The comparison renders changed source evidence from `--snapshot` and a fresh capture.
   It leads with source-linked changes on paths with uniquely corresponding captured checks.
   Unmatched-path summaries can retain call order from current source paths.

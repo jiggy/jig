@@ -38,6 +38,68 @@ function configuredCallers(connections: readonly ConfiguredConnection[]) {
   return incoming
 }
 
+const plainSelector = /^[A-Za-z0-9@._:/-]+$/
+
+function targetInspectionCommand(id: string, approved = false): string | undefined {
+  if (/[\p{Cc}\p{Cf}\u2028\u2029]/u.test(id)) return
+  const operand = plainSelector.test(id) ? id : cliShellWord(id)
+  return `jig inspect --flow${approved ? ' --approved' : ''} ${operand}`
+}
+
+export function renderFlowNavigationIndex(
+  targets: readonly ConfiguredTarget[],
+  connections: readonly ConfiguredConnection[],
+  text: (value: string) => string,
+): string[] {
+  if (!targets.length) return ['No configured targets.', '']
+  const outgoing = new Map<string, ConfiguredConnection[]>()
+  for (const connection of connections) {
+    const slots = outgoing.get(connection.from) ?? []
+    slots.push(connection)
+    outgoing.set(connection.from, slots)
+  }
+  const incoming = configuredCallers(connections)
+  const packages = new Map<string, ConfiguredTarget[]>()
+  for (const target of targets) {
+    const uses = packages.get(target.implementation) ?? []
+    uses.push(target)
+    packages.set(target.implementation, uses)
+  }
+  const rank = (target: ConfiguredTarget) => {
+    if (!outgoing.get(target.id)?.some((slot) => !slot.resource)) return 2
+    return incoming.has(target.id) ? 1 : 0
+  }
+  const groups = [...packages].map(([name, uses]) => ({
+    name,
+    uses: uses.sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id)),
+    rank: Math.min(...uses.map(rank)),
+  }))
+  groups.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name))
+  const lines = [
+    `${targets.length} configured targets across ${packages.size} packages. No declared entrypoint.`,
+    '',
+    'Find a caller or shared package below and run its target command. Slots show configured selections.',
+    'Use `jig inspect --flow --all` for application behavior.',
+    '',
+    '| Package | Inspect a target | Configured slots |',
+    '| --- | --- | --- |',
+  ]
+  for (const { name, uses } of groups) {
+    for (const use of uses) {
+      const command = targetInspectionCommand(use.id)
+      const target =
+        command === undefined
+          ? text(use.id)
+          : plainSelector.test(use.id)
+            ? `\`${command}\``
+            : text(command)
+      const slots = outgoing.get(use.id)?.map((edge) => `${text(edge.slot)} → ${text(edge.to)}`)
+      lines.push(`| ${text(name)} | ${target} | ${slots?.join(' · ') || '—'} |`)
+    }
+  }
+  return [...lines, '']
+}
+
 export function renderFlowPackageUses(
   packagePath: string,
   targets: readonly ConfiguredTarget[],
@@ -53,10 +115,8 @@ export function renderFlowPackageUses(
   const different = settings.length === 1 ? Object.keys(settings[0]!) : differingKeys(settings)
   for (const [index, use] of uses.entries()) {
     lines.push('### ' + text(use.id), '')
-    if (!/[\p{Cc}\p{Cf}\u2028\u2029]/u.test(use.id)) {
-      const operand = /^[A-Za-z0-9@._:/-]+$/.test(use.id) ? use.id : cliShellWord(use.id)
-      lines.push(`    jig inspect --flow${approved ? ' --approved' : ''} ${operand}`, '')
-    }
+    const command = targetInspectionCommand(use.id, approved)
+    if (command !== undefined) lines.push('    ' + command, '')
     if (different.length)
       lines.push(
         (uses.length === 1 ? 'Settings: ' : 'Settings that differ: ') +

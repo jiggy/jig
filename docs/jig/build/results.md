@@ -260,7 +260,7 @@ The [archive contract](../spec/display-archive.md) defines capacity, evidence an
 
 ## Inspect configured topology
 
-Use `jig inspect --flow` to see current configured connections without prior approval.
+Use `jig inspect --flow --topology` to see the current composition graph without prior approval.
 The Markdown graph distinguishes Bindings, direct Flows, caller slots, and resources.
 It shows available calls, without establishing execution order, conditions, or caller reactions.
 
@@ -279,7 +279,7 @@ The entrypoint selects the default root when no target is supplied.
 Without an entrypoint, the graph includes the captured target inventory. Excluded targets and connections are counted.
 
 ```sh
-jig inspect --flow
+jig inspect --flow --topology
 jig inspect --flow binding:repair
 jig inspect --flow --approved
 jig inspect --flow --json
@@ -307,6 +307,9 @@ The application overview leads with the declared entrypoint and its configured h
 The inventory includes independent direct Flows and configured Bindings.
 Follow an overview link to see a Flow chart or a specific configured use.
 Each configured use keeps its own conditions, child results, and caller continuations.
+
+In a project without an entrypoint, `jig inspect --flow` lists targets by package with their configured slots.
+Run a target's command from that index to inspect its behavior, or add `--all` for the full application map.
 
 When you select a target, start with its configured callers and their exact slots.
 Other configured uses of the same Flow include their own callers and relevant settings differences.

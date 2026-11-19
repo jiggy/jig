@@ -26,13 +26,11 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
       }),
     )
   }
-  await put(
-    'jig.ts',
-    `
+  const projectSource = (entrypoint: string) => `
     import { defineJig, discover } from '@jigging/jig'
-    export default defineJig({ flows: discover('flows'), bindings: discover('bindings'), entrypoint: 'binding:code' })
-  `,
-  )
+    export default defineJig({ flows: discover('flows'), bindings: discover('bindings')${entrypoint} })
+  `
+  await put('jig.ts', projectSource(", entrypoint: 'binding:code'"))
   for (const [name, target] of [
     ['code', 'convert'],
     ['manual', 'opaque'],
@@ -127,6 +125,25 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
   expect(application.stdout).toContain('["binding:code"]')
   expect(application.stdout).toContain('["binding:manual"]')
   expect(application.stdout).toContain('flow:flows/opaque')
+
+  await put('jig.ts', projectSource(''))
+  const navigation = await inspect()
+  expect(navigation.stdout).toStartWith('# Flow navigation\n')
+  expect(navigation.stdout).toContain(
+    '5 configured targets across 4 packages. No declared entrypoint.',
+  )
+  expect(navigation.stdout).toContain(
+    '| flows/import | `jig inspect --flow binding:code` | converter → flow:flows/convert · exporter → flow:flows/export |',
+  )
+  expect(navigation.stdout).toContain(
+    '| flows/import | `jig inspect --flow binding:manual` | converter → flow:flows/opaque · exporter → flow:flows/export |',
+  )
+  expect(navigation.stdout).not.toContain('```mermaid')
+  expect(navigation.stdout).not.toContain('Unsupported statement')
+  expect((await inspect('binding:code')).stdout).toContain('status = "attention"')
+  expect((await inspect('--all')).stdout).toContain('## Application overview')
+  expect((await inspect('--topology')).stdout).toStartWith('# Configured topology\n')
+  await put('jig.ts', projectSource(", entrypoint: 'binding:code'"))
   expect((await readdir(project)).sort()).toEqual([
     'behavior-before.json',
     'bindings',
