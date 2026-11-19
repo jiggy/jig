@@ -7,6 +7,8 @@ interface ConfiguredTarget {
   readonly id: string
   readonly implementation: string
   readonly settings: JsonValue
+  readonly declarationPath?: string
+  readonly slots?: ReadonlyMap<string, string>
 }
 
 export interface ConfiguredConnection {
@@ -143,6 +145,7 @@ export function renderFlowOrientation(
     readonly text: (value: string) => string
     readonly target?: (id: string) => string
     readonly includeCallers: boolean
+    readonly declarationLink?: (path: string) => string
   },
 ): string[] {
   const selected = targets.find((target) => target.id === focus)
@@ -162,28 +165,47 @@ export function renderFlowOrientation(
 
   const lines = [targetLabel(selected.id) + ' uses ' + text(selected.implementation) + '.', '']
   if (options.includeCallers) {
+    const otherUses = targets.filter(
+      (target) => target.id !== selected.id && target.implementation === selected.implementation,
+    )
+    const declaration =
+      selected.declarationPath === undefined
+        ? undefined
+        : options.declarationLink?.(selected.declarationPath)
+    if (declaration !== undefined) {
+      const settings = record(selected.settings)
+      const keys = otherUses.length
+        ? differingKeys([settings, ...otherUses.map((target) => record(target.settings))])
+        : Object.keys(settings).sort()
+      lines.push(
+        '**Binding declaration** · ' +
+          declaration +
+          (keys.length
+            ? (otherUses.length ? ' · settings that differ: ' : ' · settings: ') +
+              settingsText(settings, keys, PRIVATE_FLOW_CONTEXT_LIMITS.inlineValueBytes, text)
+            : ''),
+        '',
+      )
+    }
     appendList(
       'Configured callers',
       incoming.get(selected.id) ?? [],
       (edge) => callerLabel(edge) + sourceLabel(edge, text),
     )
-    appendList(
-      'Other configured uses of ' + text(selected.implementation),
-      targets.filter(
-        (target) => target.id !== selected.id && target.implementation === selected.implementation,
-      ),
-      (target) => {
-        const callers = incoming.get(target.id) ?? []
-        const via = callers.slice(0, 3).map(callerLabel).join(', ')
-        const settings = settingsDifference(selected.settings, target.settings, text)
-        return (
-          targetLabel(target.id) +
-          (via ? ' · called by ' + via : '') +
-          (callers.length > 3 ? ` and ${callers.length - 3} more` : '') +
-          settings
-        )
-      },
-    )
+    appendList('Other configured uses of ' + text(selected.implementation), otherUses, (target) => {
+      const callers = incoming.get(target.id) ?? []
+      const via = callers.slice(0, 3).map(callerLabel).join(', ')
+      const settings = settingsDifference(selected.settings, target.settings, text)
+      return (
+        targetLabel(target.id) +
+        (via ? ' · called by ' + via : '') +
+        (callers.length > 3 ? ` and ${callers.length - 3} more` : '') +
+        settings +
+        (declaration !== undefined && selected.slots && target.slots
+          ? slotDifference(selected.slots, target.slots, text)
+          : '')
+      )
+    })
   }
   appendList(
     'Configured handoffs',
@@ -195,6 +217,23 @@ export function renderFlowOrientation(
       sourceLabel(edge, text),
   )
   return lines
+}
+
+function slotDifference(
+  focus: ReadonlyMap<string, string>,
+  alternative: ReadonlyMap<string, string>,
+  text: (value: string) => string,
+): string {
+  const changed = [...new Set([...focus.keys(), ...alternative.keys()])]
+    .filter((slot) => focus.get(slot) !== alternative.get(slot))
+    .sort()
+  if (!changed.length) return ' · same slot selections'
+  const listed = changed.slice(0, 3).map(text).join(', ')
+  return (
+    ' · different slot selections: ' +
+    listed +
+    (changed.length > 3 ? ` +${changed.length - 3}` : '')
+  )
 }
 
 function settingsDifference(

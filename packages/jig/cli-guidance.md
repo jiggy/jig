@@ -268,6 +268,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   The application view links the complete configured inventory to one chart per Flow.
   Its opening handoffs and the focused target's callers use the same configured orientation as topology.
+  Focused Binding inspection links its captured declaration and compares its settings and slot selections with other uses.
+
   Each configured use retains its own analyzed routes, coverage, and caller continuations.
   Flow and target links use selectors. Call links use captured source identity.
   Link each retained child path to the continuation of its own caller.
@@ -282,6 +284,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   A captured package that lacks a direct target points the reader to package inspection.
 
   Focused and package reports can show authored call references beyond the analyzed routes.
+  Put the focused report's authored handoffs and the earlier exits that bypass them before route details.
 
   Focused source and configured-use expansions lead with caller decisions from the selected implementation.
   Group authored sites by configured caller slot.

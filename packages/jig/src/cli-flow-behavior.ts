@@ -1221,6 +1221,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       ...renderCallSelections(selected, inventory.find((target) => target.id === focus)?.slots),
     )
     lines.push(...renderCallReferences([selected], inventory))
+    lines.push(...authoredHandoffs(selected))
     lines.push(...contractChecks(selected))
     const routes = selectRoutes(selected)
     const details = callDetails(report, [...routes, ...selected.alternatives])
@@ -1263,7 +1264,6 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     lines.push(
       ...otherResults(selected.routes, routes),
       ...alternatives(selected),
-      ...authoredHandoffs(selected),
       ...authoredFileWrites(selected),
     )
     if (selected.gaps.length) {
@@ -1473,6 +1473,7 @@ function configuredOrientation(
       target: (id) =>
         linkedTargets?.has(id) ? `[${text(id)}](#${idFor('target', id)})` : text(id),
       includeCallers: linkedTargets === undefined,
+      declarationLink: sourcePathLink,
     },
   )
 }

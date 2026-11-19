@@ -351,8 +351,12 @@ test('focused orientation shows distinct slots and variant callers before analys
       ['current', focus],
       ['baseline', baseline],
     ]),
-    target(focus, 'flows/draft-chapter', [], { prompt: 'reading' }),
+    {
+      ...target(focus, 'flows/draft-chapter', [], { prompt: 'reading' }),
+      declarationPath: 'bindings/chapter-reading.ts',
+    },
     target(baseline, 'flows/draft-chapter', [], { prompt: 'baseline' }),
+    target('binding:chapter-with-review', 'flows/draft-chapter', [['review', compare]]),
     target(producer, 'flows/produce', [
       ['chapter', focus],
       ['polish', focus],
@@ -368,11 +372,17 @@ test('focused orientation shows distinct slots and variant callers before analys
   })
   const orientation = renderFlowBehavior(report).split('## Configured targets')[0]!
   expect(orientation).toContain('binding:chapter-reading uses flows/draft-chapter.')
+  expect(orientation).toContain(
+    '**Binding declaration** · [bindings/chapter-reading.ts](./bindings/chapter-reading.ts) · settings that differ: prompt = "reading"',
+  )
   expect(orientation).toContain('binding:produce-book · chapter')
   expect(orientation).toContain('binding:produce-book · polish')
   expect(orientation).toContain('binding:compare-writing · current')
   expect(orientation).toContain(
-    'binding:chapter-reading-baseline · called by binding:compare-writing · baseline · settings differ: prompt = "baseline"',
+    'binding:chapter-reading-baseline · called by binding:compare-writing · baseline · settings differ: prompt = "baseline" · same slot selections',
+  )
+  expect(orientation).toContain(
+    'binding:chapter-with-review · settings differ: prompt = unset · different slot selections: review',
   )
   const application = renderFlowBehavior({ ...report, focus: undefined })
   const opening = application.split('| Configured target')[0]!
@@ -1054,6 +1064,8 @@ test('authored handoffs retain caller exit checks beyond an opaque operation', (
   expect(rendered).not.toContain('If run.input.unrelated is true')
   expect(rendered).not.toContain('If run.input.inner is true')
   expect(rendered).not.toContain('Unrelated receiver')
+  const focused = renderFlowBehavior({ ...report, focus: 'binding:code' })
+  expect(focused.split('### Consequences')[0]).toContain('If run.settings.preview is true')
   expect(JSON.stringify(flowBehaviorSnapshot(report))).toContain(
     'Earlier exit if run.settings.preview is true',
   )
