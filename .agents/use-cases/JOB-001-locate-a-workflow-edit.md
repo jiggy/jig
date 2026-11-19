@@ -4,6 +4,7 @@
 
 The **coding agent** is the client. The **workflow owner** describes the change in application terms.
 The agent can find files and read local logic. The difficult part is following connections across Flows, callers, and configuration.
+As the application grows, the source the agent needs to read should stay proportional to the scope of the change.
 
 ## The decision before the edit
 
@@ -42,3 +43,4 @@ The [route-change guide](../../docs/jig/build/design.md#change-a-conditional-rou
 Each use case links to existing executable scenarios for the relationships it needs.
 To assess the job, give an unfamiliar coding agent the ordinary request without filenames or selectors.
 Record the decision it locates, the neighboring paths it identifies before editing, and which files it opens to connect them.
+The [workflow edit navigation roadmap](../coordination/ROADMAP.md#workflow-edit-navigation) proposes the order for these outcomes.
