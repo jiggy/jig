@@ -33,7 +33,7 @@
     cp support/macos-descriptor-bridge.dylib libexec/macos-descriptor-bridge.dylib
     chmod 755 libexec/macos-exec
     chmod 755 libexec/macos-codex-preferences
-    bun build src/internal/project-evaluator-worker.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-worker.js
+    bun build src/internal/project-evaluator-worker.ts --target=bun --format=esm --minify --outfile=libexec/evaluator/project-evaluator-worker.js
     bun build src/internal/http-request-worker.ts --target=bun --format=esm --outfile=libexec/http-request-worker.js
     bun build src/internal/markdown-runtime-worker.ts --target=bun --format=esm --outfile=libexec/markdown-runtime.js
     bun -e 'await Bun.write("libexec/flow.LICENSE", Bun.file(new URL("../LICENSE", import.meta.resolve("@jigging/flow"))))'
@@ -46,7 +46,7 @@
     cp node_modules/@agentclientprotocol/claude-agent-acp/LICENSE libexec/agent/claude-agent-acp.LICENSE
     cp node_modules/@anthropic-ai/claude-agent-sdk/LICENSE.md libexec/agent/claude-agent-sdk.LICENSE
     bun build src/internal/bun-native-preparation-worker.ts --target=bun --format=esm --outfile=libexec/preparation/bun-native-preparation-worker.js
-    bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-sdk.bundle.js
+    bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --minify-syntax --minify-whitespace --outfile=libexec/evaluator/project-evaluator-sdk.bundle.js
     cp ../../docs/jig/spec/machine/project-authoring-1.schema.json libexec/evaluator/project-authoring-1.schema.json
     cp ../../LICENSE.md ../../PRICING.md ../../LICENSES.md .
     mkdir -p LICENSES

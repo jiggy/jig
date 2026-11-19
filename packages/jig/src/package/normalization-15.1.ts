@@ -1,11 +1,10 @@
-import {
-  CANONICAL_CLASS_15_1 as classes,
-  CANONICAL_DECOMPOSITION_15_1 as decompositions,
-  CANONICAL_COMPOSITION_15_1 as compositions,
-} from './normalization-data-15.1.js'
+import { unicodeNormalizationTables15_1 } from './normalization-data-15.1.js'
 
 /** UAX #15 canonical decomposition, ordering and composition, pinned to 15.1. */
 export function normalizeNfc15_1(value: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: ASCII includes control characters.
+  if (/^[\x00-\x7f]*$/.test(value)) return value
+  const { classes, decompositions, compositions } = unicodeNormalizationTables15_1()
   const ordered: number[] = []
   function emit(code: number): void {
     const decomposition = decompositions.get(code)
@@ -36,7 +35,7 @@ export function normalizeNfc15_1(value: string): string {
     lastClass = 0
   for (const code of ordered) {
     const rank = classes.get(code) ?? 0
-    const combined = starter < 0 ? undefined : compose(result[starter]!, code)
+    const combined = starter < 0 ? undefined : compose(result[starter]!, code, compositions)
     if (combined !== undefined && (lastClass === 0 || lastClass < rank)) {
       result[starter] = combined
     } else {
@@ -48,7 +47,11 @@ export function normalizeNfc15_1(value: string): string {
   return result.map((code) => String.fromCodePoint(code)).join('')
 }
 
-function compose(first: number, second: number): number | undefined {
+function compose(
+  first: number,
+  second: number,
+  compositions: ReadonlyMap<number, number>,
+): number | undefined {
   const leading = first - 0x1100,
     vowel = second - 0x1161
   if (leading >= 0 && leading < 19 && vowel >= 0 && vowel < 21)

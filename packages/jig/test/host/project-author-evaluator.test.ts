@@ -225,8 +225,10 @@ describe.serial('finite isolated author declaration batches', () => {
     await fixture(
       {
         'jig.ts': `
-        import { defineJig } from '@jigging/jig';
+        import { defineJig, discover } from '@jigging/jig';
         import { count } from './shared.ts';
+        if (defineJig.name !== 'defineJig' || discover.name !== 'discover')
+          throw new Error('authoring SDK function names changed');
         globalThis.poison = 'first';
         defineJig.poison = 'first';
         if (count !== 1) throw new Error('shared module was evaluated twice');
@@ -237,6 +239,8 @@ describe.serial('finite isolated author declaration batches', () => {
         'bindings/a.ts': `
         import { defineJig, defineBinding } from '@jigging/jig';
         import { count } from '../shared.ts';
+        if (defineBinding.name !== 'defineBinding')
+          throw new Error('authoring SDK function name changed');
         if (globalThis.poison || defineJig.poison || count !== 1) throw new Error('guest leaked');
         globalThis.poison = 'second';
         export default defineBinding({ package: 'flows/work', settings: { count } });

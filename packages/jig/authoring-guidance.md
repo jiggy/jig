@@ -310,8 +310,9 @@ remain supported and are not rewritten by a review default.
 
 - Package/project path NFC uses pinned Unicode 15.1 canonical decomposition,
   combining classes and composition data, independently of host ICU. Keep case
-  folding and normalization at the same contract version. The official
-  normalization conformance vectors in
+  folding and normalization at the same contract version. ASCII strings are
+  already NFC. The normalizer loads its pinned tables on first non-ASCII use.
+  The official normalization conformance vectors in
   `test/portable/normalization-15.1.test.ts` and path/workspace-preparation
   tests verify this boundary. Regenerate tables and vectors with
   `scripts/generate-unicode-normalization.py` and its exact hashed Unicode 15.1
