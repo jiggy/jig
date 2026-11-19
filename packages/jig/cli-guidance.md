@@ -298,6 +298,10 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Keep computed slot expressions distinct from exact selected targets.
   Supported literal lookups can show their authored rows, source assignments, and preceding returns.
 
+  Before the route chart, link incoming call results to the configured caller's checks and next step.
+  Apply the same projection to outgoing calls with distinct displayed results.
+  Call-case links lead to the full caller-local expansion.
+
   Lead with route consequences and attach the conditions that select them.
   Show the source of the final progress request beside the reported count.
 

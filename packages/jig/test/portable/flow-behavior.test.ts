@@ -1681,6 +1681,16 @@ test('a shared child keeps the inputs and continuations of its configured caller
   expect(link).toBeDefined()
   expect(codeMap).toContain('<a id="' + link + '"></a>')
   expect(auditMap).not.toContain('<a id="' + link + '"></a>')
+
+  const childMap = inspect('flow:flows/convert')
+  const continuations = childMap.split('### Caller continuations')[1]?.split('### Consequences')[0]
+  expect(continuations).toContain('flows/import/FLOW.ts#L2')
+  const inCode = continuations?.split('**binding:code · converter**')[1]?.split('**')[0]
+  const inAudit = continuations?.split('**binding:audit · converter**')[1]?.split('**')[0]
+  expect(inCode).toMatch(/status = "ready"[^\n]+child.outcome[^\n]+Call exporter[^\n]+FLOW.ts#L4/)
+  expect(inCode).not.toContain('status = "refused"')
+  expect(inAudit).toMatch(/returns "blocked"[^\n]+child.outcome[^\n]+status = "refused"/)
+  expect(inAudit).not.toContain('Call exporter')
 })
 
 test('two uses of a slot on one source line have distinct expansion anchors', () => {
