@@ -363,6 +363,41 @@ type ChartNode = {
   >
 }
 
+function edgeLabels(guards: readonly (readonly BehaviorGuard[])[]): string[] {
+  const edges = guards.map((checks) => ({
+    checks: checks.map((guard) => diagramText(conditionLabel(guard) + ' · ' + site(guard.site))),
+    shown: [] as string[],
+  }))
+
+  function distinguish(group: typeof edges, from: number): void {
+    if (group.length < 2) return
+    const limit = Math.max(...group.map((edge) => edge.checks.length))
+    for (let index = from; index < limit; index++) {
+      const byCheck = new Map<string | undefined, typeof edges>()
+      for (const edge of group) {
+        const check = edge.checks[index]
+        const peers = byCheck.get(check) ?? []
+        peers.push(edge)
+        byCheck.set(check, peers)
+      }
+      if (byCheck.size === 1) continue
+      // A later check can distinguish paths that passed the same earlier check.
+      for (const [check, peers] of byCheck) {
+        if (check !== undefined) for (const edge of peers) edge.shown.push(check)
+        distinguish(peers, index + 1)
+      }
+      return
+    }
+  }
+
+  distinguish(edges, 0)
+  return edges.map(({ checks, shown }) => {
+    const labels = shown.length ? shown : checks.slice(0, 1)
+    const hidden = checks.length - labels.length
+    return labels.join(' · ') + (hidden ? ` · +${hidden} checks` : '')
+  })
+}
+
 function diagramBody(routes: readonly Route[], prefix: string, start: string): string[] {
   const root: ChartNode = { edges: new Map() }
   for (const route of routes) {
@@ -431,19 +466,10 @@ function diagramBody(routes: readonly Route[], prefix: string, start: string): s
     if (visited.has(id)) return
     visited.add(id)
     const links = nodes.get(id)?.links ?? []
-    for (const { guards, target } of links) {
-      // A check common to each outgoing edge cannot explain their different destinations.
-      const guard =
-        guards.find((candidate, index) =>
-          links.some((link) => JSON.stringify(link.guards[index]) !== JSON.stringify(candidate)),
-        ) ?? guards[0]
-      const edge = guard
-        ? conditionLabel(guard) +
-          ' · ' +
-          site(guard.site) +
-          (guards.length > 1 ? ' · +' + (guards.length - 1) + ' checks' : '')
-        : ''
-      const arrow = edge ? '-->|"' + diagramText(edge) + '"|' : '-->'
+    const labels = edgeLabels(links.map(({ guards }) => guards))
+    for (const [index, { target }] of links.entries()) {
+      const edge = labels[index]
+      const arrow = edge ? '-->|"' + edge + '"|' : '-->'
       lines.push(`  ${id} ${arrow} ${target}["${diagramText(nodes.get(target)!.title)}"]`)
       output(target)
     }

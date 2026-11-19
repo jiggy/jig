@@ -285,6 +285,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Lead with route consequences and attach the conditions that select them.
   Name the passing and rejecting branches of a direct validation guard.
   Show source locations and whether the displayed routes resolve each predicate.
+  Include later conditions when earlier conditions leave outgoing edges indistinguishable.
   Give main routes their own analysis budget and disclose omissions and opaque regions.
   Join chart paths only when all their remaining projected steps and checks agree.
 

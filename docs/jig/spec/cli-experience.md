@@ -986,6 +986,7 @@ Targets that exceed the analysis allowance remain visible with a coverage notice
 Each analyzed route keeps its own conditions, call results, effects, and continuation.
 Source references identify the captured implementation and line.
 Diagrams label conditional edges with their predicates or the result of a direct validation guard.
+When outgoing edges share an earlier condition, diagrams show the later conditions that distinguish them.
 Source checks identify evaluated predicates and predicates that remain conditional.
 
 Focused source output shows supported caller decisions before analyzed routes.
