@@ -19,6 +19,7 @@ import {
   isFileOperation,
   type RelatedCall,
   type SourceSite,
+  withoutReportingLocations,
 } from './model.js'
 import { SourceIndex } from './source.js'
 import {
@@ -124,7 +125,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       // to reach the response while charging all probes to the shared ceiling.
       const conditional = inspect(target, new AnalysisBudget(signal, 12_000, secondary), seed)
       for (const route of conditional.alternatives)
-        alternatives.set(JSON.stringify(route, omitReportingCall), route)
+        alternatives.set(JSON.stringify(route, withoutReportingLocations), route)
       for (const gap of conditional.gaps) gaps.set(JSON.stringify(gap), gap)
     }
     if (seeds.size > 8) {
@@ -147,7 +148,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   }
 
   function retainChild(argument: string, steps: Route): number | undefined {
-    const key = JSON.stringify([argument, steps], omitReportingCall)
+    const key = JSON.stringify([argument, steps], withoutReportingLocations)
     const existing = childKeys.get(key)
     if (existing !== undefined) return existing
     if (
@@ -691,16 +692,11 @@ function failureText(value: Value): string {
       : 'Throws'
 }
 
-function omitReportingCall(key: string, value: unknown): unknown {
-  return key === 'reportingCall' ? undefined : value
-}
-
 function mapEntries(key: string, value: unknown): unknown {
   // Retaining a representative child path must not change the analysis budget.
-  if (key === 'childPath' || key === 'representativeChild' || key === 'reportingCall')
-    return undefined
+  if (key === 'childPath' || key === 'representativeChild') return undefined
   if (value instanceof Map) return [...value]
   if (typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'function')
     return { kind: 'function' }
-  return value
+  return withoutReportingLocations(key, value)
 }

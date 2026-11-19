@@ -1038,6 +1038,8 @@ When validation callbacks operate on unresolved contents, the displayed continua
 
 Small known scalar sets and literal numeric products can contribute to reported progress.
 Route consequences give the final requested progress alongside its recorded helper call or update location.
+For a single progress block, the report links identifiable expressions for the completed count and total.
+If the analysis cannot establish a shared expression across the represented payloads, the link is omitted.
 
 The focused view summarizes selected route consequences and evidence.
 It prioritizes distinct return outcomes and consequential differences before further variants.
@@ -1048,6 +1050,8 @@ An unresolved check travels with the affected branch, including through a child 
 Checks preceding a projected file write appear on its incoming edge.
 Call links open retained child paths for the displayed caller and configuration, with bounded input facts.
 Each contextual path identifies the continuation of its own caller.
+Adding a proved check before the same continuation preserves the call-case link.
+Unresolved checks and consequential differences can distinguish cases.
 
 Separate details show caller reactions to hypothetical contract outcomes and call failures.
 The view discloses where bounds omit child paths or call sites.

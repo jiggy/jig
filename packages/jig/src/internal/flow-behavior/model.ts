@@ -10,6 +10,11 @@ export interface SourceSite {
 }
 
 export type ReportingCall = SourceSite & { readonly code: string }
+export type ProgressFieldSource = ReportingCall & { readonly field: 'completed' | 'total' }
+
+export function withoutReportingLocations(key: string, value: unknown): unknown {
+  return key === 'reportingCall' || key === 'progressFields' ? undefined : value
+}
 
 export interface BehaviorPackage {
   readonly entry: string
@@ -88,6 +93,7 @@ export type BehaviorStep =
       readonly detail: string
       readonly guards?: readonly BehaviorGuard[]
       readonly reportingCall?: ReportingCall
+      readonly progressFields?: readonly ProgressFieldSource[]
     }
   | { readonly kind: 'gap'; readonly site: SourceSite; readonly detail: string }
   | {
