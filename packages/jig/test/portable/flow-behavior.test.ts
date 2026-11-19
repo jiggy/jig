@@ -183,6 +183,7 @@ test('focused continuations retain an unresolved check inside the returned child
   const caller = method(
     handlerSource(`
       const child = await run.call({ slot: 'converter', operationId: 'convert', input: run.input })
+      if (child.outcome !== 'done') throw new TypeError('Conversion failed')
       if (child.output.status === 'needs_mapping') return { outcome: 'done', output: { status: 'review' } }
       return await run.call({ slot: 'exporter', operationId: 'export', input: child.output })
     `),
@@ -197,7 +198,7 @@ test('focused continuations retain an unresolved check inside the returned child
     /status = "needs[^\n]+status = "review"[^\n]+ \| Assumes true[^\n]+uncertain[^\n]+flows\/convert\/FLOW.ts#L2/,
   )
   expect(continuations).toMatch(
-    /status = "ready"[^\n]+Predicate is false[^\n]+Call exporter[^\n]+ \| Assumes false[^\n]+uncertain/,
+    /status = "ready"[^\n]+Predicate is false · Validation passes[^\n]+child.outcome[^\n]+Call exporter[^\n]+ \| Assumes false[^\n]+uncertain/,
   )
 })
 

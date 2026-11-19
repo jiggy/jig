@@ -715,10 +715,9 @@ function detailLine(step: BehaviorStep): string {
 }
 
 function linkedCheck(check: BehaviorGuard): string {
-  const branch = check.validation
-    ? conditionLabel(check)
-    : (check.unresolved ? 'Assumes ' : 'Predicate is ') + check.taken
-  return text(branch + ' · ' + guardLabel(check)) + ' (' + sourceLink(check.site) + ')'
+  const branch = (check.unresolved ? 'Assumes ' : 'Predicate is ') + check.taken
+  const validation = check.validation ? ' · ' + conditionLabel(check) : ''
+  return text(branch + validation + ' · ' + guardLabel(check)) + ' (' + sourceLink(check.site) + ')'
 }
 
 function nextSteps(after: readonly BehaviorStep[], linkSource = false): string {
@@ -785,8 +784,7 @@ function renderCallContinuations(details: CallDetails, incoming: boolean, omitte
     }
     lines.push('')
     if (cases.size > callCaseLimit)
-      lines.push('- ' + (cases.size - callCaseLimit) + ' additional call paths omitted.')
-    lines.push('')
+      lines.push('- ' + (cases.size - callCaseLimit) + ' additional call paths omitted.', '')
   }
   if (!lines.length) return []
   if (omitted > 0)
