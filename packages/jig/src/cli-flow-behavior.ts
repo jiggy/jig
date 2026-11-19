@@ -1130,7 +1130,7 @@ function renderCallSelections(
   const lines = ['### Caller decisions', '']
   const shown = new Set<string>()
   for (const selection of selections.sites) {
-    const { slot, dispatch, guards, inputChoices } = selection
+    const { slot, dispatch, guards, requestMetadata, inputSite, inputChoices } = selection
     const target = slots.get(slot)
     if (target === undefined) continue
     lines.push(
@@ -1141,10 +1141,13 @@ function renderCallSelections(
       lines.push(
         `  - Inside ${text(guard.code)} · ${guard.taken ? 'true' : 'false'} branch (${text(site(guard.site))})`,
       )
-    for (const choice of inputChoices)
+    for (const field of requestMetadata)
       lines.push(
-        `  - Caller argument ${text(choice.field)} = ${text(choice.code)} (${text(site(choice.site))})`,
+        `  - Request metadata ${text(field.field)} = ${text(field.code)} (${text(site(field.site))})`,
       )
+    if (inputSite) lines.push(`  - Child input at ${text(site(inputSite))}`)
+    for (const choice of inputChoices)
+      lines.push(`    - ${text(choice.field)} = ${text(choice.code)} (${text(site(choice.site))})`)
     const related = selections.related.get(slot)
     if (related && !shown.has(slot)) {
       lines.push('  - Other slots using the same Flow')
@@ -1157,6 +1160,7 @@ function renderCallSelections(
   if (selections.omitted) lines.push(`- ${selections.omitted} additional caller sites omitted.`)
   lines.push(
     '',
+    'A displayed call intent comes from `intent` on the `run.call` request, alongside `operationId` and `input`.',
     'These locations describe authored choices. Reachability depends on the caller and its input.',
     '',
   )

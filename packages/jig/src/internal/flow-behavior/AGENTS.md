@@ -63,6 +63,7 @@ Explain conditional behavior from a captured Jig project without running its met
   Caller slots remain visible without source interpretation.
 - Focused source inspection puts authored call decisions before route details.
   The decision shows where the caller supplies its slot and conditional fields.
+  Keep request metadata at the resolved `run.call` and child input at its authored expression or proven forwarding argument.
   Pair helper arguments with one identifiable request in the helper's function body.
   Use configured targets to identify other callers of the same implementation.
   Keep source locations available when argument forwarding is unresolved.

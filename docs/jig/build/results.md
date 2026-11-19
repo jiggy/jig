@@ -314,6 +314,8 @@ Run a target's command from that index to inspect its behavior, or add `--all` f
 When you select a target, start with its configured callers and their exact slots.
 Other configured uses of the same Flow include their own callers and relevant settings differences.
 Use these connections to locate the right handoff before changing a shared implementation.
+Caller decisions show where `run.call` gets its request metadata and its child input.
+A displayed call label comes from `intent` on the request.
 
 Read **Caller decisions** for supported source locations and conditions.
 The decision shows where the caller chooses a slot and where its helper sends the request.

@@ -38,6 +38,7 @@ export function selectCallSites(
     slot: string,
     call: ts.CallExpression,
     input: ts.Expression | undefined,
+    requestMetadata: AuthoredCallSelection['requestMetadata'],
     dispatch?: ts.CallExpression,
   ) => {
     if (!slots.has(slot)) return
@@ -49,6 +50,8 @@ export function selectCallSites(
       site: source.site(call),
       ...(dispatch ? { dispatch: source.site(dispatch) } : {}),
       guards,
+      requestMetadata,
+      ...(input ? { inputSite: source.site(input) } : {}),
       inputChoices,
     }
     const limit = BEHAVIOR_LIMITS.focusedCallSelections
@@ -68,8 +71,12 @@ export function selectCallSites(
   for (const { call, request } of requests) {
     const slot = request.fields.get('slot')
     const input = request.fields.get('input')
+    const requestMetadata = (['operationId', 'intent'] as const).flatMap((field) => {
+      const value = request.fields.get(field)
+      return value ? [{ field, code: shortText(value), site: source.site(value) }] : []
+    })
     if (slot && ts.isStringLiteralLike(slot)) {
-      append(slot.text, call, input)
+      append(slot.text, call, input, requestMetadata)
       continue
     }
     if (hasEval || !slot || !ts.isIdentifier(slot) || writes.has(request.receiver)) continue
@@ -96,7 +103,13 @@ export function selectCallSites(
       const slotArgument = invocation.arguments[fn.parameters.indexOf(parameter)]
       const selected = slotArgument && unwrap(slotArgument)
       if (!selected || !ts.isStringLiteralLike(selected)) continue
-      append(selected.text, invocation, invocation.arguments[inputIndex], call)
+      append(
+        selected.text,
+        invocation,
+        inputIndex < 0 ? input : invocation.arguments[inputIndex],
+        requestMetadata,
+        call,
+      )
     }
   }
   return { sites, omitted }

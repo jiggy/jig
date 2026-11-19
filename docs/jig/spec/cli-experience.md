@@ -996,6 +996,7 @@ Source checks identify evaluated predicates and predicates that remain condition
 Focused source output shows supported caller decisions before analyzed routes.
 It can link a literal slot argument at a local helper call to the corresponding request.
 The decision can include enclosing branches, conditional fields, and other slots that use the same Flow.
+It identifies authored request metadata at `run.call` and locates the child input or its identifiable helper argument.
 
 Focused and package reports may show additional authored call references after an analysis cutoff.
 Computed slot expressions remain separate from exact configured routes.
