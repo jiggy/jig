@@ -31,6 +31,8 @@ export interface BehaviorTarget {
   readonly implementation: string
   readonly settings: JsonValue
   readonly slots: ReadonlyMap<string, string>
+  readonly requiredSlots?: readonly string[]
+  readonly slotDeclarationPath?: string
   readonly outcomes: readonly string[]
   readonly attachments?: Readonly<Record<string, string>>
   readonly artifactResults?: readonly string[]

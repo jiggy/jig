@@ -11,3 +11,5 @@ Show which local helper arguments supply each authored request field in focused 
 Keep authored caller decisions beyond the application route limit and show the source of the last progress request beside its count.
 
 Link identifiable progress expressions and preserve call-case links when a proved check leaves the continuation intact.
+
+Show required slot wiring beside source routes and link local package declarations.

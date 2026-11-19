@@ -218,12 +218,16 @@ function comparisonLocation(fact: ComparisonFact, current: boolean): string {
 }
 
 function sourceLink(location: SourceSite): string {
-  const { path, line } = location
+  return sourcePathLink(location.path, location.line)
+}
+
+function sourcePathLink(path: string, line?: number): string {
   const destination = path
     .split('/')
     .map((part) => encodeURIComponent(part).replace(/[()]/g, (ch) => (ch === '(' ? '%28' : '%29')))
     .join('/')
-  return '[' + text(site(location)) + '](./' + destination + '#L' + line + ')'
+  const location = line === undefined ? path : site({ path, line })
+  return '[' + text(location) + '](./' + destination + (line === undefined ? '' : '#L' + line) + ')'
 }
 
 function comparisonFact(fact: ComparisonFact, current: boolean, compact: boolean): string {
@@ -1086,6 +1090,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     '## ' + text(focus),
     '',
     ...configuredOrientation(report, focus),
+    ...requiredSlotFacts(inventory.find((target) => target.id === focus)),
     ...importBoundaryNotice(report),
   )
   const selected = scopes.find((scope) => scope.target === focus)
@@ -1372,6 +1377,18 @@ function boundaryFacts(target: BehaviorTarget): string {
   return facts.join(' · ')
 }
 
+function requiredSlotFacts(target: BehaviorTarget | undefined): string[] {
+  if (!target?.requiredSlots?.length) return []
+  const source = target.slotDeclarationPath
+    ? ' · ' + sourcePathLink(target.slotDeclarationPath)
+    : ''
+  return [
+    '**Required slots** · ' + brief(target.requiredSlots) + source,
+    'These slots require resolved wiring even on routes that skip their calls.',
+    '',
+  ]
+}
+
 function applicationMap(report: BehaviorReport): string[] {
   const lines = [
     '<a id="application-overview"></a>',
@@ -1457,6 +1474,7 @@ function applicationMap(report: BehaviorReport): string[] {
         '',
         boundaryFacts(target),
         '',
+        ...requiredSlotFacts(target),
         '[Application overview](#application-overview)',
         '',
       )

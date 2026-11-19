@@ -2025,8 +2025,13 @@ test('an application map keeps configured continuations separate under one chart
     `),
     ),
   )
-  const [main, ...direct] = project.targets
-  if (!main) throw Error('Expected a configured entrypoint')
+  const [entry, ...direct] = project.targets
+  if (!entry) throw Error('Expected a configured entrypoint')
+  const main = {
+    ...entry,
+    requiredSlots: ['converter'],
+    slotDeclarationPath: 'flows/import/FLOW.meta.json',
+  }
   const audit = { ...main, id: 'binding:audit', settings: { audit: true } }
   const targets = [main, audit, ...direct]
   const captured = (shift: string) =>
@@ -2057,6 +2062,12 @@ test('an application map keeps configured continuations separate under one chart
   expect(mainChart).toContain('["binding:audit"]')
   expect(auditSection).toContain('status = "audit"')
   expect(auditSection).not.toContain('### converter in')
+  expect(auditSection).toContain(
+    '**Required slots** · converter · [flows/import/FLOW.meta.json](./flows/import/FLOW.meta.json)',
+  )
+  expect(auditSection).toContain(
+    'These slots require resolved wiring even on routes that skip their calls.',
+  )
   expect(before).toContain('[Configured child](#target-')
   const anchors = [...before.matchAll(/<a id="([^"]+)"><\/a>/g)].map((m) => m[1])
   const links = [...before.matchAll(/\]\(#([a-z0-9-]+)\)/g)].map((m) => m[1])

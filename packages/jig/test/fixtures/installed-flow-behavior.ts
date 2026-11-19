@@ -95,6 +95,9 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
   const consequences = callerOnly?.split('### Consequences')[1]
   expect(consequences).toContain('status = "attention"')
   expect(consequences).not.toContain('exporter → flow:flows/export')
+  expect(callerOnly).toContain(
+    '**Required slots** · converter, exporter · [flows/import/FLOW.meta.json](./flows/import/FLOW.meta.json)',
+  )
   const changes = await inspect('--compare', 'behavior-before.json')
   const changedCaller = changes.stdout.split('\n## binding:code\n')[1]?.split('\n## ')[0]
   expect(changedCaller).toContain('Before ·')
@@ -125,6 +128,7 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
   expect(application.stdout).toContain('["binding:code"]')
   expect(application.stdout).toContain('["binding:manual"]')
   expect(application.stdout).toContain('flow:flows/opaque')
+  expect(application.stdout).toContain('**Required slots** · converter, exporter')
 
   await put('jig.ts', projectSource(''))
   const navigation = await inspect()
