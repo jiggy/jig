@@ -471,7 +471,16 @@ test('caller slot groups compare authored literals and identify guarded or overr
   expect(group).toContain("purpose = run.input.polished ? 'post-edit'")
   expect(group).not.toContain('discarded')
   expect(group).not.toContain('profile =')
-  expect(rendered).toContain('Additional authored call sites omitted for exporter (4).')
+  const omitted = report.scopes
+    .find((scope) => scope.target === 'binding:code')
+    ?.callSelections?.omittedBySlot.get('exporter')
+  expect(omitted).toMatchObject({
+    count: 4,
+    locations: [{ line: 21 }, { line: 22 }, { line: 23 }],
+  })
+  expect(rendered).toMatch(
+    /Additional call sites for exporter \(4\)[^\n]+\.\/flows\/import\/FLOW\.ts#L21[^\n]+1 more/,
+  )
 })
 
 test('focused source sites decline reassigned or ambiguous requests and retain direct decisions', () => {

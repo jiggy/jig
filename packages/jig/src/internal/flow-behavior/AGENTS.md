@@ -69,6 +69,7 @@ Explain conditional behavior from a captured Jig project without running its met
   A named file write in the same frame can remain visible as an authored destination.
   Keep authored destinations separate from interpreted attempts.
 - Keep the private result independent of CLI and display rendering.
+- Keep per-slot omission counts exact and retain up to three omitted source locations for navigation.
 - Package inspection uses source analysis to add call-site locations to configured caller slots.
   Caller slots remain visible without source interpretation.
 - Focused source and configured-use expansions put authored call decisions before route details.
