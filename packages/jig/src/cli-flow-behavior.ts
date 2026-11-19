@@ -726,8 +726,8 @@ function nextSteps(after: readonly BehaviorStep[], linkSource = false): string {
       .map((step) => {
         const description =
           step.kind === 'call' ? 'Call ' + step.slot + ' → ' + step.target : stepDescription(step)
-        const location = linkSource ? sourceLink(step.site) : text(site(step.site))
-        return text(description) + ' (' + location + ')'
+        if (!linkSource) return text(description + ' (' + site(step.site) + ')')
+        return text(description) + ' (' + sourceLink(step.site) + ')'
       })
       .join(' → ') +
     (first.length > shown.size
@@ -757,7 +757,12 @@ function renderCallContinuations(details: CallDetails, incoming: boolean, omitte
     const seen = new Set<string>()
     for (const [id, { call, after, representativeChecks }] of visible) {
       const title = text(label(call))
-      const steps = nextSteps(after, true)
+      const checks = (call.guards ?? []).filter((guard) => guard.unresolved)
+      const childChecks = checks
+        .slice(0, 2)
+        .map((guard) => text(conditionLabel(guard)) + ' (' + sourceLink(guard.site) + ')')
+      if (checks.length > 2) childChecks.push(checks.length - 2 + ' additional child checks')
+      const steps = [...childChecks, nextSteps(after, true)].join(' → ')
       const key = title + '\n' + steps
       if (seen.has(key)) continue
       seen.add(key)
@@ -765,6 +770,7 @@ function renderCallContinuations(details: CallDetails, incoming: boolean, omitte
         '- ' +
           (incoming ? title : '[' + title + '](#' + id + ')') +
           (representativeChecks ? ' · Representative checks' : '') +
+          (childChecks.length ? ' · Conditional child path' : '') +
           ' → ' +
           steps,
       )
