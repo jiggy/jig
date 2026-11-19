@@ -613,12 +613,13 @@ const callCaseLimit = 4
 function callDetails(
   report: BehaviorReport,
   routes: readonly Route[],
+  target?: string,
 ): { shown: CallDetails; omitted: number } {
   const entries = new Map<string, Map<string, CallCase>>()
   const omitted = new Set<string>()
   for (const route of routes)
     for (const [index, call] of route.entries()) {
-      if (call.kind !== 'call') continue
+      if (call.kind !== 'call' || (target !== undefined && call.target !== target)) continue
       const anchor = callAnchor(call)
       let cases = entries.get(anchor)
       if (cases === undefined) {
@@ -701,19 +702,81 @@ function consequences(
   return [...rows, ...summaries, '']
 }
 
+function stepDescription(step: BehaviorStep): string {
+  if (step.kind === 'condition')
+    return step.unresolved
+      ? conditionLabel(step)
+      : 'Check ' + guardLabel(step) + ' is ' + step.taken
+  return step.kind === 'call' ? label(step) + ' · ' + step.target : label(step)
+}
+
 function detailLine(step: BehaviorStep): string {
-  return text(
-    (step.kind === 'condition'
-      ? step.unresolved
-        ? conditionLabel(step)
-        : 'Check ' + guardLabel(step) + ' is ' + step.taken
-      : step.kind === 'call'
-        ? label(step) + ' · ' + step.target
-        : label(step)) +
-      ' (' +
-      site(step.site) +
-      ')',
+  return text(stepDescription(step) + ' (' + site(step.site) + ')')
+}
+
+function nextSteps(after: readonly BehaviorStep[], linkSource = false): string {
+  const first = after.slice(0, -1)
+  const relevant = first.filter((step) => step.kind !== 'condition' || step.unresolved)
+  const shown = new Set(
+    [...relevant, ...first.filter((step) => !relevant.includes(step))].slice(0, 3),
   )
+  return (
+    after
+      .filter((step, index) => index === after.length - 1 || shown.has(step))
+      .map((step) => {
+        const description =
+          step.kind === 'call' ? 'Call ' + step.slot + ' → ' + step.target : stepDescription(step)
+        const location = linkSource ? sourceLink(step.site) : text(site(step.site))
+        return text(description) + ' (' + location + ')'
+      })
+      .join(' → ') +
+    (first.length > shown.size
+      ? ' · ' + (first.length - shown.size) + ' intermediate steps omitted'
+      : '')
+  )
+}
+
+/** Read both directions from the same caller-local case used by the call expansion. */
+function renderCallContinuations(details: CallDetails, incoming: boolean, omitted = 0): string[] {
+  const lines: string[] = []
+  for (const cases of details.values()) {
+    const visible = [...cases]
+      .slice(0, callCaseLimit)
+      .filter(([, { call, after }]) => call.returned !== undefined && after.length > 0)
+    if (!visible.length) continue
+    if (!incoming && new Set(visible.map(([, { call }]) => label(call))).size < 2) continue
+    const { call } = visible[0]![1]
+    lines.push(
+      '**' +
+        text(incoming ? call.caller + ' · ' + call.slot : call.slot + ' → ' + call.target) +
+        '** (' +
+        sourceLink(call.site) +
+        ')',
+      '',
+    )
+    const seen = new Set<string>()
+    for (const [id, { call, after, representativeChecks }] of visible) {
+      const title = text(label(call))
+      const steps = nextSteps(after, true)
+      const key = title + '\n' + steps
+      if (seen.has(key)) continue
+      seen.add(key)
+      lines.push(
+        '- ' +
+          (incoming ? title : '[' + title + '](#' + id + ')') +
+          (representativeChecks ? ' · Representative checks' : '') +
+          ' → ' +
+          steps,
+      )
+    }
+    if (cases.size > callCaseLimit)
+      lines.push('- ' + (cases.size - callCaseLimit) + ' additional call paths omitted.')
+    lines.push('')
+  }
+  if (!lines.length) return []
+  if (omitted > 0)
+    lines.push(omitted + ' additional call sites exceed the contextual detail limit.', '')
+  return [incoming ? '### Caller continuations' : '### Child results and next steps', '', ...lines]
 }
 
 function renderCallDetails(
@@ -778,30 +841,14 @@ function renderCallDetails(
           )
         else lines.push('  - Child path unavailable · ' + text(call.result))
       } else lines.push('  - Child path exceeds the retained analysis allowance.')
-      if (after.length) {
-        const first = after.slice(0, -1)
-        const relevant = first.filter((step) => step.kind !== 'condition' || step.unresolved)
-        const shown = new Set(
-          [...relevant, ...first.filter((step) => !relevant.includes(step))].slice(0, 3),
-        )
+      if (after.length)
         lines.push(
           '  - Back in ' +
             text(call.caller) +
             (representativeChecks ? ' · Representative checks' : '') +
             ' · ' +
-            after
-              .filter((step, index) => index === after.length - 1 || shown.has(step))
-              .map((step) =>
-                step.kind === 'call'
-                  ? text('Call ' + step.slot + ' → ' + step.target + ' (' + site(step.site) + ')')
-                  : detailLine(step),
-              )
-              .join(' → ') +
-            (first.length > shown.size
-              ? ' · ' + (first.length - shown.size) + ' intermediate steps omitted'
-              : ''),
+            nextSteps(after),
         )
-      }
     }
     if (cases.length > callCaseLimit)
       lines.push('- ' + (cases.length - callCaseLimit) + ' additional call paths omitted.')
@@ -1164,6 +1211,24 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     lines.push(...contractChecks(selected))
     const routes = selectRoutes(selected)
     const details = callDetails(report, [...routes, ...selected.alternatives])
+    const callers = callDetails(
+      report,
+      scopes
+        .filter((scope) => scope.target !== focus)
+        .flatMap((scope) =>
+          selectRoutes({
+            ...scope,
+            routes: scope.routes.filter((route) =>
+              route.some((step) => step.kind === 'call' && step.target === focus),
+            ),
+          }),
+        ),
+      focus,
+    )
+    lines.push(
+      ...renderCallContinuations(callers.shown, true, callers.omitted),
+      ...renderCallContinuations(details.shown, false),
+    )
     if (routes.length) {
       lines.push(...consequences(report, selected, routes, details.shown))
       lines.push(
@@ -1196,25 +1261,6 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     }
     lines.push(...evidence(routes))
     lines.push(...renderCallDetails(report, details.shown, details.omitted))
-    const callers = scopes.filter(
-      (scope) =>
-        scope.target !== focus &&
-        scope.routes.some((route) =>
-          route.some((step) => step.kind === 'call' && step.target === focus),
-        ),
-    )
-    if (callers.length) {
-      lines.push('## Caller continuations', '')
-      for (const caller of callers) {
-        const routes = selectRoutes({
-          ...caller,
-          routes: caller.routes.filter((route) =>
-            route.some((step) => step.kind === 'call' && step.target === focus),
-          ),
-        }).slice(0, 3)
-        lines.push('### ' + text(caller.target), '', ...consequences(report, caller, routes))
-      }
-    }
   }
   lines.push('## Configured targets and declared boundaries', '')
   if (!inventory.length) lines.push('The captured project has no configured targets.', '')
