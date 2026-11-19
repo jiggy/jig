@@ -1005,6 +1005,9 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   )
   const selected = scopes.find((scope) => scope.target === focus)
   if (selected) {
+    lines.push(
+      ...renderCallSelections(selected, inventory.find((target) => target.id === focus)?.slots),
+    )
     lines.push(...renderCallReferences([selected], inventory))
     lines.push(...contractChecks(selected))
     const routes = selectRoutes(selected)
@@ -1070,6 +1073,48 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   if (inventory.some((target) => target.id !== focus))
     lines.push('', 'Supply an exact target to inspect its behavior and callers.')
   return lines.join('\n') + '\n'
+}
+
+function renderCallSelections(
+  scope: Scope,
+  slots: ReadonlyMap<string, string> | undefined,
+): string[] {
+  const selections = scope.callSelections
+  if (!selections || !slots) return []
+  const lines = ['### Caller decisions', '']
+  const shown = new Set<string>()
+  for (const selection of selections.sites) {
+    const { slot, dispatch, guards, inputChoices } = selection
+    const target = slots.get(slot)
+    if (target === undefined) continue
+    lines.push(
+      `- ${text(slot)} → ${text(target)} · ${text(site(selection.site))}` +
+        (dispatch ? ` · run.call in helper at ${text(site(dispatch))}` : ''),
+    )
+    for (const guard of guards)
+      lines.push(
+        `  - Inside ${text(guard.code)} · ${guard.taken ? 'true' : 'false'} branch (${text(site(guard.site))})`,
+      )
+    for (const choice of inputChoices)
+      lines.push(
+        `  - Caller argument ${text(choice.field)} = ${text(choice.code)} (${text(site(choice.site))})`,
+      )
+    const related = selections.related.get(slot)
+    if (related && !shown.has(slot)) {
+      lines.push('  - Other slots using the same Flow')
+      for (const call of related.calls)
+        lines.push(`    - ${text(call.caller)} · ${text(call.slot)} → ${text(call.target)}`)
+      if (related.omitted) lines.push(`    - ${related.omitted} more configured slots.`)
+    }
+    shown.add(slot)
+  }
+  if (selections.omitted) lines.push(`- ${selections.omitted} additional caller sites omitted.`)
+  lines.push(
+    '',
+    'These locations describe authored choices. Reachability depends on the caller and its input.',
+    '',
+  )
+  return lines
 }
 
 function renderCallReferences(

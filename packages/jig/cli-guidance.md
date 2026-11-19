@@ -271,6 +271,10 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Working-tree package inspection adds source locations to the same configured caller slots.
   A captured package that lacks a direct target points the reader to package inspection.
   Focused and package reports can show authored call references beyond the analyzed routes.
+
+  Focused source output leads with caller decisions from the selected implementation.
+  Show the local helper's request location beside the call that selects a configured slot.
+  Keep conditional argument fields, lexical guards, and related configured uses with that decision.
   The opening view relates a captured import outside the Flow package to its matching slots.
   Keep computed slot expressions distinct from exact selected targets.
   Supported literal lookups can show their authored rows, source assignments, and preceding returns.

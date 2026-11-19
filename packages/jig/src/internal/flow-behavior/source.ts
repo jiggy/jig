@@ -1,11 +1,18 @@
 import { createHash } from 'node:crypto'
 import { posix } from 'node:path'
 import ts from 'typescript-parser'
+import {
+  assignmentTarget,
+  type CallRequest,
+  recordWrites,
+  selectCallSites,
+} from './call-selection.js'
 import type { AuthoredHandoff, BehaviorPackage, CallReference, SourceSite } from './model.js'
 import { slotSelection } from './slot-selection.js'
 import {
   isLocalFunction,
   type LocalFunction,
+  lexicalGuards,
   shortText,
   sourceNodes,
   unwrap,
@@ -169,7 +176,7 @@ export class SourceIndex {
     const visit = (node: ts.Node): void => {
       if (ts.isFunctionLike(node) || ts.isClassLike(node)) return
       if (ts.isCallExpression(node)) {
-        const handoff = this.handoffSite(node, fn)
+        const handoff = this.handoffSite(node)
         if (handoff) sites.push(handoff)
       }
       ts.forEachChild(node, visit)
@@ -183,15 +190,23 @@ export class SourceIndex {
   callReferences(
     slots: ReadonlyMap<string, string>,
     represented: ReadonlySet<string>,
-    limit: number,
-  ): { references: CallReference[]; omitted: number } {
+    options: { limit: number; fallback: boolean; focused: boolean },
+  ) {
     const references: CallReference[] = []
     const computed = new Map<number, ts.Expression>()
     const calls = new Map<ts.Declaration, ts.CallExpression[]>()
+    const requests: { call: ts.CallExpression; request: CallRequest }[] = []
+    const writes = new Set<ts.Declaration>()
+    let hasEval = false
     let omitted = 0
     const visit = (node: ts.Node): void => {
+      if (options.focused) {
+        const target = assignmentTarget(node)
+        if (target) recordWrites(this, target, writes)
+      }
       if (ts.isCallExpression(node)) {
         const callee = unwrap(node.expression)
+        if (ts.isIdentifier(callee) && callee.text === 'eval') hasEval = true
         const declaration = ts.isIdentifier(callee) ? this.declaration(callee) : undefined
         if (declaration) {
           const sites = calls.get(declaration) ?? []
@@ -201,13 +216,15 @@ export class SourceIndex {
         const request = this.callRequest(node)
         const slot = request?.fields.get('slot')
         if (request && slot && this.contextParameter(request.receiver)) {
+          if (options.focused) requests.push({ call: node, request })
+          if (!options.fallback) return
           const site = this.callSite(node)
           if (!represented.has(JSON.stringify(site))) {
             const reference: CallReference = ts.isStringLiteralLike(slot)
               ? { kind: 'literal', slot: slot.text, site }
               : { kind: 'computed', expression: shortText(slot), site }
             if (reference.kind === 'computed' || slots.has(reference.slot)) {
-              if (references.length < limit) {
+              if (references.length < options.limit) {
                 if (reference.kind === 'computed') computed.set(references.length, slot)
                 references.push(reference)
               } else omitted++
@@ -236,7 +253,13 @@ export class SourceIndex {
       const selection = cached.get(slot.name.text)
       if (selection) references[index] = { ...reference, selection }
     }
-    return { references, omitted }
+    return {
+      references,
+      omitted,
+      selected: options.focused
+        ? selectCallSites(this, requests, calls, slots, writes, hasEval)
+        : undefined,
+    }
   }
 
   literalCallSlot(call: ts.CallExpression): string | undefined {
@@ -268,7 +291,7 @@ export class SourceIndex {
     return imported?.module === '@jigging/flow' && imported.member === 'handle'
   }
 
-  private callRequest(call: ts.CallExpression) {
+  private callRequest(call: ts.CallExpression): CallRequest | undefined {
     const callee = unwrap(call.expression)
     const [argument] = call.arguments
     if (
@@ -304,7 +327,7 @@ export class SourceIndex {
     return { receiver, fields }
   }
 
-  private handoffSite(call: ts.CallExpression, fn: LocalFunction): HandoffSite | undefined {
+  private handoffSite(call: ts.CallExpression): HandoffSite | undefined {
     if (call.arguments.length !== 1) return undefined
     const request = this.callRequest(call)
     if (!request) return undefined
@@ -314,26 +337,12 @@ export class SourceIndex {
     if (!slot) return undefined
     const intentValue = fields.get('intent')
     const intent = intentValue && ts.isStringLiteralLike(intentValue) ? intentValue.text : undefined
-    const guards: AuthoredHandoff['guards'][number][] = []
-    for (let node: ts.Node = call; node !== fn && node.parent; node = node.parent) {
-      const parent: ts.Node = node.parent
-      if (
-        ts.isIfStatement(parent) &&
-        (node === parent.thenStatement || node === parent.elseStatement)
-      )
-        guards.unshift({
-          site: this.site(parent.expression),
-          code: shortText(parent.expression),
-          taken: node === parent.thenStatement,
-          unresolved: true,
-        })
-    }
     return {
       receiver,
       slot,
       site: this.callSite(call),
       ...(intent ? { intent: intent.length <= 140 ? intent : intent.slice(0, 139) + '…' } : {}),
-      guards: guards.slice(0, 4),
+      guards: lexicalGuards(call, (node) => this.site(node)).slice(0, 4),
       exitChecks: this.resultExitChecks(call),
     }
   }

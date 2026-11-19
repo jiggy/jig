@@ -1,4 +1,5 @@
 import ts from 'typescript-parser'
+import type { BehaviorGuard, SourceSite } from './model.js'
 
 export type LocalFunction = ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration
 
@@ -21,6 +22,43 @@ export function unwrap(expression: ts.Expression): ts.Expression {
 export function shortText(node: ts.Node): string {
   const code = node.getText()
   return code.length <= 140 ? code : code.slice(0, 139) + '…'
+}
+
+export function constInitializer(
+  declaration: ts.Declaration | undefined,
+): ts.Expression | undefined {
+  return declaration &&
+    ts.isVariableDeclaration(declaration) &&
+    ts.isIdentifier(declaration.name) &&
+    declaration.parent.flags & ts.NodeFlags.Const &&
+    declaration.initializer
+    ? unwrap(declaration.initializer)
+    : undefined
+}
+
+export function lexicalGuards(
+  expression: ts.Expression,
+  site: (node: ts.Node) => SourceSite,
+): BehaviorGuard[] {
+  const guards: BehaviorGuard[] = []
+  for (
+    let node: ts.Node = expression;
+    node.parent && !ts.isFunctionLike(node);
+    node = node.parent
+  ) {
+    const parent: ts.Node = node.parent
+    if (
+      ts.isIfStatement(parent) &&
+      (node === parent.thenStatement || node === parent.elseStatement)
+    )
+      guards.unshift({
+        site: site(parent.expression),
+        code: shortText(parent.expression),
+        taken: node === parent.thenStatement,
+        unresolved: true,
+      })
+  }
+  return guards
 }
 
 export function* sourceNodes(
