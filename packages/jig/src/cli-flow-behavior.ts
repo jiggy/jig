@@ -974,7 +974,7 @@ function authoredHandoffs(scope: Scope, linkedTargets?: ReadonlySet<string>): st
   }
   if (priorExits.size) {
     lines.push('**Earlier exits before these call sites**', '')
-    for (const { exit, slots } of [...priorExits.values()].slice(0, 8)) {
+    for (const { exit, slots } of priorExits.values()) {
       lines.push(
         '- If ' +
           text(exit.condition.code) +
@@ -991,7 +991,8 @@ function authoredHandoffs(scope: Scope, linkedTargets?: ReadonlySet<string>): st
           '.',
       )
     }
-    if (priorExits.size > 8) lines.push(`- ${priorExits.size - 8} earlier exits omitted.`)
+    if (scope.authoredPriorExitsOmitted)
+      lines.push(`- ${scope.authoredPriorExitsOmitted} earlier exits omitted.`)
     lines.push('')
   }
   for (const handoff of scope.authoredHandoffs) {

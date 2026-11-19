@@ -168,6 +168,8 @@ export function flowBehaviorSnapshot(report: BehaviorReport): Snapshot {
         : ['Target analysis unavailable.']
       if (scope?.authoredHandoffsOmitted !== undefined)
         coverage.push(scope.authoredHandoffsOmitted + ' authored handoffs omitted.')
+      if (scope?.authoredPriorExitsOmitted !== undefined)
+        coverage.push(scope.authoredPriorExitsOmitted + ' earlier authored exits omitted.')
       return {
         id: target.id,
         configuration: [

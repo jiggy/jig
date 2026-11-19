@@ -221,6 +221,7 @@ export interface BehaviorReport {
     readonly gaps: readonly (SourceSite & { readonly reason: string })[]
     readonly authoredHandoffs?: readonly AuthoredHandoff[]
     readonly authoredHandoffsOmitted?: number
+    readonly authoredPriorExitsOmitted?: number
     readonly callReferences?: readonly CallReference[]
     readonly callReferencesOmitted?: number
     readonly callSelections?: {
@@ -248,6 +249,7 @@ export const BEHAVIOR_LIMITS = {
   retainedChildPaths: 256,
   retainedChildSteps: 4_096,
   authoredHandoffs: 24,
+  authoredPriorExits: 8,
   focusedCallSelections: 6,
   focusedRelatedCalls: 6,
 } as const

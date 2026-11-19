@@ -55,6 +55,32 @@ export function applicationScopeOrder(
     .map(({ id }) => id)
 }
 
+/** Apply the display allowance after relating each exit to its later call sites. */
+function limitAuthoredPriorExits(handoffs: readonly AuthoredHandoff[]) {
+  const unique = new Map<string, SourceSite>()
+  for (const handoff of handoffs)
+    for (const exit of handoff.priorExits ?? [])
+      unique.set(JSON.stringify(exit), exit.condition.site)
+  const omitted = Math.max(0, unique.size - BEHAVIOR_LIMITS.authoredPriorExits)
+  if (!omitted) return { handoffs, omitted }
+  const retained = new Set(
+    [...unique]
+      .sort(
+        ([, a], [, b]) =>
+          a.path.localeCompare(b.path) || a.line - b.line || (a.column ?? 0) - (b.column ?? 0),
+      )
+      .slice(0, BEHAVIOR_LIMITS.authoredPriorExits)
+      .map(([key]) => key),
+  )
+  return {
+    handoffs: handoffs.map(({ priorExits, ...handoff }) => {
+      const exits = priorExits?.filter((exit) => retained.has(JSON.stringify(exit)))
+      return exits?.length ? { ...handoff, priorExits: exits } : handoff
+    }),
+    omitted,
+  }
+}
+
 export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal): BehaviorReport {
   const targets = new Map(input.targets.map((target) => [target.id, target]))
   const sources = new Map<string, SourceIndex>()
@@ -224,17 +250,19 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
           .filter(([key]) => !analyzedHandoffs.has(key))
           .map(([, candidate]) => candidate)
       : []
+    const visibleAuthored = limitAuthoredPriorExits(
+      authoredHandoffs.slice(0, BEHAVIOR_LIMITS.authoredHandoffs),
+    )
     return {
       target: target.id,
       routes: [...routes.values()],
       alternatives: [...alternate.values()],
       gaps: [...evidence.values()],
-      ...(authoredHandoffs.length
-        ? { authoredHandoffs: authoredHandoffs.slice(0, BEHAVIOR_LIMITS.authoredHandoffs) }
-        : {}),
+      ...(authoredHandoffs.length ? { authoredHandoffs: visibleAuthored.handoffs } : {}),
       ...(authoredHandoffs.length > BEHAVIOR_LIMITS.authoredHandoffs
         ? { authoredHandoffsOmitted: authoredHandoffs.length - BEHAVIOR_LIMITS.authoredHandoffs }
         : {}),
+      ...(visibleAuthored.omitted ? { authoredPriorExitsOmitted: visibleAuthored.omitted } : {}),
       ...(!handoff
         ? authoredContext(
             target,

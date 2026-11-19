@@ -975,6 +975,33 @@ test('authored handoffs retain caller exit checks beyond an opaque operation', (
   )
 })
 
+test('prior exits keep later call sites when additional local checks occupy the bound', () => {
+  const restrictions = Array.from(
+    { length: 10 },
+    (_, i) => `if (run.input.refuse${i}) throw new TypeError('Local refusal ${i}')`,
+  ).join('\n')
+  const caller = method(
+    handlerSource(`
+    opaque()
+    if (run.input.invalid) throw new TypeError('Reject before effects')
+    await run.call({slot:'converter'})
+    ${restrictions}
+    await run.call({slot:'exporter'})
+  `),
+  )
+  const report = analyzeFlowBehavior(
+    snapshot(method(handlerSource("return {outcome:'done',output:{}}")), caller),
+  )
+  const rendered = renderFlowBehavior(report)
+  expect(rendered).toMatch(
+    /run\.input\.invalid is true [^\n]+ bypasses the listed call sites for converter, exporter/,
+  )
+  expect(rendered).toContain('3 earlier exits omitted.')
+  expect(JSON.stringify(flowBehaviorSnapshot(report))).toContain(
+    '3 earlier authored exits omitted.',
+  )
+})
+
 test('a known configured early return leaves no speculative exporter handoff', () => {
   const caller = method(
     handlerSource(`
