@@ -385,30 +385,35 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
     slots: new Map([['review', variant.id]]),
   }
   const report = analyzeFlowBehavior({ ...input, targets: [...input.targets, variant, other] })
-  expect(report.scopes[0]?.callSelections?.sites).toMatchObject([
-    {
-      slot: 'converter',
-      site: { line: 8 },
-      dispatch: {
-        line: 4,
-        helper: 'dispatch',
-        declaration: { line: 4 },
-        request: "run.call({slot, operationId: slot, intent: 'Choose a review route', input})",
-        arguments: [
-          { field: 'slot', index: 0, parameter: 'slot' },
-          { field: 'operationId', index: 0, parameter: 'slot' },
-          { field: 'input', index: 1, parameter: 'input' },
-        ],
-      },
-      requestMetadata: [
-        { field: 'operationId', code: 'slot', site: { line: 4 } },
-        { field: 'intent', code: "'Choose a review route'", site: { line: 4 } },
+  const selected = report.scopes[0]?.callSelections?.sites.find(({ slot }) => slot === 'converter')!
+  const { inputFields, ...site } = selected
+  expect(site).toMatchObject({
+    slot: 'converter',
+    site: { line: 8 },
+    dispatch: {
+      line: 4,
+      helper: 'dispatch',
+      declaration: { line: 4 },
+      request: "run.call({slot, operationId: slot, intent: 'Choose a review route', input})",
+      arguments: [
+        { field: 'slot', index: 0, parameter: 'slot' },
+        { field: 'operationId', index: 0, parameter: 'slot' },
+        { field: 'input', index: 1, parameter: 'input' },
       ],
-      inputSite: { line: 8 },
-      guards: [{ code: 'run.input.reuse', taken: true, site: { line: 6 } }],
-      inputChoices: [{ field: 'mode', code: "run.input.action ?? 'review'", site: { line: 7 } }],
     },
-  ])
+    requestMetadata: [
+      { field: 'operationId', code: 'slot', site: { line: 4 } },
+      { field: 'intent', code: "'Choose a review route'", site: { line: 4 } },
+    ],
+    inputSite: { line: 8 },
+    guards: [{ code: 'run.input.reuse', taken: true, site: { line: 6 } }],
+  })
+  expect(inputFields.find(({ field }) => field === 'mode')).toMatchObject({
+    field: 'mode',
+    kind: 'choice',
+    code: "run.input.action ?? 'review'",
+    site: { line: 7 },
+  })
   const markdown = renderFlowBehavior(report)
   expect(markdown.indexOf('### Caller decisions')).toBeLessThan(
     markdown.indexOf('### Coverage gaps'),
@@ -426,6 +431,46 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
   expect(owner).toContain('#### Caller decisions')
   expect(owner).toContain('Argument 2 input → request field input.')
   expect(owner).toContain('flows/import/FLOW.ts:8')
+})
+
+test('caller slot groups compare authored literals and identify guarded or overridden fields', () => {
+  const caller = method(
+    handlerSource(`
+    const dispatch = (slot, value) => run.call({slot, operationId: slot, input: value})
+    opaque()
+    await dispatch('converter', {
+      profile: 'same',
+      scale: 'chapter',
+      ...defaults(),
+      purpose: run.input.polished ? 'post-edit' : 'developmental',
+    })
+    await dispatch('exporter', {name: 'preview'})
+    await dispatch('converter', {profile: 'same', scale: 'chapter', purpose: 'post-edit'})
+    await dispatch('converter', {
+      profile: 'same',
+      scale: 'discarded',
+      ...{ scale: 'book' },
+      ...(run.input.edited ? {purpose: 'post-edit'} : {}),
+      ...details(),
+    })
+    ${'await dispatch("exporter", {})\n'.repeat(BEHAVIOR_LIMITS.focusedCallSelections)}
+  `),
+  )
+  const report = analyzeFlowBehavior(
+    snapshot(method(handlerSource(`return {outcome:'done',output:{}}`)), caller),
+  )
+  const rendered = renderFlowBehavior(report)
+  const group = rendered.split('**converter → flow:flows/convert**')[1]?.split('**exporter →')[0]
+  expect(group).toContain("scale = 'chapter'")
+  expect(group).toMatch(/scale = 'chapter'[^\n]+later property may override/)
+  expect(group).toContain("scale = 'book'")
+  expect(group).toMatch(
+    /purpose = 'post-edit'[^\n]+when run\.input\.edited is true[^\n]+later property may override/,
+  )
+  expect(group).toContain("purpose = run.input.polished ? 'post-edit'")
+  expect(group).not.toContain('discarded')
+  expect(group).not.toContain('profile =')
+  expect(rendered).toContain('Additional authored call sites omitted for exporter (4).')
 })
 
 test('focused source sites decline reassigned or ambiguous requests and retain direct decisions', () => {
@@ -458,7 +503,7 @@ test('focused source sites decline reassigned or ambiguous requests and retain d
       requestMetadata: [{ field: 'operationId', code: "'direct'", site: { line: 9 } }],
       inputSite: { line: 10 },
       guards: [{ code: 'run.input.convert', taken: true }],
-      inputChoices: [{ field: 'mode', code: "run.input.extra ? 'full' : 'short'" }],
+      inputFields: [{ field: 'mode', code: "run.input.extra ? 'full' : 'short'" }],
     },
   ])
   expect(scope.callSelections?.sites[0]?.dispatch).toBeUndefined()

@@ -186,7 +186,28 @@ export interface AuthoredCallSelection {
     readonly field: 'operationId' | 'intent'
   })[]
   readonly inputSite?: SourceSite
-  readonly inputChoices: readonly (SourceExpression & { readonly field: string })[]
+  readonly inputFields: readonly AuthoredInputField[]
+}
+
+export interface AuthoredInputField extends SourceExpression {
+  readonly field: string
+  readonly kind: 'literal' | 'choice'
+  readonly guard?: BehaviorGuard
+  readonly possibleOverride?: SourceSite
+}
+
+/** Fields with visibly different authored values in a group of calls. */
+export function varyingInputFields(sites: readonly AuthoredCallSelection[]): ReadonlySet<string> {
+  const first = new Map<string, string>()
+  const varying = new Set<string>()
+  for (const { inputFields } of sites) {
+    for (const { field, code } of inputFields) {
+      const previous = first.get(field)
+      if (previous === undefined) first.set(field, code)
+      else if (previous !== code) varying.add(field)
+    }
+  }
+  return varying
 }
 
 export interface RelatedCall {
@@ -241,7 +262,7 @@ export interface BehaviorReport {
     readonly callReferencesOmitted?: number
     readonly callSelections?: {
       readonly sites: readonly AuthoredCallSelection[]
-      readonly omitted: number
+      readonly omittedBySlot: ReadonlyMap<string, number>
       readonly related: ReadonlyMap<
         string,
         { readonly calls: readonly RelatedCall[]; readonly omitted: number }

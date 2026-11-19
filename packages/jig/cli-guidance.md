@@ -280,6 +280,9 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Focused and package reports can show authored call references beyond the analyzed routes.
 
   Focused source and configured-use expansions lead with caller decisions from the selected implementation.
+  Group authored sites by configured caller slot and disclose omitted sites for that slot.
+  Show differing literal fields and source conditions together with possible later overrides.
+
   Show the local helper's request location beside the call that selects a configured slot.
   Show authored request metadata and the child input location under separate labels.
   Show the authored request and the argument positions proven to supply its fields.

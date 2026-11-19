@@ -15,6 +15,7 @@ import {
   type BehaviorTarget,
   isFileOperation,
   type SourceSite,
+  varyingInputFields,
   withoutReportingLocations,
 } from './internal/flow-behavior/model.js'
 
@@ -1241,45 +1242,71 @@ function renderCallSelections(
     '',
   ]
   const dispatches = new Set<string>()
-  const shown = new Set<string>()
+  const groups = new Map<string, (typeof selections.sites)[number][]>()
   for (const selection of selections.sites) {
-    const { slot, dispatch, guards, requestMetadata, inputSite, inputChoices } = selection
+    const group = groups.get(selection.slot) ?? []
+    group.push(selection)
+    groups.set(selection.slot, group)
+
+    const dispatch = selection.dispatch
+    const key = dispatch && JSON.stringify([dispatch.path, dispatch.line, dispatch.column])
+    if (!dispatch || !key || dispatches.has(key)) continue
+    dispatches.add(key)
+    lines.push(
+      `- Helper ${text(dispatch.helper)} (${text(site(dispatch.declaration))}) issues ${text(dispatch.request)} (${text(site(dispatch))}).`,
+    )
+    for (const { field, index, parameter } of dispatch.arguments)
+      lines.push(`  - Argument ${index + 1} ${text(parameter)} → request field ${field}.`)
+  }
+
+  for (const [slot, group] of groups) {
     const target = slots.get(slot)
     if (target === undefined) continue
-    const dispatchKey = dispatch && JSON.stringify([dispatch.path, dispatch.line, dispatch.column])
-    if (dispatch && dispatchKey && !dispatches.has(dispatchKey)) {
-      dispatches.add(dispatchKey)
+    lines.push('', `**${text(slot)} → ${text(target)}**`, '')
+    const varying = varyingInputFields(group)
+    for (const selection of group) {
+      const { dispatch, guards, requestMetadata, inputSite, inputFields } = selection
       lines.push(
-        `- Helper ${text(dispatch.helper)} (${text(site(dispatch.declaration))}) issues ${text(dispatch.request)} (${text(site(dispatch))}).`,
+        `- ${text(site(selection.site))}` +
+          (dispatch ? ` · run.call in helper at ${text(site(dispatch))}` : ''),
       )
-      for (const { field, index, parameter } of dispatch.arguments)
-        lines.push(`  - Argument ${index + 1} ${text(parameter)} → request field ${field}.`)
+      for (const guard of guards)
+        lines.push(
+          `  - Inside ${text(guard.code)} · ${guard.taken ? 'true' : 'false'} branch (${text(site(guard.site))})`,
+        )
+      for (const field of requestMetadata)
+        lines.push(
+          `  - Request metadata ${text(field.field)} = ${text(field.code)} (${text(site(field.site))})`,
+        )
+      if (inputSite) lines.push(`  - Child input at ${text(site(inputSite))}`)
+      for (const field of inputFields) {
+        if (field.kind === 'literal' && !field.guard && !varying.has(field.field)) continue
+        const guard = field.guard
+          ? ` · when ${text(field.guard.code)} is ${field.guard.taken} (${text(site(field.guard.site))})`
+          : ''
+        const override = field.possibleOverride
+          ? ` · later property may override (${text(site(field.possibleOverride))})`
+          : ''
+        lines.push(
+          `    - ${text(field.field)} = ${text(field.code)} (${text(site(field.site))})${guard}${override}`,
+        )
+      }
     }
-    lines.push(
-      `- ${text(slot)} → ${text(target)} · ${text(site(selection.site))}` +
-        (dispatch ? ` · run.call in helper at ${text(site(dispatch))}` : ''),
-    )
-    for (const guard of guards)
-      lines.push(
-        `  - Inside ${text(guard.code)} · ${guard.taken ? 'true' : 'false'} branch (${text(site(guard.site))})`,
-      )
-    for (const field of requestMetadata)
-      lines.push(
-        `  - Request metadata ${text(field.field)} = ${text(field.code)} (${text(site(field.site))})`,
-      )
-    if (inputSite) lines.push(`  - Child input at ${text(site(inputSite))}`)
-    for (const choice of inputChoices)
-      lines.push(`    - ${text(choice.field)} = ${text(choice.code)} (${text(site(choice.site))})`)
     const related = selections.related.get(slot)
-    if (related && !shown.has(slot)) {
-      lines.push('  - Other slots using the same Flow')
+    if (related) {
+      lines.push('- Other slots using the same Flow')
       for (const call of related.calls)
-        lines.push(`    - ${text(call.caller)} · ${text(call.slot)} → ${text(call.target)}`)
-      if (related.omitted) lines.push(`    - ${related.omitted} more configured slots.`)
+        lines.push(`  - ${text(call.caller)} · ${text(call.slot)} → ${text(call.target)}`)
+      if (related.omitted) lines.push(`  - ${related.omitted} more configured slots.`)
     }
-    shown.add(slot)
+    const omitted = selections.omittedBySlot.get(slot)
+    if (omitted)
+      lines.push(`- Additional authored call sites omitted for ${text(slot)} (${omitted}).`)
   }
-  if (selections.omitted) lines.push(`- ${selections.omitted} additional caller sites omitted.`)
+  for (const [slot, omitted] of selections.omittedBySlot) {
+    if (!groups.has(slot))
+      lines.push('', `- Authored call sites omitted for ${text(slot)} (${omitted}).`)
+  }
   lines.push(
     '',
     'These locations describe authored choices. Reachability depends on the caller and its input.',
