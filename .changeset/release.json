@@ -1,27 +1,69 @@
 {
   "schemaVersion": 1,
-  "baseRevision": "a077f4a553b203f76e632bef943ee44c85d278a6",
-  "sourceDigest": "2058a72f9d8f6e3237c9f5e95ad8d1793e3ecd6ce97adeb66f76eef3bfb315f8",
+  "baseRevision": "55c0ac0d81cf9d52c4289d24830f5f3ab1823ef3",
+  "sourceDigest": "b21174fe458b3f0965c0ce9bbf35aeb75c2d448cbe69a5e63fd7faa4bd49b048",
   "changesets": [
     {
-      "id": "claude-acp-auth-status",
-      "sha256": "64b8adb55b1d6d05314410fd825d1f0b7189acb9eeaacc5ff27a843385e47249"
+      "id": "admitted-behavior-map",
+      "sha256": "f938c2a74db937894c0a69296f3690e62d0b35d76260498b62813d2bd5ef21f2"
     },
     {
-      "id": "reconcile-original-attempt",
-      "sha256": "115e8ff76fd7e3ba97076de1e40b2628a5762d10b6a0a46a33b9a24742bb3ee7"
+      "id": "contract-aware-source-checks",
+      "sha256": "4da3a4f3b5dfdd8609dd2ce211b45936e85a1f3a1425101f30cbcc3ef1f60f08"
     },
     {
-      "id": "source-behavior-inspection",
-      "sha256": "4904156a4e2268a8ef8e79e98cf3bf096f1ea1ed0fe574dba5e566ff760c9dff"
+      "id": "default-flow-behavior",
+      "sha256": "1864b6432f6f7eb58d6dd96fa3fb990aa23044f952810944e376425be021bc13"
+    },
+    {
+      "id": "explorer-file-runs",
+      "sha256": "96a7b4ec58785f0d713840732bfa8e91379be4a53389dd2a442f9272601d6c9a"
+    },
+    {
+      "id": "flow-navigation-index",
+      "sha256": "ca1713de4a7a41a295eddcd5fff8698654a643d065ea5ed9be3fa3285aeb3689"
+    },
+    {
+      "id": "flow-package-boundary",
+      "sha256": "df5ce1cb6031f48a7539112119a924bc2f085c8b693be52640d7e8f2d641ea2c"
+    },
+    {
+      "id": "flow-package-navigation",
+      "sha256": "f2581793c2616cc717a352f52be33bb83091c3961d16c0fdddf24c426a915d32"
+    },
+    {
+      "id": "focused-caller-decisions",
+      "sha256": "22a6fc526ab272d26b6123170f02d206aecd8eb483ffd9768b9339c638badc5b"
+    },
+    {
+      "id": "mac-collector-api-retry",
+      "sha256": "4a7d1087a6f412a703c8cb0e187966b55346fadf452d6d60f3c4fdaa52e5aa37"
     }
   ],
   "releases": [
     {
+      "name": "@jigging/display-model",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.9",
+      "newVersion": "0.1.0-alpha.10"
+    },
+    {
+      "name": "@jigging/display-tui",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.9",
+      "newVersion": "0.1.0-alpha.10"
+    },
+    {
+      "name": "@jigging/display-web",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.10",
+      "newVersion": "0.1.0-alpha.11"
+    },
+    {
       "name": "@jigging/jig",
-      "type": "minor",
-      "oldVersion": "0.1.0-alpha.55",
-      "newVersion": "0.1.0-alpha.56"
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.56",
+      "newVersion": "0.1.0-alpha.57"
     }
   ]
 }
