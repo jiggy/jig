@@ -385,7 +385,8 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
     slots: new Map([['review', variant.id]]),
   }
   const report = analyzeFlowBehavior({ ...input, targets: [...input.targets, variant, other] })
-  const selected = report.scopes[0]?.callSelections?.sites.find(({ slot }) => slot === 'converter')!
+  const selected = report.scopes[0]?.callSelections?.sites.find(({ slot }) => slot === 'converter')
+  if (!selected) throw Error('Expected the converter caller decision')
   const { inputFields, ...site } = selected
   expect(site).toMatchObject({
     slot: 'converter',
