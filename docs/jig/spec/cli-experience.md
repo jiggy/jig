@@ -968,6 +968,9 @@ The [limits reference](../reference/limits.md#inspect-application-composition) l
 Saved packets contain no configured-topology record.
 
 Source behavior uses the same captured working tree and resolved slots as the topology view.
+Standalone source analysis can use guarantees from the captured input contract.
+Supported guarantees include required objects, strings, enumerated strings, and bounded integers.
+An optional integer can use its literal default. Child analysis follows the supplied argument.
 
 The declared entrypoint selects the default focus.
 An exact target retains its configured context, including other uses of its implementation and callers.
@@ -982,6 +985,8 @@ Targets that exceed the analysis allowance remain visible with a coverage notice
 
 Each analyzed route keeps its own conditions, call results, effects, and continuation.
 Source references identify the captured implementation and line.
+Diagrams label conditional edges with their predicates or the result of a direct validation guard.
+Source checks identify evaluated predicates and predicates that remain conditional.
 
 Focused source output shows supported caller decisions before analyzed routes.
 It can link a literal slot argument at a local helper call to the corresponding request.

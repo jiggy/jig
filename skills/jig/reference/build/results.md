@@ -332,7 +332,12 @@ Use an exact project-relative package path or an installed `npm:` package select
 Select a listed target for its behavior, or add `--json` to get the exact configuration records.
 
 The consequences list calls, requested progress, and attempted file writes.
-The diagram labels unresolved checks on the affected connections. Source details point to the checks and publications.
+
+The diagram labels the conditions that select each route.
+Direct validation guards can show which route passes or rejects the check.
+**Source checks** shows the predicate and whether its result is known on the displayed routes.
+**Coverage gaps** identifies unsupported code and analysis limits.
+
 Follow a call link to see the inputs, supported child path, and continuation for that call.
 Select another target to inspect it independently.
 The configured inventory lists declared outcomes, attachments, and artifact results.

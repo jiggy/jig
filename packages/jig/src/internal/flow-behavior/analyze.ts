@@ -25,6 +25,7 @@ import {
   fromJson,
   literal,
   missing,
+  numberBounds,
   object,
   resultText,
   truth,
@@ -417,7 +418,13 @@ export class Interpreter {
       label,
       enteringValues,
       readOperation,
-    }: { label?: string; enteringValues?: State['values']; readOperation?: true } = {},
+      validation,
+    }: {
+      label?: string
+      enteringValues?: State['values']
+      readOperation?: true
+      validation?: true
+    } = {},
   ): State[] {
     const condition = truth(value)
     const possible = condition === undefined ? [true, false] : [condition]
@@ -433,9 +440,10 @@ export class Interpreter {
           add(state, {
             kind: 'condition',
             site: this.source.site(n),
-            code: sourceCode.length <= 140 ? sourceCode : '(see full predicate in source)',
+            code: sourceCode.length <= 512 ? sourceCode : sourceCode.slice(0, 511) + '…',
             taken,
             unresolved: condition === undefined,
+            ...(validation ? { validation } : {}),
             ...(enteringNumbers.length > 0 ? { enteringNumbers } : {}),
             ...(readOperation ? { readOperation } : {}),
           }),
@@ -443,6 +451,22 @@ export class Interpreter {
         ),
       ),
     )
+  }
+
+  private validationGuard(statement: ts.IfStatement): true | undefined {
+    if (statement.elseStatement) return undefined
+    const arm = statement.thenStatement
+    const only = ts.isBlock(arm)
+      ? arm.statements.length === 1
+        ? arm.statements[0]
+        : undefined
+      : arm
+    const failure = only && ts.isThrowStatement(only) ? unwrap(only.expression) : undefined
+    if (!failure || !ts.isNewExpression(failure)) return undefined
+    const args = failure.arguments ?? []
+    if (args.length > 1 || (args[0] && !ts.isStringLiteralLike(args[0]))) return undefined
+    const error = this.source.errorClass(failure.expression)
+    return error?.base === 'TypeError' || error?.base === 'RangeError' ? true : undefined
   }
 
   private comparisonNumbers(n: ts.Expression, values: State['values']) {
@@ -516,7 +540,10 @@ export class Interpreter {
             const selected = taken ? n.thenStatement : n.elseStatement
             return selected === undefined ? [branch] : this.advance(selected, branch, depth)
           },
-          { enteringValues: state.values },
+          {
+            enteringValues: state.values,
+            ...(this.validationGuard(n) ? { validation: true } : {}),
+          },
         ),
       )
     if (ts.isReturnStatement(n)) {
@@ -904,16 +931,18 @@ export class Interpreter {
       return this.continue(this.expression(e.expression, state, depth), (s, value) => [
         withValue(
           s,
-          value.kind === 'unknown'
+          value.kind === 'unknown' || (value.kind === 'integer-range' && value.optional)
             ? unknown
             : literal(
                 value.kind === 'literal'
                   ? typeof value.value
-                  : value.kind === 'decoded-text'
+                  : value.kind === 'decoded-text' || value.kind === 'input-string'
                     ? 'string'
-                    : value.kind === 'undefined' || value.kind === 'function'
-                      ? value.kind
-                      : 'object',
+                    : value.kind === 'integer-range'
+                      ? 'number'
+                      : value.kind === 'undefined' || value.kind === 'function'
+                        ? value.kind
+                        : 'object',
               ),
         ),
       ])
@@ -1036,12 +1065,10 @@ export class Interpreter {
             taken === (operator === ts.SyntaxKind.AmpersandAmpersandToken)
               ? this.expression(e.right, ss, depth)
               : [
-                  withValue(
-                    ss,
-                    left.kind === 'unknown' || left.kind === 'decoded-text'
-                      ? { ...left, truthiness: taken }
-                      : left,
-                  ),
+                  withValue(ss, {
+                    kind: left.kind === 'decoded-text' ? 'decoded-text' : 'unknown',
+                    truthiness: taken,
+                  }),
                 ],
           )
         return known === (operator === ts.SyntaxKind.AmpersandAmpersandToken)
@@ -1049,7 +1076,19 @@ export class Interpreter {
           : [withValue(s, left)]
       }
       if (operator === ts.SyntaxKind.QuestionQuestionToken) {
-        if (left.kind === 'unknown') {
+        if (left.kind === 'integer-range' && left.optional) {
+          const expression = unwrap(e.right)
+          const fallback = ts.isNumericLiteral(expression) ? Number(expression.text) : undefined
+          if (fallback !== undefined && Number.isSafeInteger(fallback))
+            return [
+              withValue(s, {
+                kind: 'integer-range',
+                minimum: Math.min(left.minimum, fallback),
+                maximum: Math.max(left.maximum, fallback),
+              }),
+            ]
+        }
+        if (left.kind === 'unknown' || (left.kind === 'integer-range' && left.optional)) {
           if (truth(left) === true) return [withValue(s, left)]
           if (dataEffects(this.source, e.right, s.values)) return [withValue(s, unknown)]
           return this.branch(
@@ -1066,6 +1105,13 @@ export class Interpreter {
           : [withValue(s, left)]
       }
       return this.continue(this.expression(e.right, s, depth), (ss, right) => {
+        if (
+          operator >= ts.SyntaxKind.LessThanToken &&
+          operator <= ts.SyntaxKind.GreaterThanEqualsToken
+        ) {
+          const order = compareBounds(operator, left, right)
+          if (order !== undefined) return [withValue(ss, literal(order))]
+        }
         if (
           operator === ts.SyntaxKind.EqualsEqualsEqualsToken ||
           operator === ts.SyntaxKind.ExclamationEqualsEqualsToken
@@ -1736,6 +1782,20 @@ export class Interpreter {
     const declaration = this.source.declaration(e)
     return declaration !== undefined ? state.values.get(declaration) : undefined
   }
+}
+
+function compareBounds(operator: ts.SyntaxKind, left: Value, right: Value): boolean | undefined {
+  const descending =
+    operator === ts.SyntaxKind.GreaterThanToken || operator === ts.SyntaxKind.GreaterThanEqualsToken
+  const first = numberBounds(descending ? right : left)
+  const second = numberBounds(descending ? left : right)
+  if (!first || !second) return undefined
+  const inclusive =
+    operator === ts.SyntaxKind.LessThanEqualsToken ||
+    operator === ts.SyntaxKind.GreaterThanEqualsToken
+  if (inclusive ? first[1] <= second[0] : first[1] < second[0]) return true
+  if (inclusive ? first[0] > second[1] : first[0] >= second[1]) return false
+  return undefined
 }
 
 function contains(value: Value, member: Value): boolean {

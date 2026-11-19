@@ -3,6 +3,12 @@ import type { BehaviorReturn, SourceSite } from './model.js'
 import type { ErrorClass, LocalFunction } from './source.js'
 
 export type FileHandleValue = { readonly kind: 'file-handle'; readonly path: string }
+type IntegerRange = {
+  readonly kind: 'integer-range'
+  readonly minimum: number
+  readonly maximum: number
+  readonly optional?: true
+}
 
 export type Value =
   | FileHandleValue
@@ -11,7 +17,14 @@ export type Value =
   | { readonly kind: 'unknown' | 'decoded-text'; readonly truthiness?: boolean }
   | { readonly kind: 'undefined' | 'context' | 'reporter' | 'report-view' }
   | { readonly kind: 'literal'; readonly value: string | number | boolean | null }
-  | { readonly kind: 'object'; readonly fields: ReadonlyMap<string, Value>; readonly open?: true }
+  | { readonly kind: 'input-string'; readonly choices?: readonly string[] }
+  | IntegerRange
+  | {
+      readonly kind: 'object'
+      readonly fields: ReadonlyMap<string, Value>
+      readonly open?: true
+      readonly optionalIntegers?: ReadonlyMap<string, IntegerRange>
+    }
   | { readonly kind: 'array' | 'set'; readonly items: readonly Value[] }
   | { readonly kind: 'path'; readonly suffix: string }
   | { readonly kind: 'function'; readonly node: LocalFunction }
@@ -33,6 +46,13 @@ export const object = (entries: Iterable<readonly [string, Value]>, open = false
   fields: new Map(entries),
   ...(open ? { open: true as const } : {}),
 })
+
+export function numberBounds(value: Value): readonly [number, number] | undefined {
+  if (value.kind === 'integer-range' && !value.optional) return [value.minimum, value.maximum]
+  if (value.kind === 'literal' && typeof value.value === 'number' && Number.isFinite(value.value))
+    return [value.value, value.value]
+  return undefined
+}
 
 export function fromJson(value: JsonValue): Value {
   if (value === null || typeof value !== 'object') return literal(value)
@@ -61,7 +81,12 @@ export function toJson(value: Value): JsonValue | undefined {
 
 export function field(value: Value, name: string): Value {
   if (value.kind === 'error' && name === 'message') return value.message
-  if (value.kind === 'object') return value.fields.get(name) ?? (value.open ? unknown : missing)
+  if (value.kind === 'object')
+    return (
+      value.fields.get(name) ??
+      value.optionalIntegers?.get(name) ??
+      (value.open ? unknown : missing)
+    )
   if (value.kind === 'array' && name === 'length') return literal(value.items.length)
   if (value.kind === 'set' && name === 'size') return literal(value.items.length)
   if (value.kind === 'array' && /^(0|[1-9][0-9]*)$/.test(name))
@@ -80,6 +105,11 @@ export function truth(value: Value): boolean | undefined {
       return false
     case 'literal':
       return Boolean(value.value)
+    case 'input-string':
+      return value.choices?.every((choice) => choice !== '') ? true : undefined
+    case 'integer-range':
+      if (value.minimum === 0 && value.maximum === 0) return false
+      return !value.optional && (value.minimum > 0 || value.maximum < 0) ? true : undefined
     default:
       return true
   }
@@ -93,6 +123,9 @@ export function describe(value: Value): string {
   if (value.kind === 'path') return 'path ending in ' + JSON.stringify(value.suffix)
   if (value.kind === 'undefined') return 'undefined'
   if (value.kind === 'array') return 'array'
+  if (value.kind === 'input-string') return 'string'
+  if (value.kind === 'integer-range')
+    return `integer from ${value.minimum} to ${value.maximum}${value.optional ? ' or absent' : ''}`
   return value.kind
 }
 
