@@ -1060,7 +1060,8 @@ For a single evaluated progress block, the report links count and total expressi
 When the displayed progress remains unknown, it may link a possible calculation from the payload or its local helper.
 
 The focused view shows when a selected Flow's result reaches a caller's check and next step.
-It keeps the configured caller and call site with the result.
+Each row identifies which Flow returns the value and which caller acts on it.
+Conditional checks inside the child have their own column. Caller checks state the selected truth value before the predicate.
 From the caller's view, distinct results link to their own call expansions.
 Checks and subsequent calls link to their source locations.
 
