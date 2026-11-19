@@ -115,6 +115,25 @@ test('standalone inspection uses proven input bounds and preserves undeclared br
   expect(markdown).toContain('typeof input.brief.language')
 })
 
+test('the chart shows the later condition that distinguishes paths through the same validation', () => {
+  const caller = method(
+    handlerSource(`
+      if (typeof run.input.name !== 'string') throw new TypeError('Supply a name')
+      if (!run.input.sources.length) return { outcome: 'done', output: { status: 'needs-evidence' } }
+      return { outcome: 'done', output: { status: 'ready' } }
+    `),
+  )
+  const markdown = renderFlowBehavior(analyzeFlowBehavior(snapshot(method(''), caller)))
+  const chart = markdown.match(/```mermaid[\s\S]+?```/)?.[0]
+  expect(chart).toMatch(
+    /Validation passes · flows\/import\/FLOW\.ts:2 · When \(!run\.input\.sources\.length\) is true · flows\/import\/FLOW\.ts:3.+needs-evidence/,
+  )
+  expect(chart).toMatch(
+    /Validation passes · flows\/import\/FLOW\.ts:2 · When \(!run\.input\.sources\.length\) is false · flows\/import\/FLOW\.ts:3.+ready/,
+  )
+  expect(chart).toMatch(/Validation rejects · flows\/import\/FLOW\.ts:2.+Supply a name/)
+})
+
 test('an optional integer leaves the default and missing-property behavior in scope', () => {
   const acceptedInput = inputFromContract({
     type: 'object',
