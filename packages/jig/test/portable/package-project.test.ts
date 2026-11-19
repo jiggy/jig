@@ -13,7 +13,7 @@ import {
   encodePrivateProjectLocalLock,
 } from '../../src/internal/project-local-lock.js'
 import { defineJig } from '../../src/project/author.js'
-import { captureFlowSource } from '../../src/project/flow-source.js'
+import { type CapturedFlowMember, captureFlowSource } from '../../src/project/flow-source.js'
 import {
   type InjectedBindingDeclaration,
   inspectPackageProject,
@@ -116,7 +116,10 @@ function invocation(value: Record<string, unknown> = {}): string {
 }
 async function withFlows(
   trees: Readonly<Record<string, Readonly<Record<string, string>>>>,
-  action: (flows: readonly RetainedFlowInput[]) => Promise<void> | void,
+  action: (
+    flows: readonly RetainedFlowInput[],
+    members: readonly CapturedFlowMember[],
+  ) => Promise<void> | void,
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'jig-package-project-'))
   const store = join(root, 'store')
@@ -131,7 +134,7 @@ async function withFlows(
       }
     }
     source = await captureFlowSource(root, defineJig({ flows: Object.keys(trees) }).flows)
-    await action(await retainFlowSourcePackages(store, source))
+    await action(await retainFlowSourcePackages(store, source), source.members)
   } finally {
     await source?.dispose()
     await rm(root, { recursive: true, force: true })
@@ -156,7 +159,7 @@ describe('private package-project linker', () => {
           'FLOW.contract.json': invocation({ attachments: { source: 'read' } }),
         },
       },
-      (flows) => {
+      (flows, members) => {
         const input = {
           flows,
           bindings: [
@@ -167,19 +170,26 @@ describe('private package-project linker', () => {
           ],
         }
         expectCode(() => linkPackageProject(input), 'PROJECT_BINDING_ATTACHMENTS_NOT_CAPTURED')
-        const inspected = inspectPackageProject(input)
+        const inspection = { ...input, flows: members }
+        const inspected = inspectPackageProject(inspection)
+        expect(inspected.flows[0]).not.toHaveProperty('package')
         expect(inspected.bindings[0]!.id).toBe('read')
         expect(inspected.bindings[0]!.boundAttachments).toBeUndefined()
-        expect(() => buildPrivateActivationRequests(inspected)).toThrow('package-project linker')
+        expect(() => buildPrivateActivationRequests(inspected as never)).toThrow(
+          'package-project linker',
+        )
         expectCode(
           () =>
-            inspectPackageProject({ ...input, entrypoint: 'binding:read --attach source=other' }),
+            inspectPackageProject({
+              ...inspection,
+              entrypoint: 'binding:read --attach source=other',
+            }),
           'PROJECT_ENTRYPOINT_INVALID',
         )
         expectCode(
           () =>
             inspectPackageProject({
-              flows,
+              flows: members,
               bindings: [
                 binding('bindings/read.ts', {
                   package: 'flows/read',
@@ -193,7 +203,7 @@ describe('private package-project linker', () => {
     )
   })
   test('portable ACP policy requires operator selection and resolves only in the reviewed generation', async () => {
-    await withFlows(nativeAgentTrees(), (flows) => {
+    await withFlows(nativeAgentTrees(), (flows, members) => {
       const input = {
         flows,
         grants: { shared: { kind: 'acp' as const, maxTurns: 2 } },
@@ -213,12 +223,14 @@ describe('private package-project linker', () => {
         'PROJECT_AGENT_SELECTION_REQUIRED',
         '/slots/native',
       )
-      const inspected = inspectPackageProject(input)
+      const inspected = inspectPackageProject({ ...input, flows: members })
       expect(inspected.bindings.map((binding) => binding.slots.native)).toEqual([
         { kind: 'grant', policy: { kind: 'acp', maxTurns: 3 } },
         { kind: 'grant', name: 'shared', policy: { kind: 'acp', maxTurns: 2 } },
       ])
-      expect(() => buildPrivateActivationRequests(inspected)).toThrow('package-project linker')
+      expect(() => buildPrivateActivationRequests(inspected as never)).toThrow(
+        'package-project linker',
+      )
       for (const client of ['codex', 'claude'] as const) {
         const selected = linkPackageProject(input, undefined, client)
         expect(selected.bindings.map((binding) => binding.slots.native)).toEqual([
@@ -446,7 +458,11 @@ describe('private package-project linker', () => {
         () => linkPackageProject({ flows, bindings: [recoveryBinding] }),
         'PROJECT_AGENT_SELECTION_REQUIRED',
       )
-      const selected = linkPackageProject({ flows, bindings: [recoveryBinding] }, undefined, 'claude')
+      const selected = linkPackageProject(
+        { flows, bindings: [recoveryBinding] },
+        undefined,
+        'claude',
+      )
       const slots = selected.bindings[0]!.slots
       expect(slots.native).toMatchObject({ policy: { client: 'claude', maxTurns: 2 } })
       expect(slots.backup1).toMatchObject({ policy: { client: 'codex', authProfile: 'secondary' } })

@@ -35,7 +35,8 @@ remain supported and are not rewritten by a review default.
 
 - `project/captured-authoring.ts` owns the shared captured declaration evaluation used by review and working-tree inspection.
   It preserves bootstrap/complete-closure consistency and owns no approval or dependency preparation.
-  `inspectPackageProject` uses ordinary linking rules without capturing Binding input payloads or selecting an unpinned native Agent client.
+  `inspectPackageProject` applies ordinary linking rules directly to captured packages and declared Binding routes.
+  It produces no retained package references and leaves native Agent selection to review.
   Its result is unbranded and cannot produce activation requests.
 
 - `src/project/limits.ts` owns closed project preparation choices, their defaults,
