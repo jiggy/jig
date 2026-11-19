@@ -369,6 +369,7 @@ test('package inspection joins source sites to exact configured caller slots', (
   const output = renderFlowBehavior(report)
   expect(output).toStartWith('# Flow package uses')
   expect(output).toContain('### flow:flows/convert')
+  expect(output).toContain('    jig inspect --flow flow:flows/convert\n')
   expect(output).toContain('- binding:code · converter · flows/import/FLOW.ts:2')
   expect(output).not.toContain('flow:flows/export')
   expect(output).not.toContain('mermaid')

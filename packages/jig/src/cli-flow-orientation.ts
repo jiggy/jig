@@ -1,3 +1,4 @@
+import { cliShellWord } from './cli-discovery.js'
 import { record } from './internal/flow-inspection-scope.js'
 import { PRIVATE_FLOW_CONTEXT_LIMITS } from './internal/inspection-policy.js'
 import { canonicalJson, type JsonValue } from './json.js'
@@ -42,6 +43,7 @@ export function renderFlowPackageUses(
   targets: readonly ConfiguredTarget[],
   connections: readonly ConfiguredConnection[],
   text: (value: string) => string,
+  approved = false,
 ): string[] {
   const lines = ['## ' + text(packagePath), '']
   const uses = targets.filter((target) => target.implementation === packagePath)
@@ -51,6 +53,10 @@ export function renderFlowPackageUses(
   const different = settings.length === 1 ? Object.keys(settings[0]!) : differingKeys(settings)
   for (const [index, use] of uses.entries()) {
     lines.push('### ' + text(use.id), '')
+    if (!/[\p{Cc}\p{Cf}\u2028\u2029]/u.test(use.id)) {
+      const operand = /^[A-Za-z0-9@._:/-]+$/.test(use.id) ? use.id : cliShellWord(use.id)
+      lines.push(`    jig inspect --flow${approved ? ' --approved' : ''} ${operand}`, '')
+    }
     if (different.length)
       lines.push(
         (uses.length === 1 ? 'Settings: ' : 'Settings that differ: ') +

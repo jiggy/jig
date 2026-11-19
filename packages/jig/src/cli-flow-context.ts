@@ -104,6 +104,7 @@ export function renderFlowContext(value: JsonValue, options: FlowContextOptions 
         configuredTargets,
         configuredConnections,
         markdown,
+        !working,
       ),
     ].join('\n')
   const lines = [

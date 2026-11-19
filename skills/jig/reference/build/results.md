@@ -300,7 +300,7 @@ Prepare the application map before changing a conditional route.
 jig inspect --flow --all
 jig inspect --flow
 jig inspect --flow binding:code
-jig inspect --flow --package flows/import
+jig inspect --flow flows/import
 ```
 
 The application overview leads with the declared entrypoint and its configured handoffs.
@@ -321,8 +321,9 @@ The opening view can flag a relative runtime import that leaves the Flow package
 Use the source location and any matching configured slots to find the owning package.
 For shared code, declare a dependency. Review checks supported imports against the captured Run files.
 
-When you know the package path, use `--package` to see every configured use and its direct caller slots.
+Pass the package path directly or with `--package` to see every configured use and its direct caller slots.
 This works for packages that require a Binding. The report shows settings that differ across uses and adds source locations where available.
+Use the command under a configured use to open its focused report.
 
 When analysis stops early, caller source references can point to literal slots and computed slot expressions.
 Use computed expressions to find where the caller chooses its slot.

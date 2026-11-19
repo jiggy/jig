@@ -77,6 +77,10 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
   )
 
   const inspect = (...args: string[]) => command([cli, 'inspect', '--flow', ...args], project)
+  const packageUses = await inspect('flows/import')
+  expect(packageUses.stdout).toBe((await inspect('--package', 'flows/import')).stdout)
+  expect(packageUses.stdout).toContain('    jig inspect --flow binding:code\n')
+  expect(packageUses.stdout).toContain('    jig inspect --flow binding:manual\n')
   const before = await inspect()
   expect(before.stdout).toContain('# Source behavior')
   expect(before.stdout).toMatch(/\[converter\]\(#call-converter-[^)]+\) → \[exporter\]/)

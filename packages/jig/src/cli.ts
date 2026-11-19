@@ -254,7 +254,7 @@ The destination parent must exist; existing destinations are never replaced.
 Example:
   jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
-       jig inspect --flow [target | --package PATH | --all] [--topology] [--approved] [--json]
+       jig inspect --flow [target | package-path | --package PATH | --all] [--topology] [--approved] [--json]
        jig inspect --flow --snapshot
        jig inspect --flow --compare BASELINE [--all]
        jig inspect --result DIRECTORY [--display plain|tui|web] [--json]
@@ -274,7 +274,7 @@ Launch readiness and remote provider availability remain unchecked.
   --flow     Explain supported source behavior as Markdown, including when piped
              A target retains callers, their other slots and shared package uses
   --all      With --flow: include every target, or every changed path in a comparison
-  --package PATH  With --flow: find configured uses and callers of a Flow package
+  --package PATH  With --flow: find configured uses and callers. A bare package path also works.
   --topology With --flow: emit configured connections
   --approved With --flow: emit retained approved topology
   --snapshot With --flow: emit a machine baseline for the complete application
@@ -1097,23 +1097,19 @@ function parseInspect(arguments_: readonly string[]) {
     else usage('inspect', 'Specify at most one target and one --json option.')
   }
   let selector: string | undefined
-  if (targetOperand !== undefined) {
+  if (targetOperand !== undefined && flow && !targetOperand.includes(':')) {
+    if (packagePath !== undefined)
+      usage('inspect', '--package selects a scope. Omit --all and the target.')
+    try {
+      packagePath = normalizeFlowPackage(targetOperand)
+    } catch {
+      usage('inspect', 'Use a project-relative Flow package path or an exact target selector.')
+    }
+  } else if (targetOperand !== undefined) {
     try {
       const target = parseTarget(targetOperand)
       selector = target.kind === 'flow' ? flowSelector(target.path) : `binding:${target.id}`
     } catch {
-      if (flow && !targetOperand.includes(':')) {
-        let path: string | undefined
-        try {
-          path = normalizeFlowPackage(targetOperand)
-        } catch {}
-        if (path !== undefined) {
-          usage(
-            'inspect',
-            `Inspect configured uses of a package path with this command.\n\n  $ ${packageInspectionCommand(path)}\n\nFor a target, use an exact selector such as binding:id.`,
-          )
-        }
-      }
       usage('inspect', 'Use an exact flow:path or binding:id target.')
     }
   }
