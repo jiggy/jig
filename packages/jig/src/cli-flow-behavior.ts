@@ -14,6 +14,7 @@ import {
   type BehaviorTarget,
   isFileOperation,
   type SourceSite,
+  withoutReportingLocations,
 } from './internal/flow-behavior/model.js'
 
 type Route = BehaviorReport['scopes'][number]['routes'][number]
@@ -23,6 +24,7 @@ type CallCase = {
   call: Call
   after: readonly BehaviorStep[]
   sources: Set<number | undefined>
+  representativeChecks?: true
 }
 type CallDetails = ReadonlyMap<string, ReadonlyMap<string, CallCase>>
 
@@ -212,13 +214,16 @@ export function renderFlowBehaviorComparison(
 
 function comparisonLocation(fact: ComparisonFact, current: boolean): string {
   const [path, line] = fact[2]
-  const location = text(site({ path, line }))
-  if (!current) return location
+  return current ? sourceLink({ path, line }) : text(site({ path, line }))
+}
+
+function sourceLink(location: SourceSite): string {
+  const { path, line } = location
   const destination = path
     .split('/')
     .map((part) => encodeURIComponent(part).replace(/[()]/g, (ch) => (ch === '(' ? '%28' : '%29')))
     .join('/')
-  return '[' + location + '](./' + destination + '#L' + line + ')'
+  return '[' + text(site(location)) + '](./' + destination + '#L' + line + ')'
 }
 
 function comparisonFact(fact: ComparisonFact, current: boolean, compact: boolean): string {
@@ -560,7 +565,9 @@ function selectRoutes(scope: Scope): Route[] {
 }
 
 function withoutChildPath(key: string, value: unknown): unknown {
-  return key === 'childPath' || key === 'representativeChild' ? undefined : value
+  return key === 'childPath' || key === 'representativeChild'
+    ? undefined
+    : withoutReportingLocations(key, value)
 }
 
 function continuation(route: Route, at: number, call: Call): BehaviorStep[] {
@@ -570,17 +577,17 @@ function continuation(route: Route, at: number, call: Call): BehaviorStep[] {
       after.push(step)
       break
     }
-    if (
-      after.length < 3 &&
-      (step.kind === 'condition' || (isFileOperation(step) && step.owner === call.caller))
-    )
+    if (step.kind === 'condition' || (isFileOperation(step) && step.owner === call.caller))
       after.push(step)
   }
   return after
 }
 
 function caseId(report: BehaviorReport, call: Call, after: readonly BehaviorStep[]): string {
-  const steps = after.map((step) => (step.kind === 'call' ? [callAnchor(step), step.target] : step))
+  // A proved check explains this continuation but does not distinguish the case.
+  const steps = after
+    .filter((step) => step.kind !== 'condition' || step.unresolved)
+    .map((step) => (step.kind === 'call' ? [callAnchor(step), step.target] : step))
   const child = call.childPath === undefined ? undefined : report.childPaths[call.childPath]
   // Cases with the same input, child effects and caller continuation can share
   // an anchor. Keep condition evidence in their representative child path.
@@ -619,8 +626,11 @@ function callDetails(
       const after = continuation(route, index, call)
       const id = caseId(report, call, after)
       const existing = cases.get(id)
-      if (existing) existing.sources.add(call.childPath)
-      else cases.set(id, { call, after, sources: new Set([call.childPath]) })
+      if (existing) {
+        existing.sources.add(call.childPath)
+        if (JSON.stringify(existing.after) !== JSON.stringify(after))
+          existing.representativeChecks = true
+      } else cases.set(id, { call, after, sources: new Set([call.childPath]) })
     }
   return { shown: entries, omitted: omitted.size }
 }
@@ -668,7 +678,13 @@ function consequences(
       update
         ? text(update.detail) +
           '<br>' +
-          (origin ? `${text(origin.code)} (${text(site(origin))})` : text(site(update.site)))
+          (origin ? `${text(origin.code)} (${sourceLink(origin)})` : sourceLink(update.site)) +
+          (update.progressFields ?? [])
+            .map(
+              (field) =>
+                '<br>' + text(field.field + ' = ' + field.code) + ' (' + sourceLink(field) + ')',
+            )
+            .join('')
         : '—',
       text(fileOperations.join(' → ')) || '—',
     ]
@@ -720,7 +736,10 @@ function renderCallDetails(
     )
     if (application && targets.has(call.target))
       lines.push('[Configured child](#' + idFor('target', call.target) + ')', '')
-    for (const [id, { call, after, sources }] of cases.slice(0, callCaseLimit)) {
+    for (const [id, { call, after, sources, representativeChecks }] of cases.slice(
+      0,
+      callCaseLimit,
+    )) {
       const path = call.childPath === undefined ? undefined : report.childPaths[call.childPath]
       lines.push('- <a id="' + id + '"></a>**' + text(label(call)) + '**')
       if (path) {
@@ -751,19 +770,30 @@ function renderCallDetails(
           )
         else lines.push('  - Child path unavailable · ' + text(call.result))
       } else lines.push('  - Child path exceeds the retained analysis allowance.')
-      if (after.length)
+      if (after.length) {
+        const first = after.slice(0, -1)
+        const relevant = first.filter((step) => step.kind !== 'condition' || step.unresolved)
+        const shown = new Set(
+          [...relevant, ...first.filter((step) => !relevant.includes(step))].slice(0, 3),
+        )
         lines.push(
           '  - Back in ' +
             text(call.caller) +
+            (representativeChecks ? ' · Representative checks' : '') +
             ' · ' +
             after
+              .filter((step, index) => index === after.length - 1 || shown.has(step))
               .map((step) =>
                 step.kind === 'call'
                   ? text('Call ' + step.slot + ' → ' + step.target + ' (' + site(step.site) + ')')
                   : detailLine(step),
               )
-              .join(' → '),
+              .join(' → ') +
+            (first.length > shown.size
+              ? ' · ' + (first.length - shown.size) + ' intermediate steps omitted'
+              : ''),
         )
+      }
     }
     if (cases.length > callCaseLimit)
       lines.push('- ' + (cases.length - callCaseLimit) + ' additional call paths omitted.')

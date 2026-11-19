@@ -17,9 +17,9 @@ import {
   type ReportingCall,
   type SourceSite,
 } from './model.js'
-import { progressDescription } from './reporting.js'
-import { shortText } from './source-syntax.js'
+import { ReportingTrace } from './reporting.js'
 import { isLocalFunction, type LocalFunction, type SourceIndex, unwrap } from './source.js'
+import { shortText } from './source-syntax.js'
 import {
   describe,
   type FileHandleValue,
@@ -121,6 +121,7 @@ export class Interpreter {
     readonly invokeChild: InvokeChild,
     readonly retainLimitedPaths = true,
     readonly recordAuthoredHandoff?: (handoff: AuthoredHandoff) => void,
+    private readonly reportingTrace = new ReportingTrace(),
   ) {}
 
   run(depth: number): State[] {
@@ -855,14 +856,27 @@ export class Interpreter {
             return this.continue(this.expression(property.expression, s, depth), (ss, spread) => [
               withValue(
                 ss,
-                spread.kind === 'object' && !spread.open
-                  ? object([...fields, ...spread.fields], open)
-                  : object(spread.kind === 'object' ? spread.fields : [], true),
+                this.reportingTrace.spread(
+                  current,
+                  spread.kind === 'object' && !spread.open
+                    ? object([...fields, ...spread.fields], open)
+                    : object(spread.kind === 'object' ? spread.fields : [], true),
+                  spread,
+                ),
               ),
             ])
           if (ts.isShorthandPropertyAssignment(property))
             return this.continue(this.expression(property.name, s, depth), (ss, item) => [
-              withValue(ss, object([...fields, [property.name.text, item]], open)),
+              withValue(
+                ss,
+                this.reportingTrace.property(
+                  current,
+                  object([...fields, [property.name.text, item]], open),
+                  property.name.text,
+                  property.name,
+                  this.source,
+                ),
+              ),
             ])
           if (
             ts.isPropertyAssignment(property) &&
@@ -880,7 +894,16 @@ export class Interpreter {
                 ),
               ]
             return this.continue(this.expression(property.initializer, s, depth), (ss, item) => [
-              withValue(ss, object([...fields, [name, item]], open)),
+              withValue(
+                ss,
+                this.reportingTrace.property(
+                  current,
+                  object([...fields, [name, item]], open),
+                  name,
+                  property.initializer,
+                  this.source,
+                ),
+              ),
             ])
           }
           return [this.stop(s, property, 'Unsupported object property.')]
@@ -1687,13 +1710,15 @@ export class Interpreter {
       return [this.stop(state, e, 'Unknown notice severity expression.')]
     const argument = view ? e.arguments[1]! : first
     const pure = dataEffects(this.source, argument, state.values)
-    const detail = (result: State) =>
+    const summarize = (result: State) =>
       update
-        ? progressDescription(result.mode === 'unknown' ? unknown : result.value)
-        : severity && ts.isStringLiteralLike(severity)
-          ? severity.text
-          : 'default severity'
-    const record = (s: State, message: string) =>
+        ? this.reportingTrace.progress(result.mode === 'unknown' ? unknown : result.value)
+        : {
+            detail:
+              severity && ts.isStringLiteralLike(severity) ? severity.text : 'default severity',
+            sources: [],
+          }
+    const record = (s: State, { detail, sources }: ReturnType<typeof summarize>) =>
       view
         ? withValue(s, { kind: 'report-view' })
         : withValue(
@@ -1701,15 +1726,16 @@ export class Interpreter {
               kind: 'effect',
               owner: this.target.id,
               operation: update ? 'view update' : 'notice',
-              detail: message,
+              detail,
               site: this.source.site(e),
               ...(s.localCall === undefined ? {} : { reportingCall: s.localCall }),
+              ...(sources.length ? { progressFields: sources } : {}),
             }),
             missing,
           )
     if (!pure)
       return this.expression(argument, state, depth).map((result) =>
-        result.mode === 'next' ? record(result, detail(result)) : result,
+        result.mode === 'next' ? record(result, summarize(result)) : result,
       )
 
     const probe = new Interpreter(
@@ -1719,6 +1745,8 @@ export class Interpreter {
       new AnalysisBudget(this.budget.signal, 512, this.budget),
       this.invokeChild,
       false,
+      undefined,
+      this.reportingTrace,
     )
     let observed: State[]
     try {
@@ -1732,7 +1760,7 @@ export class Interpreter {
             site: this.source.site(argument),
             detail: 'Reporting payload exceeded its data analysis allowance.',
           }),
-          'display effect unknown',
+          { detail: 'display effect unknown', sources: [] },
         ),
       ]
     }
@@ -1741,16 +1769,30 @@ export class Interpreter {
     // common displayed fact and retain explicit abrupt outcomes separately.
     const ordinary = observed.filter((result) => result.mode !== 'throw')
     const abrupt = observed.filter((result) => result.mode === 'throw')
-    const firstDetail = ordinary[0] && detail(ordinary[0])
-    if (!firstDetail) return abrupt
+    const [summary, ...rest] = ordinary.map(summarize)
+    if (!summary) return abrupt
+    const detail = rest.every((result) => result.detail === summary.detail)
+      ? summary.detail
+      : 'display effect unknown'
     return [
       ...abrupt,
-      record(
-        state,
-        ordinary.every((result) => detail(result) === firstDetail)
-          ? firstDetail
-          : 'display effect unknown',
-      ),
+      record(state, {
+        detail,
+        sources:
+          detail === summary.detail
+            ? summary.sources.filter((origin) =>
+                rest.every((result) =>
+                  result.sources.some(
+                    (other) =>
+                      origin.field === other.field &&
+                      origin.path === other.path &&
+                      origin.line === other.line &&
+                      origin.column === other.column,
+                  ),
+                ),
+              )
+            : [],
+      }),
     ]
   }
 

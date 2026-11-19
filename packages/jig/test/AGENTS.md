@@ -23,6 +23,8 @@ Installed exploration verifies that the Run map retains its approved source case
 Explorer HTTP checks bind repeated multipart request identities to exact file bytes and reject duplicate names.
 
 `portable/flow-behavior.test.ts` checks inert interpretation, reporting payloads, and conditional composition.
+
+It verifies progress field sources through captured helpers and stable caller case links across proved checks.
 An inherited assumption stays conditional. An opaque continuation retains established effects.
 Wider declared outcomes leave the main diagram intact.
 The diagram marks assumptions on the affected branches.

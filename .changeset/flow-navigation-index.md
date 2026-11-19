@@ -9,3 +9,5 @@ Link working-tree inspection directly from captured packages and show request me
 Show which local helper arguments supply each authored request field in focused reports and application map expansions.
 
 Keep authored caller decisions beyond the application route limit and show the source of the last progress request beside its count.
+
+Link identifiable progress expressions and preserve call-case links when a proved check leaves the continuation intact.

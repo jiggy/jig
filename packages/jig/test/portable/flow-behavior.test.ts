@@ -869,6 +869,38 @@ test('a new callee return keeps the existing call case link attached to its resu
   expect(after).toContain('status = "new"')
 })
 
+test('a proved caller setting check leaves the preserved call case link stable', () => {
+  const callee = method(handlerSource("return {outcome:'done', output:{status:'ready'}}"))
+  const show = (gate: string) => {
+    const caller = method(
+      handlerSource(`
+        const result = await run.call({slot:'converter', operationId:'convert', input:{}})
+        ${gate}
+        if (run.input.skip) return result
+        return await run.call({slot:'exporter', operationId:'export', input:result.output})
+      `),
+    )
+    const input = snapshot(callee, caller)
+    return renderFlowBehavior(analyzeFlowBehavior(input))
+  }
+  const cases = (report: string) =>
+    [
+      ...report.matchAll(
+        /<a id="(call-converter-[^"]+-path-[^"]+)"><\/a>\*\*[^\n]+status = "ready"/g,
+      ),
+    ]
+      .map(([, id]) => id)
+      .sort()
+  const before = show('')
+  const after = show(
+    "if (run.settings.preview === false) return {outcome:'done', output:{status:'skipped'}}",
+  )
+  expect(cases(before)).toHaveLength(2)
+  expect(cases(after)).toEqual(cases(before))
+  expect(after).toContain('run.settings.preview === false')
+  expect(after).toContain('Call exporter')
+})
+
 test('short-circuited values keep their truth without becoming Booleans', () => {
   for (const operation of ['||', '&&']) {
     const expected = operation === '||'
@@ -1067,12 +1099,13 @@ test('conditional publication follows closure state and the computed view payloa
   const body = `
     import { handle } from '@jigging/flow'
     import { withReporting } from '@jigging/reporting'
+    import { dashboard } from './dashboard.ts'
     await handle(run => withReporting(run, 'progress', async reporter => {
       const view = reporter.view('progress')
       let state = { completed: 3, phase: 'checking' }
       const show = (phase: string) => {
         state = { ...state, phase }
-        view.update({ sections: [{ blocks: [{ kind: 'progress', completed: Math.max(state.completed, state.phase === 'ready' ? 4 : 0), total: 4 }] }] })
+        view.update(dashboard(state))
       }
       const result = await run.call({ slot: 'converter', operationId: 'convert', input: {} })
       if (result.output.status === 'needs_mapping') {
@@ -1083,12 +1116,23 @@ test('conditional publication follows closure state and the computed view payloa
       return result
     }))
   `
+  const dashboard = `export function dashboard(state) {
+    const completed = Math.max(state.completed, state.phase === 'ready' ? 4 : 0)
+    const bounded = { total: 4 }
+    return { sections: [{ blocks: [{ kind: 'progress', completed, total: 5, ...bounded }] }] }
+  }`
+  const importer = (source: string) =>
+    method(source, {
+      reportingFiles: new Set(['FLOW.ts']),
+      sources: new Map([
+        ['FLOW.ts', source],
+        ['dashboard.ts', dashboard],
+      ]),
+    })
   const child = method(
     handlerSource(`return { outcome: 'done', output: { status: 'needs_mapping' } }`),
   )
-  const report = analyzeFlowBehavior(
-    snapshot(child, method(body, { reportingFiles: new Set(['FLOW.ts']) })),
-  )
+  const report = analyzeFlowBehavior(snapshot(child, importer(body)))
   expect(report.scopes[0]!.routes.flat()).toContainEqual(
     expect.objectContaining({
       kind: 'effect',
@@ -1097,12 +1141,7 @@ test('conditional publication follows closure state and the computed view payloa
     }),
   )
   const repaired = analyzeFlowBehavior(
-    snapshot(
-      child,
-      method(body.replace("show('ready')", "show('checking')"), {
-        reportingFiles: new Set(['FLOW.ts']),
-      }),
-    ),
+    snapshot(child, importer(body.replace("show('ready')", "show('checking')"))),
   )
   const comparison = compareFlowBehavior(
     flowBehaviorSnapshot(report),
@@ -1110,21 +1149,58 @@ test('conditional publication follows closure state and the computed view payloa
   )
   const reportingLine = body.split('\n').findIndex((line) => line.includes("show('ready')")) + 1
   const before = renderFlowBehavior(report)
-  expect(before).toContain(
-    `progress 4/4<br>show\\('ready'\\) (flows/import/FLOW.ts:${reportingLine})`,
-  )
+  const reportingLink = `[flows/import/FLOW.ts:${reportingLine}](./flows/import/FLOW.ts#L${reportingLine})`
+  expect(before).toContain(`progress 4/4<br>show\\('ready'\\) (${reportingLink})`)
   expect(renderFlowBehavior(repaired)).toContain(
-    `progress 3/4<br>show\\('checking'\\) (flows/import/FLOW.ts:${reportingLine})`,
+    `progress 3/4<br>show\\('checking'\\) (${reportingLink})`,
   )
+  expect(before).toContain(
+    "completed = Math.max\\(state.completed, state.phase === 'ready' ? 4 : 0\\)",
+  )
+  expect(before).toContain('[flows/import/dashboard.ts:2](./flows/import/dashboard.ts#L2)')
+  expect(before).toContain(
+    'total = 4 ([flows/import/dashboard.ts:3](./flows/import/dashboard.ts#L3))',
+  )
+  expect(before).not.toContain('total = 5')
   const rendered = renderFlowBehaviorComparison(comparison)
   expect(rendered).toContain('Requested progress 4/4 → 3/4')
-  expect(rendered).toContain(
-    `[flows/import/FLOW.ts:${reportingLine}](./flows/import/FLOW.ts#L${reportingLine})`,
-  )
+  expect(rendered).toContain(reportingLink)
   expect(rendered).not.toContain('converter → flow:flows/convert')
-  const withoutProfile = analyzeFlowBehavior(snapshot(child, method(body)))
+  const withoutProfile = analyzeFlowBehavior(
+    snapshot(child, { ...importer(body), reportingFiles: new Set() }),
+  )
   expect(withoutProfile.scopes[0]!.gaps[0]?.reason).toContain('opaque')
   expect(renderFlowBehavior(withoutProfile)).not.toContain('progress 4/4')
+})
+
+test('the same progress value can have different possible field sources', () => {
+  const caller = method(
+    `
+    import { handle } from '@jigging/flow'
+    import { withReporting } from '@jigging/reporting'
+    await handle(run => withReporting(run, 'progress', async reporter => {
+      const completed = 3
+      const changed = run.input.changed
+      reporter.view('stages').update({
+        sections: [{ blocks: [{
+          kind:'progress',
+          completed,
+          ...(changed ? { total: 3 + 1 } : { total: 4 }),
+        }] }],
+      })
+      return { outcome:'done', output:{} }
+    }))
+    `,
+    { reportingFiles: new Set(['FLOW.ts']) },
+  )
+  const effects = analyzeFlowBehavior(snapshot(method(''), caller)).scopes[0]?.routes.flat()
+  expect(effects).toContainEqual(
+    expect.objectContaining({
+      kind: 'effect',
+      detail: 'progress 3/4',
+      progressFields: [expect.objectContaining({ field: 'completed', code: '3' })],
+    }),
+  )
 })
 
 test('unsupported mutation preserves the known prefix and stops before a stale return', () => {
