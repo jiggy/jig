@@ -1,5 +1,12 @@
 import ts from 'typescript-parser'
-import { type AuthoredCallSelection, BEHAVIOR_LIMITS } from './model.js'
+import {
+  type AuthoredCallSelection,
+  type AuthoredInputField,
+  BEHAVIOR_LIMITS,
+  type BehaviorGuard,
+  type SourceSite,
+  varyingInputFields,
+} from './model.js'
 import type { SourceIndex } from './source.js'
 import {
   constInitializer,
@@ -26,14 +33,16 @@ export function selectCallSites(
   slots: ReadonlyMap<string, string>,
   writes: ReadonlySet<ts.Declaration>,
   hasEval: boolean,
-): { sites: AuthoredCallSelection[]; omitted: number } {
-  const sites: AuthoredCallSelection[] = []
+): { sites: AuthoredCallSelection[]; omittedBySlot: ReadonlyMap<string, number> } {
+  const groups = new Map<string, { sites: AuthoredCallSelection[]; count: number }>()
   const dispatches = new Map<ts.Node, ts.CallExpression | null>()
   for (const { call } of requests) {
     const frame = functionFrame(call)
     dispatches.set(frame, dispatches.has(frame) ? null : call)
   }
-  let omitted = 0
+  const limit = BEHAVIOR_LIMITS.focusedCallSelections
+  const hasChoice = (entry: AuthoredCallSelection) =>
+    entry.inputFields.some((field) => field.guard || field.kind === 'choice')
   const append = (
     slot: string,
     call: ts.CallExpression,
@@ -43,8 +52,6 @@ export function selectCallSites(
   ) => {
     if (!slots.has(slot)) return
     const guards = lexicalGuards(call, (node) => source.site(node)).slice(-2)
-    const inputChoices = selectedInputs(source, input)
-    if (!dispatch && !guards.length && !inputChoices.length) return
     const item: AuthoredCallSelection = {
       slot,
       site: source.site(call),
@@ -52,21 +59,15 @@ export function selectCallSites(
       guards,
       requestMetadata,
       ...(input ? { inputSite: source.site(input) } : {}),
-      inputChoices,
+      inputFields: selectedInputs(source, input),
     }
-    const limit = BEHAVIOR_LIMITS.focusedCallSelections
-    // Keep call sites that select a payload field before further locations.
-    const insert = inputChoices.length ? sites.findIndex((entry) => !entry.inputChoices.length) : -1
-    if (insert >= 0) sites.splice(insert, 0, item)
-    else if (sites.length < limit) sites.push(item)
-    else {
-      omitted++
-      return
-    }
-    if (sites.length > limit) {
-      sites.pop()
-      omitted++
-    }
+    const group = groups.get(slot) ?? { sites: [], count: 0 }
+    group.count++
+    groups.set(slot, group)
+    const insert = hasChoice(item) ? group.sites.findIndex((entry) => !hasChoice(entry)) : -1
+    if (insert >= 0) group.sites.splice(insert, 0, item)
+    else if (group.sites.length < limit) group.sites.push(item)
+    if (group.sites.length > limit) group.sites.pop()
   }
   for (const { call, request } of requests) {
     const slot = request.fields.get('slot')
@@ -124,55 +125,120 @@ export function selectCallSites(
       )
     }
   }
-  return { sites, omitted }
+  // Keep comparable sites together before spending the budget on isolated calls.
+  const ranked = [...groups].map(([slot, group]) => ({
+    slot,
+    group,
+    priority: varyingInputFields(group.sites).size > 0 ? 2 : Number(group.sites.some(hasChoice)),
+  }))
+  ranked.sort((left, right) => right.priority - left.priority)
+  const sites: AuthoredCallSelection[] = []
+  const omittedBySlot = new Map<string, number>()
+  for (const { slot, group } of ranked) {
+    const selected = group.sites.slice(0, limit - sites.length)
+    selected.sort(
+      (left, right) =>
+        left.site.path.localeCompare(right.site.path) ||
+        left.site.line - right.site.line ||
+        (left.site.column ?? 0) - (right.site.column ?? 0),
+    )
+    sites.push(...selected)
+    if (group.count > selected.length) omittedBySlot.set(slot, group.count - selected.length)
+  }
+  return { sites, omittedBySlot }
 }
 
 function selectedInputs(source: Source, input: ts.Expression | undefined) {
   const object = input && unwrap(input)
   if (!object || !ts.isObjectLiteralExpression(object)) return []
-  const fields: AuthoredCallSelection['inputChoices'][number][] = []
-  const names = new Set<string>()
-  for (const property of [...object.properties].reverse()) {
-    // Later properties own the value. An unresolved spread can replace earlier fields.
-    if (ts.isSpreadAssignment(property)) {
-      const spread = unwrap(property.expression)
-      const alternatives = ts.isConditionalExpression(spread)
-        ? [unwrap(spread.whenTrue), unwrap(spread.whenFalse)]
-        : [spread]
-      const keys: string[] = []
-      for (const alternative of alternatives) {
-        if (!ts.isObjectLiteralExpression(alternative)) return fields.reverse().slice(0, 2)
-        for (const member of alternative.properties) {
-          const name = propertyName(member)
-          if (name === undefined) return fields.reverse().slice(0, 2)
-          keys.push(name)
-        }
-      }
-      for (const key of keys) names.add(key)
-      continue
-    }
-    const name = propertyName(property)
-    if (name === undefined) break
-    if (names.has(name)) continue
-    names.add(name)
-    if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) continue
+  const fields: AuthoredInputField[] = []
+  const assigned = new Set<string>()
+  const optional = new Map<string, SourceSite>()
+  let dynamic: SourceSite | undefined
+  const append = (name: string, property: ts.ObjectLiteralElementLike, guard?: BehaviorGuard) => {
+    if (assigned.has(name)) return
+    if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) return
     const value = ts.isPropertyAssignment(property) ? unwrap(property.initializer) : property.name
     const choice = ts.isIdentifier(value)
       ? (constInitializer(source.declaration(value)) ?? value)
       : value
-    if (
+    const selects =
       ts.isConditionalExpression(choice) ||
       (ts.isBinaryExpression(choice) &&
         choice.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
-    ) {
-      fields.push({
-        field: shortText(property.name),
-        code: shortText(choice),
-        site: source.site(choice),
-      })
-    }
+    if (
+      !selects &&
+      !ts.isStringLiteralLike(choice) &&
+      !ts.isNumericLiteral(choice) &&
+      choice.kind !== ts.SyntaxKind.TrueKeyword &&
+      choice.kind !== ts.SyntaxKind.FalseKeyword &&
+      choice.kind !== ts.SyntaxKind.NullKeyword
+    )
+      return
+    const possibleOverride = optional.get(name) ?? dynamic
+    fields.push({
+      field: name,
+      kind: selects ? 'choice' : 'literal',
+      code: shortText(choice),
+      site: source.site(choice),
+      ...(guard ? { guard } : {}),
+      ...(possibleOverride ? { possibleOverride } : {}),
+    })
   }
-  return fields.reverse().slice(0, 2)
+
+  for (const property of [...object.properties].reverse()) {
+    if (ts.isSpreadAssignment(property)) {
+      const spread = unwrap(property.expression)
+      const conditional = ts.isConditionalExpression(spread) ? spread : undefined
+      const first = namedProperties(conditional ? unwrap(conditional.whenTrue) : spread)
+      const second = conditional ? namedProperties(unwrap(conditional.whenFalse)) : first
+      if (!first || !second) {
+        dynamic = source.site(property)
+        continue
+      }
+      const alternatives = conditional ? [first, second] : [first]
+      const keys = new Set<string>()
+      for (const [index, branch] of alternatives.entries()) {
+        const guard = conditional && {
+          site: source.site(conditional.condition),
+          code: shortText(conditional.condition),
+          taken: index === 0,
+          unresolved: true,
+        }
+        for (const [name, member] of branch) {
+          append(name, member, guard)
+          keys.add(name)
+        }
+      }
+      for (const name of keys) {
+        if (alternatives.every((branch) => branch.has(name))) assigned.add(name)
+        else optional.set(name, source.site(property))
+      }
+      continue
+    }
+    const name = propertyName(property)
+    if (name === undefined) {
+      dynamic = source.site(property)
+      continue
+    }
+    append(name, property)
+    assigned.add(name)
+  }
+  fields.reverse()
+  const choices = fields.filter((field) => field.kind === 'choice' || field.guard)
+  const literals = fields.filter((field) => field.kind === 'literal' && !field.guard)
+  return [...choices.slice(0, 4), ...literals.slice(0, 8)]
+}
+
+function namedProperties(expression: ts.Expression) {
+  if (!ts.isObjectLiteralExpression(expression)) return undefined
+  const properties = new Map<string, ts.ObjectLiteralElementLike>()
+  for (const property of expression.properties) {
+    const name = propertyName(property)
+    if (name === undefined) return undefined
+    properties.set(name, property)
+  }
+  return properties
 }
 
 function propertyName(property: ts.ObjectLiteralElementLike): string | undefined {

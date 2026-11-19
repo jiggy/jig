@@ -318,7 +318,8 @@ Use these connections to locate the right handoff before changing a shared imple
 Caller decisions show where `run.call` gets its request metadata and its child input.
 A displayed call label comes from `intent` on the request.
 
-Read **Caller decisions** for supported source locations and conditions.
+Read **Caller decisions** to compare supported source locations for the same slot.
+The group shows differing literal fields and conditions that help distinguish the calls.
 The decision shows where the caller chooses a slot and where its helper sends the request.
 Conditional argument fields show how two calls through the same slot can differ.
 Other slots that use the same Flow show which callers can share the effect of an implementation change.

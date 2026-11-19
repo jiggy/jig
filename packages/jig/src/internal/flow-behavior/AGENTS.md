@@ -12,7 +12,8 @@ Explain conditional behavior from a captured Jig project without running its met
 - `source.ts` resolves parsed source and call identities inside one captured package.
 - `source-syntax.ts` owns shared TypeScript syntax helpers and bounded source walks.
 - `call-selection.ts` relates literal slot arguments to a local dispatch helper.
-  It keeps conditional request fields and enclosing branches at their authored sites.
+  It keeps literal and conditional input fields at their authored sites.
+  It marks possible later overrides and counts omitted call sites by slot.
 - `slot-selection.ts` traces authored lookup rows and key origins into computed slot references.
 - `analyze.ts` evaluates a bounded TypeScript subset through inert values.
 - `data.ts` checks which data computations can safely lose value precision.
