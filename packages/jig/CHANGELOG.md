@@ -1,5 +1,44 @@
 # @jigging/jig
 
+## 0.1.0-alpha.57
+
+### Patch Changes
+
+- 727abeb: Show possible behavior from approved source in the explorer and the Run's Application map. Show returned call outcomes, reported progress, and verified file names with the selected Run.
+- dbb1c02: Show conditional routes and validation outcomes in Flow inspection.
+  Use supported input contract guarantees to omit impossible branches in standalone source analysis.
+- 4922e6d: Show source behavior by default in `jig inspect --flow`. Capture a baseline with `--snapshot`, then use `--compare` for source-linked changes to configured uses, calls, results, and effects. The diff also surfaces newly captured call order when complete paths cannot be matched. Add `--all` to see complete changed paths. Use `--topology` for configured connections.
+  
+  Use `jig inspect --flow --package PATH` to find a Flow package's configured uses, direct caller slots, and settings differences.
+  
+  Package lookup errors show the inspection command. Focused reports retain authored call locations, including computed slots, after source analysis stops.
+  
+  Inspection can trace a computed slot through a local helper to an authored lookup table, its key sources, and related early exits.
+  
+  Follow returned Reporting wrappers and helper promises through block-bodied functions. Working-tree inspection explains evaluator failures and points to retained topology when an approval exists.
+- cfa4578: Choose input files for a workflow in the browser explorer. Reuse the same files across approved workflows and compare the last two Runs.
+- 2977b5d: Open a compact Flow navigation index when inspecting a project without a declared entrypoint. Find shared packages, configured slots, and focused inspection commands without analyzing every target.
+  
+  Link working-tree inspection directly from captured packages and show request metadata separately from child input in focused caller decisions.
+  
+  Show which local helper arguments supply each authored request field in focused reports and application map expansions.
+  
+  Keep authored caller decisions beyond the application route limit and show the source of the last progress request beside its count.
+  
+  Link identifiable progress expressions and preserve call-case links when a proved check leaves the continuation intact.
+  
+  Show required slot wiring beside source routes and link local package declarations.
+  
+  Connect earlier authored exits to the call sites they bypass when route analysis stops first.
+- dceb6fd: Show Flow package boundaries and matching configured calls in source inspection.
+  Review rejects a supported relative runtime import outside the Flow when its module is absent from the captured execution files.
+- 2f2650e: Accept a bare Flow package path in `jig inspect --flow` and print focused inspection commands for its configured uses.
+- 40ed298: Show authored caller decisions in focused Flow inspection.
+  Connect a slot argument to its local dispatch helper, conditional fields, and other configured uses of the Flow.
+- 8c15213: Prepare a new Jig prerelease whose macOS qualification can retry transient
+  GitHub metadata read failures. Publication still requires complete native
+  coverage for both supported macOS majors on the exact release candidate.
+
 ## 0.1.0-alpha.56
 
 ### Minor Changes

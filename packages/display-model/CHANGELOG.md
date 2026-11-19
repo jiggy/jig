@@ -1,5 +1,12 @@
 # @jigging/display-model
 
+## 0.1.0-alpha.10
+
+### Patch Changes
+
+- 727abeb: Show possible behavior from approved source in the explorer and the Run's Application map. Show returned call outcomes, reported progress, and verified file names with the selected Run.
+- cfa4578: Choose input files for a workflow in the browser explorer. Reuse the same files across approved workflows and compare the last two Runs.
+
 ## 0.1.0-alpha.9
 
 ### Patch Changes
