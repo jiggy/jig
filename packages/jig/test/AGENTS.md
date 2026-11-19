@@ -402,8 +402,10 @@ with an ordinary deterministic assessment task. Pure support tests own policy
 and views, not dispatch or native cleanup.
 
 `host/installed-kitchen-roster.test.ts` checks the decomposed kitchen application
-with an ordinary deterministic proposal Flow. It requires real review, CSV
-artifact delivery, impossible-input refusal, unchanged inputs and native cleanup.
+with an ordinary deterministic proposal Flow. It checks lock-only native review,
+CSV delivery, impossible-input refusal, unchanged inputs, and cleanup.
+After ordinary dependency installation, its prepared map reaches the conditional
+ready result, ordered calls, and final progress.
 Pure kitchen helpers and views do not qualify cancellation or exporter dispatch.
 
 Frozen Bun consumers bind the complete candidate closure through root
