@@ -45,6 +45,13 @@ type ContinuationSites = {
   fileWrites: readonly AuthoredFileWrite[]
 }
 
+function member(expression: ts.Expression) {
+  const node = unwrap(expression)
+  if (ts.isPropertyAccessExpression(node)) return { name: node.name.text, object: node.expression }
+  if (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression))
+    return { name: node.argumentExpression.text, object: node.expression }
+}
+
 export class SourceIndex {
   readonly #files: ReadonlyMap<string, string>
   readonly #program: ts.Program
@@ -181,15 +188,61 @@ export class SourceIndex {
     }
   }
 
+  /** Recognize direct setting checks without treating arbitrary calls as data reads. */
+  settingRead(expression: ts.Expression, usesContext: (receiver: ts.Declaration) => boolean) {
+    const value = unwrap(expression)
+    const direct = (operand: ts.Expression) => {
+      const property = member(operand)
+      if (!property || property.name.length > 128) return undefined
+      const settings = member(property.object)
+      if (settings?.name !== 'settings') return undefined
+      const context = unwrap(settings.object)
+      if (!ts.isIdentifier(context)) return undefined
+      const receiver = this.declaration(context)
+      return receiver && usesContext(receiver) ? property.name : undefined
+    }
+    if (ts.isPrefixUnaryExpression(value) && value.operator === ts.SyntaxKind.ExclamationToken)
+      return direct(value.operand)
+    if (ts.isBinaryExpression(value)) {
+      const operator = value.operatorToken.kind
+      if (
+        operator !== ts.SyntaxKind.EqualsEqualsEqualsToken &&
+        operator !== ts.SyntaxKind.ExclamationEqualsEqualsToken
+      )
+        return undefined
+      const scalar = (node: ts.Expression) => {
+        const operand = unwrap(node)
+        return (
+          ts.isStringLiteralLike(operand) ||
+          ts.isNumericLiteral(operand) ||
+          operand.kind === ts.SyntaxKind.TrueKeyword ||
+          operand.kind === ts.SyntaxKind.FalseKeyword ||
+          operand.kind === ts.SyntaxKind.NullKeyword
+        )
+      }
+      if (scalar(value.right)) return direct(value.left)
+      if (scalar(value.left)) return direct(value.right)
+      return undefined
+    }
+    return direct(value)
+  }
+
   continuationSites(fn: LocalFunction): ContinuationSites {
     const cached = this.#continuations.get(fn)
     if (cached !== undefined) return cached
     const handoffs: HandoffSite[] = []
     const fileWrites: AuthoredFileWrite[] = []
+    const writes = new Set<ts.Declaration>()
+    if (fn.body) {
+      for (const node of sourceNodes(fn.body)) {
+        const target = assignmentTarget(node)
+        if (target) recordWrites(this, target, writes)
+      }
+    }
     const visit = (node: ts.Node): void => {
       if (ts.isFunctionLike(node) || ts.isClassLike(node)) return
       if (ts.isCallExpression(node)) {
-        const handoff = this.handoffSite(node)
+        const handoff = this.handoffSite(node, writes)
         if (handoff) handoffs.push(handoff)
         const callee = this.importOf(unwrap(node.expression))
         const destination = node.arguments[0]
@@ -349,7 +402,10 @@ export class SourceIndex {
     return { receiver, fields }
   }
 
-  private handoffSite(call: ts.CallExpression): HandoffSite | undefined {
+  private handoffSite(
+    call: ts.CallExpression,
+    writes: ReadonlySet<ts.Declaration>,
+  ): HandoffSite | undefined {
     if (call.arguments.length !== 1) return undefined
     const request = this.callRequest(call)
     if (!request) return undefined
@@ -359,11 +415,17 @@ export class SourceIndex {
     if (!slot) return undefined
     const intentValue = fields.get('intent')
     const intent = intentValue && ts.isStringLiteralLike(intentValue) ? intentValue.text : undefined
-    const priorExits = priorBranchExits(call).map(({ condition, taken, statement }) => ({
-      condition: { code: shortText(condition), site: this.site(condition) },
-      taken,
-      statement: { code: shortText(statement), site: this.site(statement) },
-    }))
+    const priorExits = priorBranchExits(call).map(({ condition, taken, statement }) => {
+      const setting = writes.has(receiver)
+        ? undefined
+        : this.settingRead(condition, (ref) => ref === receiver)
+      return {
+        condition: { code: shortText(condition), site: this.site(condition) },
+        taken,
+        statement: { code: shortText(statement), site: this.site(statement) },
+        ...(setting === undefined ? {} : { setting }),
+      }
+    })
     return {
       receiver,
       slot,

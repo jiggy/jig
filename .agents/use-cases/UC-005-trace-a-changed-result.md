@@ -25,5 +25,6 @@ Before editing, the agent can trace the new answer to each known intake decision
 
 [JOB-001](JOB-001-locate-a-workflow-edit.md) · [FEAT-001 Flow inspection](JOB-001-locate-a-workflow-edit.md#feat-001-flow-inspection)
 
-The scenario `a grandchild contract alternative remains conditional in its callers` follows a permitted outcome through a translation and a forwarding caller. [Conditional caller scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L1805)
-The scenario `a known undeclared outcome is refused both directly and through its caller` exercises the result contract at both entrypoints. [Contract scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L1149)
+The scenario `a grandchild contract alternative remains conditional in its callers` follows a permitted outcome through a translation and a forwarding caller. [Conditional caller scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L1888)
+The callee view preserves conditional refusals alongside source-supported continuations. [Callee inspection scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L205)
+The scenario `a known undeclared outcome is refused both directly and through its caller` exercises the result contract at both entrypoints. [Contract scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L1231)

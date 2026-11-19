@@ -269,6 +269,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   The application view links the complete configured inventory to one chart per Flow.
   Its opening handoffs and the focused target's callers use the same configured orientation as topology.
   Focused Binding inspection links its captured declaration and compares its settings and slot selections with other uses.
+  Pair supported direct setting checks with the selected value and declaration.
 
   Each configured use retains its own analyzed routes, coverage, and caller continuations.
   Flow and target links use selectors. Call links use captured source identity.
@@ -305,6 +306,9 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Apply the same projection to outgoing calls with distinct displayed results.
   Label the returning Flow and the acting caller. Put child conditions in their own column.
   Call-case links lead to the full caller-local expansion.
+
+  When a callee is focused, probe conditional continuations for its represented caller sites within the existing allowance.
+  Preserve the distinction between a source return and a contract possibility in the incoming table.
 
   Lead with route consequences and attach the conditions that select them.
   Show the source of the final progress request beside the reported count.

@@ -63,6 +63,10 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
 - Bound proven data-only reporting work within the enclosing analysis allowance.
 - Source analysis grants no admission, execution, or retry authority.
 - Preserve source references, call context, and explicit unsupported regions.
+- Pair a direct setting check with its captured Binding through the proven Run context receiver.
+  Treat a later authored exit as source evidence. Its captured setting does not establish reachability.
+- For a focused callee, reuse secondary probes at its represented caller slots.
+  Carry the same outcome and assumptions into the incoming continuation.
 - Explain required slot resolution from captured invocation requirements independently of call reachability.
 - Preserve authored call sites after a cut in their active function frame. Keep lexical
   conditions and result checks separate from interpreted routes.

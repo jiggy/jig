@@ -130,14 +130,17 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   const secondary = new AnalysisBudget(signal, 96_000)
   // Package inspection needs local source anchors for configured calls.
   for (const [index, scope] of (packagePath === undefined ? scopes : []).entries()) {
-    if (focus !== undefined && scope.target !== focus) continue
     const target = targets.get(scope.target)!
+    const callerOfFocus = focus !== undefined && scope.target !== focus
+    if (callerOfFocus && ![...target.slots.values()].includes(focus)) continue
     const seeds = new Map<string, Handoff>()
     const visitedPaths = new Set<number>()
     function collect(route: Route): void {
       for (const step of route) {
         if (step.kind !== 'call') continue
+        if (callerOfFocus && (step.caller !== target.id || step.target !== focus)) continue
         seeds.set(JSON.stringify([step.caller, step.slot, step.site]), step)
+        if (callerOfFocus) continue
         const id = step.childPath
         if (id === undefined || visitedPaths.has(id)) continue
         visitedPaths.add(id)
