@@ -985,7 +985,10 @@ The overview links each target to a Flow chart and to the details for that confi
 Each chart keeps its configured uses separate and shares the same route selections as their details.
 Direct Flows appear even when no other target calls them.
 Each contextual call links to its configured child when that target is in the map.
-Targets that exceed the analysis allowance remain visible with a coverage notice.
+
+The entrypoint and targets with more configured Flow calls receive route analysis first.
+Targets beyond the route budget retain supported authored decisions and source references from the captured sources.
+Coverage notices identify where route analysis stops.
 
 Each analyzed route keeps its own conditions, call results, effects, and continuation.
 Source references identify the captured implementation and line.
@@ -1032,7 +1035,9 @@ Other synchronous collection loops can show repetition with an unknown count.
 An opaque loop can leave its body or continuation unknown.
 The analyzer follows data-only callbacks on small known arrays, including explicit validation failures.
 When validation callbacks operate on unresolved contents, the displayed continuation assumes mapping completes.
+
 Small known scalar sets and literal numeric products can contribute to reported progress.
+Route consequences give the final requested progress alongside its recorded helper call or update location.
 
 The focused view summarizes selected route consequences and evidence.
 It prioritizes distinct return outcomes and consequential differences before further variants.

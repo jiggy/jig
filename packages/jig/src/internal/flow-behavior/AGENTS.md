@@ -68,6 +68,8 @@ Explain conditional behavior from a captured Jig project without running its met
   Retain the request field and formal parameter together for each directly forwarded argument.
   Use configured targets to identify other callers of the same implementation.
 - Supplement cutoffs with source references whose receiver is an SDK context parameter.
+  Spend the application route budget on the entrypoint and configured callers first.
+  Continue bounded authored inspection when the route budget ends.
   Keep computed slot expressions separate from exact configured handoffs.
   Attach literal lookup rows only when a strict-equality lookup and its helper argument are identifiable.
   Keep source assignments, conditions, and early returns distinct from analyzed paths.
