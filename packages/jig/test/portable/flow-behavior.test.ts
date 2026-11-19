@@ -173,6 +173,31 @@ test('a callee-only change alters the unchanged caller continuation', () => {
   )
 })
 
+test('focused continuations retain an unresolved check inside the returned child', () => {
+  const child = method(
+    handlerSource(`
+      if (run.input.uncertain) return { outcome: 'done', output: { status: 'needs_mapping' } }
+      return { outcome: 'done', output: { status: 'ready' } }
+    `),
+  )
+  const caller = method(
+    handlerSource(`
+      const child = await run.call({ slot: 'converter', operationId: 'convert', input: run.input })
+      if (child.output.status === 'needs_mapping') return { outcome: 'done', output: { status: 'review' } }
+      return await run.call({ slot: 'exporter', operationId: 'export', input: child.output })
+    `),
+  )
+  const input = snapshot(child, caller)
+  const output = renderFlowBehavior(analyzeFlowBehavior({ ...input, focus: 'flow:flows/convert' }))
+  const continuations = output.split('### Caller continuations')[1]?.split('### Consequences')[0]
+  expect(continuations).toMatch(
+    /status = "needs[^\n]+Conditional child path[^\n]+When [^\n]+uncertain[^\n]+is true[^\n]+flows\/convert\/FLOW.ts#L2[^\n]+status = "review"/,
+  )
+  expect(continuations).toMatch(
+    /status = "ready"[^\n]+Conditional child path[^\n]+is false[^\n]+Call exporter/,
+  )
+})
+
 test('Boolean guards keep both continuations visible and respect local shadowing', () => {
   const callee = method(handlerSource('return { outcome: "done", output: {} }'))
   const analyze = (body: string) =>
