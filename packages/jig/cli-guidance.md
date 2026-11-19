@@ -274,6 +274,10 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   Working-tree package inspection adds source locations to the same configured caller slots.
   A bare positional package path with `--flow` selects the same scope as `--package`.
+  Match positional files against the current or retained package inventory within one inspection.
+  A file opens its sole configured target or falls back to package scope.
+  Selector misses point to complete topology on the selected basis.
+
   Package Markdown gives each configured use a focused command using the same approval basis.
   A captured package that lacks a direct target points the reader to package inspection.
 

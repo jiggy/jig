@@ -21,6 +21,7 @@ import {
   privateNeedsFileOwner,
   privateOwnFileCommand,
 } from './internal/file-command.js'
+import type { FlowInspectionOptions } from './internal/flow-inspection-scope.js'
 import {
   PrivateInstallationVerificationConfigurationError,
   withPrivateInstallationVerification,
@@ -307,7 +308,7 @@ async function runWithEnvironment(
       const host: PrivateCliCommandHost = Object.freeze({
         inspectFlow: async (
           project: string,
-          options: import('./internal/flow-inspection-scope.js').FlowContextOptions,
+          options: FlowInspectionOptions,
           signal?: AbortSignal,
         ) =>
           inspectWorkingFlow(
@@ -319,7 +320,7 @@ async function runWithEnvironment(
         ...(delivery === undefined ? {} : { delivery }),
         inspectFlowReport: async (
           project: string,
-          options: import('./internal/flow-inspection-scope.js').FlowContextOptions,
+          options: FlowInspectionOptions,
           signal?: AbortSignal,
         ) =>
           inspectWorkingFlowReport(

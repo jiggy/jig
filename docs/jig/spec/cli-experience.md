@@ -901,7 +901,7 @@ Changed or unchecked environments recommend `jig review`, not `jig run`.
 Unsafe, incompatible or busy state produces a bounded diagnostic without repair.
 Ordinary redirected inspection emits JSON. Explicit `--json` selects JSON, while `--flow` selects the Markdown presentation below.
 
-`jig inspect --flow [target | package-path | --package PATH | --all]` explains supported current source behavior.
+`jig inspect --flow [target | path | --package PATH | --all]` explains supported current source behavior.
 Markdown remains literal through pipes.
 Use `--topology` for a configured connection map, `--approved` for retained approved topology, or `--json` for configured records.
 Each target retains its exact selector, package identity, settings, and resolved caller-local routes.
@@ -915,7 +915,7 @@ Markdown retains its presentation bounds. JSON returns the complete configured r
 
 `--package PATH` selects every configured use of the same Flow package and its direct callers.
 Supply a project-relative package directory or an exact declared `npm:` package selector.
-An unprefixed positional path also selects the package scope.
+An exact package directory as a positional path selects the same scope.
 An exact package with no configured use yields an empty list.
 
 The Markdown report lists each configured use, its caller slots, and the settings that differ across uses.
@@ -926,6 +926,12 @@ Package scope supports current and approved topology.
 With `--json`, `scope.package` identifies the package and `scope.configuredUses` lists the configured selectors.
 The target records include those uses and their direct callers.
 This scope excludes a target operand, `--all`, `--snapshot`, and `--compare`.
+
+A project-relative file operand must match a file in the selected capture.
+A file in a package with one configured use selects that target.
+A file in a package with several uses or no uses selects package scope.
+With `--approved`, file lookup uses the retained package inventory.
+An unknown package, file, or target reports how to list the complete topology for the selected basis.
 
 Markdown identifies each Binding's implementing package even when its settings are empty.
 Bidirectional controls in rendered labels and values are shown as visible code points.

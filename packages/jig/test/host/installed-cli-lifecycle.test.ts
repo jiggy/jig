@@ -92,6 +92,11 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
     expect(current.targets[0].flow.digest).not.toBe(originalTopology.targets[0].flow.digest)
     expect(approvedTopology.targets[0].flow.digest).toBe(originalTopology.targets[0].flow.digest)
     expect(approvedTopology.scope.target).toBe('flow:flows/hello')
+    const approvedByFile = await command(
+      [cli, 'inspect', '--flow', 'flows/hello/FLOW.ts', '--approved', '--json'],
+      project,
+    )
+    expect(JSON.parse(approvedByFile.stdout)).toEqual(approvedTopology)
     expect(await readFile(join(project, 'jig.lock'), 'utf8')).toBe(lock)
     await writeFile(methodPath, originalMethod)
 

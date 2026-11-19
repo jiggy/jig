@@ -96,7 +96,8 @@ describe.serial('finite isolated author declaration batches', () => {
           join(root, 'bindings/first.ts'),
           "import {defineBinding} from '@jigging/jig';export default defineBinding({package:'flows/work',settings:{revision:1}});",
         )
-        const first = (await inspectWorkingFlow(root, options, { target: 'binding:first' })) as any
+        const first = (await inspectWorkingFlow(root, options, { target: 'binding:first' }))
+          .topology as any
         expect(first.basis).toBe('working-tree')
         expect(first.targets.find((t: any) => t.target === 'binding:first').flow.settings).toEqual({
           revision: 1,
@@ -105,9 +106,11 @@ describe.serial('finite isolated author declaration batches', () => {
           join(root, 'bindings/first.ts'),
           "import {defineBinding} from '@jigging/jig';export default defineBinding({package:'flows/work',settings:{revision:2}});",
         )
-        const second = (await inspectWorkingFlow(root, options, {
-          target: 'binding:first',
-        })) as any
+        const second = (
+          await inspectWorkingFlow(root, options, {
+            target: 'binding:first',
+          })
+        ).topology as any
         expect(second.revision).not.toBe(first.revision)
         expect(second.targets.find((t: any) => t.target === 'binding:first').flow.settings).toEqual(
           { revision: 2 },
