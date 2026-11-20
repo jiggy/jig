@@ -296,10 +296,11 @@ export interface BehaviorReport {
     readonly callSelections?: {
       readonly sites: readonly AuthoredCallSelection[]
       readonly omittedBySlot: ReadonlyMap<string, OmittedCallSites>
-      readonly related: ReadonlyMap<
-        string,
-        { readonly calls: readonly RelatedCall[]; readonly omitted: number }
-      >
+      readonly related: readonly {
+        readonly slots: readonly string[]
+        readonly calls: readonly RelatedCall[]
+        readonly omitted: number
+      }[]
     }
   }[]
 }

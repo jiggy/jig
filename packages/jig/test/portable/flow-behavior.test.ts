@@ -652,7 +652,12 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
     id: 'binding:other',
     slots: new Map([['review', variant.id]]),
   }
-  const report = analyzeFlowBehavior({ ...input, targets: [...input.targets, variant, other] })
+  const caller = {
+    ...input.targets[0]!,
+    slots: new Map([...input.targets[0]!.slots, ['exporter', variant.id]]),
+  }
+  const inspected = { ...input, targets: [caller, ...input.targets.slice(1), variant, other] }
+  const report = analyzeFlowBehavior(inspected)
   const selected = report.scopes[0]?.callSelections?.sites.find(({ slot }) => slot === 'converter')
   if (!selected) throw Error('Expected the converter caller decision')
   const { inputFields, ...site } = selected
@@ -688,14 +693,16 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
     markdown.indexOf('### Coverage gaps'),
   )
   expect(markdown).toContain('binding:other · review → binding:variant')
-  expect(markdown).toContain('run.call in helper at flows/import/FLOW.ts:4')
+  expect(markdown).toContain('Other slots using the same Flow as converter, exporter')
+  expect(markdown.match(/binding:other · review → binding:variant/g)).toHaveLength(1)
+  expect(markdown).toContain('helper L4')
   expect(markdown).toContain('Argument 2 input → request field input.')
   expect(markdown).toContain(
     "Request metadata intent = 'Choose a review route' (flows/import/FLOW.ts:4)",
   )
-  expect(markdown).toContain('Child input at flows/import/FLOW.ts:8')
+  expect(markdown).toContain('[flows/import/FLOW.ts:8](./flows/import/FLOW.ts#L8)')
   expect(markdown).toContain('mode = run.input.action ??')
-  const application = renderFlowBehavior(analyzeFlowBehavior({ ...input, focus: undefined }))
+  const application = renderFlowBehavior(analyzeFlowBehavior({ ...inspected, focus: undefined }))
   const owner = application.split('\n### binding:code\n')[1]?.split('\n## ')[0]
   expect(owner).toContain('#### Caller decisions')
   expect(owner).toContain('Argument 2 input → request field input.')
@@ -730,6 +737,9 @@ test('caller slot groups compare authored literals and identify guarded or overr
   )
   const rendered = renderFlowBehavior(report)
   const group = rendered.split('**converter → flow:flows/convert**')[1]?.split('**exporter →')[0]
+  expect(group).toContain('| Call site | Conditions and request |')
+  expect(group?.split('\n').filter((line) => line.startsWith('| [flows/import/'))).toHaveLength(3)
+  expect(rendered.match(/Request metadata operationId = slot \(/g)).toHaveLength(1)
   expect(group).toContain("scale = 'chapter'")
   expect(group).toMatch(/scale = 'chapter'[^\n]+later property may override/)
   expect(group).toContain("scale = 'book'")

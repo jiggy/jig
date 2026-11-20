@@ -1016,6 +1016,11 @@ Each group can include enclosing branches, differing literal input values, and c
 The output flags when a later property may override an authored value.
 It reports omitted caller sites by slot and shows other slots that use the same Flow.
 
+Caller decisions link the captured slot declaration and Binding wiring when available.
+Multiple sites for a slot appear in one comparison.
+Shared helper request metadata appears once beside its helper.
+Related slots appear together for each selected Flow implementation.
+
 A spread from a local helper with a fixed object return can retain exact keys without interpreting the property values.
 Unresolved helper returns keep the possible override visible.
 An authored conditional between two literal slots links the same call site to both configured targets with its corresponding condition.
