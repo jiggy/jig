@@ -1028,12 +1028,14 @@ Source checks identify evaluated predicates and predicates that remain condition
 Focused source output and configured-use expansions group supported caller decisions by slot before analyzed routes.
 It can link a literal slot argument at a local helper call to the corresponding request.
 Each group can include enclosing branches, differing literal input values, and conditional fields.
+When grouped slots target the same Flow, show input fields with different authored literals across those slots.
+
 When a field has two literal alternatives, the report pairs both values with the same source predicate.
 The output flags when a later property may override an authored value.
 It reports omitted caller sites by slot and shows other slots that use the same Flow.
 
-Caller decisions link the captured slot declaration and Binding wiring when available.
-Multiple sites for a slot appear in one comparison beside their shared configuration links.
+Caller decisions link the captured slot declaration and Binding wiring once per configured use when available.
+Multiple sites for a slot appear in one comparison.
 Focused targets can also show authored decisions from direct callers that select that exact target.
 These incoming decisions identify the caller, slot, and supported request fields even if route analysis stops earlier.
 They can also show which configured caller slots select that caller.

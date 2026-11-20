@@ -713,12 +713,12 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
         const mode = run.input.action ?? 'review'
         return dispatch('converter', {
           ...defaults(),
-          mode,
+          mode, scope: 'sample',
           ignored: run.input.flag ? 1 : 2,
           ...(run.input.retry ? {ignored: 0} : {}),
         })
       }
-      return run.call({slot: 'exporter', operationId: 'export', input: {}})
+      return run.call({slot: 'exporter', operationId: 'export', input: {scope: 'book'}})
     })
   `)
   const input = snapshot(method(handlerSource('return { outcome: "done", output: {} }')), importer)
@@ -775,6 +775,12 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
   expect(markdown).toContain('binding:other · review → binding:variant')
   expect(markdown).toContain('Other slots using the same Flow as converter, exporter')
   expect(markdown.match(/binding:other · review → binding:variant/g)).toHaveLength(1)
+  const converter = markdown
+    .split('**converter → flow:flows/convert**')[1]
+    ?.split('**exporter →')[0]
+  const exporter = markdown.split('**exporter → binding:variant**')[1]?.split('**Other slots')[0]
+  expect(converter).toContain("scope = 'sample'")
+  expect(exporter).toContain("scope = 'book'")
   expect(markdown).toContain('helper L4')
   expect(markdown).toContain('Argument 2 input → request field input.')
   expect(markdown).toContain(
@@ -826,10 +832,14 @@ test('caller slot groups compare authored literals and identify guarded or overr
   const rendered = renderFlowBehavior(report)
   const group = rendered.split('**converter → flow:flows/convert**')[1]?.split('**exporter →')[0]
   expect(group).toContain('| Call site | Conditions and request |')
-  expect(group).toContain('One configured selection for all calls through this slot.')
-  expect(group).toContain('To redirect selected calls, choose a different slot at those sites.')
-  expect(group).toContain(
-    'For a new slot, declare it in [flows/import/FLOW.meta.json](./flows/import/FLOW.meta.json) and select its target in [bindings/code.ts](./bindings/code.ts).',
+  const decisions = rendered
+    .split('### Caller decisions')[1]
+    ?.split('### Caller source references')[0]
+  expect(
+    decisions?.match(/Each slot selection applies to all its calls in this configured use\./g),
+  ).toHaveLength(1)
+  expect(decisions).toContain(
+    'Declared slots [flows/import/FLOW.meta.json](./flows/import/FLOW.meta.json) · Binding wiring [bindings/code.ts](./bindings/code.ts)',
   )
   expect(group?.split('\n').filter((line) => line.startsWith('| [flows/import/'))).toHaveLength(3)
   expect(rendered.match(/Request metadata operationId = slot \(/g)).toHaveLength(1)
