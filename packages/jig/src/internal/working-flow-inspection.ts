@@ -47,7 +47,7 @@ export function inspectWorkingFlow(
 }
 
 export type WorkingFlowReport =
-  | { kind: 'index'; topology: JsonValue }
+  | { kind: 'index'; topology: JsonValue; bindingDeclarations: ReadonlyMap<string, string> }
   | { kind: 'behavior'; behavior: BehaviorReport }
 
 export function inspectWorkingFlowReport(
@@ -63,7 +63,13 @@ export function inspectWorkingFlowReport(
     async (topology, scope, linked, members) => {
       const selection = selectFlowContext(topology, scope)
       if (selection.focus === undefined && scope.packagePath === undefined && !scope.all)
-        return { kind: 'index', topology }
+        return {
+          kind: 'index',
+          topology,
+          bindingDeclarations: new Map(
+            linked.bindings.map((binding) => ['binding:' + binding.id, binding.declarationPath]),
+          ),
+        }
 
       const behavior = await inspectBehavior(project, scope, selection, linked, members, signal)
       return { kind: 'behavior', behavior }

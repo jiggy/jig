@@ -287,6 +287,20 @@ export async function createProject(
     }
     const files: readonly (readonly [string, string])[] = [
       ['.gitignore', '.jig/\n'],
+      [
+        'AGENTS.md',
+        [
+          '# Workflow edits',
+          '',
+          'When changing which Flow runs next or how one caller uses a shared Flow,',
+          'run `jig inspect --flow` from the project root. Find the caller that owns',
+          'the decision and the other routes that use it. To see who uses a known',
+          'Flow source file, pass its project-relative path to the same command.',
+          '',
+          'For a wording change or another edit within one Flow, use its source and tests directly.',
+          '',
+        ].join('\n'),
+      ],
       ['jig.ts', renderJigModule(agent)],
       ...(!bare && agent === undefined
         ? ([['package.json', renderProjectManifest()]] as const)

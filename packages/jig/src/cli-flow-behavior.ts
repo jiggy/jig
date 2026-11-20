@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import type { DisplaySourceBehavior } from '@jigging/display-model'
 import {
   type ConfiguredConnection,
+  flowSourceLink,
   renderBindingSettings,
   renderFlowOrientation,
   renderFlowPackageUses,
@@ -240,12 +241,8 @@ function sourceLink(location: SourceSite): string {
 }
 
 function sourcePathLink(path: string, line?: number, label?: string): string {
-  const destination = path
-    .split('/')
-    .map((part) => encodeURIComponent(part).replace(/[()]/g, (ch) => (ch === '(' ? '%28' : '%29')))
-    .join('/')
   const location = label ?? (line === undefined ? path : site({ path, line }))
-  return '[' + text(location) + '](./' + destination + (line === undefined ? '' : '#L' + line) + ')'
+  return flowSourceLink(path, text(location), line)
 }
 
 function comparisonFact(fact: ComparisonFact, current: boolean, compact: boolean): string {

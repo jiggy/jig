@@ -182,7 +182,14 @@ test('installed bare init writes only the inert envelope and preserves existing 
   expect(initialized.code).toBe(0)
   expect(initialized.stderr).toBe('')
   expect(initialized.stdout).toContain('Created bare Jig project')
-  expect((await readdir(project)).sort()).toEqual(['.gitignore', 'bindings', 'flows', 'jig.ts'])
+  expect((await readdir(project)).sort()).toEqual([
+    '.gitignore',
+    'AGENTS.md',
+    'bindings',
+    'flows',
+    'jig.ts',
+  ])
+  expect(await readFile(join(project, 'AGENTS.md'), 'utf8')).toContain('jig inspect --flow')
   expect(await readdir(join(project, 'flows'))).toEqual([])
   expect(await readdir(join(project, 'bindings'))).toEqual([])
   expect(await readFile(join(project, '.gitignore'), 'utf8')).toBe('.jig/\n')
@@ -218,7 +225,13 @@ test('concurrent installed bare initializers have exactly one winner', async () 
     invoke(['init', '--bare', destination]),
   ])
   expect(results.map((result) => result.code).sort()).toEqual([0, 1])
-  expect((await readdir(destination)).sort()).toEqual(['.gitignore', 'bindings', 'flows', 'jig.ts'])
+  expect((await readdir(destination)).sort()).toEqual([
+    '.gitignore',
+    'AGENTS.md',
+    'bindings',
+    'flows',
+    'jig.ts',
+  ])
   passed++
 })
 
@@ -232,6 +245,7 @@ test('installed greeting and Agent initialization create ordinary editable files
     expect(result.code).toBe(0)
     expect(result.stderr).toBe('')
     expect(result.stdout).not.toContain('\u001b')
+    expect(await readFile(join(project, 'AGENTS.md'), 'utf8')).toContain('jig inspect --flow')
     expect(await readFile(join(project, 'flows/hello/FLOW.ts'), 'utf8')).toContain(
       'import { handle } from "@jigging/flow"',
     )

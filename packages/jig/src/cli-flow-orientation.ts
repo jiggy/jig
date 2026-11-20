@@ -49,9 +49,18 @@ function targetInspectionCommand(id: string, approved = false): string | undefin
   return `jig inspect --flow${approved ? ' --approved' : ''} ${operand}`
 }
 
+export function flowSourceLink(path: string, escapedLabel: string, line?: number): string {
+  const destination = path
+    .split('/')
+    .map((part) => encodeURIComponent(part).replace(/[()]/g, (ch) => (ch === '(' ? '%28' : '%29')))
+    .join('/')
+  return '[' + escapedLabel + '](./' + destination + (line === undefined ? '' : '#L' + line) + ')'
+}
+
 export function renderFlowNavigationIndex(
   targets: readonly ConfiguredTarget[],
   connections: readonly ConfiguredConnection[],
+  declarations: ReadonlyMap<string, string>,
   text: (value: string) => string,
 ): string[] {
   if (!targets.length) return ['No configured targets.', '']
@@ -81,11 +90,11 @@ export function renderFlowNavigationIndex(
   const lines = [
     `${targets.length} configured targets across ${packages.size} packages. No declared entrypoint.`,
     '',
-    'Find a caller or shared package below and run its target command. Slots show configured selections.',
+    'Shared caller slots select the same target. Follow a wiring link to its Binding declaration or run the target command to inspect its behavior.',
     'Use `jig inspect --flow --all` for application behavior.',
     '',
-    '| Package | Inspect a target | Configured slots |',
-    '| --- | --- | --- |',
+    '| Package | Inspect a target | Shared caller slots | Configured slots |',
+    '| --- | --- | --- | --- |',
   ]
   for (const { name, uses } of groups) {
     for (const use of uses) {
@@ -96,8 +105,22 @@ export function renderFlowNavigationIndex(
           : plainSelector.test(use.id)
             ? `\`${command}\``
             : text(command)
+      const declaration = declarations.get(use.id)
+      const wiring = declaration === undefined ? '' : ' · ' + flowSourceLink(declaration, 'wiring')
+      const callers = incoming.get(use.id) ?? []
+      const shared =
+        callers.length < 2
+          ? []
+          : callers.slice(0, 8).map((edge) => {
+              const label = text(edge.from) + ' · ' + text(edge.slot)
+              const path = declarations.get(edge.from)
+              return path === undefined ? label : flowSourceLink(path, label)
+            })
+      if (callers.length > 8) shared.push(`+${callers.length - 8} more`)
       const slots = outgoing.get(use.id)?.map((edge) => `${text(edge.slot)} → ${text(edge.to)}`)
-      lines.push(`| ${text(name)} | ${target} | ${slots?.join(' · ') || '—'} |`)
+      lines.push(
+        `| ${text(name)} | ${target}${wiring} | ${shared.join(', ') || '—'} | ${slots?.join(' · ') || '—'} |`,
+      )
     }
   }
   return [...lines, '']

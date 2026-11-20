@@ -67,10 +67,14 @@ Bare initialization retains the smaller skeleton below unless Agent selection al
 ```text
 project/
 ├── .gitignore       contains `.jig/`
+├── AGENTS.md
 ├── jig.ts
 ├── flows/
 └── bindings/
 ```
+
+The project-owned `AGENTS.md` points coding agents to read-only Flow inspection for changes that cross workflow steps.
+It includes inspection from a Flow source path.
 
 The generated `jig.ts` makes its conventional membership explicit:
 
@@ -1539,7 +1543,7 @@ the live discovery directories to decide what to execute.
 
 The direct-alpha project implementation must prove at least:
 
-1. Bare initialization creates only `.gitignore`, `jig.ts`, `flows/`, and
+1. Bare initialization creates only `.gitignore`, `AGENTS.md`, `jig.ts`, `flows/`, and
    `bindings/`, and cleans up its own partial output after failure.
 2. Discovery is shallow and exact; missing roots are empty; exact lists fail
    closed; unsafe paths, symlinks, aliases, and collisions reject.

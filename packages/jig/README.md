@@ -29,6 +29,7 @@ jig review --allow-resolution-network
 jig run flow:flows/hello --input '"Ada"'
 ```
 
+The generated project includes an `AGENTS.md` that directs coding agents to `jig inspect --flow` for cross-Flow edits.
 Initialization installs nothing and approves nothing. Review prepares the SDK
 privately and asks for approval. The resolution flag allows dependency-selected
 network requests before approval; declining cannot undo those requests. Runs

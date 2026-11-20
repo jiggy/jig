@@ -663,6 +663,41 @@ test('complete topology includes disconnected targets and resources without entr
   expect(() => flowContextRecord(snapshot, { all: true, target: 'binding:main' })).toThrow()
 })
 
+test('navigation places only slots selecting the same target beside its own selections', () => {
+  const target = (id: string, pkg: string, routes: JsonValue[] = []) => ({
+    target: id,
+    package: pkg,
+    flow: { routes },
+  })
+  const snapshot = {
+    basis: 'working-tree',
+    targets: [
+      target('binding:books', 'flows/books', [{ slot: 'production', target: 'binding:produce' }]),
+      target('flow:flows/offers', 'flows/offers', [{ slot: 'sample', target: 'binding:produce' }]),
+      target('binding:archive', 'flows/books', [
+        { slot: 'production', target: 'binding:archive-producer' },
+      ]),
+      target('binding:produce', 'flows/producer', [{ slot: 'review', target: 'flow:flows/read' }]),
+      target('binding:archive-producer', 'flows/producer'),
+      target('flow:flows/read', 'flows/read'),
+    ],
+  }
+  const output = renderFlowContext(snapshot, {
+    indexDeclarations: new Map([
+      ['binding:books', 'config/(books).ts'],
+      ['binding:produce', 'policy/producer.ts'],
+    ]),
+  })
+  const row = output
+    .split('\n')
+    .find((line) => line.includes('`jig inspect --flow binding:produce`'))
+  expect(row).toContain('[wiring](./policy/producer.ts)')
+  expect(row).toContain('[binding:books · production](./config/%28books%29.ts)')
+  expect(row).toContain('flow:flows/offers · sample')
+  expect(row).toContain('review → flow:flows/read')
+  expect(row).not.toContain('archive')
+})
+
 test('package inspection retains every configured use and its direct callers', () => {
   const item = (target: string, pkg: string, settings: JsonValue, routes: JsonValue = []) => ({
     target,

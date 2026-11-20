@@ -13,6 +13,8 @@ It also checks exact Jig requirements before evaluating working-tree declaration
 The installed lifecycle case verifies relative Flow selectors in current and approved inspection.
 It checks that a project without an entrypoint opens the navigation index and can still open focused, topology, and complete behavior views.
 
+Check shared callers against the exact selected target and link to the captured Binding paths.
+
 It also inspects a consumer before and after a callee edit, then verifies the unchanged caller through a native Run.
 It checks that an eager sibling import identifies its configured handoff, fails
 review, and leaves the prior approval readable. A local helper and type-only
