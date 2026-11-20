@@ -408,7 +408,7 @@ test('a focused result follows exact nested paths through configured forwarding 
   const rendered = renderFlowBehavior(report)
   const decisions = rendered.split('### Where callers act on this result')[1]?.split('### ')[0]
   expect(rendered).toContain(
-    '**Binding targets also selected by caller slots** · binding:forward, binding:translate',
+    '**Standalone Binding selectors also used by callers** · binding:forward, binding:translate',
   )
   expect(decisions).toMatch(
     /If admitted "blocked"[^\n]+binding:outer-direct[^\n]+binding:outer-forward[^\n]+binding:forward[^\n]+status = "paused"/,
@@ -425,15 +425,15 @@ test('a focused result follows exact nested paths through configured forwarding 
   const translated = paths
     .split('**binding:outer-translate · converter → binding:translate**')[1]
     ?.split('**binding:')[0]
+  expect(forwarded).toContain('**Shared intermediate path** · binding:forward forwards this result')
+  expect(forwarded?.match(/binding:forward forwards this result/g)).toHaveLength(1)
   expect(forwarded).toMatch(
-    /if admitted "blocked"[^\n]+binding:forward forwards this result[^\n]+if admitted "blocked"[^\n]+status = "paused"/,
+    /if admitted "blocked"[^\n]+if admitted "blocked"[^\n]+status = "paused"/,
   )
   expect(
     forwarded?.split('\n').find((line) => line.startsWith('| if admitted "blocked"')),
   ).toContain('status = "paused"')
-  expect(forwarded).toMatch(
-    /returns "done"[^\n]+binding:forward forwards this result[^\n]+Call credit/,
-  )
+  expect(forwarded).toMatch(/returns "done"[^\n]+Call credit/)
   expect(forwarded).not.toContain('binding:translate')
   expect(translated).toMatch(
     /if admitted "blocked"[^\n]+binding:translate[^\n]+status = "review"[^\n]+status = "paused"/,

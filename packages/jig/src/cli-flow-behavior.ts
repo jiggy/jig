@@ -1045,6 +1045,11 @@ function continuationContracts(
 
 type CallOnRoute = { call: Call; route: Route; index: number }
 
+function sharedCell(cells: readonly string[]): string | undefined {
+  const [first, ...rest] = cells
+  return rest.length > 0 && rest.every((cell) => cell === first) ? first : undefined
+}
+
 function renderNestedContinuations(
   report: BehaviorReport,
   focus: string,
@@ -1079,7 +1084,15 @@ function renderNestedContinuations(
     string,
     {
       call: Call
-      rows: Map<string, { outcome: string; reaction: CallerReaction; established: boolean }>
+      rows: Map<
+        string,
+        {
+          outcome: string
+          reaction: CallerReaction
+          established: boolean
+          cells: readonly [result: string, intermediate: string, next: string]
+        }
+      >
     }
   >()
   const resultLabel = (call: Call) =>
@@ -1122,23 +1135,18 @@ function renderNestedContinuations(
             if (next.at(-1) !== end) next.push(end)
             return text(nested.caller) + ' · ' + handoff + ' → ' + nextSteps(next, true)
           })
-          const row =
-            '| ' +
-            resultLabel(first) +
-            ' (' +
-            sourceLink(first.site) +
-            ') | ' +
-            callers.join(' → ') +
-            ' | ' +
-            resultLabel(call) +
-            ' → ' +
-            nextSteps(after, true) +
-            ' |'
+          const cells = [
+            resultLabel(first) + ' (' + sourceLink(first.site) + ')',
+            callers.join(' → '),
+            resultLabel(call) + ' → ' + nextSteps(after, true),
+          ] as const
+          const row = JSON.stringify(cells)
           if (group.rows.size < 32 || group.rows.has(row))
             group.rows.set(row, {
               outcome: first.completion + ':' + first.returned!.outcome,
               reaction: { result: first, caller: call, via: chain.map((hop) => hop.call), after },
               established,
+              cells,
             })
           else limited = true
         }
@@ -1160,8 +1168,9 @@ function renderNestedContinuations(
         distinct.set(outcome, row)
     }
     const shown = [...new Set([...distinct.values(), ...rows.keys()])].slice(0, callCaseLimit)
-    const selected = shown.map((row) => rows.get(row)!.reaction)
-    reactions.push(...selected)
+    const selected = shown.map((row) => rows.get(row)!)
+    const intermediate = sharedCell(selected.map(({ cells }) => cells[1]))
+    reactions.push(...selected.map(({ reaction }) => reaction))
     lines.push(
       '**' +
         text(call.caller + ' · ' + call.slot + ' → ' + call.target) +
@@ -1172,15 +1181,20 @@ function renderNestedContinuations(
       ...continuationContracts(
         call,
         targets,
-        selected.map(({ caller }) => caller),
+        selected.map(({ reaction }) => reaction.caller),
       ),
+      ...(intermediate === undefined ? [] : ['**Shared intermediate path** · ' + intermediate, '']),
       '| Result from ' +
         text(focus) +
-        ' | Intermediate returns | Next in ' +
+        (intermediate === undefined ? ' | Intermediate returns' : '') +
+        ' | Next in ' +
         text(call.caller) +
         ' |',
-      '| --- | --- | --- |',
-      ...shown,
+      intermediate === undefined ? '| --- | --- | --- |' : '| --- | --- |',
+      ...selected.map(
+        ({ cells }) =>
+          '| ' + (intermediate === undefined ? cells : [cells[0], cells[2]]).join(' | ') + ' |',
+      ),
       '',
     )
     if (rows.size > shown.length)
@@ -1247,22 +1261,38 @@ function renderResultDecisions(
     groups.set(key, entry)
   }
   if (!groups.size) return []
-  const rows = [...groups.values()]
+  const rows = [...groups.values()].slice(0, 8).map(({ callers, ...row }) => ({
+    ...row,
+    paths: [...callers].join('<br>'),
+  }))
+  const paths = sharedCell(rows.map((row) => row.paths))
   return [
     '### Where callers act on this result',
     '',
-    '| Child result | Configured paths to this decision | Source check and next action |',
-    '| --- | --- | --- |',
-    ...rows
-      .slice(0, 8)
-      .map(
-        ({ result: value, callers, action }) =>
-          '| ' + value + ' | ' + [...callers].join('<br>') + ' | ' + action + ' |',
-      ),
+    ...(paths === undefined
+      ? []
+      : [
+          '**Configured paths for all rows**',
+          '',
+          ...paths.split('<br>').map((path) => '- ' + path),
+          '',
+        ]),
+    '| Child result' +
+      (paths === undefined ? ' | Configured paths to this decision' : '') +
+      ' | Source check and next action |',
+    paths === undefined ? '| --- | --- | --- |' : '| --- | --- |',
+    ...rows.map(
+      (row) =>
+        '| ' +
+        (paths === undefined ? [row.result, row.paths, row.action] : [row.result, row.action]).join(
+          ' | ',
+        ) +
+        ' |',
+    ),
     '',
     'The caller tables below retain the checks and intermediate returns for each path.',
-    ...(rows.length > 8
-      ? [rows.length - 8 + ' additional decisions are available in those tables.']
+    ...(groups.size > rows.length
+      ? [groups.size - rows.length + ' additional decisions are available in those tables.']
       : []),
     '',
   ]
@@ -1972,7 +2002,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       ? ['**Direct Flow targets in this scope** · ' + brief(independent), '']
       : []),
     ...(bindingEntries.length
-      ? ['**Binding targets also selected by caller slots** · ' + brief(bindingEntries), '']
+      ? ['**Standalone Binding selectors also used by callers** · ' + brief(bindingEntries), '']
       : []),
     ...importBoundaryNotice(report),
   )

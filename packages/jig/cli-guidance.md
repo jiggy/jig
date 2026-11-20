@@ -322,11 +322,12 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Put both result contracts beside the continuation and link their captured local files.
   For a displayed child outcome absent from the caller's declarations, name `outcomes` and the applicable `result` schema check.
   List the focused scope's direct Flow targets near its opening.
+  Label exact standalone Binding selectors that also receive calls.
 
   Follow retained nested call evaluations into intermediate returns and the outer caller's next action.
   Identify direct forwarding through result identity and preserve the intermediate outcome otherwise.
   Lead with shared caller decision sites and list the configured paths that reach each displayed case.
-  Keep exact callable selectors visible for Bindings that also receive calls.
+  State identical path evidence once above the rows that share it.
   Keep the configured call site and inherited assumptions on each hop.
   Disclose projection limits without joining unrelated case variants.
 
