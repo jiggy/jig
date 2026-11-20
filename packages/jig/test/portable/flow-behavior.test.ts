@@ -2877,3 +2877,30 @@ test('declared input paths quote literal keys and disclose projection bounds', (
   expect(projection.paths).toHaveLength(12)
   expect(projection.truncated).toBe(true)
 })
+
+test('an authored writer retains its contract when reachability is unresolved', () => {
+  const input = snapshot(
+    method(
+      `import { writeFile } from 'node:fs/promises'; ${handlerSource(`
+        const text = format(run.input.rows)
+        await writeFile('roster.csv', text)
+        return { outcome: 'done', output: {} }
+      `)}`,
+      {
+        inputSchema: {
+          properties: { rows: { items: { properties: { name: { type: 'string' } } } } },
+        },
+      },
+    ),
+  )
+  const report = renderFlowBehavior(analyzeFlowBehavior({ ...input, focus: 'flow:flows/convert' }))
+  const authored = report.split('#### Authored file writes beyond analyzed routes')[1]
+  expect(authored).toContain(
+    'Whether these writes are attempted depends on the unresolved continuation.',
+  )
+  expect(authored).toContain('**Declared writer input fields** · rows\\[\\].name')
+  expect(authored).toContain('**Writer result contract** · declared outcomes done, blocked')
+  expect(authored).toContain("writeFile('roster.csv')")
+  expect(report).not.toContain('Shared write site')
+  expect(report).not.toContain('Attempts writeFile')
+})

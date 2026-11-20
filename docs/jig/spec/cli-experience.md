@@ -1090,6 +1090,7 @@ The examples retain checks before the write and subsequent checks or actions. Co
 The write view can show declared input paths and the writer's result contract.
 Modeled caller inputs and writer exits remain tied to their represented write cases.
 It can also show modeled rejections before a write.
+When no write attempt is modeled, the focused view can show the same declarations with authored write sites and unresolved reachability.
 
 If the same write has both kinds of entries, the view identifies a common place for validation before that write.
 A focused view also identifies direct inputs separately from its configured call slots.
