@@ -194,7 +194,7 @@ test('installed bare init writes only the inert envelope and preserves existing 
   expect(guidance.startsWith('# Workflow edits\n')).toBe(true)
   expect(guidance).toContain('jig inspect --flow')
   expect(guidance).toContain(
-    'When one caller needs a different child in an existing slot, give that caller\nits own Binding of the shared Flow.',
+    'file or Binding declaration, pass its project-relative path to the same command.',
   )
   expect(guidance).not.toContain('MIT License')
   expect(guidance).not.toContain('Copyright')

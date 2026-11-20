@@ -19,9 +19,6 @@ Use the project's usual Jig command if it has a local launcher.
 > the decision and the other routes that use it. To inspect a known Flow source
 > file or Binding declaration, pass its project-relative path to the same command.
 >
-> When one caller needs a different child in an existing slot, give that caller
-> its own Binding of the shared Flow.
->
 > For a wording change or another edit within one Flow, use its source and tests directly.
 
 For example, `jig inspect --flow flows/import/FLOW.ts` opens the configured use or lists the uses of that package.
