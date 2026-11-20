@@ -235,12 +235,12 @@ function sourceLink(location: SourceSite): string {
   return sourcePathLink(location.path, location.line)
 }
 
-function sourcePathLink(path: string, line?: number): string {
+function sourcePathLink(path: string, line?: number, label?: string): string {
   const destination = path
     .split('/')
     .map((part) => encodeURIComponent(part).replace(/[()]/g, (ch) => (ch === '(' ? '%28' : '%29')))
     .join('/')
-  const location = line === undefined ? path : site({ path, line })
+  const location = label ?? (line === undefined ? path : site({ path, line }))
   return '[' + text(location) + '](./' + destination + (line === undefined ? '' : '#L' + line) + ')'
 }
 
@@ -2192,11 +2192,30 @@ function incomingCallDecisions(
   const callers = scopes.filter((scope) => scope.target !== focus && scope.callSelections)
   if (!callers.length) return []
   const shown = callers.slice(0, BEHAVIOR_LIMITS.focusedRelatedCalls)
+  const upstream = new Map(shown.map(({ target }) => [target, [] as string[]]))
+  for (const target of targets.values())
+    for (const [slot, destination] of target.slots) {
+      const paths = upstream.get(destination)
+      if (!paths) continue
+      paths.push(
+        text(target.id + ' · ' + slot) +
+          (target.declarationPath ? ' (' + sourcePathLink(target.declarationPath) + ')' : ''),
+      )
+    }
   const lines = ['### Incoming caller decisions', '']
-  for (const caller of shown)
-    lines.push(
-      ...renderCallSelections(caller, targets.get(caller.target), `#### ${text(caller.target)}`),
-    )
+  for (const caller of shown) {
+    lines.push(`#### ${text(caller.target)}`, '')
+    const paths = upstream.get(caller.target)!
+    if (paths.length) {
+      lines.push('**Configured callers of ' + text(caller.target) + '**', '')
+      for (const path of paths.slice(0, BEHAVIOR_LIMITS.focusedRelatedCalls))
+        lines.push('- ' + path)
+      if (paths.length > BEHAVIOR_LIMITS.focusedRelatedCalls)
+        lines.push(`- ${paths.length - BEHAVIOR_LIMITS.focusedRelatedCalls} more in topology.`)
+      lines.push('')
+    }
+    lines.push(...renderCallSelections(caller, targets.get(caller.target), null))
+  }
   if (callers.length > shown.length)
     lines.push(
       `- ${callers.length - shown.length} more callers with authored sites. Inspect each caller to see its decisions.`,
@@ -2208,11 +2227,11 @@ function incomingCallDecisions(
 function renderCallSelections(
   scope: Scope,
   target: BehaviorTarget | undefined,
-  heading = '### Caller decisions',
+  heading: string | null = '### Caller decisions',
 ): string[] {
   const selections = scope.callSelections
   if (!selections || !target) return []
-  const lines = [heading, '']
+  const lines = heading === null ? [] : [heading, '']
   const declarations = [
     target.slotDeclarationPath && 'Declared slots ' + sourcePathLink(target.slotDeclarationPath),
     target.declarationPath && 'Binding wiring ' + sourcePathLink(target.declarationPath),
@@ -2229,22 +2248,6 @@ function renderCallSelections(
     lines.push(declarations.join(' · '), '')
 
   const dispatches = new Set<string>()
-  for (const selection of selections.sites) {
-    const dispatch = selection.dispatch
-    const key = dispatch && JSON.stringify([dispatch.path, dispatch.line, dispatch.column])
-    if (!dispatch || !key || dispatches.has(key)) continue
-    dispatches.add(key)
-    lines.push(
-      `- Helper ${text(dispatch.helper)} (${sourceLink(dispatch.declaration)}) issues ${text(dispatch.request)} (${sourceLink(dispatch)}).`,
-    )
-    for (const { field, index, parameter } of dispatch.arguments)
-      lines.push(`  - Argument ${index + 1} ${text(parameter)} → request field ${field}.`)
-    for (const field of selection.requestMetadata)
-      lines.push(
-        `  - Request metadata ${text(field.field)} = ${text(field.code)} (${text(site(field.site))})`,
-      )
-  }
-
   for (const [slot, group] of groups) {
     const destination = target.slots.get(slot)
     if (destination === undefined) continue
@@ -2254,13 +2257,39 @@ function renderCallSelections(
         ['One configured selection for all calls through this slot.', ...declarations].join(' '),
         '',
       )
+    for (const { dispatch, requestMetadata } of group) {
+      if (!dispatch) continue
+      const key = JSON.stringify([dispatch.path, dispatch.line, dispatch.column])
+      if (dispatches.has(key)) continue
+      dispatches.add(key)
+      lines.push(
+        `- Helper ${text(dispatch.helper)} (${sourceLink(dispatch.declaration)}) issues ${text(dispatch.request)} (${sourceLink(dispatch)}).`,
+      )
+      for (const { field, index, parameter } of dispatch.arguments)
+        lines.push(`  - Argument ${index + 1} ${text(parameter)} → request field ${field}.`)
+      for (const field of requestMetadata)
+        lines.push(
+          `  - Request metadata ${text(field.field)} = ${text(field.code)} (${text(site(field.site))})`,
+        )
+      lines.push('')
+    }
     const varying = varyingInputFields(group)
     if (group.length > 1) lines.push('| Call site | Conditions and request |', '| --- | --- |')
     for (const selection of group) {
       const { dispatch, guards, requestMetadata, inputSite, inputFields } = selection
       const near = (location: SourceSite) =>
         location.path === selection.site.path ? `L${location.line}` : text(site(location))
-      const call = sourceLink(selection.site) + (dispatch ? ` · helper ${near(dispatch)}` : '')
+      const call =
+        sourceLink(selection.site) +
+        (dispatch
+          ? ' · ' +
+            sourcePathLink(
+              dispatch.path,
+              dispatch.line,
+              'helper ' +
+                (dispatch.path === selection.site.path ? `L${dispatch.line}` : site(dispatch)),
+            )
+          : '')
       const facts = guards.map(
         (guard) =>
           `${text(guard.code)} · ${guard.taken ? 'true' : 'false'} branch (${near(guard.site)})`,

@@ -877,11 +877,27 @@ test('focused callee shows authored requests through the exact incoming Binding 
     ]),
   }
   const target = 'flow:flows/convert'
+  const coordinator: BehaviorTarget = {
+    ...code,
+    id: 'binding:coordinate',
+    implementation: 'flows/coordinate',
+    declarationPath: 'bindings/coordinate.ts',
+    slots: new Map([
+      ['production', code.id],
+      ['audit', audit.id],
+    ]),
+  }
+  const sample: BehaviorTarget = {
+    ...code,
+    id: 'flow:flows/sample',
+    implementation: 'flows/sample',
+    slots: new Map([['sample', code.id]]),
+  }
   const report = analyzeFlowBehavior({
     ...input,
     focus: target,
-    targets: [...input.targets, audit],
-    visible: [...input.visible, audit.id],
+    targets: [...input.targets, audit, coordinator, sample],
+    visible: [...input.visible, audit.id, coordinator.id, sample.id],
   })
   const rendered = renderFlowBehavior(report)
   const decisions = rendered
@@ -889,7 +905,18 @@ test('focused callee shows authored requests through the exact incoming Binding 
     ?.split('### Consequences')[0]
   expect(decisions).toContain('#### binding:code')
   expect(decisions).toContain('**converter → flow:flows/convert**')
+  expect(decisions).toContain('**Configured callers of binding:code**')
+  expect(decisions).toContain(
+    'binding:coordinate · production ([bindings/coordinate.ts](./bindings/coordinate.ts))',
+  )
+  expect(decisions).toContain('flow:flows/sample · sample')
+  expect(decisions).not.toContain('binding:coordinate · audit')
   expect(decisions).toContain('Argument 1 slot → request field slot.')
+  expect(decisions).toContain('Argument 2 value → request field input.')
+  expect(decisions).toMatch(
+    /\*\*converter → flow:flows\/convert\*\*[\s\S]+Argument 1 slot[\s\S]+\| Call site/,
+  )
+  expect(decisions).toMatch(/\| \[[^\n]+\[helper L(\d+)\]\(\.\/flows\/import\/FLOW\.ts#L\1\)/)
   expect(decisions).toContain("scope = 'chapter'")
   expect(decisions).toContain("scope = 'book'")
   expect(decisions).toContain("purpose = run.input.resume ? 'post-edit' : 'developmental'")

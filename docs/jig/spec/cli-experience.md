@@ -1027,7 +1027,9 @@ Caller decisions link the captured slot declaration and Binding wiring when avai
 Multiple sites for a slot appear in one comparison beside their shared configuration links.
 Focused targets can also show authored decisions from direct callers that select that exact target.
 These incoming decisions identify the caller, slot, and supported request fields even if route analysis stops earlier.
-Shared helper request metadata appears once beside its helper.
+They can also show which configured caller slots select that caller.
+
+Shared helper request metadata appears in the first relevant slot group, with source links from its call sites.
 Related slots appear together for each selected Flow implementation.
 
 A spread from a local helper with a fixed object return can retain exact keys without interpreting the property values.
