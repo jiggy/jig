@@ -208,14 +208,14 @@ When host or provider prerequisites are unavailable, report inspection separatel
 
 ### Change a conditional route
 
-For a request such as “call C instead of B when J holds,” locate the caller that owns that decision.
+For a request such as “call C instead of B when J holds,” locate the caller, slot, and check that decide the route.
 Use `jig inspect --flow` to find configured targets, distinct Bindings, and available powers.
-Read the caller's guard, dispatch, and return handling to establish the behavior.
+Focus with `jig inspect --flow <target>` to see the decision alongside other callers, entrypoints, and uses of the same method.
 Use `jig inspect --flow --all` for the complete project, including disconnected targets.
-Use `jig inspect --flow <target>` to retain other callers, entrypoints, and uses of a shared method.
 
-Use `jig inspect --flow <target>` to examine source behavior in the configured target's context.
-Read the prepared routes to locate the decision, affected handoff, and preserved alternatives.
+For a change to one configured use, compare its Binding's settings and slots with a use that already takes the requested route.
+If an existing setting or slot selection gives the requested behavior, change it in that Binding.
+When the route must vary between calls through one configured use, read the caller's guard, dispatch, and return handling.
 Verify unresolved conditions, effects, and continuations in the source.
 Use source directly when the view cannot describe the relevant behavior.
 See [source behavior inspection](results.md#inspect-source-behavior) for the command and its coverage.
