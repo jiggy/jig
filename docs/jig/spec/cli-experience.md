@@ -1028,7 +1028,8 @@ Diagrams label conditional edges with their predicates or the result of a direct
 When outgoing edges share an earlier condition, diagrams show the later conditions that distinguish them.
 Source checks identify evaluated predicates and predicates that remain conditional.
 
-Focused source output and configured-use expansions group supported caller decisions by slot before analyzed routes.
+Focused source output puts supported caller decisions beside the configured caller and slot summary.
+Focused reports and configured-use expansions group these decisions by slot before analyzed routes.
 It can link a literal slot argument at a local helper call to the corresponding request.
 Each group can include enclosing branches, differing literal input values, and conditional fields.
 When grouped slots target the same Flow, show input fields with different authored literals across those slots.
@@ -1039,9 +1040,12 @@ It reports omitted caller sites by slot and shows other slots that use the same 
 
 Caller decisions link the captured slot declaration and Binding wiring once per configured use when available.
 Multiple sites for a slot appear in one comparison.
-Each section identifies a displayed destination's implementation and available Binding declaration.
-It shows up to three of that target's configured child slots, with known implementations for their selections.
+
+In focused reports, each caller section identifies a displayed destination's implementation and available Binding declaration.
+It shows up to three configured child slots, with known implementations for their selections.
 Repeat uses in the same section share these details.
+The application map links decisions and related slots to their existing configured destination sections when present.
+Those sections include each destination's available Binding declaration.
 
 Focused targets can also show authored decisions from direct callers that select that exact target.
 These incoming decisions identify the caller, slot, and supported request fields even if route analysis stops earlier.
@@ -1061,6 +1065,8 @@ Related slots appear together for each selected Flow implementation.
 A spread from a local helper with a fixed object return can retain exact keys without interpreting the property values.
 Unresolved helper returns keep the possible override visible.
 An authored conditional between two literal slots links the same call site to both configured targets with its corresponding condition.
+When both alternatives are displayed, show the authored predicate and the true and false selections together.
+When only one alternative is displayed, retain its predicate and polarity at the call site.
 
 It identifies authored request metadata at `run.call` and locates the child input or its identifiable helper argument.
 When an argument is directly forwarded, the report names its position and the request field it supplies.

@@ -217,6 +217,7 @@ export interface AuthoredCallSelection {
   readonly site: SourceSite
   readonly dispatch?: AuthoredDispatch
   readonly guards: readonly BehaviorGuard[]
+  readonly slotGuard?: BehaviorGuard
   readonly requestMetadata: readonly (SourceExpression & {
     readonly field: 'operationId' | 'intent'
   })[]
