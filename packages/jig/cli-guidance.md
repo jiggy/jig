@@ -303,6 +303,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Focused source and configured-use expansions lead with caller decisions from the selected implementation.
   Group authored sites by configured caller slot.
   Put the slot declaration and Binding wiring beside calls that share a selection.
+  Identify each displayed destination's implementation, available declaration, and bounded configured child slots once in that caller's decision section.
+
   On a focused callee, show decisions for slots that select that exact target beside the caller's configured incoming slots.
   Give the count and up to three source links for sites beyond the detailed view.
   Show differing literals, the branches selecting a literal field value, and possible later overrides.

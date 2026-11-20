@@ -2217,7 +2217,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       ...renderEarlierReturns(report),
       ...incoming,
       ...configuredChecks(report, selected, target),
-      ...renderCallSelections(selected, target),
+      ...renderCallSelections(selected, target, targets),
     )
     lines.push(...renderCallReferences([selected], inventory))
     lines.push(...authoredRepeats(selected))
@@ -2323,7 +2323,7 @@ function incomingCallDecisions(
     }
     const target = targets.get(caller)!
     const scope = authored.get(caller)
-    if (scope) lines.push(...renderCallSelections(scope, target, null))
+    if (scope) lines.push(...renderCallSelections(scope, target, targets, null))
     const uses = incomingCallerUses?.get(caller)
     if (!uses) continue
     const slots = [...target.slots].flatMap(([slot, selected]) =>
@@ -2373,6 +2373,7 @@ function incomingCallDecisions(
 function renderCallSelections(
   scope: Scope,
   target: BehaviorTarget | undefined,
+  targets: ReadonlyMap<string, BehaviorTarget>,
   heading: string | null = '### Caller decisions',
 ): string[] {
   const selections = scope.callSelections
@@ -2403,10 +2404,37 @@ function renderCallSelections(
   }
 
   const dispatches = new Set<string>()
+  const describedTargets = new Set<string>()
+  const selectedConfiguration = (selector: string) => {
+    const selected = targets.get(selector)
+    if (!selected || describedTargets.has(selector)) return ''
+    describedTargets.add(selector)
+    const children = [...selected.slots.entries()].slice(0, 3).map(([slot, child]) => {
+      const implementation = targets.get(child)?.implementation
+      return (
+        text(slot) +
+        ' → ' +
+        text(child) +
+        (implementation === undefined ? '' : ' (' + text(implementation) + ')')
+      )
+    })
+    const omitted = selected.slots.size - children.length
+    if (omitted) children.push(omitted + ' more')
+    return (
+      ' · uses ' +
+      text(selected.implementation) +
+      (selected.declarationPath ? ' · ' + sourcePathLink(selected.declarationPath) : '') +
+      (children.length ? ' · configured child slots: ' + children.join(', ') : '')
+    )
+  }
   for (const [slot, group] of groups) {
     const destination = target.slots.get(slot)
     if (destination === undefined) continue
-    lines.push('', `**${text(slot)} → ${text(destination)}**`, '')
+    lines.push(
+      '',
+      `**${text(slot)} → ${text(destination)}**` + selectedConfiguration(destination),
+      '',
+    )
     for (const { dispatch, requestMetadata } of group) {
       if (!dispatch) continue
       const key = JSON.stringify([dispatch.path, dispatch.line, dispatch.column])
@@ -2478,7 +2506,10 @@ function renderCallSelections(
       : 'Slots sharing the same Flow · '
     lines.push('', `**${lead}${text(slots.join(', '))}**`, '')
     for (const call of calls)
-      lines.push(`- ${text(call.caller)} · ${text(call.slot)} → ${text(call.target)}`)
+      lines.push(
+        `- ${text(call.caller)} · ${text(call.slot)} → ${text(call.target)}` +
+          selectedConfiguration(call.target),
+      )
     if (omitted) lines.push(`- ${omitted} more configured slots.`)
   }
   for (const [slot, omitted] of selections.omittedBySlot) {
@@ -2675,6 +2706,7 @@ function applicationMap(report: BehaviorReport): string[] {
   if (!report.inventory.length)
     return [...lines, 'The captured project has no configured targets.', '']
   const groups = new Map<string, BehaviorTarget[]>()
+  const targets = new Map(report.inventory.map((target) => [target.id, target]))
   const linkedTargets = new Set(report.inventory.map((target) => target.id))
   const scopes = new Map(report.scopes.map((scope) => [scope.target, scope]))
   const selections = new Map(report.scopes.map((scope) => [scope.target, selectRoutes(scope)]))
@@ -2760,7 +2792,7 @@ function applicationMap(report: BehaviorReport): string[] {
       if (routes.length && !body.length)
         lines.push('This configured target exceeds the diagram limit.', '')
       const details = callDetails(report, [...routes, ...scope.alternatives])
-      lines.push(...renderCallSelections(scope, target, '#### Caller decisions'))
+      lines.push(...renderCallSelections(scope, target, targets, '#### Caller decisions'))
       if (!routes.length) lines.push(...renderCallReferences([scope], [target], undefined, '####'))
       lines.push(...contractChecks(scope))
       if (routes.length) lines.push(...consequences(report, scope, routes, details.shown))

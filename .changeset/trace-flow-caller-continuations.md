@@ -15,3 +15,5 @@ Show differing input fields across slots that target the same Flow and give thei
 Show different modeled inputs and results at the same write site. Combine entries that share the same displayed case.
 
 Link configured caller slots to their Binding declarations and explain how to vary configuration when callers share a Binding.
+
+Show the selected Flow implementation and its configured child slots beside caller decisions.

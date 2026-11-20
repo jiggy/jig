@@ -740,14 +740,23 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
           ...(run.input.retry ? {ignored: 0} : {}),
         })
       }
-      return run.call({slot: 'exporter', operationId: 'export', input: {scope: 'book'}})
+      return run.call({slot: run.input.archive ? 'exporter' : 'alternate', operationId: 'export', input: {scope: 'book'}})
     })
   `)
   const input = snapshot(method(handlerSource('return { outcome: "done", output: {} }')), importer)
   const variant = {
     ...input.targets[1]!,
     id: 'binding:variant',
+    declarationPath: 'bindings/variant.ts',
     settings: { mode: 'other' },
+    slots: new Map([['agent', 'binding:variant-agent']]),
+  }
+  const agent: BehaviorTarget = {
+    id: 'binding:variant-agent',
+    implementation: 'npm:@jigging/agent-method',
+    settings: {},
+    slots: new Map([['http', 'http-request']]),
+    outcomes: ['done'],
   }
   const other = {
     ...input.targets[0]!,
@@ -756,9 +765,14 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
   }
   const caller = {
     ...input.targets[0]!,
-    slots: new Map([...input.targets[0]!.slots, ['exporter', variant.id]]),
+    slots: new Map([
+      ...input.targets[0]!.slots,
+      ['exporter', variant.id],
+      ['alternate', variant.id],
+    ]),
   }
-  const inspected = { ...input, targets: [caller, ...input.targets.slice(1), variant, other] }
+  const targets = [caller, ...input.targets.slice(1), variant, agent, other]
+  const inspected = { ...input, targets, visible: targets.map(({ id }) => id) }
   const report = analyzeFlowBehavior(inspected)
   const selected = report.scopes[0]?.callSelections?.sites.find(({ slot }) => slot === 'converter')
   if (!selected) throw Error('Expected the converter caller decision')
@@ -803,6 +817,13 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
   const exporter = markdown.split('**exporter → binding:variant**')[1]?.split('**Other slots')[0]
   expect(converter).toContain("scope = 'sample'")
   expect(exporter).toContain("scope = 'book'")
+  expect(exporter).toContain(
+    'uses flows/convert · [bindings/variant.ts](./bindings/variant.ts) · configured child slots: agent → binding:variant-agent (npm:@jigging/agent-method)',
+  )
+  expect(exporter).not.toContain('http-request')
+  const decisions = markdown.split('### Caller decisions')[1]?.split('### Caller source')[0]
+  expect(decisions).toContain('**alternate → binding:variant**')
+  expect(decisions?.match(/configured child slots: agent → binding:variant-agent/g)).toHaveLength(1)
   expect(markdown).toContain('helper L4')
   expect(markdown).toContain('Argument 2 input → request field input.')
   expect(markdown).toContain(
