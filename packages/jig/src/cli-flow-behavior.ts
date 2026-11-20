@@ -1012,6 +1012,13 @@ function directInvocations(
   return lines
 }
 
+function independentEntry(report: BehaviorReport, direct: string): string {
+  const source = report.entrySources?.get(direct)
+  return (
+    text(direct) + ' supplies its own input' + (source ? ' (' + sourcePathLink(source) + ')' : '')
+  )
+}
+
 function pathsBesideNextCalls(scope: Scope, report: BehaviorReport) {
   const predecessors = new Map<string, Set<string>>()
   for (const route of scope.routes) {
@@ -1058,19 +1065,13 @@ function pathsBesideNextCalls(scope: Scope, report: BehaviorReport) {
     const entry = report.directHandoffs?.find(
       ({ slot, selected }) => slot === call.slot && selected === call.target,
     )
-    const source = entry && report.entrySources?.get(entry.direct)
     return [
       '**Earlier returns that bypass ' + text(call.slot) + '** (' + sourceLink(call.site) + ')',
       '',
       ...[...paths].slice(0, 4).map((path) => '- ' + path),
       ...(paths.size > 4 ? ['- ' + (paths.size - 4) + ' more modeled returns.'] : []),
       ...(entry
-        ? [
-            '- Independent entry to the same Flow · ' +
-              text(entry.direct) +
-              ' supplies its own input' +
-              (source ? ' (' + sourcePathLink(source) + ').' : '.'),
-          ]
+        ? ['- Independent entry to the same Flow · ' + independentEntry(report, entry.direct) + '.']
         : []),
       '',
     ]
@@ -1366,10 +1367,17 @@ function renderNestedContinuations(
 function renderResultDecisions(
   reactions: readonly CallerReaction[],
   targets: ReadonlyMap<string, BehaviorTarget>,
+  report: BehaviorReport,
 ): string[] {
   const groups = new Map<
     string,
-    { result: string; action: string; callers: Set<string>; exits: Map<string, Set<string>> }
+    {
+      result: string
+      action: string
+      callers: Set<string>
+      exits: Map<string, Set<string>>
+      destination: string | undefined
+    }
   >()
   for (const { result: origin, caller, via, after, followThrough } of reactions) {
     const next = after.at(-1)
@@ -1410,6 +1418,7 @@ function renderResultDecisions(
       action: action + contract,
       callers: new Set<string>(),
       exits: new Map<string, Set<string>>(),
+      destination: next.kind === 'call' ? next.target : undefined,
     }
     const path =
       text(caller.caller + ' · ' + caller.slot) +
@@ -1429,7 +1438,18 @@ function renderResultDecisions(
     groups.set(key, entry)
   }
   if (!groups.size) return []
-  const rows = [...groups.values()].slice(0, 8).map(({ callers, action, exits, result }) => {
+  const visible = [...groups.values()].slice(0, 8)
+  const entries = new Map<string, Set<string>>()
+  for (const { destination } of visible) {
+    const target = destination === undefined ? undefined : targets.get(destination)
+    if (!target) continue
+    const direct = report.directSelectors?.get(target.implementation)
+    if (!direct?.startsWith('flow:')) continue
+    const selected = entries.get(direct) ?? new Set<string>()
+    if (target.id !== direct) selected.add(target.id)
+    entries.set(direct, selected)
+  }
+  const rows = visible.map(({ callers, action, exits, result }) => {
     const shown = [...exits].slice(0, 2)
     const suffix = shown.map(
       ([exit, paths]) =>
@@ -1466,6 +1486,20 @@ function renderResultDecisions(
         ' |',
     ),
     '',
+    ...(entries.size
+      ? [
+          '**Independent entries to the next Flows**',
+          '',
+          ...[...entries].map(
+            ([direct, selected]) =>
+              '- ' +
+              independentEntry(report, direct) +
+              (selected.size ? ' · configured here as ' + [...selected].map(text).join(', ') : '') +
+              '.',
+          ),
+          '',
+        ]
+      : []),
     'The caller tables below retain the checks and intermediate returns for each path.',
     ...(groups.size > rows.length
       ? [groups.size - rows.length + ' additional decisions are available in those tables.']
@@ -2298,7 +2332,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     })
     const nested = renderNestedContinuations(report, focus, targets, reactions)
     lines.push(
-      ...renderResultDecisions(reactions, targets),
+      ...renderResultDecisions(reactions, targets, report),
       ...renderEarlierReturns(report),
       ...incoming,
       ...configuredChecks(report, selected, target),

@@ -29,3 +29,5 @@ Show the exact Run selector beside focused source links. Identify packages whose
 Show related Bindings and their exact alternative slot targets when inspection opens at the default entrypoint.
 
 Show the settings schema path beside shared Binding choices, including when finding a decision through one of its callees.
+
+Link independently callable local Flows beside the caller's next handoffs. Identify each selected Binding that uses the same Flow.

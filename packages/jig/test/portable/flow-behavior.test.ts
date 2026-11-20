@@ -2612,6 +2612,39 @@ test('direct inputs and returns stay distinct from a checker refusal in the call
   )
   expect(reactions).toMatch(/If admitted "blocked"[^\n]+Returns "blocked"/)
   expect(reactions).not.toMatch(/If admitted "blocked"[^\n]+Then on a modeled path/)
+  expect(reactions).toContain('flow:flows/export supplies its own input.')
+})
+
+test('caller decisions link a next Flow’s independent input beside its configured calls', () => {
+  const input = snapshot(
+    method(handlerSource(`return {outcome: 'done', output: {status: 'ready'}}`)),
+  )
+  const converter = input.targets[1]!
+  const direct = input.targets[2]!
+  const use = { ...direct, id: 'binding:export', settings: { format: 'preview' } }
+  const caller = { ...input.targets[0]!, slots: new Map(input.targets[0]!.slots) }
+  caller.slots.set('exporter', use.id)
+  const audit = { ...caller, id: 'binding:audit' }
+  const prepare = (includeDirect: boolean) =>
+    renderFlowBehavior({
+      ...analyzeFlowBehavior({
+        ...input,
+        focus: converter.id,
+        targets: [caller, converter, use, audit, ...(includeDirect ? [direct] : [])],
+        visible: [caller.id, converter.id, use.id, audit.id],
+      }),
+      entrySources: new Map([[direct.id, 'flows/export/FLOW.ts']]),
+    })
+      .split('### Where callers act on this result')[1]
+      ?.split('### ')[0]
+
+  const decisions = prepare(true)
+  expect(decisions).toContain('Call exporter → binding:export')
+  expect(decisions).toContain(
+    'flow:flows/export supplies its own input ([flows/export/FLOW.ts](./flows/export/FLOW.ts)) · configured here as binding:export.',
+  )
+  expect(decisions?.match(/supplies its own input/g)).toHaveLength(1)
+  expect(prepare(false)).not.toContain('supplies its own input')
 })
 
 test('a grandchild contract alternative remains conditional in its callers', () => {
