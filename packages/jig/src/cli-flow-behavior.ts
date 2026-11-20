@@ -2387,7 +2387,7 @@ function incomingCallDecisions(
   targets: ReadonlyMap<string, BehaviorTarget>,
   focus: string,
 ): string[] {
-  const { scopes, incomingCallerUses, entrySources } = report
+  const { scopes, incomingCallerUses, entrySources, bindingDeclarations } = report
   const authored = new Map(
     scopes.flatMap((scope) =>
       scope.target !== focus && scope.callSelections ? [[scope.target, scope] as const] : [],
@@ -2438,20 +2438,30 @@ function incomingCallDecisions(
       '',
     )
     const peers = uses.filter(({ id }) => id !== caller)
-    for (const peer of peers.slice(0, BEHAVIOR_LIMITS.focusedRelatedCalls)) {
-      const selections = slots.map((slot) => {
+    const displayed = peers.slice(0, BEHAVIOR_LIMITS.focusedRelatedCalls)
+    for (const slot of slots) {
+      const bySelection = new Map<string | undefined, string[]>()
+      for (const peer of displayed) {
         const selected = peer.slots.get(slot)
-        if (selected === undefined) return text(`${slot} has no selection`)
-        const path = entrySources?.get(selected)
-        return text(`${slot} → ${selected}`) + (path ? ' · source ' + sourcePathLink(path) : '')
-      })
-      lines.push(
-        '- ' +
+        const names = bySelection.get(selected) ?? []
+        names.push(
           text(peer.id) +
-          ' · ' +
-          selections.join(' · ') +
-          (peer.declarationPath ? ' (' + sourcePathLink(peer.declarationPath) + ')' : ''),
-      )
+            (peer.declarationPath ? ' (' + sourcePathLink(peer.declarationPath) + ')' : ''),
+        )
+        bySelection.set(selected, names)
+      }
+      for (const [selected, names] of bySelection) {
+        const declaration = selected === undefined ? undefined : bindingDeclarations?.get(selected)
+        const source = selected === undefined ? undefined : entrySources?.get(selected)
+        const selection =
+          selected === undefined ? `${slot} has no selection` : `${slot} → ${selected}`
+        lines.push(
+          `- **${text(selection)}**` +
+            (declaration ? ' · selected Binding ' + sourcePathLink(declaration) : '') +
+            (source ? ' · source ' + sourcePathLink(source) : ''),
+          '  - ' + names.join(', '),
+        )
+      }
     }
     if (peers.length > BEHAVIOR_LIMITS.focusedRelatedCalls)
       lines.push(

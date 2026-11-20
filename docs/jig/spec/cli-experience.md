@@ -1065,6 +1065,8 @@ Keep each displayed return tied to the configured path that supports it.
 
 For an incoming slot, show other configured uses of the caller's package even when its source is opaque.
 Show the selected target or absent selection for each displayed use, even outside the focused topology.
+Group uses sharing that slot's exact selected target.
+Link the selected target's Binding declaration when available, beside its implementation source.
 Keep those uses separate from the callers of the focused callee. Count omissions when the list reaches its bound.
 
 Shared helper request metadata appears in the first relevant slot group, with source links from its call sites.
