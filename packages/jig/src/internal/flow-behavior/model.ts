@@ -289,6 +289,10 @@ export interface BehaviorReport {
     readonly selected: string
     readonly direct: string
   }[]
+  readonly incomingCallerUses?: ReadonlyMap<
+    string,
+    readonly Pick<BehaviorTarget, 'id' | 'declarationPath' | 'slots'>[]
+  >
   readonly earlierReturns?: readonly {
     readonly trigger: Extract<BehaviorStep, { kind: 'call' }>
     readonly later: Extract<BehaviorStep, { kind: 'call' }>

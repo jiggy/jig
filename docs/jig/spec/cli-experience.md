@@ -1030,6 +1030,10 @@ Focused targets can also show authored decisions from direct callers that select
 These incoming decisions identify the caller, slot, and supported request fields even if route analysis stops earlier.
 They can also show which configured caller slots select that caller.
 
+For an incoming slot, show other configured uses of the caller's package even when its source is opaque.
+Show the selected target or absent selection for each displayed use, even outside the focused topology.
+Keep those uses separate from the callers of the focused callee. Count omissions when the list reaches its bound.
+
 Shared helper request metadata appears in the first relevant slot group, with source links from its call sites.
 Related slots appear together for each selected Flow implementation.
 

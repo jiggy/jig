@@ -2092,7 +2092,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     ...importBoundaryNotice(report),
   )
   const selected = scopes.find((scope) => scope.target === focus)
-  const incoming = incomingCallDecisions(scopes, targets, focus)
+  const incoming = incomingCallDecisions(report, targets, focus)
   if (selected) {
     const routes = selectRoutes(selected)
     const details = callDetails(report, [...routes, ...selected.alternatives])
@@ -2185,14 +2185,19 @@ export function renderFlowBehavior(report: BehaviorReport): string {
 }
 
 function incomingCallDecisions(
-  scopes: readonly Scope[],
+  { scopes, incomingCallerUses }: BehaviorReport,
   targets: ReadonlyMap<string, BehaviorTarget>,
   focus: string,
 ): string[] {
-  const callers = scopes.filter((scope) => scope.target !== focus && scope.callSelections)
-  if (!callers.length) return []
-  const shown = callers.slice(0, BEHAVIOR_LIMITS.focusedRelatedCalls)
-  const upstream = new Map(shown.map(({ target }) => [target, [] as string[]]))
+  const authored = new Map(
+    scopes.flatMap((scope) =>
+      scope.target !== focus && scope.callSelections ? [[scope.target, scope] as const] : [],
+    ),
+  )
+  const callers = new Set([...authored.keys(), ...(incomingCallerUses?.keys() ?? [])])
+  if (!callers.size) return []
+  const shown = [...callers].slice(0, BEHAVIOR_LIMITS.focusedRelatedCalls)
+  const upstream = new Map(shown.map((target) => [target, [] as string[]]))
   for (const target of targets.values())
     for (const [slot, destination] of target.slots) {
       const paths = upstream.get(destination)
@@ -2204,21 +2209,56 @@ function incomingCallDecisions(
     }
   const lines = ['### Incoming caller decisions', '']
   for (const caller of shown) {
-    lines.push(`#### ${text(caller.target)}`, '')
-    const paths = upstream.get(caller.target)!
+    lines.push(`#### ${text(caller)}`, '')
+    const paths = upstream.get(caller)!
     if (paths.length) {
-      lines.push('**Configured callers of ' + text(caller.target) + '**', '')
+      lines.push('**Configured callers of ' + text(caller) + '**', '')
       for (const path of paths.slice(0, BEHAVIOR_LIMITS.focusedRelatedCalls))
         lines.push('- ' + path)
       if (paths.length > BEHAVIOR_LIMITS.focusedRelatedCalls)
         lines.push(`- ${paths.length - BEHAVIOR_LIMITS.focusedRelatedCalls} more in topology.`)
       lines.push('')
     }
-    lines.push(...renderCallSelections(caller, targets.get(caller.target), null))
-  }
-  if (callers.length > shown.length)
+    const target = targets.get(caller)!
+    const scope = authored.get(caller)
+    if (scope) lines.push(...renderCallSelections(scope, target, null))
+    const uses = incomingCallerUses?.get(caller)
+    if (!uses) continue
+    const slots = [...target.slots].flatMap(([slot, selected]) =>
+      selected === focus ? [slot] : [],
+    )
+    if (!scope)
+      lines.push(
+        '**Selected here** · ' +
+          text(slots.join(', ') + ' → ' + focus) +
+          (target.declarationPath ? ' (' + sourcePathLink(target.declarationPath) + ')' : ''),
+        '',
+      )
     lines.push(
-      `- ${callers.length - shown.length} more callers with authored sites. Inspect each caller to see its decisions.`,
+      `**Other configured uses of this caller's code** · ${text(target.implementation)}`,
+      '',
+    )
+    const peers = uses.filter(({ id }) => id !== caller)
+    for (const peer of peers.slice(0, BEHAVIOR_LIMITS.focusedRelatedCalls)) {
+      const selections = slots.map((slot) => {
+        const selected = peer.slots.get(slot)
+        return selected === undefined ? `${slot} has no selection` : `${slot} → ${selected}`
+      })
+      lines.push(
+        '- ' +
+          text(peer.id + ' · ' + selections.join(' · ')) +
+          (peer.declarationPath ? ' (' + sourcePathLink(peer.declarationPath) + ')' : ''),
+      )
+    }
+    if (peers.length > BEHAVIOR_LIMITS.focusedRelatedCalls)
+      lines.push(
+        `- ${peers.length - BEHAVIOR_LIMITS.focusedRelatedCalls} more configured uses. Inspect the caller's package for the full list.`,
+      )
+    lines.push('')
+  }
+  if (callers.size > shown.length)
+    lines.push(
+      `- ${callers.size - shown.length} more callers with source or configuration details. Inspect each caller to see its decisions.`,
       '',
     )
   return lines
@@ -2252,11 +2292,23 @@ function renderCallSelections(
     const destination = target.slots.get(slot)
     if (destination === undefined) continue
     lines.push('', `**${text(slot)} → ${text(destination)}**`, '')
-    if (sharesSlot(slot, group.length))
+    if (sharesSlot(slot, group.length)) {
       lines.push(
-        ['One configured selection for all calls through this slot.', ...declarations].join(' '),
+        'One configured selection for all calls through this slot. ' +
+          'To redirect selected calls, choose a different slot at those sites.',
         '',
       )
+      if (target.slotDeclarationPath && target.declarationPath) {
+        lines.push(
+          'For a new slot, declare it in ' +
+            sourcePathLink(target.slotDeclarationPath) +
+            ' and select its target in ' +
+            sourcePathLink(target.declarationPath) +
+            '.',
+          '',
+        )
+      } else if (declarations.length) lines.push(declarations.join(' · '), '')
+    }
     for (const { dispatch, requestMetadata } of group) {
       if (!dispatch) continue
       const key = JSON.stringify([dispatch.path, dispatch.line, dispatch.column])
