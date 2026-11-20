@@ -224,23 +224,8 @@ export function renderFlowOrientation(
         (peerDeclaration ? (settings ? '' : ' · same settings') + ' · ' + peerDeclaration : '')
       )
     })
-    if (
-      options.declarationLink &&
-      declaration &&
-      selected.settingsSchemaPath !== undefined &&
-      otherUses.some((use) => use.declarationPath !== undefined)
-    ) {
-      const schema = selected.settingsSchemaPath
-      const schemaFact =
-        schema === null
-          ? 'This Flow has no settings schema. Declare the value in its `settings.schema.json` before setting it in the Binding.'
-          : 'Settings schema · ' + options.declarationLink(schema) + '.'
-      lines.push(
-        '**Per-Binding behavior** · Set `settings` in the affected Binding and read the value in the shared Flow through `run.settings`. The invocation supplies `run.input` separately.',
-        schemaFact,
-        '',
-      )
-    }
+    if (options.declarationLink && otherUses.some((use) => use.declarationPath !== undefined))
+      lines.push(...renderBindingSettings(selected, text, options.declarationLink))
   }
   appendList(
     'Configured handoffs',
@@ -252,6 +237,25 @@ export function renderFlowOrientation(
       sourceLabel(edge, text),
   )
   return lines
+}
+
+export function renderBindingSettings(
+  target: ConfiguredTarget,
+  text: (value: string) => string,
+  declarationLink: (path: string) => string,
+): string[] {
+  if (target.declarationPath === undefined || target.settingsSchemaPath === undefined) return []
+  const schema = target.settingsSchemaPath
+  return [
+    'Settings schema · ' +
+      (schema === null
+        ? 'For a new setting, create ' +
+          text(target.implementation + '/settings.schema.json') +
+          '. `FLOW.contract.json` defines the invocation boundary.'
+        : declarationLink(schema) + '.'),
+    '**Per-Binding behavior** · Set `settings` in the affected Binding. The shared Flow reads `run.settings` and receives invocation input through `run.input`.',
+    '',
+  ]
 }
 
 function slotDifference(
