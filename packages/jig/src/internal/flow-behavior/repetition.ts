@@ -1,9 +1,18 @@
 import ts from 'typescript-parser'
 import type { AuthoredRepeat } from './model.js'
 import type { SourceIndex } from './source.js'
-import { constInitializer, lexicalGuards, shortText, sourceNodes, unwrap } from './source-syntax.js'
+import {
+  branchExit,
+  constInitializer,
+  lexicalGuards,
+  priorBranchExits,
+  shortText,
+  sourceNodes,
+  unwrap,
+} from './source-syntax.js'
 
 const transferLimit = 5
+const lexicalGuardLimit = 4
 
 export function enclosingLoop(node: ts.Node): ts.IterationStatement | undefined {
   for (let parent = node.parent; parent && !ts.isFunctionLike(parent); parent = parent.parent)
@@ -48,10 +57,22 @@ export function describeRepeat(source: SourceIndex, loop: ts.IterationStatement)
             },
           }),
     }
+    const enclosing = lexicalGuards(statement, site, loop)
+    const guards = enclosing.slice(-lexicalGuardLimit)
+    const omittedGuards = enclosing.length - guards.length
+    if (handler?.kind === 'catch')
+      for (const exit of priorBranchExits(statement, handler.node).slice(0, 2))
+        guards.push({
+          site: site(exit.condition),
+          code: shortText(exit.condition),
+          taken: !exit.taken,
+          unresolved: true,
+        })
     choices.push({
       kind,
       statement: { code: shortText(statement), site: site(statement) },
-      guards: lexicalGuards(statement, site, loop).slice(-2),
+      guards,
+      ...(omittedGuards ? { omittedGuards } : {}),
       ...(region ? { region } : {}),
     })
   }
@@ -67,12 +88,24 @@ export function describeRepeat(source: SourceIndex, loop: ts.IterationStatement)
   const following = siblings
     ?.slice(at + 1, at + 9)
     .find((statement) => ts.isReturnStatement(statement) || ts.isThrowStatement(statement))
+  const tail = ts.isBlock(loop.statement) ? loop.statement.statements.at(-1) : loop.statement
+  // The false branch of a trailing exit check reaches the iteration boundary.
+  const iterationEnd =
+    tail && ts.isIfStatement(tail) && !tail.elseStatement && branchExit(tail.thenStatement)
+      ? {
+          site: site(tail.expression),
+          code: shortText(tail.expression),
+          taken: false,
+          unresolved: true,
+        }
+      : undefined
   return {
     site: site(loop),
     header: header.length <= 140 ? header : header.slice(0, 139) + '…',
     ...(initializer && bound ? { control: { code: shortText(bound), site: site(bound) } } : {}),
     actions: shown,
     omittedActions: count - shown.length,
+    ...(iterationEnd ? { iterationEnd } : {}),
     ...(following ? { following: { code: shortText(following), site: site(following) } } : {}),
   }
 }

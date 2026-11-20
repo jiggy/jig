@@ -74,7 +74,7 @@ export function branchExit(statement: ts.Statement | undefined) {
 }
 
 /** Earlier sibling exits in the same function. An exit bypasses the later statement in that block. */
-export function priorBranchExits(expression: ts.Expression) {
+export function priorBranchExits(start: ts.Node, boundary?: ts.Node) {
   const exits: {
     condition: ts.Expression
     taken: boolean
@@ -82,8 +82,8 @@ export function priorBranchExits(expression: ts.Expression) {
   }[] = []
   let budget = 40
   for (
-    let node: ts.Node = expression;
-    node.parent && !ts.isFunctionLike(node) && budget > 0;
+    let node = start;
+    node.parent && node !== boundary && !ts.isFunctionLike(node) && budget > 0;
     node = node.parent
   ) {
     const block: ts.Node = node.parent

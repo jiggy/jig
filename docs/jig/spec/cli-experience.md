@@ -1074,7 +1074,8 @@ An opaque loop can leave its body or continuation unknown.
 
 If analysis stops before or within a loop, a source view can link its configured call sites to the loop header and nearby control statements.
 It can show an identifiable loop bound declaration and a later exit in the same block.
-A transfer inside a catch can link the single statement protected by its try block.
+A transfer inside a catch can link the single statement protected by its try block and nearby checks.
+A trailing one-sided exit check can show its other branch reaching the iteration boundary.
 These source locations leave reachability and iteration counts unresolved.
 
 The analyzer follows data-only callbacks on small known arrays, including explicit validation failures.

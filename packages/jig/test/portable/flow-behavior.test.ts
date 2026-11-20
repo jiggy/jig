@@ -2573,12 +2573,15 @@ test('after a cutoff a repeat links its configured call, loop condition and auth
       opaque()
       for (let attempt = 0; attempt < attempts; attempt++) {
         const review = await run.call({slot:'converter', operationId:String(attempt), input:{}})
-        if (review.outcome === 'blocked') return review
+        if (run.settings.useSessions) {
+          if (attempt === 0) prepareSession()
+          else if (!review.output.retained) return review
+        }
         try {
           checkProposal(review.output)
         } catch (error) {
-          if (review.output.retry) continue
-          throw error
+          if (!review.output.retry) throw error
+          continue
         }
         switch (review.output.kind) { case 'retry': break }
         function later() { throw new Error('outside the loop transfer') }
@@ -2595,21 +2598,34 @@ test('after a cutoff a repeat links its configured call, loop condition and auth
   expect(repeat).toMatchObject({ slot: 'converter', target: 'flow:flows/convert' })
   expect(repeat.loop.actions.map(({ kind }) => kind)).toEqual([
     'return',
-    'continue',
     'throw',
+    'continue',
     'return',
   ])
-  expect(repeat.loop.actions[1]?.region?.protectedStatement?.code).toBe(
+  expect(repeat.loop.actions[2]?.region?.protectedStatement?.code).toBe(
     'checkProposal(review.output)',
   )
+  expect(repeat.loop.actions[2]?.guards).toMatchObject([
+    { code: '!review.output.retry', taken: false },
+  ])
+  expect(repeat.loop.actions[0]?.guards).toMatchObject([
+    { code: 'run.settings.useSessions', taken: true },
+    { code: 'attempt === 0', taken: false },
+    { code: '!review.output.retained', taken: true },
+  ])
+  expect(repeat.loop.iterationEnd).toMatchObject({ code: 'review.output.accepted', taken: false })
   expect(repeat.loop.control?.code).toBe('attempts = run.settings.attempts ?? 2')
   expect(repeat.loop.following?.code).toContain("state:'exhausted'")
   const section = renderFlowBehavior(report).split('#### Repeated handoffs near coverage gaps')[1]
   expect(section).toMatch(/for[^\n]+flows\/import\/FLOW.ts#L4/)
   expect(section).toContain('converter → flow:flows/convert')
   expect(section).toContain('Reachability and iteration counts remain unresolved.')
-  expect(section).toContain('Later in the same block, return')
-  expect(section).toMatch(/continue[^\n]+catch[^\n]+for checkProposal/)
+  expect(section).toContain('Later in the same block after the loop | return')
+  expect(section).toMatch(
+    /catch[^\n]+for checkProposal[^\n]+retry is false[^\n]+Continue this loop/,
+  )
+  expect(section).toMatch(/accepted is true[^\n]+Return from this method/)
+  expect(section).toMatch(/accepted is false[^\n]+Reach the end of this iteration/)
   const application = renderFlowBehavior(analyzeFlowBehavior({ ...input, focus: undefined }))
   const fragment = application.match(
     /converter → \[flow:flows\/convert\]\(#(target-[a-f0-9]+)\)/,

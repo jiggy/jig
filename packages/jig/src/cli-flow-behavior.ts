@@ -1887,11 +1887,19 @@ function authoredRepeats(scope: Scope, linkedTargets?: ReadonlySet<string>): str
     'Source locations for loop control. Reachability and iteration counts remain unresolved.',
     '',
   ]
+  const guardText = (guard: BehaviorGuard) =>
+    text(guard.code) + ' is ' + guard.taken + ' (' + sourceLink(guard.site) + ')'
+  const transfers = {
+    break: 'Leave this loop',
+    continue: 'Continue this loop',
+    return: 'Return from this method',
+    throw: 'Throw here',
+  }
   for (const [loop, calls] of loops) {
-    lines.push('- ' + text(loop.header) + ' (' + sourceLink(loop.site) + ')')
+    lines.push('**Loop** · ' + text(loop.header) + ' (' + sourceLink(loop.site) + ')', '')
     if (loop.control)
       lines.push(
-        '  - Loop condition uses ' +
+        '- Bound declaration · ' +
           text(loop.control.code) +
           ' (' +
           sourceLink(loop.control.site) +
@@ -1901,49 +1909,64 @@ function authoredRepeats(scope: Scope, linkedTargets?: ReadonlySet<string>): str
       const target = linkedTargets?.has(call.target)
         ? '[' + text(call.target) + '](#' + idFor('target', call.target) + ')'
         : text(call.target)
-      lines.push('  - ' + text(call.slot) + ' → ' + target + ' (' + sourceLink(call.site) + ')')
+      lines.push(
+        '- Repeated call · ' +
+          text(call.slot) +
+          ' → ' +
+          target +
+          ' (' +
+          sourceLink(call.site) +
+          ')',
+      )
     }
+    lines.push('', '| Source condition or region | What follows |', '| --- | --- |')
     for (const action of loop.actions) {
       const region = action.region
       const protectedStatement = region?.protectedStatement
-      const where =
-        region === undefined
-          ? ''
-          : ' · ' +
-            region.kind +
+      const checks = action.guards.map(guardText)
+      if (region)
+        checks.unshift(
+          region.kind +
             ' (' +
             sourceLink(region.site) +
             ')' +
-            (protectedStatement === undefined
-              ? ''
-              : ' for ' +
+            (protectedStatement
+              ? ' for ' +
                 text(protectedStatement.code) +
                 ' (' +
                 sourceLink(protectedStatement.site) +
-                ')')
-      const checks = action.guards.map(
-        (guard) => text(guard.code) + ' is ' + guard.taken + ' (' + sourceLink(guard.site) + ')',
-      )
+                ')'
+              : ''),
+        )
+      if (action.omittedGuards) checks.unshift(action.omittedGuards + ' outer checks omitted')
+      const statement = text(action.statement.code) + ' (' + sourceLink(action.statement.site) + ')'
       lines.push(
-        '  - ' +
-          (checks.length ? 'When ' + checks.join(' and ') + ', ' : '') +
-          text(action.statement.code) +
-          ' (' +
-          sourceLink(action.statement.site) +
-          ')' +
-          where,
+        '| ' +
+          (checks.join(' · ') || 'Within loop body') +
+          ' | ' +
+          transfers[action.kind] +
+          ' · ' +
+          statement +
+          ' |',
       )
     }
-    if (loop.omittedActions)
-      lines.push('  - ' + loop.omittedActions + ' additional control statements omitted.')
+    if (loop.iterationEnd)
+      lines.push(
+        '| ' +
+          guardText(loop.iterationEnd) +
+          ' | Reach the end of this iteration. The loop condition determines whether the call can repeat. |',
+      )
     if (loop.following)
       lines.push(
-        '  - Later in the same block, ' +
+        '| Later in the same block after the loop | ' +
           text(loop.following.code) +
           ' (' +
           sourceLink(loop.following.site) +
-          ')',
+          ') |',
       )
+    lines.push('')
+    if (loop.omittedActions)
+      lines.push(loop.omittedActions + ' additional control statements omitted.', '')
   }
   if (scope.authoredRepeatsOmitted)
     lines.push('- ' + scope.authoredRepeatsOmitted + ' additional loop call sites omitted.')
