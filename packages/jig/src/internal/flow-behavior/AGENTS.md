@@ -80,6 +80,8 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
   A return may identify its original Call step when it returns the same modeled object.
   Keep this annotation outside route identity and reproduce conditional probes through intermediate callers.
 - Explain required slot resolution from captured invocation requirements independently of call reachability.
+- Use the captured target inventory to locate a direct entry for a focused handoff's implementation.
+  Keep its selector separate from the configured destination and keep the selected scope intact.
 - Preserve authored call sites after a cut in their active function frame. Keep lexical
   conditions and result checks separate from interpreted routes.
   A direct prior branch exit can explain bypassed sibling call sites without resolving reachability.

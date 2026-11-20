@@ -2812,7 +2812,11 @@ test('direct entry navigation retains the selected Binding and marks a shared wr
   expect(write).toContain('binding:code via converter')
   expect(write).not.toContain('binding:audit via converter')
   const aliasCaller = renderFlowBehavior(
-    analyzeFlowBehavior({ ...configured, focus: alternate.id }),
+    analyzeFlowBehavior({
+      ...configured,
+      focus: alternate.id,
+      visible: configured.visible.filter((id) => id !== direct.id),
+    }),
   )
   expect(aliasCaller).toContain('| converter | binding:special | flow:flows/convert |')
   expect(aliasCaller).not.toContain('**Direct invocation** · Starts at flow:flows/convert')
