@@ -187,6 +187,16 @@ export function selectCallSites(
   return { sites, omittedBySlot }
 }
 
+function isInputLiteral(expression: ts.Expression): boolean {
+  return (
+    ts.isStringLiteralLike(expression) ||
+    ts.isNumericLiteral(expression) ||
+    expression.kind === ts.SyntaxKind.TrueKeyword ||
+    expression.kind === ts.SyntaxKind.FalseKeyword ||
+    expression.kind === ts.SyntaxKind.NullKeyword
+  )
+}
+
 function selectedInputs(
   source: Source,
   input: ts.Expression | undefined,
@@ -213,21 +223,24 @@ function selectedInputs(
       ts.isConditionalExpression(choice) ||
       (ts.isBinaryExpression(choice) &&
         choice.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
-    if (
-      !selects &&
-      !ts.isStringLiteralLike(choice) &&
-      !ts.isNumericLiteral(choice) &&
-      choice.kind !== ts.SyntaxKind.TrueKeyword &&
-      choice.kind !== ts.SyntaxKind.FalseKeyword &&
-      choice.kind !== ts.SyntaxKind.NullKeyword
-    )
-      return
+    if (!selects && !isInputLiteral(choice)) return
+    const branches =
+      ts.isConditionalExpression(choice) &&
+      isInputLiteral(unwrap(choice.whenTrue)) &&
+      isInputLiteral(unwrap(choice.whenFalse))
+        ? {
+            condition: { code: shortText(choice.condition), site: source.site(choice.condition) },
+            whenTrue: shortText(unwrap(choice.whenTrue)),
+            whenFalse: shortText(unwrap(choice.whenFalse)),
+          }
+        : undefined
     const possibleOverride = optional.get(name) ?? dynamic
     fields.push({
       field: name,
       kind: selects ? 'choice' : 'literal',
       code: shortText(choice),
       site: source.site(choice),
+      ...(branches ? { branches } : {}),
       ...(guard ? { guard } : {}),
       ...(possibleOverride ? { possibleOverride } : {}),
     })

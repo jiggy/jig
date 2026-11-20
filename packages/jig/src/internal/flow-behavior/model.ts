@@ -227,6 +227,11 @@ export interface AuthoredCallSelection {
 export interface AuthoredInputField extends SourceExpression {
   readonly field: string
   readonly kind: 'literal' | 'choice'
+  readonly branches?: {
+    readonly condition: SourceExpression
+    readonly whenTrue: string
+    readonly whenFalse: string
+  }
   readonly guard?: BehaviorGuard
   readonly possibleOverride?: SourceSite
 }

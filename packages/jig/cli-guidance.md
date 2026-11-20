@@ -300,7 +300,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Put the slot declaration and Binding wiring beside calls that share a selection.
   On a focused callee, show decisions for slots that select that exact target beside the caller's configured incoming slots.
   Give the count and up to three source links for sites beyond the detailed view.
-  Show differing literal fields and source conditions together with possible later overrides.
+  Show differing literals, the branches selecting a literal field value, and possible later overrides.
 
   Show the local helper's request location beside the call that selects a configured slot.
   Show authored request metadata and the child input location under separate labels.
