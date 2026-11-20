@@ -197,7 +197,6 @@ remain supported and are not rewritten by a review default.
   installations or authentication.
 
   Every scaffold includes a project-owned `AGENTS.md` with inspection guidance for requests, Flow files, and Binding declarations.
-  It explains how to give one caller its own configured use of a shared Flow.
   The [agent guide](../../docs/jig/for-agents.md) gives existing projects the same text for their local launcher.
   The greeting and each `jig new` Flow have their own editable `AGENTS.md` beside `FLOW.ts`.
 
