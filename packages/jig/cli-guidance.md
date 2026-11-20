@@ -324,6 +324,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   Lead with route consequences and attach the conditions that select them.
   Show the source of the final progress request beside the reported count.
+  Put direct invocation and represented callers beside the selected Flow's first write attempts.
+  Keep write locations, earlier conditions, and later actions tied to the same path.
 
   Name the passing and rejecting branches of a direct validation guard.
   Show source locations and whether the displayed routes resolve each predicate.

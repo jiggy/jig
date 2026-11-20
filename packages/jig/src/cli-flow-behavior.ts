@@ -746,6 +746,105 @@ function nextSteps(after: readonly BehaviorStep[], linkSource = false): string {
   )
 }
 
+function renderFirstWrites(report: BehaviorReport, scope: Scope, callers: CallDetails): string[] {
+  type WritePath = {
+    write: Extract<BehaviorStep, { kind: 'effect' }>
+    checks: readonly BehaviorGuard[]
+    after: readonly BehaviorStep[]
+    entry: string
+  }
+  const sites = new Map<string, Map<string, WritePath>>()
+  let limited = false
+  function add(route: Route, key: string, entry: string, after?: readonly BehaviorStep[]) {
+    const index = route.findIndex((step) => writesFile(step) && step.owner === scope.target)
+    const write = route[index]
+    if (write?.kind !== 'effect') return
+    const id = JSON.stringify(write.site)
+    let paths = sites.get(id)
+    if (!paths) {
+      if (sites.size >= 4) {
+        limited = true
+        return
+      }
+      paths = new Map()
+      sites.set(id, paths)
+    }
+    if (!paths.has(key) && paths.size >= 8) {
+      limited = true
+      return
+    }
+    const tail =
+      after ??
+      route.slice(index + 1).filter((step) => step.kind === 'condition' || step.kind === 'end')
+    const previous = paths.get(key)?.after.at(-1)
+    const terminal = tail.at(-1)
+    if (
+      paths.has(key) &&
+      (previous?.kind !== 'end' ||
+        previous.completion !== 'unknown' ||
+        (terminal?.kind === 'end' && terminal.completion === 'unknown'))
+    )
+      return
+    const checks = route.slice(0, index).filter((step) => step.kind === 'condition')
+    paths.set(key, {
+      write,
+      checks: [...checks, ...(write.guards ?? [])].slice(-2),
+      after: tail,
+      entry,
+    })
+  }
+  for (const route of scope.routes)
+    add(route, 'direct', 'Direct invocation of ' + text(scope.target))
+  for (const [anchor, cases] of callers) {
+    for (const { call, after } of cases.values()) {
+      const child = report.childPaths[call.childPath ?? -1]
+      if (!child) continue
+      const qualifier =
+        call.completion === 'if-returned'
+          ? ' · conditional child return'
+          : call.completion === 'if-failed'
+            ? ' · child call fails'
+            : ''
+      add(
+        child.steps,
+        anchor + ':' + call.completion,
+        text(call.caller + ' via ' + call.slot + qualifier) + ' (' + sourceLink(call.site) + ')',
+        after,
+      )
+    }
+  }
+  if (!sites.size) return []
+  const lines = [
+    '### First writes in this Flow',
+    '',
+    'These examples link the first modeled write attempt in this Flow to how it was entered.',
+    '',
+  ]
+  for (const paths of sites.values()) {
+    const origin = paths.values().next().value!.write.site
+    lines.push(
+      '**Attempts writeFile** (' + sourceLink(origin) + ')',
+      '',
+      '| Entry | Checks before the write | Destination | Later checks or actions |',
+      '| --- | --- | --- | --- |',
+    )
+    for (const { entry, checks, write, after } of paths.values())
+      lines.push(
+        '| ' +
+          [
+            entry,
+            checks.map(linkedCheck).join(' → ') || '—',
+            text(write.detail),
+            nextSteps(after, true) || 'Unresolved',
+          ].join(' | ') +
+          ' |',
+      )
+    lines.push('')
+  }
+  if (limited) lines.push('Some write sites or caller paths exceed the display allowance.', '')
+  return lines
+}
+
 /** Read both directions from the same caller-local case used by the call expansion. */
 function renderCallContinuations(
   details: CallDetails,
@@ -1557,6 +1656,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       focus,
     )
     lines.push(
+      ...renderFirstWrites(report, selected, callers.shown),
       ...renderCallContinuations(callers.shown, targets, true, callers.omitted),
       ...renderNestedContinuations(report, focus, targets),
       ...renderCallContinuations(details.shown, targets, false),
