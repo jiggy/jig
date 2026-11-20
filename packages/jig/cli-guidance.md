@@ -325,6 +325,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   Follow retained nested call evaluations into intermediate returns and the outer caller's next action.
   Identify direct forwarding through result identity and preserve the intermediate outcome otherwise.
+  Lead with shared caller decision sites and list the configured paths that reach each displayed case.
+  Keep exact callable selectors visible for Bindings that also receive calls.
   Keep the configured call site and inherited assumptions on each hop.
   Disclose projection limits without joining unrelated case variants.
 

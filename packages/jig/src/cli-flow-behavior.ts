@@ -34,6 +34,12 @@ type CallCase = {
   representativeChecks?: true
 }
 type CallDetails = ReadonlyMap<string, ReadonlyMap<string, CallCase>>
+type CallerReaction = {
+  result: Call
+  caller: Call
+  via: readonly Call[]
+  after: readonly BehaviorStep[]
+}
 
 /** The browser uses the same selected source paths as the plain Markdown view. */
 export function projectSourceBehavior(
@@ -939,6 +945,7 @@ function renderCallContinuations(
   targets: ReadonlyMap<string, BehaviorTarget>,
   incoming: boolean,
   omitted = 0,
+  reactions?: CallerReaction[],
 ): string[] {
   const lines: string[] = []
   for (const cases of details.values()) {
@@ -990,6 +997,7 @@ function renderCallContinuations(
       const key = JSON.stringify([title, steps, conditions])
       if (seen.has(key)) continue
       seen.add(key)
+      reactions?.push({ result: call, caller: call, via: [], after })
       const result = incoming ? title : '[' + title + '](#' + id + ')'
       lines.push('| ' + result + ' | ' + steps + ' | ' + conditions + ' |')
     }
@@ -1041,6 +1049,7 @@ function renderNestedContinuations(
   report: BehaviorReport,
   focus: string,
   targets: ReadonlyMap<string, BehaviorTarget>,
+  reactions: CallerReaction[],
 ): string[] {
   // Each retained child path references only previously retained paths. Reuse
   // suffixes while keeping the actual outer call and its selected child path.
@@ -1068,7 +1077,10 @@ function renderNestedContinuations(
 
   const groups = new Map<
     string,
-    { call: Call; rows: Map<string, { outcome: string; call: Call; established: boolean }> }
+    {
+      call: Call
+      rows: Map<string, { outcome: string; reaction: CallerReaction; established: boolean }>
+    }
   >()
   const resultLabel = (call: Call) =>
     text((call.completion === 'if-returned' ? 'if admitted ' : 'returns ') + result(call.returned!))
@@ -1125,7 +1137,7 @@ function renderNestedContinuations(
           if (group.rows.size < 32 || group.rows.has(row))
             group.rows.set(row, {
               outcome: first.completion + ':' + first.returned!.outcome,
-              call,
+              reaction: { result: first, caller: call, via: chain.map((hop) => hop.call), after },
               established,
             })
           else limited = true
@@ -1148,6 +1160,8 @@ function renderNestedContinuations(
         distinct.set(outcome, row)
     }
     const shown = [...new Set([...distinct.values(), ...rows.keys()])].slice(0, callCaseLimit)
+    const selected = shown.map((row) => rows.get(row)!.reaction)
+    reactions.push(...selected)
     lines.push(
       '**' +
         text(call.caller + ' · ' + call.slot + ' → ' + call.target) +
@@ -1158,7 +1172,7 @@ function renderNestedContinuations(
       ...continuationContracts(
         call,
         targets,
-        shown.map((row) => rows.get(row)!.call),
+        selected.map(({ caller }) => caller),
       ),
       '| Result from ' +
         text(focus) +
@@ -1174,6 +1188,84 @@ function renderNestedContinuations(
   }
   if (limited) lines.push('Some nested caller paths exceed the display allowance.', '')
   return lines
+}
+
+function renderResultDecisions(
+  reactions: readonly CallerReaction[],
+  targets: ReadonlyMap<string, BehaviorTarget>,
+): string[] {
+  const groups = new Map<string, { result: string; action: string; callers: Set<string> }>()
+  for (const { result: origin, caller, via, after } of reactions) {
+    const next = after.at(-1)
+    if (next?.kind !== 'call' && next?.kind !== 'end') continue
+    const localChecks = after
+      .filter(
+        (step): step is Extract<BehaviorStep, { kind: 'condition' }> =>
+          step.kind === 'condition' &&
+          (step.site.path === next.site.path || step.site.path === caller.site.path),
+      )
+      .reverse()
+    const rejection =
+      next.kind === 'end' && next.completion === 'throw'
+        ? localChecks.find((step) => step.validation && step.taken)
+        : undefined
+    const check = rejection ?? localChecks.find((step) => !step.unresolved) ?? localChecks[0]
+    const write = after.find(writesFile)
+    if (!check && !write && next.kind === 'end' && next.completion === 'return') continue
+
+    const given = (call: Call) =>
+      (call.completion === 'if-returned' ? 'If admitted ' : 'Returns ') + result(call.returned!)
+    const from = given(origin)
+    const received = given(caller)
+    const value = text(from === received ? from : from + ' → ' + received)
+    const boundary = targets.get(caller.caller)
+    const outcome = caller.returned!.outcome
+    const action = nextSteps(
+      after.filter((step) => step === check || step === write || step === next),
+      true,
+    )
+    const contract =
+      boundary && !boundary.outcomes.some((name) => JSON.stringify(name) === outcome)
+        ? '<br>Caller result contract · ' + resultContract(boundary)
+        : ''
+    const key = JSON.stringify([caller.site, value, action, contract])
+    const entry = groups.get(key) ?? {
+      result: value,
+      action: action + contract,
+      callers: new Set<string>(),
+    }
+    entry.callers.add(
+      text(caller.caller + ' · ' + caller.slot) +
+        (via.length
+          ? ' via ' +
+            via
+              .map((hop) => text(hop.caller + ' · ' + hop.slot))
+              .reverse()
+              .join(' → ')
+          : ''),
+    )
+    groups.set(key, entry)
+  }
+  if (!groups.size) return []
+  const rows = [...groups.values()]
+  return [
+    '### Where callers act on this result',
+    '',
+    '| Child result | Configured paths to this decision | Source check and next action |',
+    '| --- | --- | --- |',
+    ...rows
+      .slice(0, 8)
+      .map(
+        ({ result: value, callers, action }) =>
+          '| ' + value + ' | ' + [...callers].join('<br>') + ' | ' + action + ' |',
+      ),
+    '',
+    'The caller tables below retain the checks and intermediate returns for each path.',
+    ...(rows.length > 8
+      ? [rows.length - 8 + ' additional decisions are available in those tables.']
+      : []),
+    '',
+  ]
 }
 
 function renderCallDetails(
@@ -1865,6 +1957,10 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   const targets = new Map(inventory.map((target) => [target.id, target]))
   const target = targets.get(focus)
   const independent = inventory.filter((item) => item.id.startsWith('flow:')).map((item) => item.id)
+  const calledBindings = new Set(inventory.flatMap((item) => [...item.slots.values()]))
+  const bindingEntries = inventory
+    .filter((item) => item.id.startsWith('binding:') && calledBindings.has(item.id))
+    .map((item) => item.id)
   lines.push(
     '## ' + text(focus),
     '',
@@ -1875,19 +1971,14 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     ...(independent.length
       ? ['**Direct Flow targets in this scope** · ' + brief(independent), '']
       : []),
+    ...(bindingEntries.length
+      ? ['**Binding targets also selected by caller slots** · ' + brief(bindingEntries), '']
+      : []),
     ...importBoundaryNotice(report),
   )
   const selected = scopes.find((scope) => scope.target === focus)
-  lines.push(...incomingCallDecisions(scopes, targets, focus))
+  const incoming = incomingCallDecisions(scopes, targets, focus)
   if (selected) {
-    lines.push(
-      ...configuredChecks(report, selected, target),
-      ...renderCallSelections(selected, target),
-    )
-    lines.push(...renderCallReferences([selected], inventory))
-    lines.push(...authoredRepeats(selected))
-    lines.push(...authoredHandoffs(selected, undefined, target))
-    lines.push(...contractChecks(selected))
     const routes = selectRoutes(selected)
     const details = callDetails(report, [...routes, ...selected.alternatives])
     const callers = callDetails(
@@ -1907,6 +1998,19 @@ export function renderFlowBehavior(report: BehaviorReport): string {
         }),
       focus,
     )
+    const reactions: CallerReaction[] = []
+    const direct = renderCallContinuations(callers.shown, targets, true, callers.omitted, reactions)
+    const nested = renderNestedContinuations(report, focus, targets, reactions)
+    lines.push(
+      ...renderResultDecisions(reactions, targets),
+      ...incoming,
+      ...configuredChecks(report, selected, target),
+      ...renderCallSelections(selected, target),
+    )
+    lines.push(...renderCallReferences([selected], inventory))
+    lines.push(...authoredRepeats(selected))
+    lines.push(...authoredHandoffs(selected, undefined, target))
+    lines.push(...contractChecks(selected))
     const writesContract = writerContract(report.inputFields, target)
     const firstWrites = renderFirstWrites(
       selected,
@@ -1916,8 +2020,8 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     )
     lines.push(
       ...(firstWrites.length ? firstWrites : authoredFileWrites(selected, writesContract)),
-      ...renderCallContinuations(callers.shown, targets, true, callers.omitted),
-      ...renderNestedContinuations(report, focus, targets),
+      ...direct,
+      ...nested,
       ...renderCallContinuations(details.shown, targets, false),
     )
     if (routes.length) {
@@ -1951,7 +2055,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     }
     lines.push(...evidence(routes))
     lines.push(...renderCallDetails(report, details.shown, details.omitted))
-  }
+  } else lines.push(...incoming)
   lines.push('## Configured targets and declared boundaries', '')
   if (!inventory.length) lines.push('The captured project has no configured targets.', '')
   for (const target of inventory) {

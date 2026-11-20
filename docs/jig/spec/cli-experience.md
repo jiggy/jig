@@ -1116,6 +1116,7 @@ It links local captured contract files for both.
 When a displayed child outcome is absent from the caller's declarations, the view identifies the `outcomes` entry needed to forward it.
 It also directs the reader to check that the caller's `result` schema, when present, accepts the returned shape.
 The focused report lists the direct Flow targets in scope.
+It also names the exact Binding selectors that other targets call in that scope.
 
 The callee view also shows retained paths through intermediate callers to the next configured caller's decision.
 The intermediate and outer results come from the same modeled call evaluation.
@@ -1123,6 +1124,11 @@ An intermediate return labeled as forwarding uses the child result itself.
 Other intermediate returns retain their own values and represented checks.
 Hypothetical child outcomes remain conditional at subsequent handoffs.
 Within each displayed outcome, the view prefers a modeled next call or exit over an unresolved continuation.
+
+The focused callee can lead with source checks and next actions from the retained caller paths.
+When direct and intermediate routes have the same displayed decision, the view lists their configured paths beside it.
+The summary preserves conditional admissions, intermediate result changes, and represented writes preceding the next action.
+The detailed continuations retain each call's checks and configuration.
 
 Focused callee inspection analyzes its configured upstream callers before the remaining visible targets.
 It uses the application inspection allowance for this work and retains the per-target bounds.

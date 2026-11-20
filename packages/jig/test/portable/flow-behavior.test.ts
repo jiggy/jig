@@ -385,6 +385,7 @@ test('a focused result follows exact nested paths through configured forwarding 
   }))
   const targets = [
     ...unrelated,
+    root('binding:outer-direct', leaf.id),
     root('binding:outer-forward', forward.id),
     root('binding:outer-translate', translate.id),
     forward,
@@ -404,10 +405,20 @@ test('a focused result follows exact nested paths through configured forwarding 
       [credit.implementation, ready],
     ]),
   })
+  const rendered = renderFlowBehavior(report)
+  const decisions = rendered.split('### Where callers act on this result')[1]?.split('### ')[0]
+  expect(rendered).toContain(
+    '**Binding targets also selected by caller slots** · binding:forward, binding:translate',
+  )
+  expect(decisions).toMatch(
+    /If admitted "blocked"[^\n]+binding:outer-direct[^\n]+binding:outer-forward[^\n]+binding:forward[^\n]+status = "paused"/,
+  )
+  expect(decisions).toMatch(
+    /If admitted "blocked"[^\n]+status = "review"[^\n]+binding:outer-translate/,
+  )
+  expect(decisions).toMatch(/Returns "done"[^\n]+binding:outer-direct[^\n]+Call credit/)
   const paths =
-    renderFlowBehavior(report)
-      .split('### Through intermediate callers')[1]
-      ?.split('### Consequences')[0] ?? ''
+    rendered.split('### Through intermediate callers')[1]?.split('### Consequences')[0] ?? ''
   const forwarded = paths
     .split('**binding:outer-forward · converter → binding:forward**')[1]
     ?.split('**binding:')[0]
@@ -2174,6 +2185,25 @@ test('a child write remains visible before a later child failure', () => {
   expect(route?.map((step) => step.kind)).toEqual(['effect', 'call', 'end'])
   expect(route?.[1]).toMatchObject({ kind: 'call', completion: 'if-failed' })
   expect(route?.[2]).toMatchObject({ kind: 'end', completion: 'throw' })
+})
+
+test('the caller decision summary retains a write before the later rejecting check', () => {
+  const input = snapshot(
+    method(handlerSource(`return { outcome: 'done', output: {} }`)),
+    method(
+      `import { writeFile } from 'node:fs/promises'; ${handlerSource(`
+      await run.call({ slot: 'converter', operationId: 'convert', input: {} })
+      await writeFile('preview.json', 'sample')
+      if (!run.input.valid) throw new Error('Metadata rejected')
+      return { outcome: 'done', output: {} }
+    `)}`,
+    ),
+  )
+  const report = renderFlowBehavior(analyzeFlowBehavior({ ...input, focus: 'flow:flows/convert' }))
+  const decisions = report.split('### Where callers act on this result')[1]?.split('### ')[0]
+  expect(decisions).toMatch(
+    /Attempts writeFile[^\n]+run\.input\.valid[^\n]+Throws: Metadata rejected/,
+  )
 })
 
 test('a grandchild contract alternative remains conditional in its callers', () => {
