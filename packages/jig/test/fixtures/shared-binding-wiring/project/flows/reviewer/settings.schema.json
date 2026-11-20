@@ -1,0 +1,15 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-0.json",
+  "type": "object",
+  "properties": {
+    "policy": {
+      "enum": ["standard", "specialist"]
+    },
+    "minimumWords": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": ["policy", "minimumWords"],
+  "additionalProperties": false
+}

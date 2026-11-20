@@ -8,6 +8,12 @@ Package-path diagnostics supply a copyable command without treating source paths
 
 `portable/activation-admission-store.test.ts` verifies retained topology without mutable-source reads or state writes.
 `host/installed-cli-lifecycle.test.ts` checks pre-approval topology and current versus approved source identity through the installed CLI.
+
+`host/installed-shared-binding-wiring.test.ts` runs the standalone publishing consumer on its frozen Jig archive.
+The consumer reviews a shared producer, isolates the offer edit, and checks book and direct routes.
+The wrong-scope case must fail the preserved book assertion after an otherwise successful Run.
+The host suite requires native prerequisites and compares owner residue.
+
 `host/project-author-evaluator.test.ts` checks current Bindings, invalid declarations, and absent project-state writes through contained evaluation.
 It also checks exact Jig requirements before evaluating working-tree declarations.
 The installed lifecycle case verifies relative Flow selectors in current and approved inspection.
@@ -148,7 +154,7 @@ Delivery inspection verifies that raster reservations cannot consume the separat
 - `experimental/image-preview.test.ts` owns the explicitly opted-in, unqualified
   thread-renderer candidate. It is not part of release qualification.
 - `fixtures/` and root `*.fixture.ts` modules own shared construction and
-  assertions. They register no tests and acquire no native owners on import.
+  assertions. Imported helpers register no tests and acquire no native owners.
   Each case owns fresh project capture, admission, Run, durable state and
   cleanup. The private `fixtures/incident-brief/test/` application owns
   separately registered deterministic method cases in the applications profile.
@@ -820,6 +826,7 @@ weights only place work. They cannot change inventory or evidence.
 
 ## Child DOX Index
 
+- [fixtures/shared-binding-wiring/AGENTS.md](fixtures/shared-binding-wiring/AGENTS.md) — Standalone public consumer for shared producer edits.
 - [fixtures/host-foundation/AGENTS.md](fixtures/host-foundation/AGENTS.md) —
   Real installed adaptive, noncoding and evaluation deadline consumers.
   Native execution and unfamiliar-consumer evidence remain separate from source construction.

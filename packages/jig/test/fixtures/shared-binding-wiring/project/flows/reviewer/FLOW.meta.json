@@ -1,0 +1,4 @@
+{
+  "name": "reviewer",
+  "description": "Check the manuscript excerpt against a minimum word count."
+}

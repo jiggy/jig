@@ -1,0 +1,9 @@
+{
+  "name": "publishing-book",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@jigging/flow": "0.1.0-alpha.15"
+  }
+}
