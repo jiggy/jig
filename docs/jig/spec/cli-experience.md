@@ -995,6 +995,10 @@ The caller continuation stays in the caller's context.
 
 Focused source inspection links to the captured Binding declaration and shows the selected values for settings that differ across uses.
 It identifies peers with the same slot selections and names slots that select differently.
+It links captured peer Binding declarations and identifies equal settings.
+
+For a local Flow shared by Bindings, it identifies the package settings schema or its absence.
+It names Binding settings as the configuration channel for a change specific to one use.
 Supported direct setting checks link the checked expression to the selected value and Binding declaration.
 An authored exit can link the same configuration while its reachability remains unresolved.
 With `--all`, the document shows the project entrypoint and includes every configured target within the topology limits.

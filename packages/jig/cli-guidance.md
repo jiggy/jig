@@ -269,6 +269,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   The application view links the complete configured inventory to one chart per Flow.
   Its opening handoffs and the focused target's callers use the same configured orientation as topology.
   Focused Binding inspection links its captured declaration and compares its settings and slot selections with other uses.
+
+  Link peer Binding declarations. For shared local Flows, identify the settings schema or its absence and show how settings reach the Flow separately from input.
   Link incoming slots to captured caller Binding declarations.
   Explain how to select distinct configuration when several slots use the same focused Binding.
 
