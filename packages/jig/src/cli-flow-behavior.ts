@@ -33,6 +33,7 @@ type CallCase = {
   after: readonly BehaviorStep[]
   sources: Set<number | undefined>
   representativeChecks?: true
+  followThrough?: Set<string>
 }
 type CallDetails = ReadonlyMap<string, ReadonlyMap<string, CallCase>>
 type CallerReaction = {
@@ -40,6 +41,7 @@ type CallerReaction = {
   caller: Call
   via: readonly Call[]
   after: readonly BehaviorStep[]
+  followThrough?: ReadonlySet<string>
 }
 
 /** The browser uses the same selected source paths as the plain Markdown view. */
@@ -644,12 +646,30 @@ function callDetails(
       }
       const after = continuation(route, index, call)
       const id = caseId(report, call, after)
-      const existing = cases.get(id)
-      if (existing) {
-        existing.sources.add(call.childPath)
-        if (JSON.stringify(existing.after) !== JSON.stringify(after))
-          existing.representativeChecks = true
-      } else cases.set(id, { call, after, sources: new Set([call.childPath]) })
+      const entry: CallCase = cases.get(id) ?? { call, after, sources: new Set() }
+      entry.sources.add(call.childPath)
+      const samePrefix =
+        entry.after === after || JSON.stringify(entry.after) === JSON.stringify(after)
+      if (!samePrefix) entry.representativeChecks = true
+      const next = after.at(-1)
+      const end = route.at(-1)
+      if (
+        target !== undefined &&
+        samePrefix &&
+        next?.kind === 'call' &&
+        next.completion === 'source-return' &&
+        next.returned &&
+        end?.kind === 'end' &&
+        end.completion === 'return' &&
+        end.returned &&
+        !route.slice(route.indexOf(next) + 1, -1).some((step) => step.kind === 'call')
+      ) {
+        entry.followThrough ??= new Set()
+        entry.followThrough.add(
+          text(label(next)) + ' → ' + text(label(end)) + ' (' + sourceLink(end.site) + ')',
+        )
+      }
+      cases.set(id, entry)
     }
   return { shown: entries, omitted: omitted.size }
 }
@@ -914,11 +934,40 @@ function renderFirstWrites(
 function directInvocations(
   target: BehaviorTarget | undefined,
   entries: BehaviorReport['directHandoffs'],
+  fields: BehaviorReport['inputFields'],
+  routes: readonly Route[],
 ): string[] {
   if (!target) return []
   const lines: string[] = []
-  if (target.id.startsWith('flow:'))
+  if (target.id.startsWith('flow:')) {
     lines.push('**Direct invocation** · Starts at ' + text(target.id) + ' with its own input.', '')
+    if (fields?.required?.length)
+      lines.push(
+        '**Required input fields** · ' +
+          brief(fields.required) +
+          (target.contractPath ? ' (' + sourcePathLink(target.contractPath) + ')' : ''),
+        '',
+      )
+    const results = new Set<string>()
+    for (const route of routes) {
+      const end = route.at(-1)
+      if (
+        end?.kind === 'end' &&
+        end.completion === 'return' &&
+        end.returned &&
+        !route.some(
+          (step) =>
+            (step.kind === 'condition' && step.unresolved) ||
+            (step.kind === 'call' &&
+              (step.completion !== 'source-return' ||
+                step.assumptions?.length ||
+                step.guards?.some((guard) => guard.unresolved))),
+        )
+      )
+        results.add(text(label(end)) + ' (' + sourceLink(end.site) + ')')
+    }
+    if (results.size) lines.push('**Modeled direct returns** · ' + [...results].join(' · '), '')
+  }
   if (entries?.length)
     lines.push(
       '**Direct entries alongside this Flow’s handoffs**',
@@ -987,7 +1036,7 @@ function renderCallContinuations(
       '| --- | --- | --- |',
     )
     const seen = new Set<string>()
-    for (const [id, { call, after, representativeChecks }] of visible) {
+    for (const [id, { call, after, representativeChecks, followThrough }] of visible) {
       const title = text(label(call))
       const checks = (call.guards ?? []).filter((guard) => guard.unresolved)
       const childChecks = checks.slice(0, 2).map(linkedCheck)
@@ -996,9 +1045,16 @@ function renderCallContinuations(
         (representativeChecks ? 'Representative checks · ' : '') + nextSteps(after, true)
       const conditions = childChecks.join(' → ') || '—'
       const key = JSON.stringify([title, steps, conditions])
+      if (!seen.has(key) || followThrough?.size)
+        reactions?.push({
+          result: call,
+          caller: call,
+          via: [],
+          after,
+          ...(followThrough ? { followThrough } : {}),
+        })
       if (seen.has(key)) continue
       seen.add(key)
-      reactions?.push({ result: call, caller: call, via: [], after })
       const result = incoming ? title : '[' + title + '](#' + id + ')'
       lines.push('| ' + result + ' | ' + steps + ' | ' + conditions + ' |')
     }
@@ -1209,8 +1265,11 @@ function renderResultDecisions(
   reactions: readonly CallerReaction[],
   targets: ReadonlyMap<string, BehaviorTarget>,
 ): string[] {
-  const groups = new Map<string, { result: string; action: string; callers: Set<string> }>()
-  for (const { result: origin, caller, via, after } of reactions) {
+  const groups = new Map<
+    string,
+    { result: string; action: string; callers: Set<string>; exits: Map<string, Set<string>> }
+  >()
+  for (const { result: origin, caller, via, after, followThrough } of reactions) {
     const next = after.at(-1)
     if (next?.kind !== 'call' && next?.kind !== 'end') continue
     const localChecks = after
@@ -1248,24 +1307,38 @@ function renderResultDecisions(
       result: value,
       action: action + contract,
       callers: new Set<string>(),
+      exits: new Map<string, Set<string>>(),
     }
-    entry.callers.add(
+    const path =
       text(caller.caller + ' · ' + caller.slot) +
-        (via.length
-          ? ' via ' +
-            via
-              .map((hop) => text(hop.caller + ' · ' + hop.slot))
-              .reverse()
-              .join(' → ')
-          : ''),
-    )
+      (via.length
+        ? ' via ' +
+          via
+            .map((hop) => text(hop.caller + ' · ' + hop.slot))
+            .reverse()
+            .join(' → ')
+        : '')
+    entry.callers.add(path)
+    for (const exit of followThrough ?? []) {
+      const paths = entry.exits.get(exit) ?? new Set<string>()
+      paths.add(path)
+      entry.exits.set(exit, paths)
+    }
     groups.set(key, entry)
   }
   if (!groups.size) return []
-  const rows = [...groups.values()].slice(0, 8).map(({ callers, ...row }) => ({
-    ...row,
-    paths: [...callers].join('<br>'),
-  }))
+  const rows = [...groups.values()].slice(0, 8).map(({ callers, action, exits, result }) => {
+    const shown = [...exits].slice(0, 2)
+    const suffix = shown.map(
+      ([exit, paths]) =>
+        'Then on a modeled path · ' +
+        (paths.size < callers.size ? [...paths].join(', ') + ' · ' : '') +
+        exit,
+    )
+    if (exits.size > shown.length)
+      suffix.push(exits.size - shown.length + ' additional continuations omitted.')
+    return { result, action: [action, ...suffix].join('<br>'), paths: [...callers].join('<br>') }
+  })
   const paths = sharedCell(rows.map((row) => row.paths))
   return [
     '### Where callers act on this result',
@@ -2071,6 +2144,8 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   if (focus === undefined) return [...lines, ...applicationMap(report)].join('\n') + '\n'
   const targets = new Map(inventory.map((target) => [target.id, target]))
   const target = targets.get(focus)
+  const selected = scopes.find((scope) => scope.target === focus)
+  const routes = selected ? selectRoutes(selected) : []
   const independent = inventory.filter((item) => item.id.startsWith('flow:')).map((item) => item.id)
   const calledBindings = new Set(inventory.flatMap((item) => [...item.slots.values()]))
   const bindingEntries = inventory
@@ -2080,7 +2155,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     '## ' + text(focus),
     '',
     ...configuredOrientation(report, focus),
-    ...directInvocations(target, report.directHandoffs),
+    ...directInvocations(target, report.directHandoffs, report.inputFields, routes),
     ...requiredSlotFacts(target),
     ...(target ? ['**Own result contract** · ' + resultContract(target), ''] : []),
     ...(independent.length
@@ -2091,10 +2166,8 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       : []),
     ...importBoundaryNotice(report),
   )
-  const selected = scopes.find((scope) => scope.target === focus)
   const incoming = incomingCallDecisions(report, targets, focus)
   if (selected) {
-    const routes = selectRoutes(selected)
     const details = callDetails(report, [...routes, ...selected.alternatives])
     const callers = callDetails(
       report,

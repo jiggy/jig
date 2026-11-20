@@ -2370,6 +2370,54 @@ test('the caller decision summary retains a write before the later rejecting che
   )
 })
 
+test('direct inputs and returns stay distinct from a checker refusal in the caller', () => {
+  const input = snapshot(
+    method(handlerSource(`return {outcome: 'done', output: {status:'review'}}`), {
+      contractPath: 'flows/convert/FLOW.contract.json',
+      inputSchema: { type: 'object', properties: { scenario: {} }, required: ['scenario'] },
+    }),
+    method(
+      handlerSource(`
+      const answer = await run.call({slot:'converter', operationId:'convert', input:{scenario:{}}})
+      if (answer.outcome === 'blocked') return {outcome:'blocked',output:{}}
+      const checked = await run.call({slot:'exporter', operationId:'check', input:answer.output})
+      if (checked.outcome === 'blocked') return {outcome:'blocked',output:{}}
+      return {outcome:'done',output:{}}
+    `),
+    ),
+  )
+  const focus = 'flow:flows/convert'
+  const packages = new Map(input.packages)
+  packages.set(
+    'flows/export',
+    method(
+      handlerSource(`
+    return {outcome: run.input.status === 'review' ? 'blocked' : 'done', output:{}}
+  `),
+    ),
+  )
+  const markdown = renderFlowBehavior(
+    analyzeFlowBehavior({
+      ...input,
+      focus,
+      targets: input.targets.map((target) => ({ ...target, outcomes: ['done', 'blocked'] })),
+      packages,
+    }),
+  )
+  const opening = markdown.split('### Where callers act on this result')[0]!
+  expect(opening).toContain(
+    '**Required input fields** · scenario ([flows/convert/FLOW.contract.json]',
+  )
+  expect(opening).toContain('**Modeled direct returns** · Returns "done" · status = "review"')
+  expect(opening).not.toContain('Returns "blocked"')
+  const reactions = markdown.split('### Where callers act on this result')[1]?.split('### ')[0]
+  expect(reactions).toMatch(
+    /Returns "done" · status = "review"[^\n]+Call exporter[^\n]+<br>Then on a modeled path · exporter returns "blocked" → Returns "blocked"/,
+  )
+  expect(reactions).toMatch(/If admitted "blocked"[^\n]+Returns "blocked"/)
+  expect(reactions).not.toMatch(/If admitted "blocked"[^\n]+Then on a modeled path/)
+})
+
 test('a grandchild contract alternative remains conditional in its callers', () => {
   const input = snapshot(
     method(

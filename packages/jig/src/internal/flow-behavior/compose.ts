@@ -367,7 +367,9 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     focus,
     ...(packagePath === undefined ? {} : { packagePath }),
     ...(entrypoint === undefined ? {} : { entrypoint }),
-    ...(inputFields?.paths.length || inputFields?.truncated ? { inputFields } : {}),
+    ...(inputFields?.paths.length || inputFields?.truncated || inputFields?.required?.length
+      ? { inputFields }
+      : {}),
     ...(directHandoffs.length ? { directHandoffs } : {}),
     ...(incomingCallerUses.size ? { incomingCallerUses } : {}),
     ...(earlierReturns.size ? { earlierReturns: [...earlierReturns.values()] } : {}),

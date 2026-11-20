@@ -46,6 +46,10 @@ function record(schema: JsonValue | undefined): schema is JsonObject {
 /** List authored paths for navigation without projecting runtime guarantees. */
 export function declaredInputPaths(schema: JsonValue | undefined) {
   const paths: string[] = []
+  const required =
+    record(schema) && Array.isArray(schema.required)
+      ? schema.required.filter((name): name is string => typeof name === 'string')
+      : []
   let truncated = false
   let remaining = 64
   function visit(node: JsonValue, path: string, depth: number) {
@@ -77,7 +81,7 @@ export function declaredInputPaths(schema: JsonValue | undefined) {
     if (path) paths.push(path)
   }
   if (schema !== undefined) visit(schema, '', 0)
-  return { paths, truncated }
+  return { paths, truncated, ...(required.length ? { required } : {}) }
 }
 
 function integerRange(schema: JsonValue | undefined) {

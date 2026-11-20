@@ -985,6 +985,10 @@ Packages containing callers appear first, beginning with those that have a calle
 The index uses captured topology and skips source behavior analysis.
 
 An exact target retains its configured context, including other uses of its implementation and callers.
+For a direct Flow target, show its own required top-level input fields from the captured contract.
+Modeled direct returns that lack unresolved conditions or assumed call results may appear beside the selector.
+The caller continuation stays in the caller's context.
+
 Focused source inspection links to the captured Binding declaration and shows the selected values for settings that differ across uses.
 It identifies peers with the same slot selections and names slots that select differently.
 Supported direct setting checks link the checked expression to the selected value and Binding declaration.
@@ -1029,6 +1033,10 @@ Multiple sites for a slot appear in one comparison beside their shared configura
 Focused targets can also show authored decisions from direct callers that select that exact target.
 These incoming decisions identify the caller, slot, and supported request fields even if route analysis stops earlier.
 They can also show which configured caller slots select that caller.
+
+An incoming decision can show how the caller returns after its next handoff.
+The next handoff must have a source result on the same modeled path, with no intervening call before the return.
+Keep each displayed return tied to the configured path that supports it.
 
 For an incoming slot, show other configured uses of the caller's package even when its source is opaque.
 Show the selected target or absent selection for each displayed use, even outside the focused topology.

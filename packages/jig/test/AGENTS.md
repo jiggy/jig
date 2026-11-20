@@ -24,6 +24,8 @@ Explorer HTTP checks bind repeated multipart request identities to exact file by
 
 `portable/flow-behavior.test.ts` checks inert interpretation, reporting payloads, and conditional composition.
 
+It distinguishes a direct Flow's input and return from the next child result and return in its caller.
+
 It verifies progress field sources through captured helpers and stable caller case links across proved checks.
 An inherited assumption stays conditional. An opaque continuation retains established effects.
 Wider declared outcomes leave the main diagram intact.
