@@ -1073,6 +1073,11 @@ Source returns and contract alternatives retain separate labels.
 From the caller's view, distinct results link to their own call expansions.
 Checks and subsequent calls link to their source locations.
 
+The continuation lists the outcomes for the child's result and the caller's own result.
+It links local captured contract files for both.
+Where a displayed child outcome is absent from the caller's declarations, the view explains the declaration needed to forward that outcome.
+The focused report lists the direct Flow targets in scope.
+
 The focused view summarizes selected route consequences and evidence.
 It prioritizes distinct return outcomes and consequential differences before further variants.
 The main diagram projects supported calls, loops, and file writes within a fixed display bound.

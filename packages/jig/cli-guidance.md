@@ -310,6 +310,10 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   When a callee is focused, probe conditional continuations for its represented caller sites within the existing allowance.
   Preserve the distinction between a source return and a contract possibility in the incoming table.
 
+  Put both result contracts beside the continuation and link their captured local files.
+  Name any declaration required if a displayed child outcome is forwarded as the caller's own result.
+  List the focused scope's direct Flow targets near its opening.
+
   Lead with route consequences and attach the conditions that select them.
   Show the source of the final progress request beside the reported count.
 

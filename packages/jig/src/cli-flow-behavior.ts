@@ -745,7 +745,12 @@ function nextSteps(after: readonly BehaviorStep[], linkSource = false): string {
 }
 
 /** Read both directions from the same caller-local case used by the call expansion. */
-function renderCallContinuations(details: CallDetails, incoming: boolean, omitted = 0): string[] {
+function renderCallContinuations(
+  details: CallDetails,
+  targets: ReadonlyMap<string, BehaviorTarget>,
+  incoming: boolean,
+  omitted = 0,
+): string[] {
   const lines: string[] = []
   for (const cases of details.values()) {
     const returned = ([, { call, after }]: [string, CallCase]) =>
@@ -772,6 +777,7 @@ function renderCallContinuations(details: CallDetails, incoming: boolean, omitte
         sourceLink(call.site) +
         ')',
       '',
+      ...continuationContracts(call, targets, visible),
       '| Result from ' +
         text(call.target) +
         ' | Next in ' +
@@ -802,6 +808,38 @@ function renderCallContinuations(details: CallDetails, incoming: boolean, omitte
   if (omitted > 0)
     lines.push(omitted + ' additional call sites exceed the contextual detail limit.', '')
   return [incoming ? '### Caller continuations' : '### Child results and next steps', '', ...lines]
+}
+
+function resultContract(target: BehaviorTarget): string {
+  const source =
+    target.contractPath === undefined ? '' : sourcePathLink(target.contractPath) + ' · '
+  return source + 'declared outcomes ' + brief(target.outcomes)
+}
+
+function continuationContracts(
+  call: Call,
+  targets: ReadonlyMap<string, BehaviorTarget>,
+  cases: readonly [string, CallCase][],
+): string[] {
+  const lines: string[] = []
+  const child = targets.get(call.target)
+  const caller = targets.get(call.caller)
+  if (child) lines.push('- Child result contract · ' + resultContract(child))
+  if (caller) {
+    lines.push('- Caller’s own result contract · ' + resultContract(caller))
+    const shown = new Set(cases.map(([, { call: choice }]) => choice.returned?.outcome))
+    const additional = (child?.outcomes ?? []).filter(
+      (outcome) => shown.has(JSON.stringify(outcome)) && !caller.outcomes.includes(outcome),
+    )
+    if (additional.length)
+      lines.push(
+        '- Forwarding ' +
+          brief(additional.map((outcome) => JSON.stringify(outcome))) +
+          ' as the caller’s own result requires declaring the outcome in the caller’s result contract.',
+      )
+  }
+  if (lines.length) lines.push('')
+  return lines
 }
 
 function renderCallDetails(
@@ -1251,16 +1289,22 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   }
   lines.push('Standalone routes start with inputs that satisfy the captured contract.', '')
   if (focus === undefined) return [...lines, ...applicationMap(report)].join('\n') + '\n'
+  const targets = new Map(inventory.map((target) => [target.id, target]))
+  const target = targets.get(focus)
+  const independent = inventory.filter((item) => item.id.startsWith('flow:')).map((item) => item.id)
   lines.push(
     '## ' + text(focus),
     '',
     ...configuredOrientation(report, focus),
-    ...requiredSlotFacts(inventory.find((target) => target.id === focus)),
+    ...requiredSlotFacts(target),
+    ...(target ? ['**Own result contract** · ' + resultContract(target), ''] : []),
+    ...(independent.length
+      ? ['**Direct Flow targets in this scope** · ' + brief(independent), '']
+      : []),
     ...importBoundaryNotice(report),
   )
   const selected = scopes.find((scope) => scope.target === focus)
   if (selected) {
-    const target = inventory.find((item) => item.id === focus)
     lines.push(
       ...renderCallSelections(selected, target?.slots),
       ...configuredChecks(selected, target),
@@ -1288,8 +1332,8 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       focus,
     )
     lines.push(
-      ...renderCallContinuations(callers.shown, true, callers.omitted),
-      ...renderCallContinuations(details.shown, false),
+      ...renderCallContinuations(callers.shown, targets, true, callers.omitted),
+      ...renderCallContinuations(details.shown, targets, false),
     )
     if (routes.length) {
       lines.push(...consequences(report, selected, routes, details.shown))

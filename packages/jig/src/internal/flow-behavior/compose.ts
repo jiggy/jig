@@ -88,7 +88,13 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   const sources = new Map<string, SourceIndex>()
   const inventory = input.visible.flatMap((id) => {
     const target = targets.get(id)
-    return target ? [target] : []
+    if (target === undefined) return []
+    const contractPath = input.packages.get(target.implementation)?.contractPath
+    return [
+      contractPath === undefined || target.implementation.startsWith('npm:')
+        ? target
+        : { ...target, contractPath },
+    ]
   })
   const scopes: Scope[] = []
   const childPaths: BehaviorChildPath[] = []

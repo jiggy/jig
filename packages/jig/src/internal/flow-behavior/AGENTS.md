@@ -67,6 +67,8 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
   Treat a later authored exit as source evidence. Its captured setting does not establish reachability.
 - For a focused callee, reuse secondary probes at its represented caller slots.
   Carry the same outcome and assumptions into the incoming continuation.
+- Carry captured local result contract paths into the behavior inventory for navigation.
+  Use the caller's own outcome declarations when showing a forwarding requirement.
 - Explain required slot resolution from captured invocation requirements independently of call reachability.
 - Preserve authored call sites after a cut in their active function frame. Keep lexical
   conditions and result checks separate from interpreted routes.
