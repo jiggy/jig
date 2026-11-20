@@ -1024,13 +1024,13 @@ test('focused callee shows authored requests through the exact incoming Binding 
   ])
   const rendered = renderFlowBehavior({ ...report, entrySources })
   expect(rendered).toContain(
-    '## flow:flows/convert\n\n**Captured entry source** · [flows/convert/FLOW.ts](./flows/convert/FLOW.ts)',
+    '## flow:flows/convert\n\n**Captured entry source** · [flows/convert/FLOW.ts](./flows/convert/FLOW.ts) · Direct Flow selector flow:flows/convert',
   )
   const decisions = rendered
     .split('### Incoming caller decisions\n')[1]
     ?.split('### Consequences')[0]
   expect(decisions).toContain(
-    '#### binding:code\n\n**Captured entry source** · [flows/import/FLOW.ts](./flows/import/FLOW.ts)',
+    '#### binding:code\n\n**Captured entry source** · [flows/import/FLOW.ts](./flows/import/FLOW.ts) · Binding selector binding:code · Also direct as flow:flows/import',
   )
   expect(decisions).toContain('**converter → flow:flows/convert**')
   expect(decisions).toContain('**Configured callers of binding:code**')
@@ -1052,7 +1052,7 @@ test('focused callee shows authored requests through the exact incoming Binding 
   )
   expect(decisions).toContain("**Other configured uses of this caller's code** · flows/import")
   expect(decisions).toContain(
-    'binding:audit · converter → flow:flows/export · entry [flows/export/FLOW.ts](./flows/export/FLOW.ts) ([bindings/audit.ts](./bindings/audit.ts))',
+    'binding:audit · converter → flow:flows/export · source [flows/export/FLOW.ts](./flows/export/FLOW.ts) ([bindings/audit.ts](./bindings/audit.ts))',
   )
   expect(decisions).toContain('flow:flows/import · converter has no selection')
   expect(decisions).not.toContain('#### binding:audit')
@@ -1068,6 +1068,19 @@ test('focused callee shows authored requests through the exact incoming Binding 
   expect(opaque).toContain('binding:audit · converter → flow:flows/export')
   expect(opaque).toContain('flow:flows/import · converter has no selection')
   expect(opaque).not.toContain('Argument 1 slot → request field slot.')
+
+  const bindingOnly = renderFlowBehavior({
+    ...analyzeFlowBehavior({
+      ...focusedInput,
+      targets: focusedInput.targets.filter(({ id }) => id !== preview.id),
+      packages: new Map(),
+    }),
+    entrySources,
+  })
+  expect(bindingOnly).toContain(
+    '[flows/import/FLOW.ts](./flows/import/FLOW.ts) · Binding selector binding:code · Binding-only package in this capture',
+  )
+  expect(bindingOnly).not.toContain('Also direct as flow:flows/import')
 })
 
 test('focused source sites decline reassigned or ambiguous requests and retain direct decisions', () => {

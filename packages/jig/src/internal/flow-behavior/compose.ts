@@ -171,16 +171,18 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   const inputFields = focused
     ? declaredInputPaths(input.packages.get(focused.implementation)?.inputSchema)
     : undefined
-  if (focused?.slots.size) {
-    const directByPackage = new Map(
+  const directSelectors =
+    focused &&
+    new Map(
       input.targets.flatMap(({ id, implementation }) =>
-        id.startsWith('flow:') ? [[implementation, id] as const] : [],
+        id.startsWith('flow:') || id.startsWith('npm:') ? [[implementation, id] as const] : [],
       ),
     )
+  if (focused && directSelectors) {
     for (const [slot, selected] of focused.slots) {
       const target = targets.get(selected)
-      const direct = target && directByPackage.get(target.implementation)
-      if (direct !== undefined) directHandoffs.push({ slot, selected, direct })
+      const direct = target && directSelectors.get(target.implementation)
+      if (direct?.startsWith('flow:')) directHandoffs.push({ slot, selected, direct })
     }
   }
 
@@ -370,6 +372,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       ? { inputFields }
       : {}),
     ...(directHandoffs.length ? { directHandoffs } : {}),
+    ...(directSelectors ? { directSelectors } : {}),
     ...(incomingCallerUses.size ? { incomingCallerUses } : {}),
     ...(earlierReturns.size ? { earlierReturns: [...earlierReturns.values()] } : {}),
     ...(earlierReturnsLimited ? { earlierReturnsLimited: true } : {}),

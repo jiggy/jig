@@ -2256,7 +2256,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   lines.push(
     '## ' + text(focus),
     '',
-    ...entrySourceFacts(report, focus),
+    ...entrySourceFacts(report, focus, target),
     ...configuredOrientation(report, focus),
     ...requiredSlotFacts(target),
     ...importBoundaryNotice(report),
@@ -2365,9 +2365,21 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   return lines.join('\n') + '\n'
 }
 
-function entrySourceFacts(report: BehaviorReport, target: string | undefined): string[] {
+function entrySourceFacts(
+  report: BehaviorReport,
+  target: string | undefined,
+  selected?: BehaviorTarget,
+): string[] {
   const path = target === undefined ? undefined : report.entrySources?.get(target)
-  return path === undefined ? [] : ['**Captured entry source** · ' + sourcePathLink(path), '']
+  if (path === undefined) return []
+  const source = '**Captured entry source** · ' + sourcePathLink(path)
+  if (!selected) return [source, '']
+  if (!selected.id.startsWith('binding:'))
+    return [source + ' · Direct Flow selector ' + text(selected.id), '']
+  const selector = source + ' · Binding selector ' + text(selected.id)
+  const direct = report.directSelectors?.get(selected.implementation)
+  if (direct) return [selector + ' · Also direct as ' + text(direct), '']
+  return [selector + (report.directSelectors ? ' · Binding-only package in this capture' : ''), '']
 }
 
 function incomingCallDecisions(
@@ -2396,7 +2408,8 @@ function incomingCallDecisions(
     }
   const lines = ['### Incoming caller decisions', '']
   for (const caller of shown) {
-    lines.push(`#### ${text(caller)}`, '', ...entrySourceFacts(report, caller))
+    const target = targets.get(caller)!
+    lines.push(`#### ${text(caller)}`, '', ...entrySourceFacts(report, caller, target))
     const paths = upstream.get(caller)!
     if (paths.length) {
       lines.push('**Configured callers of ' + text(caller) + '**', '')
@@ -2406,7 +2419,6 @@ function incomingCallDecisions(
         lines.push(`- ${paths.length - BEHAVIOR_LIMITS.focusedRelatedCalls} more in topology.`)
       lines.push('')
     }
-    const target = targets.get(caller)!
     const scope = authored.get(caller)
     if (scope) lines.push(...renderCallSelections(scope, target, targets, { heading: null }))
     const uses = incomingCallerUses?.get(caller)
@@ -2431,7 +2443,7 @@ function incomingCallDecisions(
         const selected = peer.slots.get(slot)
         if (selected === undefined) return text(`${slot} has no selection`)
         const path = entrySources?.get(selected)
-        return text(`${slot} → ${selected}`) + (path ? ' · entry ' + sourcePathLink(path) : '')
+        return text(`${slot} → ${selected}`) + (path ? ' · source ' + sourcePathLink(path) : '')
       })
       lines.push(
         '- ' +

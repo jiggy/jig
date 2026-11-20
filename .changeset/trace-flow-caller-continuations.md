@@ -23,3 +23,5 @@ Put focused caller decisions beside shared Binding wiring and show both sides of
 Link peer Binding declarations and the package settings schema in focused inspection. Show where to configure behavior specific to one use when Bindings share a Flow.
 
 Show earlier returns and any independent entry alongside a caller's modeled next call.
+
+Show the exact Run selector beside focused source links. Identify packages whose captured invocation targets all use Bindings.
