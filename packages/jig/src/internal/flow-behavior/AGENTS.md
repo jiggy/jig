@@ -15,6 +15,7 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
 - `source.ts` resolves parsed source and call identities inside one captured package.
 - `source-syntax.ts` owns shared TypeScript syntax helpers and bounded source walks.
 - `repetition.ts` locates authored loop control around configured handoffs.
+- `result-checks.ts` links authored caller exits to awaited results and their local definitions.
 - `call-selection.ts` relates literal slot arguments to a local dispatch helper.
   It keeps literal and conditional input fields at their authored sites.
   It marks possible later overrides and counts omitted call sites by slot.
@@ -93,6 +94,9 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
   Bound the distinct exits after gathering their associated call sites.
   A named file write in the same frame can remain visible as an authored destination.
   Keep authored destinations separate from interpreted attempts.
+- Link a result check through bounded local definitions with one established write.
+  A protected assignment can supply a definition when its catch exits and it has no finalizer.
+  Keep the authored definition beside the check without interpreting the helper or assuming a result.
 - A repeated handoff can retain its enclosing loop, direct control statements, and nearby exit.
   Keep these references in the active function and disclose unfinished loop analysis.
   Pair a catch with its single protected statement when identifiable.

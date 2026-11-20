@@ -4,8 +4,8 @@ import ts from 'typescript-parser'
 import {
   assignmentTarget,
   type CallRequest,
-  recordWrites,
   selectCallSites,
+  writtenBindings,
 } from './call-selection.js'
 import type {
   AuthoredFileWrite,
@@ -16,9 +16,9 @@ import type {
   SourceSite,
 } from './model.js'
 import { describeRepeat, enclosingLoop } from './repetition.js'
+import { resultExitChecks } from './result-checks.js'
 import { slotSelection } from './slot-selection.js'
 import {
-  branchExit,
   isLocalFunction,
   type LocalFunction,
   lexicalGuards,
@@ -238,11 +238,13 @@ export class SourceIndex {
     if (cached !== undefined) return cached
     const handoffs: HandoffSite[] = []
     const fileWrites: AuthoredFileWrite[] = []
-    const writes = new Set<ts.Declaration>()
+    const writes = new Map<ts.Declaration, ts.Node | undefined>()
     if (fn.body) {
       for (const node of sourceNodes(fn.body)) {
         const target = assignmentTarget(node)
-        if (target) recordWrites(this, target, writes)
+        if (target)
+          for (const declaration of writtenBindings(this, target))
+            writes.set(declaration, writes.has(declaration) ? undefined : node)
       }
     }
     const visit = (node: ts.Node): void => {
@@ -283,7 +285,7 @@ export class SourceIndex {
     const visit = (node: ts.Node): void => {
       if (options.focused) {
         const target = assignmentTarget(node)
-        if (target) recordWrites(this, target, writes)
+        if (target) for (const declaration of writtenBindings(this, target)) writes.add(declaration)
       }
       if (ts.isCallExpression(node)) {
         const callee = unwrap(node.expression)
@@ -410,7 +412,7 @@ export class SourceIndex {
 
   private handoffSite(
     call: ts.CallExpression,
-    writes: ReadonlySet<ts.Declaration>,
+    writes: ReadonlyMap<ts.Declaration, ts.Node | undefined>,
   ): HandoffSite | undefined {
     if (call.arguments.length !== 1) return undefined
     const request = this.callRequest(call)
@@ -447,43 +449,8 @@ export class SourceIndex {
       ...(repeat ? { repeat } : {}),
       guards: lexicalGuards(call, (node) => this.site(node)).slice(0, 4),
       ...(priorExits.length ? { priorExits } : {}),
-      exitChecks: this.resultExitChecks(call),
+      exitChecks: resultExitChecks(this, call, writes),
     }
-  }
-
-  private resultExitChecks(call: ts.CallExpression): AuthoredHandoff['exitChecks'] {
-    const awaited = call.parent
-    if (!ts.isAwaitExpression(awaited)) return []
-    const declaration = awaited.parent
-    if (!ts.isVariableDeclaration(declaration) || !ts.isIdentifier(declaration.name)) return []
-    if (!(declaration.parent.flags & ts.NodeFlags.Const)) return []
-    const statement = declaration.parent.parent
-    if (!ts.isVariableStatement(statement) || !ts.isBlock(statement.parent)) return []
-    const { statements } = statement.parent
-    const checks: AuthoredHandoff['exitChecks'][number][] = []
-    const readsResult = (node: ts.Node): boolean =>
-      !ts.isFunctionLike(node) &&
-      ((ts.isIdentifier(node) && this.declaration(node) === declaration) ||
-        (ts.forEachChild(node, (child) => (readsResult(child) ? true : undefined)) ?? false))
-    const start = statements.indexOf(statement) + 1
-    for (const following of statements.slice(start, start + 40)) {
-      if (!ts.isIfStatement(following) || !readsResult(following.expression)) continue
-      for (const [branch, taken] of [
-        [following.thenStatement, true],
-        [following.elseStatement, false],
-      ] as const) {
-        const exit = branchExit(branch)
-        if (!exit) continue
-        checks.push({
-          site: this.site(following.expression),
-          code: shortText(following.expression),
-          taken,
-          exit: ts.isReturnStatement(exit) ? 'return' : 'throw',
-        })
-      }
-      if (checks.length >= 4) break
-    }
-    return checks.slice(0, 4)
   }
 
   callSite(node: ts.CallExpression): SourceSite {

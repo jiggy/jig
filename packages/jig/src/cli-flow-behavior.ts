@@ -1841,7 +1841,7 @@ function authoredHandoffs(
         ' → ' +
         target +
         ' (' +
-        text(site(handoff.site)) +
+        sourceLink(handoff.site) +
         ')' +
         (handoff.intent ? ' · ' + text(handoff.intent) : ''),
     )
@@ -1864,8 +1864,14 @@ function authoredHandoffs(
           ' branch ends with ' +
           check.exit +
           ' (' +
-          text(site(check.site)) +
-          ')',
+          sourceLink(check.site) +
+          ')' +
+          (check.via
+            ? ' · via ' +
+              check.via
+                .map(({ code, site }) => text(code) + ' (' + sourceLink(site) + ')')
+                .join(' → ')
+            : ''),
       )
   }
   if (scope.authoredHandoffsOmitted)

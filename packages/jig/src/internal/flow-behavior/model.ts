@@ -147,6 +147,7 @@ export interface AuthoredHandoff {
     readonly code: string
     readonly taken: boolean
     readonly exit: 'return' | 'throw'
+    readonly via?: readonly SourceExpression[]
   }[]
 }
 
