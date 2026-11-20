@@ -8,6 +8,7 @@ interface ConfiguredTarget {
   readonly implementation: string
   readonly settings: JsonValue
   readonly declarationPath?: string
+  readonly settingsSchemaPath?: string | null
   readonly slots?: ReadonlyMap<string, string>
 }
 
@@ -202,6 +203,10 @@ export function renderFlowOrientation(
       const callers = incoming.get(target.id) ?? []
       const via = callers.slice(0, 3).map(callerLabel).join(', ')
       const settings = settingsDifference(selected.settings, target.settings, text)
+      const peerDeclaration =
+        target.declarationPath === undefined
+          ? undefined
+          : options.declarationLink?.(target.declarationPath)
       return (
         targetLabel(target.id) +
         (via ? ' · called by ' + via : '') +
@@ -209,9 +214,27 @@ export function renderFlowOrientation(
         settings +
         (declaration !== undefined && selected.slots && target.slots
           ? slotDifference(selected.slots, target.slots, text)
-          : '')
+          : '') +
+        (peerDeclaration ? (settings ? '' : ' · same settings') + ' · ' + peerDeclaration : '')
       )
     })
+    if (
+      options.declarationLink &&
+      declaration &&
+      selected.settingsSchemaPath !== undefined &&
+      otherUses.some((use) => use.declarationPath !== undefined)
+    ) {
+      const schema = selected.settingsSchemaPath
+      const schemaFact =
+        schema === null
+          ? 'This Flow has no settings schema. Declare the value in its `settings.schema.json` before setting it in the Binding.'
+          : 'Settings schema · ' + options.declarationLink(schema) + '.'
+      lines.push(
+        '**Per-Binding behavior** · Set `settings` in the affected Binding and read the value in the shared Flow through `run.settings`. The invocation supplies `run.input` separately.',
+        schemaFact,
+        '',
+      )
+    }
   }
   appendList(
     'Configured handoffs',

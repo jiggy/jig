@@ -19,3 +19,5 @@ Link configured caller slots to their Binding declarations and explain how to va
 Show the selected Flow implementation and its configured child slots beside caller decisions.
 
 Put focused caller decisions beside shared Binding wiring and show both sides of an authored slot choice together. Link application-map decisions to their configured destination sections.
+
+Link peer Binding declarations and the package settings schema in focused inspection. Show where to configure behavior specific to one use when Bindings share a Flow.

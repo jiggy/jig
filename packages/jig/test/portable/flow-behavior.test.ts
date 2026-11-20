@@ -666,8 +666,13 @@ test('focused orientation shows distinct slots and variant callers before analys
     {
       ...target(focus, 'flows/draft-chapter', [], { prompt: 'reading' }),
       declarationPath: 'bindings/chapter-reading.ts',
+      settingsSchemaPath: 'flows/draft-chapter/settings.schema.json',
     },
     target(baseline, 'flows/draft-chapter', [], { prompt: 'baseline' }),
+    {
+      ...target('binding:chapter-peer', 'flows/draft-chapter', [], { prompt: 'reading' }),
+      declarationPath: 'bindings/chapter-peer.ts',
+    },
     target('binding:chapter-with-review', 'flows/draft-chapter', [['review', compare]]),
     target(producer, 'flows/produce', [
       ['chapter', focus],
@@ -715,11 +720,21 @@ test('focused orientation shows distinct slots and variant callers before analys
   expect(orientation).toContain(
     'binding:chapter-with-review · settings differ: prompt = unset · different slot selections: review',
   )
+  expect(orientation).toContain(
+    'binding:chapter-peer · same slot selections · same settings · [bindings/chapter-peer.ts](./bindings/chapter-peer.ts)',
+  )
+  expect(orientation).toContain(
+    'the shared Flow through `run.settings`. The invocation supplies `run.input` separately.',
+  )
+  expect(orientation).toContain(
+    'Settings schema · [flows/draft-chapter/settings.schema.json](./flows/draft-chapter/settings.schema.json).',
+  )
   const application = renderFlowBehavior({ ...report, focus: undefined })
   const opening = application.split('| Configured target')[0]!
   expect(opening).toContain('[binding:produce-book]')
   expect(opening).toContain('chapter → [binding:chapter-reading]')
   expect(opening).toContain('polish → [binding:chapter-reading]')
+  expect(application).not.toContain('**Per-Binding behavior**')
   expect(application.split('| --- | --- | --- | --- |\n')[1]).toStartWith(
     '| [binding:produce-book]',
   )

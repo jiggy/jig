@@ -30,6 +30,7 @@ export async function prepareFlowBehavior(
   packagePath?: string,
 ): Promise<BehaviorReport> {
   const byPackage = new Map(project.flows.map((f) => [f.provenance.projectPath, f]))
+  const qualified = new Map(members.map((member) => [member.provenance.projectPath, member]))
   const targets: BehaviorTarget[] = []
   const entrySources = new Map<string, string>()
   function target(
@@ -60,12 +61,23 @@ export async function prepareFlowBehavior(
       : implementation + (flow.entrypoint?.suffix === 'md' ? '/FLOW.md' : '/FLOW.meta.json')
     if (!implementation.startsWith('npm:') && flow.entrypoint)
       entrySources.set(id, `${implementation}/${flow.entrypoint.path}`)
+    const localCapture = implementation.startsWith('npm:')
+      ? undefined
+      : qualified.get(implementation)
     targets.push({
       id,
       implementation,
       settings: binding?.settings ?? {},
       slots,
       ...(binding === undefined ? {} : { declarationPath: binding.declarationPath }),
+      ...(binding !== undefined && localCapture !== undefined
+        ? {
+            settingsSchemaPath:
+              localCapture.inspected.schemas.settings === undefined
+                ? null
+                : implementation + '/settings.schema.json',
+          }
+        : {}),
       ...(requiredSlots.length ? { requiredSlots } : {}),
       ...(requirements.length && declaration !== undefined
         ? { slotDeclarationPath: declaration }
@@ -83,7 +95,6 @@ export async function prepareFlowBehavior(
 
   const packages = new Map<string, BehaviorPackage>()
   const known = new Map(targets.map((item) => [item.id, item]))
-  const qualified = new Map(members.map((member) => [member.provenance.projectPath, member]))
   const selected = new Set(
     focus !== undefined
       ? [focus, ...visible]

@@ -35,6 +35,8 @@ export interface BehaviorTarget {
   readonly settings: JsonValue
   readonly slots: ReadonlyMap<string, string>
   readonly declarationPath?: string
+  /** Null records the absence of a settings schema in a captured local Flow. */
+  readonly settingsSchemaPath?: string | null
   readonly contractPath?: string
   readonly requiredSlots?: readonly string[]
   readonly slotDeclarationPath?: string

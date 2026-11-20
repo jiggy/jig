@@ -11,6 +11,7 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
   It links each local target to its captured entry file even when source analysis is unavailable.
   It retains the captured declaration path for each Binding.
   It retains local slot declaration paths for optional as well as required slots.
+  It records the local settings schema path or its absence from the capture.
 - `input-contract.ts` projects guarantees from captured input schemas into inert values.
   It can list declared input paths and root required fields separately from inferred guarantees.
 - `admitted-input.ts` reads exact stored source and recognized dependency bytes for an approved composition.
