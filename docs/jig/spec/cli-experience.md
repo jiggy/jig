@@ -1016,6 +1016,10 @@ Each group can include enclosing branches, differing literal input values, and c
 The output flags when a later property may override an authored value.
 It reports omitted caller sites by slot and shows other slots that use the same Flow.
 
+A spread from a local helper with a fixed object return can retain exact keys without interpreting the property values.
+Unresolved helper returns keep the possible override visible.
+An authored conditional between two literal slots links the same call site to both configured targets with its corresponding condition.
+
 It identifies authored request metadata at `run.call` and locates the child input or its identifiable helper argument.
 When an argument is directly forwarded, the report names its position and the request field it supplies.
 

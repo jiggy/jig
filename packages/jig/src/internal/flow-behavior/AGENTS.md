@@ -17,6 +17,8 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
 - `call-selection.ts` relates literal slot arguments to a local dispatch helper.
   It keeps literal and conditional input fields at their authored sites.
   It marks possible later overrides and counts omitted call sites by slot.
+  It reads fixed keys from identifiable local object returns without running helper code.
+  A conditional with two literal slot choices retains both configured targets and their branch conditions.
 - `slot-selection.ts` traces authored lookup rows and key origins into computed slot references.
 - `analyze.ts` evaluates a bounded TypeScript subset through inert values.
 - `data.ts` checks which data computations can safely lose value precision.

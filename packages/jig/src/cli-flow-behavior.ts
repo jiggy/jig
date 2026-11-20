@@ -1744,7 +1744,7 @@ function renderCallSelections(
     for (const selection of group) {
       const { dispatch, guards, requestMetadata, inputSite, inputFields } = selection
       lines.push(
-        `- ${text(site(selection.site))}` +
+        `- ${sourceLink(selection.site)}` +
           (dispatch ? ` · run.call in helper at ${text(site(dispatch))}` : ''),
       )
       for (const guard of guards)
