@@ -331,6 +331,9 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   List the focused scope's direct Flow targets near its opening.
   Label exact standalone Binding selectors that also receive calls.
 
+  Beside the direct Flow selector, show its captured required input fields and modeled return cases without unresolved checks or assumed calls.
+  For each incoming path, show a known next child result alongside the caller's return when the same path reaches that return without another handoff.
+
   Follow retained nested call evaluations into intermediate returns and the outer caller's next action.
   Identify direct forwarding through result identity and preserve the intermediate outcome otherwise.
   Lead with shared caller decision sites and list the configured paths that reach each displayed case.

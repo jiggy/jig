@@ -11,7 +11,7 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
   It retains the captured declaration path for each Binding.
   It retains local slot declaration paths for optional as well as required slots.
 - `input-contract.ts` projects guarantees from captured input schemas into inert values.
-  It can list declared input paths for inspection separately from these guarantees.
+  It can list declared input paths and root required fields separately from inferred guarantees.
 - `admitted-input.ts` reads exact stored source and recognized dependency bytes for an approved composition.
 - `source.ts` resolves parsed source and call identities inside one captured package.
 - `source-syntax.ts` owns shared TypeScript syntax helpers and bounded source walks.

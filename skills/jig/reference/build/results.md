@@ -318,6 +318,10 @@ Use these connections to locate the right handoff before changing a shared imple
 Caller decisions show where `run.call` gets its request metadata and its child input.
 A displayed call label comes from `intent` on the request.
 
+A direct Flow report can show its required input fields and modeled direct returns beside the selector.
+Read **Where callers act on this result** to see what each configured caller does with the result.
+A modeled path can show the next Flow's result and the caller's own return together.
+
 Read **Caller decisions** to compare supported source locations for the same slot.
 The group shows differing literal fields and conditions that help distinguish the calls.
 The decision shows where the caller chooses a slot and where its helper sends the request.
