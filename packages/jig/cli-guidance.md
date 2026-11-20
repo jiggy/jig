@@ -338,6 +338,9 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Compare authored calls through the same slot together.
   Show common helper metadata and related Flow uses once within the configured caller's view.
 
+  Identify a common validation site when direct and caller entries reach the same modeled write.
+  Keep independently callable inputs distinct from the selected target of each slot.
+
   Name the passing and rejecting branches of a direct validation guard.
   Show source locations and whether the displayed routes resolve each predicate.
   Include later conditions when earlier conditions leave outgoing edges indistinguishable.

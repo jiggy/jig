@@ -2771,3 +2771,59 @@ test('shared setting checks pair each Binding with its own analyzed continuation
     }),
   ).not.toContain('**Setting-only alternative at this check**')
 })
+
+test('direct entry navigation retains the selected Binding and marks a shared write site', () => {
+  const writer = method(`
+    import { handle } from '@jigging/flow'
+    import { writeFile } from 'node:fs/promises'
+    await handle(async () => {
+      await writeFile('preview.json', 'sample')
+      return {outcome: 'done', output: {status: 'ready'}}
+    })
+  `)
+  const input = snapshot(
+    writer,
+    method(
+      handlerSource(`return await run.call({slot:'converter', operationId:'write', input:{}})`),
+    ),
+  )
+  const [root, direct] = input.targets
+  if (!root || !direct) throw new Error('Missing fixture targets')
+  const alias = { ...direct, id: 'binding:special' }
+  const alternate = {
+    ...root,
+    id: 'binding:audit',
+    slots: new Map([['converter', alias.id]]),
+  }
+  const configured = {
+    ...input,
+    targets: [...input.targets, alias, alternate],
+    visible: [...input.visible, alias.id, alternate.id],
+  }
+  const directReport = renderFlowBehavior(analyzeFlowBehavior({ ...configured, focus: direct.id }))
+  expect(directReport).toContain(
+    '**Direct invocation** · Starts at flow:flows/convert with its own input.',
+  )
+  const write = directReport
+    .split('### First writes in this Flow')[1]
+    ?.split('### Caller continuations')[0]
+  expect(write).toContain('**Shared write site**')
+  expect(write).toContain('Direct invocation of flow:flows/convert')
+  expect(write).toContain('binding:code via converter')
+  expect(write).not.toContain('binding:audit via converter')
+  const aliasCaller = renderFlowBehavior(
+    analyzeFlowBehavior({ ...configured, focus: alternate.id }),
+  )
+  expect(aliasCaller).toContain('| converter | binding:special | flow:flows/convert |')
+  expect(aliasCaller).not.toContain('**Direct invocation** · Starts at flow:flows/convert')
+
+  const directOnly = renderFlowBehavior(
+    analyzeFlowBehavior({
+      ...configured,
+      focus: direct.id,
+      targets: [direct],
+      visible: [direct.id],
+    }),
+  )
+  expect(directOnly).not.toContain('**Shared write site**')
+})

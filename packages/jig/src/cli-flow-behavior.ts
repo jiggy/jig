@@ -827,6 +827,13 @@ function renderFirstWrites(report: BehaviorReport, scope: Scope, callers: CallDe
     lines.push(
       '**Attempts writeFile** (' + sourceLink(origin) + ')',
       '',
+      ...(paths.has('direct') && paths.size > 1
+        ? [
+            '**Shared write site** · A validation in this Flow before this write can cover every entry below.',
+            'The direct entry supplies input here. Each configured caller supplies input through its slot.',
+            '',
+          ]
+        : []),
       '| Entry | Checks before the write | Destination | Later checks or actions |',
       '| --- | --- | --- | --- |',
     )
@@ -844,6 +851,41 @@ function renderFirstWrites(report: BehaviorReport, scope: Scope, callers: CallDe
     lines.push('')
   }
   if (limited) lines.push('Some write sites or caller paths exceed the display allowance.', '')
+  return lines
+}
+
+function directInvocations(
+  target: BehaviorTarget | undefined,
+  inventory: ReadonlyMap<string, BehaviorTarget>,
+): string[] {
+  if (!target) return []
+  const direct = new Map<string, string>()
+  for (const use of inventory.values())
+    if (use.id.startsWith('flow:')) direct.set(use.implementation, use.id)
+  const lines: string[] = []
+  if (target.id.startsWith('flow:'))
+    lines.push('**Direct invocation** · Starts at ' + text(target.id) + ' with its own input.', '')
+  const handoffs: string[] = []
+  for (const [slot, selected] of target.slots) {
+    const implementation = inventory.get(selected)?.implementation
+    const standalone = implementation === undefined ? undefined : direct.get(implementation)
+    if (standalone === undefined) continue
+    handoffs.push(`| ${text(slot)} | ${text(selected)} | ${text(standalone)} |`)
+  }
+  if (handoffs.length)
+    lines.push(
+      '**Direct entries alongside this Flow’s handoffs**',
+      '',
+      'A direct invocation supplies its own input at that Flow. The configured calls here supply input through their slots.',
+      '',
+      '| Caller slot | Configured target | Direct entry to the same Flow |',
+      '| --- | --- | --- |',
+      ...handoffs.slice(0, 8),
+      '',
+      ...(handoffs.length > 8
+        ? [`${handoffs.length - 8} more handoffs with direct entries.`, '']
+        : []),
+    )
   return lines
 }
 
@@ -1782,6 +1824,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     '## ' + text(focus),
     '',
     ...configuredOrientation(report, focus),
+    ...directInvocations(target, targets),
     ...requiredSlotFacts(target),
     ...(target ? ['**Own result contract** · ' + resultContract(target), ''] : []),
     ...(independent.length
