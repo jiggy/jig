@@ -146,6 +146,7 @@ export function renderFlowOrientation(
     readonly text: (value: string) => string
     readonly target?: (id: string) => string
     readonly includeCallers: boolean
+    readonly includeSlotTargets?: true
     readonly declarationLink?: (path: string) => string
   },
 ): string[] {
@@ -212,8 +213,13 @@ export function renderFlowOrientation(
         (via ? ' · called by ' + via : '') +
         (callers.length > 3 ? ` and ${callers.length - 3} more` : '') +
         settings +
-        (declaration !== undefined && selected.slots && target.slots
-          ? slotDifference(selected.slots, target.slots, text)
+        ((declaration !== undefined || options.includeSlotTargets) && selected.slots && target.slots
+          ? slotDifference(
+              selected.slots,
+              target.slots,
+              text,
+              options.includeSlotTargets ? targetLabel : undefined,
+            )
           : '') +
         (peerDeclaration ? (settings ? '' : ' · same settings') + ' · ' + peerDeclaration : '')
       )
@@ -252,12 +258,20 @@ function slotDifference(
   focus: ReadonlyMap<string, string>,
   alternative: ReadonlyMap<string, string>,
   text: (value: string) => string,
+  targetLabel?: (id: string) => string,
 ): string {
   const changed = [...new Set([...focus.keys(), ...alternative.keys()])]
     .filter((slot) => focus.get(slot) !== alternative.get(slot))
     .sort()
   if (!changed.length) return ' · same slot selections'
-  const listed = changed.slice(0, 3).map(text).join(', ')
+  const listed = changed
+    .slice(0, 3)
+    .map((slot) => {
+      if (!targetLabel) return text(slot)
+      const selected = alternative.get(slot)
+      return text(slot) + (selected === undefined ? ' (unselected)' : ' → ' + targetLabel(selected))
+    })
+    .join(', ')
   return (
     ' · different slot selections: ' +
     listed +

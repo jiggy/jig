@@ -168,6 +168,21 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   const application = focus === undefined && packagePath === undefined
   const directHandoffs = []
   const focused = focus === undefined ? undefined : targets.get(focus)
+  const orientationExtras: BehaviorTarget[] = []
+  if (focused) {
+    const visibleTargets = new Set(input.visible)
+    const uses = new Set(
+      input.targets
+        .filter(({ implementation }) => implementation === focused.implementation)
+        .map(({ id }) => id),
+    )
+    for (const target of input.targets)
+      if (
+        !visibleTargets.has(target.id) &&
+        (uses.has(target.id) || [...target.slots.values()].some((choice) => uses.has(choice)))
+      )
+        orientationExtras.push(target)
+  }
   const inputFields = focused
     ? declaredInputPaths(input.packages.get(focused.implementation)?.inputSchema)
     : undefined
@@ -386,6 +401,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     ...(earlierReturns.size ? { earlierReturns: [...earlierReturns.values()] } : {}),
     ...(earlierReturnsLimited ? { earlierReturnsLimited: true } : {}),
     inventory,
+    ...(orientationExtras.length ? { orientationExtras } : {}),
     scopes,
     childPaths,
   }

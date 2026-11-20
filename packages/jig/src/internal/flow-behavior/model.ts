@@ -294,6 +294,7 @@ export interface BehaviorReport {
   readonly packagePath?: string
   readonly entrypoint?: string
   readonly inventory: readonly BehaviorTarget[]
+  readonly orientationExtras?: readonly BehaviorTarget[]
   readonly entrySources?: ReadonlyMap<string, string>
   readonly directSelectors?: ReadonlyMap<string, string>
   readonly bindingDeclarations?: ReadonlyMap<string, string>

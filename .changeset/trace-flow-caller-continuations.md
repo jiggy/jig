@@ -25,3 +25,5 @@ Link peer Binding declarations and the package settings schema in focused inspec
 Show earlier returns and any independent entry alongside a caller's modeled next call.
 
 Show the exact Run selector beside focused source links. Identify packages whose captured invocation targets all use Bindings.
+
+Show related Bindings and their exact alternative slot targets when inspection opens at the default entrypoint.
