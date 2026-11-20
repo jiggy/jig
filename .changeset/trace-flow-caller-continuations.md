@@ -11,3 +11,5 @@ Put a direct Flow's required input and modeled returns beside its selector. Foll
 Link the captured executable file from local Flow and Binding views, including alternative targets shown at incoming slots.
 
 Show differing input fields across slots that target the same Flow and give their wiring links once per configured use.
+
+Show different modeled inputs and results at the same write site. Combine entries that share the same displayed case.

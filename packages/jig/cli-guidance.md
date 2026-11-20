@@ -354,6 +354,9 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Show the source of the final progress request beside the reported count.
   Put direct invocation and represented callers beside the selected Flow's first write attempts.
   Keep write locations, earlier conditions, and later actions tied to the same path.
+  Give each represented entry a row before adding distinct write cases for the same entry.
+  List entries together when their write evidence agrees.
+
   Compare authored calls through the same slot together.
   Show common helper metadata and related Flow uses once within the configured caller's view.
 

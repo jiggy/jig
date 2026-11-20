@@ -805,6 +805,7 @@ function renderFirstWrites(
     write: Extract<BehaviorStep, { kind: 'effect' }>
     checks: readonly BehaviorGuard[]
     after: readonly BehaviorStep[]
+    entryKey: string
     entry: string
     input: string
     writerExit?: string
@@ -813,9 +814,13 @@ function renderFirstWrites(
   let limited = false
   function add(
     route: Route,
-    key: string,
+    entryKey: string,
     entry: string,
-    caller?: { readonly input: string; readonly after: Route },
+    caller?: {
+      readonly input: string
+      readonly after: Route
+      readonly completion: Call['completion']
+    },
   ) {
     const index = route.findIndex((step) => writesFile(step) && step.owner === scope.target)
     const write = route[index]
@@ -830,13 +835,18 @@ function renderFirstWrites(
       paths = new Map()
       sites.set(id, paths)
     }
-    if (!paths.has(key) && paths.size >= 8) {
-      limited = true
-      return
-    }
     const tail =
       caller?.after ??
       route.slice(index + 1).filter((step) => step.kind === 'condition' || step.kind === 'end')
+    const end = route.at(-1)
+    const writerExit = end?.kind === 'end' ? label(end) : undefined
+    const key = JSON.stringify([
+      entryKey,
+      caller?.completion,
+      caller?.input,
+      writerExit,
+      write.detail,
+    ])
     const previous = paths.get(key)?.after.at(-1)
     const terminal = tail.at(-1)
     if (
@@ -847,14 +857,14 @@ function renderFirstWrites(
     )
       return
     const checks = route.slice(0, index).filter((step) => step.kind === 'condition')
-    const end = route.at(-1)
     paths.set(key, {
       write,
       checks: [...checks, ...(write.guards ?? [])].slice(-2),
       after: tail,
+      entryKey,
       entry,
       input: caller?.input ?? 'Own Flow input',
-      ...(caller && end?.kind === 'end' ? { writerExit: label(end) } : {}),
+      ...(caller && writerExit !== undefined ? { writerExit } : {}),
     })
   }
   for (const route of scope.routes)
@@ -871,9 +881,9 @@ function renderFirstWrites(
             : ''
       add(
         child.steps,
-        anchor + ':' + call.completion,
+        anchor,
         text(call.caller + ' via ' + call.slot + qualifier) + ' (' + sourceLink(call.site) + ')',
-        { input: child.input, after },
+        { input: child.input, after, completion: call.completion },
       )
     }
   }
@@ -900,10 +910,19 @@ function renderFirstWrites(
     )
   for (const paths of sites.values()) {
     const origin = paths.values().next().value!.write.site
+    const entries = new Map<string, WritePath>()
+    for (const path of paths.values())
+      if (!entries.has(path.entryKey)) entries.set(path.entryKey, path)
+    const firstPerEntry = new Set(entries.values())
+    const shown = [
+      ...firstPerEntry,
+      ...[...paths.values()].filter((path) => !firstPerEntry.has(path)),
+    ].slice(0, 8)
+    if (paths.size > shown.length) limited = true
     lines.push(
       '**Attempts writeFile** (' + sourceLink(origin) + ')',
       '',
-      ...(paths.has('direct') && paths.size > 1
+      ...(shown.some(({ entryKey }) => entryKey === 'direct') && entries.size > 1
         ? [
             '**Shared write site** · A validation in this Flow before this write can cover every entry below.',
             'The direct entry supplies input here. Each configured caller supplies input through its slot.',
@@ -913,18 +932,20 @@ function renderFirstWrites(
       '| Entry | Writer input and result in this case | Checks before the write | Destination | Later checks or actions |',
       '| --- | --- | --- | --- | --- |',
     )
-    for (const { entry, input, writerExit, checks, write, after } of paths.values())
-      lines.push(
-        '| ' +
-          [
-            entry,
-            text(input) + (writerExit ? '<br>' + text(writerExit) : ''),
-            checks.map(linkedCheck).join(' → ') || '—',
-            text(write.detail),
-            nextSteps(after, true) || 'Unresolved',
-          ].join(' | ') +
-          ' |',
-      )
+    const rows = new Map<string, Set<string>>()
+    for (const { entry, input, writerExit, checks, write, after } of shown) {
+      const cells = [
+        text(input) + (writerExit ? '<br>' + text(writerExit) : ''),
+        checks.map(linkedCheck).join(' → ') || '—',
+        text(write.detail),
+        nextSteps(after, true) || 'Unresolved',
+      ].join(' | ')
+      const labels = rows.get(cells) ?? new Set<string>()
+      labels.add(entry)
+      rows.set(cells, labels)
+    }
+    for (const [cells, labels] of rows)
+      lines.push('| ' + [...labels].join('<br>') + ' | ' + cells + ' |')
     lines.push('')
   }
   if (limited) lines.push('Some write sites or caller paths exceed the display allowance.', '')
