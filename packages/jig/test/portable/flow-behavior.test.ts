@@ -827,10 +827,10 @@ test('caller slot groups compare authored literals and identify guarded or overr
   const group = rendered.split('**converter → flow:flows/convert**')[1]?.split('**exporter →')[0]
   expect(group).toContain('| Call site | Conditions and request |')
   expect(group).toContain('One configured selection for all calls through this slot.')
+  expect(group).toContain('To redirect selected calls, choose a different slot at those sites.')
   expect(group).toContain(
-    'Declared slots [flows/import/FLOW.meta.json](./flows/import/FLOW.meta.json)',
+    'For a new slot, declare it in [flows/import/FLOW.meta.json](./flows/import/FLOW.meta.json) and select its target in [bindings/code.ts](./bindings/code.ts).',
   )
-  expect(group).toContain('Binding wiring [bindings/code.ts](./bindings/code.ts)')
   expect(group?.split('\n').filter((line) => line.startsWith('| [flows/import/'))).toHaveLength(3)
   expect(rendered.match(/Request metadata operationId = slot \(/g)).toHaveLength(1)
   expect(group).toContain("scale = 'chapter'")
@@ -873,10 +873,16 @@ test('focused callee shows authored requests through the exact incoming Binding 
   const audit: BehaviorTarget = {
     ...code,
     id: 'binding:audit',
+    declarationPath: 'bindings/audit.ts',
     slots: new Map([
       ['converter', 'flow:flows/export'],
       ['exporter', 'flow:flows/export'],
     ]),
+  }
+  const preview: BehaviorTarget = {
+    ...code,
+    id: 'flow:flows/import',
+    slots: new Map([['exporter', 'flow:flows/export']]),
   }
   const target = 'flow:flows/convert'
   const coordinator: BehaviorTarget = {
@@ -884,10 +890,7 @@ test('focused callee shows authored requests through the exact incoming Binding 
     id: 'binding:coordinate',
     implementation: 'flows/coordinate',
     declarationPath: 'bindings/coordinate.ts',
-    slots: new Map([
-      ['production', code.id],
-      ['audit', audit.id],
-    ]),
+    slots: new Map([['production', code.id]]),
   }
   const sample: BehaviorTarget = {
     ...code,
@@ -895,12 +898,14 @@ test('focused callee shows authored requests through the exact incoming Binding 
     implementation: 'flows/sample',
     slots: new Map([['sample', code.id]]),
   }
-  const report = analyzeFlowBehavior({
+  const focusedInput = {
     ...input,
     focus: target,
-    targets: [...input.targets, audit, coordinator, sample],
-    visible: [...input.visible, audit.id, coordinator.id, sample.id],
-  })
+    targets: [...input.targets, audit, preview, coordinator, sample],
+    visible: [...input.visible, coordinator.id, sample.id],
+  }
+  const report = analyzeFlowBehavior(focusedInput)
+  expect(report.inventory.some(({ id }) => id === audit.id || id === preview.id)).toBe(false)
   const rendered = renderFlowBehavior(report)
   const decisions = rendered
     .split('### Incoming caller decisions\n')[1]
@@ -924,9 +929,20 @@ test('focused callee shows authored requests through the exact incoming Binding 
   expect(decisions).toMatch(
     /purpose · run\.input\.resume[^\n]+true → 'post-edit', false → 'developmental'/,
   )
-  expect(decisions).not.toContain('binding:audit')
+  expect(decisions).toContain("**Other configured uses of this caller's code** · flows/import")
+  expect(decisions).toContain(
+    'binding:audit · converter → flow:flows/export ([bindings/audit.ts](./bindings/audit.ts))',
+  )
+  expect(decisions).toContain('flow:flows/import · converter has no selection')
+  expect(decisions).not.toContain('#### binding:audit')
   expect(decisions).not.toContain("scope = 'unrelated'")
   expect(decisions).not.toContain('**exporter →')
+
+  const opaque = renderFlowBehavior(analyzeFlowBehavior({ ...focusedInput, packages: new Map() }))
+  expect(opaque).toContain('**Selected here** · converter → flow:flows/convert')
+  expect(opaque).toContain('binding:audit · converter → flow:flows/export')
+  expect(opaque).toContain('flow:flows/import · converter has no selection')
+  expect(opaque).not.toContain('Argument 1 slot → request field slot.')
 })
 
 test('focused source sites decline reassigned or ambiguous requests and retain direct decisions', () => {

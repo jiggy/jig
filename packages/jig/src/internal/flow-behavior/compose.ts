@@ -186,6 +186,20 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   }
 
   const incoming = focus === undefined ? undefined : incomingScopes(focus, input.visible, targets)
+  const incomingCallerUses = new Map<string, BehaviorTarget[]>()
+  if (focus !== undefined) {
+    const usesByPackage = new Map<string, BehaviorTarget[]>()
+    for (const target of input.targets) {
+      const uses = usesByPackage.get(target.implementation) ?? []
+      uses.push(target)
+      usesByPackage.set(target.implementation, uses)
+    }
+    for (const caller of inventory) {
+      if (caller.id === focus || ![...caller.slots.values()].includes(focus)) continue
+      const uses = usesByPackage.get(caller.implementation)!
+      if (uses.length > 1) incomingCallerUses.set(caller.id, uses)
+    }
+  }
   const focusedBinding = inventory.find(
     ({ id, declarationPath }) => id === focus && declarationPath,
   )
@@ -355,6 +369,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     ...(entrypoint === undefined ? {} : { entrypoint }),
     ...(inputFields?.paths.length || inputFields?.truncated ? { inputFields } : {}),
     ...(directHandoffs.length ? { directHandoffs } : {}),
+    ...(incomingCallerUses.size ? { incomingCallerUses } : {}),
     ...(earlierReturns.size ? { earlierReturns: [...earlierReturns.values()] } : {}),
     ...(earlierReturnsLimited ? { earlierReturnsLimited: true } : {}),
     inventory,

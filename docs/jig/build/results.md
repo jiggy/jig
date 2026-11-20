@@ -324,6 +324,9 @@ The decision shows where the caller chooses a slot and where its helper sends th
 Conditional argument fields show how two calls through the same slot can differ.
 Other slots that use the same Flow show which callers can share the effect of an implementation change.
 
+In **Incoming caller decisions**, other configured uses of the caller's code show how that same slot is wired elsewhere.
+Check those uses before changing the caller's source. A Binding's slot selection applies to every call through that slot in that use.
+
 The opening view can flag a relative runtime import that leaves the Flow package.
 Use the source location and any matching configured slots to find the owning package.
 For shared code, declare a dependency. Review checks supported imports against the captured Run files.

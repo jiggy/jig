@@ -302,6 +302,9 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Give the count and up to three source links for sites beyond the detailed view.
   Show differing literals, the branches selecting a literal field value, and possible later overrides.
 
+  Beside each incoming slot, show the other configured uses of its caller's code and their selection for the same slot.
+  Keep those uses separate from callers of the focused callee and disclose omissions.
+
   Show the local helper's request location beside the call that selects a configured slot.
   Show authored request metadata and the child input location under separate labels.
   Show the authored request and the argument positions proven to supply its fields.
