@@ -745,7 +745,7 @@ test('focused orientation shows distinct slots and variant callers before analys
     'binding:chapter-peer · same slot selections · same settings · [bindings/chapter-peer.ts](./bindings/chapter-peer.ts)',
   )
   expect(orientation).toContain(
-    'the shared Flow through `run.settings`. The invocation supplies `run.input` separately.',
+    'The shared Flow reads `run.settings` and receives invocation input through `run.input`.',
   )
   expect(orientation).toContain(
     'Settings schema · [flows/draft-chapter/settings.schema.json](./flows/draft-chapter/settings.schema.json).',
@@ -1035,7 +1035,16 @@ test('focused callee shows authored requests through the exact incoming Binding 
   const focusedInput = {
     ...input,
     focus: target,
-    targets: [...input.targets, audit, preview, safeExport, ...rehearsals, coordinator, sample],
+    targets: [
+      { ...code, declarationPath: 'bindings/code.ts', settingsSchemaPath: null },
+      ...input.targets.slice(1),
+      audit,
+      preview,
+      safeExport,
+      ...rehearsals,
+      coordinator,
+      sample,
+    ],
     visible: [...input.visible, coordinator.id, sample.id],
   }
   const report = analyzeFlowBehavior(focusedInput)
@@ -1083,6 +1092,8 @@ test('focused callee shows authored requests through the exact incoming Binding 
       '  - binding:rehearsal ([bindings/rehearsal.ts](./bindings/rehearsal.ts)), binding:second-rehearsal ([bindings/second-rehearsal.ts](./bindings/second-rehearsal.ts))',
   )
   expect(decisions).toContain('**converter has no selection**\n  - flow:flows/import')
+  const schema = 'Settings schema · For a new setting, create flows/import/settings.schema.json.'
+  expect(decisions).toContain(schema + ' `FLOW.contract.json` defines the invocation boundary.')
   expect(decisions).not.toContain('#### binding:audit')
   expect(decisions).not.toContain("scope = 'unrelated'")
   expect(decisions).not.toContain('**exporter →')
@@ -1095,7 +1106,20 @@ test('focused callee shows authored requests through the exact incoming Binding 
   expect(opaque).toContain('**Captured entry source** · [flows/import/FLOW.ts]')
   expect(opaque).toContain('**converter → flow:flows/export**')
   expect(opaque).toContain('**converter has no selection**\n  - flow:flows/import')
+  expect(opaque).toContain(schema)
   expect(opaque).not.toContain('Argument 1 slot → request field slot.')
+
+  const secondCaller = renderFlowBehavior(
+    analyzeFlowBehavior({
+      ...focusedInput,
+      targets: focusedInput.targets.map((item) =>
+        item.id === audit.id ? { ...item, slots: code.slots, settingsSchemaPath: null } : item,
+      ),
+      visible: [...focusedInput.visible, audit.id],
+    }),
+  )
+  expect(secondCaller).toContain('#### binding:audit')
+  expect(secondCaller.split(schema)).toHaveLength(2)
 
   const bindingOnly = renderFlowBehavior({
     ...analyzeFlowBehavior({

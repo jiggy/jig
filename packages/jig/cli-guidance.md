@@ -272,6 +272,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Focused Binding inspection links its captured declaration and compares its settings and slot selections with other uses.
 
   Link peer Binding declarations. For shared local Flows, identify the settings schema or its absence and show how settings reach the Flow separately from input.
+  When settings need a new schema, name its exact package path. Show the same information once for each shared package in incoming caller decisions.
   Link incoming slots to captured caller Binding declarations.
   Explain how to select distinct configuration when several slots use the same focused Binding.
 

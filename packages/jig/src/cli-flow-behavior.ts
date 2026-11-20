@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import type { DisplaySourceBehavior } from '@jigging/display-model'
 import {
   type ConfiguredConnection,
+  renderBindingSettings,
   renderFlowOrientation,
   renderFlowPackageUses,
 } from './cli-flow-orientation.js'
@@ -2407,6 +2408,7 @@ function incomingCallDecisions(
       )
     }
   const lines = ['### Incoming caller decisions', '']
+  const settingsShown = new Set<string>()
   for (const caller of shown) {
     const target = targets.get(caller)!
     lines.push(`#### ${text(caller)}`, '', ...entrySourceFacts(report, caller, target))
@@ -2468,6 +2470,13 @@ function incomingCallDecisions(
         `- ${peers.length - BEHAVIOR_LIMITS.focusedRelatedCalls} more configured uses. Inspect the caller's package for the full list.`,
       )
     lines.push('')
+    if (!settingsShown.has(target.implementation) && peers.some((peer) => peer.declarationPath)) {
+      const settings = renderBindingSettings(target, text, sourcePathLink)
+      if (settings.length) {
+        lines.push(...settings)
+        settingsShown.add(target.implementation)
+      }
+    }
   }
   if (callers.size > shown.length)
     lines.push(

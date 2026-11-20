@@ -1004,9 +1004,12 @@ This configuration summary can include targets outside the analyzed routes.
 It links captured peer Binding declarations and identifies equal settings.
 
 For a local Flow shared by Bindings, it identifies the package settings schema or its absence.
+If the schema is absent, it gives the project-relative path to create for a new setting.
 It names Binding settings as the configuration channel for a change specific to one use.
+Incoming caller decisions display this information once per shared caller package.
 Supported direct setting checks link the checked expression to the selected value and Binding declaration.
 An authored exit can link the same configuration while its reachability remains unresolved.
+
 With `--all`, the document shows the project entrypoint and includes every configured target within the topology limits.
 
 The configured caller list links available caller Binding declarations.
