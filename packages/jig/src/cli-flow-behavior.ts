@@ -2367,33 +2367,25 @@ function renderCallSelections(
     group.push(selection)
     groups.set(selection.slot, group)
   }
-  const sharesSlot = (slot: string, count: number) =>
-    count + (selections.omittedBySlot.get(slot)?.count ?? 0) > 1
-  if (declarations.length && ![...groups].some(([slot, group]) => sharesSlot(slot, group.length)))
-    lines.push(declarations.join(' · '), '')
+  if (declarations.length) lines.push(declarations.join(' · '), '')
+  if (
+    [...groups].some(
+      ([slot, group]) => group.length + (selections.omittedBySlot.get(slot)?.count ?? 0) > 1,
+    )
+  )
+    lines.push('Each slot selection applies to all its calls in this configured use.', '')
+
+  const varyingBySlot = new Map<string, ReadonlySet<string>>()
+  for (const { slots } of selections.related) {
+    const varying = varyingInputFields(slots.flatMap((slot) => groups.get(slot) ?? []))
+    for (const slot of slots) varyingBySlot.set(slot, varying)
+  }
 
   const dispatches = new Set<string>()
   for (const [slot, group] of groups) {
     const destination = target.slots.get(slot)
     if (destination === undefined) continue
     lines.push('', `**${text(slot)} → ${text(destination)}**`, '')
-    if (sharesSlot(slot, group.length)) {
-      lines.push(
-        'One configured selection for all calls through this slot. ' +
-          'To redirect selected calls, choose a different slot at those sites.',
-        '',
-      )
-      if (target.slotDeclarationPath && target.declarationPath) {
-        lines.push(
-          'For a new slot, declare it in ' +
-            sourcePathLink(target.slotDeclarationPath) +
-            ' and select its target in ' +
-            sourcePathLink(target.declarationPath) +
-            '.',
-          '',
-        )
-      } else if (declarations.length) lines.push(declarations.join(' · '), '')
-    }
     for (const { dispatch, requestMetadata } of group) {
       if (!dispatch) continue
       const key = JSON.stringify([dispatch.path, dispatch.line, dispatch.column])
@@ -2410,7 +2402,7 @@ function renderCallSelections(
         )
       lines.push('')
     }
-    const varying = varyingInputFields(group)
+    const varying = varyingBySlot.get(slot) ?? varyingInputFields(group)
     if (group.length > 1) lines.push('| Call site | Conditions and request |', '| --- | --- |')
     for (const selection of group) {
       const { dispatch, guards, requestMetadata, inputSite, inputFields } = selection

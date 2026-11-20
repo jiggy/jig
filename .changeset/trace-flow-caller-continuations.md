@@ -9,3 +9,5 @@ See other configured uses of an incoming caller's code alongside its slot select
 Put a direct Flow's required input and modeled returns beside its selector. Follow a caller's next handoff through its known result to the caller's return when the same path establishes both.
 
 Link the captured executable file from local Flow and Binding views, including alternative targets shown at incoming slots.
+
+Show differing input fields across slots that target the same Flow and give their wiring links once per configured use.
