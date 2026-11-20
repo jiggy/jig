@@ -31,6 +31,7 @@ export async function prepareFlowBehavior(
 ): Promise<BehaviorReport> {
   const byPackage = new Map(project.flows.map((f) => [f.provenance.projectPath, f]))
   const targets: BehaviorTarget[] = []
+  const entrySources = new Map<string, string>()
   function target(
     id: string,
     implementation: string,
@@ -57,6 +58,8 @@ export async function prepareFlowBehavior(
     const declaration = implementation.startsWith('npm:')
       ? undefined
       : implementation + (flow.entrypoint?.suffix === 'md' ? '/FLOW.md' : '/FLOW.meta.json')
+    if (!implementation.startsWith('npm:') && flow.entrypoint)
+      entrySources.set(id, `${implementation}/${flow.entrypoint.path}`)
     targets.push({
       id,
       implementation,
@@ -122,7 +125,7 @@ export async function prepareFlowBehavior(
     bytes -= read.bytes
     packages.set(implementation, read.package)
   }
-  return analyzeFlowBehavior(
+  const report = analyzeFlowBehavior(
     {
       revision,
       focus,
@@ -134,6 +137,7 @@ export async function prepareFlowBehavior(
     },
     signal,
   )
+  return { ...report, entrySources }
 }
 
 /** Decode bounded TypeScript and contract facts from an already-owned capture. */

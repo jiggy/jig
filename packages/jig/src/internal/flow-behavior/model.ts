@@ -283,6 +283,7 @@ export interface BehaviorReport {
   readonly packagePath?: string
   readonly entrypoint?: string
   readonly inventory: readonly BehaviorTarget[]
+  readonly entrySources?: ReadonlyMap<string, string>
   readonly inputFields?: {
     readonly paths: readonly string[]
     readonly truncated: boolean

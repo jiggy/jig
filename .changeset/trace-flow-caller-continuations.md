@@ -7,3 +7,5 @@ Show the link from a Flow's returned value to the caller's check and next handof
 See other configured uses of an incoming caller's code alongside its slot selection. The report links each displayed Binding and shows where the same slot selects a different target.
 
 Put a direct Flow's required input and modeled returns beside its selector. Follow a caller's next handoff through its known result to the caller's return when the same path establishes both.
+
+Link the captured executable file from local Flow and Binding views, including alternative targets shown at incoming slots.

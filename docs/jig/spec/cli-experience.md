@@ -985,6 +985,10 @@ Packages containing callers appear first, beginning with those that have a calle
 The index uses captured topology and skips source behavior analysis.
 
 An exact target retains its configured context, including other uses of its implementation and callers.
+Source behavior links the captured entry file for a local target and for displayed local choices at incoming slots.
+The application map shows the entry file once per Flow package. Package inspection shows it when a configured use is present.
+Entry links remain available when source analysis cannot inspect the entry or later behavior.
+
 For a direct Flow target, show its own required top-level input fields from the captured contract.
 Modeled direct returns that lack unresolved conditions or assumed call results may appear beside the selector.
 The caller continuation stays in the caller's context.
