@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
+import { createHash } from 'node:crypto'
 import { lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -182,7 +183,28 @@ test('installed bare init writes only the inert envelope and preserves existing 
   expect(initialized.code).toBe(0)
   expect(initialized.stderr).toBe('')
   expect(initialized.stdout).toContain('Created bare Jig project')
-  expect((await readdir(project)).sort()).toEqual(['.gitignore', 'bindings', 'flows', 'jig.ts'])
+  expect((await readdir(project)).sort()).toEqual([
+    '.gitignore',
+    'AGENTS.md',
+    'bindings',
+    'flows',
+    'jig.ts',
+  ])
+  const guidance = await readFile(join(project, 'AGENTS.md'), 'utf8')
+  expect(guidance.startsWith('# Workflow edits\n')).toBe(true)
+  expect(guidance).toContain('jig inspect --flow')
+  expect(guidance).not.toContain('MIT License')
+  expect(guidance).not.toContain('Copyright')
+  const notices = await readFile(
+    join(root, 'node_modules/@jigging/jig/THIRD_PARTY_NOTICES'),
+    'utf8',
+  )
+  expect(notices).toContain('Copyright (c) 2026 Agent Zero')
+  const dox = guidance.slice(guidance.indexOf('# DOX framework\n'))
+  // Upstream AGENTS.md at agent0ai/dox@765ae4ac, including its final newline.
+  expect(createHash('sha256').update(dox).digest('hex')).toBe(
+    'e1123d740736d6792efc4d11afa5a6a0f34610131ee7714ccf592f007b9bc3ea',
+  )
   expect(await readdir(join(project, 'flows'))).toEqual([])
   expect(await readdir(join(project, 'bindings'))).toEqual([])
   expect(await readFile(join(project, '.gitignore'), 'utf8')).toBe('.jig/\n')
@@ -218,7 +240,13 @@ test('concurrent installed bare initializers have exactly one winner', async () 
     invoke(['init', '--bare', destination]),
   ])
   expect(results.map((result) => result.code).sort()).toEqual([0, 1])
-  expect((await readdir(destination)).sort()).toEqual(['.gitignore', 'bindings', 'flows', 'jig.ts'])
+  expect((await readdir(destination)).sort()).toEqual([
+    '.gitignore',
+    'AGENTS.md',
+    'bindings',
+    'flows',
+    'jig.ts',
+  ])
   passed++
 })
 
@@ -232,6 +260,12 @@ test('installed greeting and Agent initialization create ordinary editable files
     expect(result.code).toBe(0)
     expect(result.stderr).toBe('')
     expect(result.stdout).not.toContain('\u001b')
+    expect(await readFile(join(project, 'AGENTS.md'), 'utf8')).toContain('# DOX framework\n')
+    const notes = await readFile(join(project, 'flows/hello/AGENTS.md'), 'utf8')
+    expect(notes).toContain('# hello Flow\n')
+    expect(notes).toContain('[FLOW.ts](./FLOW.ts)')
+    expect(notes).not.toContain('# DOX framework')
+    expect(notes).not.toContain('MIT License')
     expect(await readFile(join(project, 'flows/hello/FLOW.ts'), 'utf8')).toContain(
       'import { handle } from "@jigging/flow"',
     )

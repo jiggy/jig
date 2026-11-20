@@ -1,9 +1,19 @@
 ---
 name: jig
-description: Jig project creation and use. Use when creating, configuring, composing, reviewing, running, or diagnosing Jig projects, connecting Flows to operator-provided Agents and powers, or embedding Jig execution in an application.
+description: Find where to change a Jig workflow route, who calls a Flow, and which other uses share it. Also use for creating and configuring Jig projects, reviewing and running Flows, diagnosing execution, or embedding Jig in an application.
 ---
 
 # Create and use Jig projects
+
+## Find where to change a workflow
+
+When changing which Flow runs next or how one caller uses a shared Flow, run `jig inspect --flow` from the project root.
+To find the callers of a known Flow source file, use `jig inspect --flow <path>` with its project-relative path.
+For a wording change or another edit within one Flow, use its source and tests directly.
+
+Look for the caller and slot that select the next step. If several callers select the same Binding, its settings and child selections apply to all of them.
+If one caller needs a different child in an existing slot, point that caller to a Binding with the desired slot selection.
+Follow the relevant declaration or focused command to the source. Use the [inspection guide](reference/build/results.md#inspect-source-behavior) for deeper route questions.
 
 ## 1. Establish the task and available support
 
@@ -18,10 +28,6 @@ Use the FLOW skill when designing, creating, composing, or reviewing the project
 If it is unavailable, follow its [canonical design guidance](https://flow.jig.md/guide/design) and the task's FLOW specifications.
 Keep portable method guidance with FLOW and host configuration with Jig.
 
-For workflow edits, start with `jig inspect --flow`, or supply the target if known.
-Use the configured callers, slots, and shared implementations to find the source that owns the change.
-When starting from a Flow package directory, use `jig inspect --flow --package PATH` to find its configured uses.
-See [source behavior inspection](reference/build/results.md#inspect-source-behavior) for tracing a route or comparing specific revisions.
 Complete this step when the outcome, existing project state, and execution prerequisites are clear.
 
 ## 2. Design the project before its configuration

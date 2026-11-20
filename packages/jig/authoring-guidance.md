@@ -196,7 +196,11 @@ remain supported and are not rewritten by a review default.
   contract-keyed default. It chooses no client implicitly and does not inspect
   installations or authentication.
 
-  Generated READMEs recommend FLOW and Jig authoring skills for the development assistant through the [agent guide](../../docs/jig/for-agents.md).
+  Every scaffold includes a project-owned `AGENTS.md` with request-first and source-file-first inspection guidance.
+  The [agent guide](../../docs/jig/for-agents.md) gives existing projects the same text for their local launcher.
+  The greeting and each `jig new` Flow have their own editable `AGENTS.md` beside `FLOW.ts`.
+
+  Generated READMEs recommend FLOW and Jig authoring skills through that guide.
   Keep installation commands in that guide and initialization free of installation.
 
   Check generated package versions against their manifests. The greeting names

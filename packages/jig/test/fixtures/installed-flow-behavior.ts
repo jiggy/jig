@@ -141,10 +141,13 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
     '5 configured targets across 4 packages. No declared entrypoint.',
   )
   expect(navigation.stdout).toContain(
-    '| flows/import | `jig inspect --flow binding:code` | converter → flow:flows/convert · exporter → flow:flows/export |',
+    '| flows/import | `jig inspect --flow binding:code` · [wiring](./bindings/code.ts) | — | converter → flow:flows/convert · exporter → flow:flows/export |',
   )
   expect(navigation.stdout).toContain(
-    '| flows/import | `jig inspect --flow binding:manual` | converter → flow:flows/opaque · exporter → flow:flows/export |',
+    '| flows/import | `jig inspect --flow binding:manual` · [wiring](./bindings/manual.ts) | — | converter → flow:flows/opaque · exporter → flow:flows/export |',
+  )
+  expect(navigation.stdout).toContain(
+    '| flows/export | `jig inspect --flow flow:flows/export` | [binding:code · exporter](./bindings/code.ts), [binding:manual · exporter](./bindings/manual.ts) | — |',
   )
   expect(navigation.stdout).not.toContain('```mermaid')
   expect(navigation.stdout).not.toContain('Unsupported statement')

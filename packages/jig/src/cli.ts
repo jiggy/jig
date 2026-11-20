@@ -1283,7 +1283,11 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
       )
       runtime.signal?.throwIfAborted()
       if (inspected.kind === 'index') {
-        await runtime.writeRecord(renderFlowContext(inspected.topology, { presentation: 'index' }))
+        await runtime.writeRecord(
+          renderFlowContext(inspected.topology, {
+            indexDeclarations: inspected.bindingDeclarations,
+          }),
+        )
         return 0
       }
       const report = inspected.behavior

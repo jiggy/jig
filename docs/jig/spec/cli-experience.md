@@ -984,6 +984,9 @@ It groups targets by package and lists configured slots with a command for each 
 Packages containing callers appear first, beginning with those that have a caller without upstream slots.
 The index uses captured topology and skips source behavior analysis.
 
+When multiple caller slots select the same target, that row lists up to eight of them beside its outgoing slots.
+The row counts additional caller slots. Links open the captured Binding declarations for the target and its displayed callers, where available.
+
 An exact target retains its configured context, including other uses of its implementation and callers.
 Source behavior links the captured entry file for a local target and for displayed local choices at incoming slots.
 The application map shows the entry file once per Flow package. Package inspection shows it when a configured use is present.

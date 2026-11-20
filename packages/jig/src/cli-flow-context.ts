@@ -63,7 +63,7 @@ function diagramIds(snapshot: Record<string, JsonValue>) {
 /** Configured topology only. No method interpretation or invocation history. */
 export function renderFlowContext(
   value: JsonValue,
-  options: FlowContextOptions & { presentation?: 'index' } = {},
+  options: FlowContextOptions & { indexDeclarations?: ReadonlyMap<string, string> } = {},
 ): string {
   const snapshot = record(value)
   if (snapshot.state === 'unreviewed' && snapshot.basis !== 'working-tree')
@@ -74,7 +74,7 @@ export function renderFlowContext(
     included.length > PRIVATE_FLOW_CONTEXT_LIMITS.targets ||
     edges.length > PRIVATE_FLOW_CONTEXT_LIMITS.connections
   )
-    return options.presentation === 'index'
+    return options.indexDeclarations
       ? '# Flow navigation unavailable\n\nThe project exceeds fixed presentation bounds. Inspect a target or package, or add --json for the complete configured records.\n'
       : options.packagePath === undefined
         ? '# Configured topology unavailable\n\nThe selected view exceeds fixed presentation bounds. Choose a smaller target. No graph was truncated.\n'
@@ -99,13 +99,18 @@ export function renderFlowContext(
       return [{ from: edge.from, slot, to: edge.resource, resource: true }]
     return []
   })
-  if (options.presentation === 'index')
+  if (options.indexDeclarations)
     return [
       '# Flow navigation',
       '',
       basis,
       '',
-      ...renderFlowNavigationIndex(configuredTargets, configuredConnections, markdown),
+      ...renderFlowNavigationIndex(
+        configuredTargets,
+        configuredConnections,
+        options.indexDeclarations,
+        markdown,
+      ),
     ].join('\n')
   if (options.packagePath !== undefined)
     return [

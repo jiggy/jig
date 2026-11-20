@@ -421,6 +421,7 @@ using FLOW;
   assert.equal(initialized.stderr, '')
   assert.deepEqual((await readdir(bareProject)).sort(), [
     '.gitignore',
+    'AGENTS.md',
     'bindings',
     'flows',
     'jig.ts',

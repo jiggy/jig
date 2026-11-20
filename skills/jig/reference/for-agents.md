@@ -9,6 +9,21 @@ People and software use the same task paths and exact contracts.
 Fetch focused pages for the task before loading the full documentation bundle.
 These public files require no account, API key, or JavaScript execution.
 
+## Find where to change a workflow
+
+`jig init` writes a root `AGENTS.md` for coding agents. For an existing project, add this guidance to its own `AGENTS.md`.
+Use the project's usual Jig command if it has a local launcher.
+
+> When changing which Flow runs next or how one caller uses a shared Flow,
+> run `jig inspect --flow` from the project root. Find the caller that owns
+> the decision and the other routes that use it. To see who uses a known
+> Flow source file, pass its project-relative path to the same command.
+>
+> For a wording change or another edit within one Flow, use its source and tests directly.
+
+For example, `jig inspect --flow flows/import/FLOW.ts` opens the configured use or lists the uses of that package.
+Follow the relevant Binding declaration or [focused inspection](build/results.md#inspect-source-behavior) to the decision.
+
 ## Install authoring skills
 
 For a new Jig project, install both authoring skills in your development Agent.
@@ -22,7 +37,7 @@ npx skills add jiggy/jig --skill jig
 | Skill | Use it for |
 | --- | --- |
 | FLOW | Portable method design, naming, decomposition, composition, and implementation. |
-| Jig | Project creation, local configuration, review, execution, and recovery. |
+| Jig | Finding the caller that controls a workflow route, comparing shared uses, and configuring, reviewing, or running a project. |
 
 Use both when building an application from reusable Flows.
 Use Jig's skill alone for host tasks that do not change methods.

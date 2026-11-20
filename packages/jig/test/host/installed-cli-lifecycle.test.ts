@@ -50,9 +50,11 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
     // installation, without a workspace, a local dependency install or Git setup.
     const authoredPaths = [
       '.gitignore',
+      'AGENTS.md',
       'README.md',
       'jig.ts',
       'package.json',
+      'flows/hello/AGENTS.md',
       'flows/hello/package.json',
       'flows/hello/FLOW.meta.json',
       'flows/hello/FLOW.ts',

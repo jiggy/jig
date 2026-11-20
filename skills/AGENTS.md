@@ -6,5 +6,6 @@ Generated references contain selected documentation and required notices, withou
 Freshness checks compare regenerated file contents directly.
 Keep repository maintenance instructions in this file, outside generated reference content.
 
-The Jig skill leads workflow edits with read-only inspection to find the relevant source.
+Lead the Jig skill description with the coding agent's job of locating a route change and its shared uses.
+Make the read-only lookup usable from an owner request or a Flow source path.
 Keep authored behavioral context distinct from computed configuration and actual execution evidence.

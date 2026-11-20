@@ -319,6 +319,8 @@ test('new writes ordinary source, inherits the project SDK and never evaluates a
   try {
     await createProject(project)
     await writeFile(join(project, 'jig.ts'), 'throw new Error("must not run")')
+    const rootNotes = join(project, 'AGENTS.md')
+    await writeFile(rootNotes, '# Editorial team\n')
     await writeFile(
       join(project, 'package.json'),
       JSON.stringify({ devDependencies: { '@jigging/flow': 'workspace:*' } }),
@@ -330,6 +332,7 @@ test('new writes ordinary source, inherits the project SDK and never evaluates a
         .dependencies,
     ).toEqual({ '@jigging/flow': 'workspace:*' })
     expect((await readdir(join(project, 'flows/summarize'))).sort()).toEqual([
+      'AGENTS.md',
       'FLOW.meta.json',
       'FLOW.ts',
       'package.json',
@@ -338,7 +341,12 @@ test('new writes ordinary source, inherits the project SDK and never evaluates a
       'FLOW.ts',
     )
     expect(await readFile(join(project, 'jig.ts'), 'utf8')).toBe(before)
+    expect(await readFile(rootNotes, 'utf8')).toBe('# Editorial team\n')
+    const flowNotes = join(project, 'flows/summarize/AGENTS.md')
+    expect(await readFile(flowNotes, 'utf8')).toContain('# summarize Flow\n')
+    await writeFile(flowNotes, '# Preserve citations\n')
     await expect(createFlow(project, 'summarize')).rejects.toMatchObject({ code: 'JIG_NEW_EXISTS' })
+    expect(await readFile(flowNotes, 'utf8')).toBe('# Preserve citations\n')
     await expect(createFlow(project, '../escape')).rejects.toMatchObject({
       code: 'JIG_NEW_INVALID',
     })
@@ -661,6 +669,41 @@ test('complete topology includes disconnected targets and resources without entr
   expect(text).toContain('Entrypoint: binding:main.')
   expect(text).not.toContain('Root:')
   expect(() => flowContextRecord(snapshot, { all: true, target: 'binding:main' })).toThrow()
+})
+
+test('navigation places only slots selecting the same target beside its own selections', () => {
+  const target = (id: string, pkg: string, routes: JsonValue[] = []) => ({
+    target: id,
+    package: pkg,
+    flow: { routes },
+  })
+  const snapshot = {
+    basis: 'working-tree',
+    targets: [
+      target('binding:books', 'flows/books', [{ slot: 'production', target: 'binding:produce' }]),
+      target('flow:flows/offers', 'flows/offers', [{ slot: 'sample', target: 'binding:produce' }]),
+      target('binding:archive', 'flows/books', [
+        { slot: 'production', target: 'binding:archive-producer' },
+      ]),
+      target('binding:produce', 'flows/producer', [{ slot: 'review', target: 'flow:flows/read' }]),
+      target('binding:archive-producer', 'flows/producer'),
+      target('flow:flows/read', 'flows/read'),
+    ],
+  }
+  const output = renderFlowContext(snapshot, {
+    indexDeclarations: new Map([
+      ['binding:books', 'config/(books).ts'],
+      ['binding:produce', 'policy/producer.ts'],
+    ]),
+  })
+  const row = output
+    .split('\n')
+    .find((line) => line.includes('`jig inspect --flow binding:produce`'))
+  expect(row).toContain('[wiring](./policy/producer.ts)')
+  expect(row).toContain('[binding:books · production](./config/%28books%29.ts)')
+  expect(row).toContain('flow:flows/offers · sample')
+  expect(row).toContain('review → flow:flows/read')
+  expect(row).not.toContain('archive')
 })
 
 test('package inspection retains every configured use and its direct callers', () => {
