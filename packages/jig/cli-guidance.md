@@ -311,7 +311,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Preserve the distinction between a source return and a contract possibility in the incoming table.
 
   Put both result contracts beside the continuation and link their captured local files.
-  Name any declaration required if a displayed child outcome is forwarded as the caller's own result.
+  For a displayed child outcome absent from the caller's declarations, name `outcomes` and the applicable `result` schema check.
   List the focused scope's direct Flow targets near its opening.
 
   Follow retained nested call evaluations into intermediate returns and the outer caller's next action.

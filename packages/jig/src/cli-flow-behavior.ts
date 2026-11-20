@@ -837,9 +837,9 @@ function continuationContracts(
     )
     if (additional.length)
       lines.push(
-        '- Forwarding ' +
+        '- To return ' +
           brief(additional.map((outcome) => JSON.stringify(outcome))) +
-          ' as the caller’s own result requires declaring the outcome in the caller’s result contract.',
+          ' from this caller, declare it in `outcomes` and check that `result` accepts the returned shape if a schema is present.',
       )
   }
   if (lines.length) lines.push('')

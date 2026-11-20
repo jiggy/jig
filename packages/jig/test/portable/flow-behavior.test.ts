@@ -278,7 +278,7 @@ test('continuations place both result contracts and forwarding requirements at t
     'Caller’s own result contract · [flows/import/FLOW.contract.json](./flows/import/FLOW.contract.json) · declared outcomes done',
   )
   expect(table).toContain(
-    'Forwarding "needs-evidence" as the caller’s own result requires declaring the outcome',
+    'To return "needs-evidence" from this caller, declare it in `outcomes` and check that `result` accepts the returned shape if a schema is present.',
   )
   expect(table).toMatch(/returns "needs-evidence"[^\n]+Throws: Unexpected outcome/)
   const receiver = inspect(caller!.id, ['done', 'needs-evidence']).split(
@@ -288,7 +288,7 @@ test('continuations place both result contracts and forwarding requirements at t
     'Caller’s own result contract · [flows/import/FLOW.contract.json](./flows/import/FLOW.contract.json) · declared outcomes done, needs-evidence',
   )
   expect(receiver).toMatch(/returns "needs-evidence"[^\n]+Throws: Unexpected outcome/)
-  expect(receiver).not.toContain('Forwarding "needs-evidence"')
+  expect(receiver).not.toContain('To return "needs-evidence" from this caller')
 })
 
 test('focused checks link the selected Binding setting without attributing shadowed or rewritten receivers', () => {
