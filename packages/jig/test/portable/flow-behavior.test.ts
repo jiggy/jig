@@ -713,6 +713,12 @@ test('focused orientation shows distinct slots and variant callers before analys
   expect(orientation).toContain(
     '**Binding declaration** · [bindings/chapter-reading.ts](./bindings/chapter-reading.ts) · settings that differ: prompt = "reading"',
   )
+  expect(orientation).toContain(
+    '**Independent Run** · binding:chapter-reading\n\n**Configured callers**',
+  )
+  expect(orientation).not.toContain(
+    '**Standalone Binding selectors also used by callers** · binding:chapter-reading',
+  )
   expect(orientation).toContain('binding:produce-book · chapter')
   expect(orientation).toContain('binding:produce-book · polish')
   expect(orientation).toContain(

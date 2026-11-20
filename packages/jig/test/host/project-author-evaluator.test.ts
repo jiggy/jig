@@ -69,11 +69,11 @@ describe.serial('finite isolated author declaration batches', () => {
     await fixture(
       {
         'jig.ts':
-          "import {defineJig,discover} from '@jigging/jig';export default defineJig({flows:discover('flows'),bindings:discover('bindings')});",
+          "import {defineJig,discover} from '@jigging/jig';export default defineJig({flows:discover('flows'),bindings:discover('wiring')});",
       },
       async (root, _captured, options) => {
         await mkdir(join(root, 'flows/work'), { recursive: true })
-        await mkdir(join(root, 'bindings'), { recursive: true })
+        await mkdir(join(root, 'wiring'), { recursive: true })
         await writeFile(
           join(root, 'flows/work/FLOW.ts'),
           'throw new Error("method must not execute"); export {};\n',
@@ -93,7 +93,7 @@ describe.serial('finite isolated author declaration batches', () => {
           JSON.stringify({ name: 'work', description: 'Working source.' }),
         )
         await writeFile(
-          join(root, 'bindings/first.ts'),
+          join(root, 'wiring/first.ts'),
           "import {defineBinding} from '@jigging/jig';export default defineBinding({package:'flows/work',settings:{revision:1}});",
         )
         const first = (await inspectWorkingFlow(root, options, { target: 'binding:first' }))
@@ -103,25 +103,25 @@ describe.serial('finite isolated author declaration batches', () => {
           revision: 1,
         })
         await writeFile(
-          join(root, 'bindings/first.ts'),
+          join(root, 'wiring/first.ts'),
           "import {defineBinding} from '@jigging/jig';export default defineBinding({package:'flows/work',settings:{revision:2}});",
         )
-        const second = (
-          await inspectWorkingFlow(root, options, {
-            target: 'binding:first',
-          })
-        ).topology as any
+        const inspected = await inspectWorkingFlow(root, options, {
+          pathOperand: 'wiring/first.ts',
+        })
+        expect(inspected.scope).toEqual({ target: 'binding:first' })
+        const second = inspected.topology as any
         expect(second.revision).not.toBe(first.revision)
         expect(second.targets.find((t: any) => t.target === 'binding:first').flow.settings).toEqual(
           { revision: 2 },
         )
-        expect((await readdir(root)).sort()).toEqual(['bindings', 'flows', 'jig.ts'])
+        expect((await readdir(root)).sort()).toEqual(['flows', 'jig.ts', 'wiring'])
         await writeFile(join(root, 'jig.ts'), 'throw new Error("must fail");export default {};')
         await expect(inspectWorkingFlow(root, options)).rejects.toMatchObject({
           code: 'PROJECT_EVALUATION_FAILED',
           path: 'jig.ts',
         })
-        expect((await readdir(root)).sort()).toEqual(['bindings', 'flows', 'jig.ts'])
+        expect((await readdir(root)).sort()).toEqual(['flows', 'jig.ts', 'wiring'])
       },
     )
   }, 60_000)

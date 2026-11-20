@@ -300,6 +300,7 @@ Prepare the application map before changing a conditional route.
 jig inspect --flow --all
 jig inspect --flow
 jig inspect --flow binding:code
+jig inspect --flow bindings/code.ts
 jig inspect --flow flows/import
 jig inspect --flow flows/convert/FLOW.ts
 ```
@@ -312,7 +313,7 @@ Each configured use keeps its own conditions, child results, and caller continua
 In a project without an entrypoint, `jig inspect --flow` lists targets by package with their configured slots.
 Run a target's command from that index to inspect its behavior, or add `--all` for the full application map.
 
-When you select a target, start with its configured callers and their exact slots.
+When you select a Binding, its declaration, independent Run selector, and configured caller slots are grouped in the opening.
 Other configured uses of the same Flow include their own callers and relevant settings differences.
 Use these connections to locate the right handoff before changing a shared implementation.
 
@@ -341,7 +342,8 @@ For shared code, declare a dependency. Review checks supported imports against t
 
 Pass the package path directly or with `--package` to see every configured use and its direct caller slots.
 This works for packages that require a Binding. The report shows settings that differ across uses and adds source locations where available.
-Pass a project-relative file path to open its sole configured target or list the uses of its package.
+Pass a project-relative Flow file path to open its sole configured target or list the uses of its package.
+In working-tree inspection, a Binding declaration path opens that exact configured use.
 
 For an unknown path or selector, run `jig inspect --flow --topology --all` to see the available targets and packages.
 Add `--approved` to inspect the retained configuration.

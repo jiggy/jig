@@ -702,8 +702,14 @@ test('navigation places only slots selecting the same target beside its own sele
   expect(row).toContain('[wiring](./policy/producer.ts)')
   expect(row).toContain('[binding:books · production](./config/%28books%29.ts)')
   expect(row).toContain('flow:flows/offers · sample')
+  expect(row).toContain('Independent Run · binding:produce')
   expect(row).toContain('review → flow:flows/read')
   expect(row).not.toContain('archive')
+  const archive = output
+    .split('\n')
+    .find((line) => line.includes('`jig inspect --flow binding:archive-producer`'))
+  expect(archive).toBeDefined()
+  expect(archive).not.toContain('Independent Run')
 })
 
 test('package inspection retains every configured use and its direct callers', () => {

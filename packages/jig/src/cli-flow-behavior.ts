@@ -2283,7 +2283,12 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   const independent = inventory.filter((item) => item.id.startsWith('flow:')).map((item) => item.id)
   const calledBindings = new Set(inventory.flatMap((item) => [...item.slots.values()]))
   const bindingEntries = inventory
-    .filter((item) => item.id.startsWith('binding:') && calledBindings.has(item.id))
+    .filter(
+      (item) =>
+        item.id.startsWith('binding:') &&
+        calledBindings.has(item.id) &&
+        (item.id !== focus || item.declarationPath === undefined),
+    )
     .map((item) => item.id)
   lines.push(
     '## ' + text(focus),
