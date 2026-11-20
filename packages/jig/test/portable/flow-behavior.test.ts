@@ -995,6 +995,17 @@ test('focused callee shows authored requests through the exact incoming Binding 
     id: 'flow:flows/import',
     slots: new Map([['exporter', 'flow:flows/export']]),
   }
+  const safeExport: BehaviorTarget = {
+    ...input.targets.find(({ id }) => id === 'flow:flows/export')!,
+    id: 'binding:safe-export',
+    declarationPath: 'bindings/safe-export.ts',
+  }
+  const rehearsals = ['binding:rehearsal', 'binding:second-rehearsal'].map((id) => ({
+    ...audit,
+    id,
+    declarationPath: 'bindings/' + id.slice('binding:'.length) + '.ts',
+    slots: new Map([['converter', safeExport.id]]),
+  }))
   const target = 'flow:flows/convert'
   const coordinator: BehaviorTarget = {
     ...code,
@@ -1012,7 +1023,7 @@ test('focused callee shows authored requests through the exact incoming Binding 
   const focusedInput = {
     ...input,
     focus: target,
-    targets: [...input.targets, audit, preview, coordinator, sample],
+    targets: [...input.targets, audit, preview, safeExport, ...rehearsals, coordinator, sample],
     visible: [...input.visible, coordinator.id, sample.id],
   }
   const report = analyzeFlowBehavior(focusedInput)
@@ -1021,6 +1032,7 @@ test('focused callee shows authored requests through the exact incoming Binding 
     [target, 'flows/convert/FLOW.ts'],
     [code.id, 'flows/import/FLOW.ts'],
     ['flow:flows/export', 'flows/export/FLOW.ts'],
+    [safeExport.id, 'flows/export/FLOW.ts'],
   ])
   const rendered = renderFlowBehavior({ ...report, entrySources })
   expect(rendered).toContain(
@@ -1052,9 +1064,13 @@ test('focused callee shows authored requests through the exact incoming Binding 
   )
   expect(decisions).toContain("**Other configured uses of this caller's code** · flows/import")
   expect(decisions).toContain(
-    'binding:audit · converter → flow:flows/export · source [flows/export/FLOW.ts](./flows/export/FLOW.ts) ([bindings/audit.ts](./bindings/audit.ts))',
+    '**converter → flow:flows/export** · source [flows/export/FLOW.ts](./flows/export/FLOW.ts)\n  - binding:audit ([bindings/audit.ts](./bindings/audit.ts))',
   )
-  expect(decisions).toContain('flow:flows/import · converter has no selection')
+  expect(decisions).toContain(
+    '**converter → binding:safe-export** · selected Binding [bindings/safe-export.ts](./bindings/safe-export.ts) · source [flows/export/FLOW.ts](./flows/export/FLOW.ts)\n' +
+      '  - binding:rehearsal ([bindings/rehearsal.ts](./bindings/rehearsal.ts)), binding:second-rehearsal ([bindings/second-rehearsal.ts](./bindings/second-rehearsal.ts))',
+  )
+  expect(decisions).toContain('**converter has no selection**\n  - flow:flows/import')
   expect(decisions).not.toContain('#### binding:audit')
   expect(decisions).not.toContain("scope = 'unrelated'")
   expect(decisions).not.toContain('**exporter →')
@@ -1065,8 +1081,8 @@ test('focused callee shows authored requests through the exact incoming Binding 
   })
   expect(opaque).toContain('**Selected here** · converter → flow:flows/convert')
   expect(opaque).toContain('**Captured entry source** · [flows/import/FLOW.ts]')
-  expect(opaque).toContain('binding:audit · converter → flow:flows/export')
-  expect(opaque).toContain('flow:flows/import · converter has no selection')
+  expect(opaque).toContain('**converter → flow:flows/export**')
+  expect(opaque).toContain('**converter has no selection**\n  - flow:flows/import')
   expect(opaque).not.toContain('Argument 1 slot → request field slot.')
 
   const bindingOnly = renderFlowBehavior({

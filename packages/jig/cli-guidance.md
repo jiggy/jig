@@ -318,6 +318,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Keep polarity beside a single displayed alternative.
 
   Beside each incoming slot, show the other configured uses of its caller's code and their selection for the same slot.
+  Group those uses by exact selected target and link the selected Binding declaration alongside the implementation source.
   Keep those uses separate from callers of the focused callee and disclose omissions.
 
   Show the local helper's request location beside the call that selects a configured slot.

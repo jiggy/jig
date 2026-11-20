@@ -123,6 +123,7 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
 - For a focused callee, collect authored requests only from slots that resolve to that exact configured target.
   Keep each caller's Binding identity and source scope distinct even when route analysis stops before the request.
   Retain the other configured uses of an incoming caller's package from the same capture.
+  Retain declarations for their selected Bindings even outside the analyzed scope.
   Keep this configuration evidence separate from authored requests and route scopes.
 - Supplement cutoffs with source references whose receiver is an SDK context parameter.
   Spend the application route budget on the entrypoint and configured callers first.

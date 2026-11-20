@@ -296,6 +296,7 @@ export interface BehaviorReport {
   readonly inventory: readonly BehaviorTarget[]
   readonly entrySources?: ReadonlyMap<string, string>
   readonly directSelectors?: ReadonlyMap<string, string>
+  readonly bindingDeclarations?: ReadonlyMap<string, string>
   readonly inputFields?: {
     readonly paths: readonly string[]
     readonly truncated: boolean

@@ -373,7 +373,16 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       : {}),
     ...(directHandoffs.length ? { directHandoffs } : {}),
     ...(directSelectors ? { directSelectors } : {}),
-    ...(incomingCallerUses.size ? { incomingCallerUses } : {}),
+    ...(incomingCallerUses.size
+      ? {
+          incomingCallerUses,
+          bindingDeclarations: new Map(
+            input.targets.flatMap(({ id, declarationPath }) =>
+              declarationPath === undefined ? [] : [[id, declarationPath] as const],
+            ),
+          ),
+        }
+      : {}),
     ...(earlierReturns.size ? { earlierReturns: [...earlierReturns.values()] } : {}),
     ...(earlierReturnsLimited ? { earlierReturnsLimited: true } : {}),
     inventory,
