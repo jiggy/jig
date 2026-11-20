@@ -2712,3 +2712,48 @@ test('an application map keeps configured continuations separate under one chart
   expect(call).toBeDefined()
   expect(after).toContain('<a id="' + call + '"></a>')
 })
+
+test('shared setting checks pair each Binding with its own analyzed continuation', () => {
+  const input = snapshot(
+    method(handlerSource(`return { outcome: 'done', output: {} }`)),
+    method(
+      handlerSource(`
+      if (run.settings?.preview === true) return {outcome: 'blocked', output: {}}
+      return await run.call({slot: 'converter', operationId:'write', input: {}})
+    `),
+    ),
+  )
+  const primary = {
+    ...input.targets[0]!,
+    settings: { preview: true },
+    outcomes: ['done', 'blocked'],
+    declarationPath: 'bindings/code.ts',
+  }
+  const peer: BehaviorTarget = {
+    ...primary,
+    id: 'binding:audit',
+    settings: {},
+    declarationPath: 'bindings/audit.ts',
+    slots: new Map([['converter', 'flow:flows/export']]),
+  }
+  const distant = { ...primary, id: 'binding:older', settings: { preview: false } }
+  const report = analyzeFlowBehavior({
+    ...input,
+    targets: [primary, peer, distant, ...input.targets.slice(1)],
+    visible: [...input.visible, peer.id, distant.id],
+  })
+  expect(report.scopes.slice(0, 2).map(({ target }) => target)).toEqual([primary.id, peer.id])
+  const output = renderFlowBehavior({
+    ...report,
+    scopes: report.scopes.filter((scope) => scope.target !== distant.id),
+  })
+  expect(output).toMatch(
+    /binding:code[^\n]+preview = true \| Predicate is true → Returns "blocked"/,
+  )
+  expect(output).toMatch(
+    /binding:audit[^\n]+preview = unset \| Predicate is false → Call converter → flow:flows\/export/,
+  )
+  expect(output).toContain(
+    '| binding:older · [bindings/code.ts](./bindings/code.ts) | preview = false | Unresolved |',
+  )
+})

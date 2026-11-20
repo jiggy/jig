@@ -1341,31 +1341,120 @@ function authoredFileWrites(scope: Scope): string[] {
   return [...lines, '']
 }
 
+function settingValue(target: BehaviorTarget, name: string): string {
+  const settings = record(target.settings)
+  return Object.hasOwn(settings, name) ? JSON.stringify(settings[name]) : 'unset'
+}
+
 function capturedSetting(target: BehaviorTarget | undefined, name: string): string {
   if (target?.declarationPath === undefined) return ''
-  const settings = record(target.settings)
-  const value = Object.hasOwn(settings, name) ? JSON.stringify(settings[name]) : 'unset'
+  const value = settingValue(target, name)
   const detail = value.length > 100 ? name : name + ' = ' + value
   return ' · Captured setting ' + text(detail) + ' from ' + sourcePathLink(target.declarationPath)
 }
 
-function configuredChecks(scope: Scope, target: BehaviorTarget | undefined): string[] {
+function configuredChecks(
+  report: BehaviorReport,
+  scope: Scope,
+  target: BehaviorTarget | undefined,
+): string[] {
   if (target?.declarationPath === undefined) return []
-  const checks = new Set<string>()
+  const checks = new Map<string, { check: BehaviorGuard; name: string; facts: Set<string> }>()
   for (const route of scope.routes) {
     for (const step of route) {
-      if (step.kind === 'condition' && step.setting?.owner === target.id)
-        checks.add('- ' + linkedCheck(step) + capturedSetting(target, step.setting.name))
+      if (step.kind !== 'condition' || step.setting?.owner !== target.id) continue
+      const name = step.setting.name
+      const key = JSON.stringify([step.site, name])
+      const group = checks.get(key) ?? { check: step, name, facts: new Set<string>() }
+      group.facts.add('- ' + linkedCheck(step) + capturedSetting(target, name))
+      checks.set(key, group)
     }
   }
   if (!checks.size) return []
-  return [
-    '### Checks that read Binding settings',
-    '',
-    ...[...checks].slice(0, 4),
-    ...(checks.size > 4 ? ['- ' + (checks.size - 4) + ' additional checks in route details.'] : []),
-    '',
-  ]
+  const uses = report.inventory.filter(
+    (candidate) => candidate.id !== target.id && candidate.implementation === target.implementation,
+  )
+  const lines = ['### Checks that read Binding settings', '']
+  for (const { check, name, facts } of [...checks.values()].slice(0, 4)) {
+    const value = settingValue(target, name)
+    const differing = uses.filter((use) => settingValue(use, name) !== value)
+    if (!differing.length) {
+      lines.push(...facts, '')
+      continue
+    }
+    lines.push(
+      '**' + text(check.code) + '** (' + sourceLink(check.site) + ')',
+      '',
+      '| Configured use | Captured setting | When this check is reached in analysis |',
+      '| --- | --- | --- |',
+    )
+    const shown = [...differing, ...uses.filter((use) => !differing.includes(use))].slice(
+      0,
+      BEHAVIOR_LIMITS.focusedComparedUses,
+    )
+    for (const use of [target, ...shown]) {
+      const declaration = use.declarationPath ? ' · ' + sourcePathLink(use.declarationPath) : ''
+      const value = settingValue(use, name)
+      const routes = report.scopes.find((candidate) => candidate.target === use.id)?.routes ?? []
+      lines.push(
+        '| ' +
+          text(use.id) +
+          declaration +
+          ' | ' +
+          text(name + ' = ' + (value.length <= 100 ? value : 'omitted')) +
+          ' | ' +
+          settingContinuations(routes, use.id, check, name) +
+          ' |',
+      )
+    }
+    lines.push('')
+    if (uses.length > shown.length)
+      lines.push(`- ${uses.length - shown.length} more configured uses.`, '')
+  }
+  if (checks.size > 4) lines.push(`- ${checks.size - 4} additional checks in route details.`, '')
+  return lines
+}
+
+function settingContinuations(
+  routes: readonly Route[],
+  owner: string,
+  check: BehaviorGuard,
+  name: string,
+): string {
+  const branches = new Map<string, Set<string>>()
+  const location = JSON.stringify(check.site)
+  for (const route of routes) {
+    for (const [index, step] of route.entries()) {
+      if (
+        step.kind !== 'condition' ||
+        step.setting?.owner !== owner ||
+        step.setting.name !== name ||
+        JSON.stringify(step.site) !== location
+      )
+        continue
+      const branch = (step.unresolved ? 'Assumes ' : 'Predicate is ') + step.taken
+      const actions = branches.get(branch) ?? new Set<string>()
+      branches.set(branch, actions)
+      const next = route
+        .slice(index + 1)
+        .find(
+          (candidate) =>
+            (candidate.kind === 'call' && candidate.caller === owner) || candidate.kind === 'end',
+        )
+      if (next && (next.kind !== 'end' || next.completion !== 'unknown'))
+        actions.add(nextSteps([next], true))
+    }
+  }
+  if (!branches.size) return 'Unresolved'
+  return [...branches]
+    .map(
+      ([branch, actions]) =>
+        branch +
+        ' → ' +
+        ([...actions].slice(0, 2).join(' or ') || 'Unresolved') +
+        (actions.size > 2 ? ` · ${actions.size - 2} more` : ''),
+    )
+    .join('<br>')
 }
 
 function authoredHandoffs(
@@ -1630,7 +1719,10 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   const selected = scopes.find((scope) => scope.target === focus)
   lines.push(...incomingCallDecisions(scopes, targets, focus))
   if (selected) {
-    lines.push(...renderCallSelections(selected, target), ...configuredChecks(selected, target))
+    lines.push(
+      ...configuredChecks(report, selected, target),
+      ...renderCallSelections(selected, target),
+    )
     lines.push(...renderCallReferences([selected], inventory))
     lines.push(...authoredRepeats(selected))
     lines.push(...authoredHandoffs(selected, undefined, target))

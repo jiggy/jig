@@ -991,6 +991,10 @@ Supported direct setting checks link the checked expression to the selected valu
 An authored exit can link the same configuration while its reachability remains unresolved.
 With `--all`, the document shows the project entrypoint and includes every configured target within the topology limits.
 
+Focused reports can compare a direct setting check across configured uses of the same implementation.
+Each row links that use's declaration and gives its captured value.
+When analysis reaches the check, the row shows the analyzed branch and its first handoffs or exits.
+
 Focused reports and configured-use details list the Flow's required slots.
 These slots still need resolved wiring when a depicted route omits their calls.
 Local packages link to their captured package interface.

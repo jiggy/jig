@@ -330,4 +330,5 @@ export const BEHAVIOR_LIMITS = {
   focusedCallSelections: 6,
   focusedOmittedCallLocations: 3,
   focusedRelatedCalls: 6,
+  focusedComparedUses: 4,
 } as const

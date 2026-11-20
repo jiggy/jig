@@ -68,6 +68,8 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
 - Preserve source references, call context, and explicit unsupported regions.
 - Pair a direct setting check with its captured Binding through the proven Run context receiver.
   Treat a later authored exit as source evidence. Its captured setting does not establish reachability.
+- Prioritize a bounded set of same-package uses when their settings differ from the focused Binding.
+  Reuse each use's own analysis for comparisons of shared setting checks.
 - For a focused callee, reuse secondary probes at its represented caller slots.
   Carry the same outcome and assumptions into the incoming continuation.
   Analyze the selected target and its upstream callers before the remaining visible scopes.
