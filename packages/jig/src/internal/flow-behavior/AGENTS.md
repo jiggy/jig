@@ -10,6 +10,7 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
 - `captured-input.ts` borrows source and interface facts from working-tree inspection.
   It retains the captured declaration path for each Binding.
 - `input-contract.ts` projects guarantees from captured input schemas into inert values.
+  It can list declared input paths for inspection separately from these guarantees.
 - `admitted-input.ts` reads exact stored source and recognized dependency bytes for an approved composition.
 - `source.ts` resolves parsed source and call identities inside one captured package.
 - `source-syntax.ts` owns shared TypeScript syntax helpers and bounded source walks.
@@ -76,6 +77,7 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
   An upstream chain can use the existing application allowance within the per-use bounds.
 - Carry captured local result contract paths into the behavior inventory for navigation.
   Use the caller's own outcome declarations when showing a forwarding requirement.
+- Keep declared input paths and the retained input for a write case separate from route identity.
 - Keep nested continuation evidence within the same retained child evaluation.
   A return may identify its original Call step when it returns the same modeled object.
   Keep this annotation outside route identity and reproduce conditional probes through intermediate callers.

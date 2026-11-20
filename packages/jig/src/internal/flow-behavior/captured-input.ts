@@ -194,7 +194,10 @@ export async function readBehaviorPackage(
       reportingFiles,
       ...(inspected.invocation?.input === undefined
         ? {}
-        : { acceptedInput: inputFromContract(inspected.invocation.input) }),
+        : {
+            inputSchema: inspected.invocation.input,
+            acceptedInput: inputFromContract(inspected.invocation.input),
+          }),
       ...(captured.files.some((file) => file.path === 'FLOW.contract.json')
         ? { contractPath: implementation + '/FLOW.contract.json' }
         : {}),
