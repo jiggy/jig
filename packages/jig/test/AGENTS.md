@@ -70,7 +70,6 @@ Protected Jig state stays absent under ordinary or broad package selections, inc
 Explicit protected file or patch requests and protected bytes in supplied target snapshots remain refused.
 
 `portable/cli.test.ts` exercises actual packaged review refusal and authoring recovery without source evaluation or host acquisition.
-Check the generated root instructions against the pinned upstream DOX text and keep each Flow's editable guidance with its package.
 `portable/jig-development-build.test.ts` exercises the genuine launcher against matching, changed and incomplete contributor builds.
 It rejects changed checker source without executing that source.
 These checks grant no native execution or cleanup evidence.

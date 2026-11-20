@@ -319,8 +319,6 @@ test('new writes ordinary source, inherits the project SDK and never evaluates a
   try {
     await createProject(project)
     await writeFile(join(project, 'jig.ts'), 'throw new Error("must not run")')
-    const rootNotes = join(project, 'AGENTS.md')
-    await writeFile(rootNotes, '# Editorial team\n')
     await writeFile(
       join(project, 'package.json'),
       JSON.stringify({ devDependencies: { '@jigging/flow': 'workspace:*' } }),
@@ -332,7 +330,6 @@ test('new writes ordinary source, inherits the project SDK and never evaluates a
         .dependencies,
     ).toEqual({ '@jigging/flow': 'workspace:*' })
     expect((await readdir(join(project, 'flows/summarize'))).sort()).toEqual([
-      'AGENTS.md',
       'FLOW.meta.json',
       'FLOW.ts',
       'package.json',
@@ -341,12 +338,7 @@ test('new writes ordinary source, inherits the project SDK and never evaluates a
       'FLOW.ts',
     )
     expect(await readFile(join(project, 'jig.ts'), 'utf8')).toBe(before)
-    expect(await readFile(rootNotes, 'utf8')).toBe('# Editorial team\n')
-    const flowNotes = join(project, 'flows/summarize/AGENTS.md')
-    expect(await readFile(flowNotes, 'utf8')).toContain('# summarize Flow\n')
-    await writeFile(flowNotes, '# Preserve citations\n')
     await expect(createFlow(project, 'summarize')).rejects.toMatchObject({ code: 'JIG_NEW_EXISTS' })
-    expect(await readFile(flowNotes, 'utf8')).toBe('# Preserve citations\n')
     await expect(createFlow(project, '../escape')).rejects.toMatchObject({
       code: 'JIG_NEW_INVALID',
     })

@@ -74,8 +74,7 @@ project/
 ```
 
 The project-owned `AGENTS.md` points coding agents to read-only Flow inspection for changes that cross workflow steps.
-Its Jig guidance includes inspection from a Flow source path, followed by a bundled copy of the DOX framework with its MIT notice.
-The starter greeting has its own `flows/hello/AGENTS.md` for local instructions.
+It includes inspection from a Flow source path.
 
 The generated `jig.ts` makes its conventional membership explicit:
 

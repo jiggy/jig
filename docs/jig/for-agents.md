@@ -20,17 +20,9 @@ Use the project's usual Jig command if it has a local launcher.
 > Flow source file, pass its project-relative path to the same command.
 >
 > For a wording change or another edit within one Flow, use its source and tests directly.
-> Keep notes about that Flow in the `AGENTS.md` beside its entrypoint.
 
 For example, `jig inspect --flow flows/import/FLOW.ts` opens the configured use or lists the uses of that package.
 Follow the relevant Binding declaration or [focused inspection](./build/results.md#inspect-source-behavior) to the decision.
-
-## Keep notes with each Flow
-
-`jig init` appends the DOX framework and its MIT notice to the root instructions. Existing projects can append both to their own `AGENTS.md`. [Upstream instructions](https://github.com/agent0ai/dox/blob/765ae4ac02cc884eefcd41a3d0f71941721adb89/AGENTS.md) · [MIT notice](https://github.com/agent0ai/dox/blob/765ae4ac02cc884eefcd41a3d0f71941721adb89/LICENSE)
-
-The starter greeting and every `jig new <name>` include a separate `flows/<name>/AGENTS.md`. A hand-authored Flow can place the same file beside its entrypoint. Keep method-specific decisions and checks there. For example, a writer Flow can record why validation must precede its first file write.
-When establishing or extending the DOX index, link each Flow's notes from its nearest parent `AGENTS.md`. Read the files along that path before editing the method.
 
 ## Install authoring skills
 

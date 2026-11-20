@@ -16,7 +16,7 @@ use-case and orchestration hypotheses.
 - `reference/` owns configuration, generated limits, troubleshooting, terminology, and exact-contract discovery.
 - `examples/` owns complete application walkthroughs and their acquisition instructions.
 - `research/` isolates hypotheses from current supported behavior.
-- `for-agents.md` owns the project and per-Flow `AGENTS.md` guidance, authoring-skill installation, and machine-readable documentation entrypoints.
+- `for-agents.md` owns the project `AGENTS.md` signpost, authoring-skill installation, and machine-readable entry paths.
 
 - `spec/cli-experience.md` owns the mandatory experience contract for all public
   CLI output.
