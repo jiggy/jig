@@ -22,6 +22,7 @@ import {
   withoutReportingLocations,
 } from './internal/flow-behavior/model.js'
 import { record } from './internal/flow-inspection-scope.js'
+import { canonicalJson } from './json.js'
 
 type Route = BehaviorReport['scopes'][number]['routes'][number]
 type Scope = BehaviorReport['scopes'][number]
@@ -1376,26 +1377,72 @@ function configuredChecks(
   )
   const lines = ['### Checks that read Binding settings', '']
   for (const { check, name, facts } of [...checks.values()].slice(0, 4)) {
-    const value = settingValue(target, name)
-    const differing = uses.filter((use) => settingValue(use, name) !== value)
+    const selectedValue = settingValue(target, name)
+    const differing = uses.filter((use) => settingValue(use, name) !== selectedValue)
     if (!differing.length) {
       lines.push(...facts, '')
       continue
     }
-    lines.push(
-      '**' + text(check.code) + '** (' + sourceLink(check.site) + ')',
-      '',
-      '| Configured use | Captured setting | When this check is reached in analysis |',
-      '| --- | --- | --- |',
-    )
     const shown = [...differing, ...uses.filter((use) => !differing.includes(use))].slice(
       0,
       BEHAVIOR_LIMITS.focusedComparedUses,
     )
-    for (const use of [target, ...shown]) {
+    const current = settingContinuations(scope.routes, target.id, check, name)
+    const peers = shown.map((use) => ({
+      use,
+      value: settingValue(use, name),
+      branches: settingContinuations(
+        report.scopes.find((candidate) => candidate.target === use.id)?.routes ?? [],
+        use.id,
+        check,
+        name,
+      ),
+    }))
+    lines.push(
+      '**Binding setting to edit for this use** · ' +
+        text(name) +
+        ' in ' +
+        sourcePathLink(target.declarationPath) +
+        ' · Applies to callers selecting ' +
+        text(target.id) +
+        '.',
+      '',
+      '**Shared Flow check** · ' + text(check.code) + ' (' + sourceLink(check.site) + ')',
+      '',
+    )
+    const branch = knownSettingBranch(current)
+    const alternative = peers.find(({ use, value: peerValue, branches }) => {
+      const peer = knownSettingBranch(branches)
+      return (
+        branch &&
+        peer &&
+        peer.taken !== branch.taken &&
+        peerValue !== selectedValue &&
+        peerValue.length <= 100 &&
+        matchesOtherBindingChoices(target, use, name)
+      )
+    })
+    if (alternative) {
+      lines.push(
+        '**Setting-only alternative at this check** · ' +
+          (alternative.value === 'unset'
+            ? 'Omit ' + text(name)
+            : 'Set ' + text(name) + ' to ' + text(alternative.value)) +
+          ' in ' +
+          sourcePathLink(target.declarationPath) +
+          ' to match the value used by ' +
+          text(alternative.use.id) +
+          '.',
+        '',
+      )
+    }
+    lines.push(
+      '| Configured use | Captured setting | When this check is reached in analysis |',
+      '| --- | --- | --- |',
+    )
+    const selected = { use: target, value: selectedValue, branches: current }
+    for (const { use, value, branches } of [selected, ...peers]) {
       const declaration = use.declarationPath ? ' · ' + sourcePathLink(use.declarationPath) : ''
-      const value = settingValue(use, name)
-      const routes = report.scopes.find((candidate) => candidate.target === use.id)?.routes ?? []
       lines.push(
         '| ' +
           text(use.id) +
@@ -1403,7 +1450,7 @@ function configuredChecks(
           ' | ' +
           text(name + ' = ' + (value.length <= 100 ? value : 'omitted')) +
           ' | ' +
-          settingContinuations(routes, use.id, check, name) +
+          renderSettingContinuations(branches) +
           ' |',
       )
     }
@@ -1415,13 +1462,30 @@ function configuredChecks(
   return lines
 }
 
+type SettingBranch = Pick<BehaviorGuard, 'taken' | 'unresolved'> & { actions: Set<string> }
+
+function matchesOtherBindingChoices(target: BehaviorTarget, peer: BehaviorTarget, name: string) {
+  if (target.slots.size !== peer.slots.size) return false
+  for (const [slot, selected] of target.slots) if (peer.slots.get(slot) !== selected) return false
+  const { [name]: _targetValue, ...targetSettings } = record(target.settings)
+  const { [name]: _peerValue, ...peerSettings } = record(peer.settings)
+  return Buffer.from(canonicalJson(targetSettings)).equals(canonicalJson(peerSettings))
+}
+
+function knownSettingBranch(branches: readonly SettingBranch[]) {
+  const branch = branches[0]
+  return branches.length === 1 && branch && !branch.unresolved && branch.actions.size
+    ? branch
+    : undefined
+}
+
 function settingContinuations(
   routes: readonly Route[],
   owner: string,
   check: BehaviorGuard,
   name: string,
-): string {
-  const branches = new Map<string, Set<string>>()
+): SettingBranch[] {
+  const branches = new Map<string, SettingBranch>()
   const location = JSON.stringify(check.site)
   for (const route of routes) {
     for (const [index, step] of route.entries()) {
@@ -1432,9 +1496,13 @@ function settingContinuations(
         JSON.stringify(step.site) !== location
       )
         continue
-      const branch = (step.unresolved ? 'Assumes ' : 'Predicate is ') + step.taken
-      const actions = branches.get(branch) ?? new Set<string>()
-      branches.set(branch, actions)
+      const key = `${step.unresolved}:${step.taken}`
+      const branch = branches.get(key) ?? {
+        unresolved: step.unresolved,
+        taken: step.taken,
+        actions: new Set<string>(),
+      }
+      branches.set(key, branch)
       const next = route
         .slice(index + 1)
         .find(
@@ -1442,14 +1510,19 @@ function settingContinuations(
             (candidate.kind === 'call' && candidate.caller === owner) || candidate.kind === 'end',
         )
       if (next && (next.kind !== 'end' || next.completion !== 'unknown'))
-        actions.add(nextSteps([next], true))
+        branch.actions.add(nextSteps([next], true))
     }
   }
-  if (!branches.size) return 'Unresolved'
-  return [...branches]
+  return [...branches.values()]
+}
+
+function renderSettingContinuations(branches: readonly SettingBranch[]): string {
+  if (!branches.length) return 'Unresolved'
+  return branches
     .map(
-      ([branch, actions]) =>
-        branch +
+      ({ taken, unresolved, actions }) =>
+        (unresolved ? 'Assumes ' : 'Predicate is ') +
+        taken +
         ' → ' +
         ([...actions].slice(0, 2).join(' or ') || 'Unresolved') +
         (actions.size > 2 ? ` · ${actions.size - 2} more` : ''),

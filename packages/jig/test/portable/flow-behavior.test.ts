@@ -2737,16 +2737,24 @@ test('shared setting checks pair each Binding with its own analyzed continuation
     slots: new Map([['converter', 'flow:flows/export']]),
   }
   const distant = { ...primary, id: 'binding:older', settings: { preview: false } }
+  const standard = { ...distant, id: 'binding:standard', declarationPath: 'bindings/standard.ts' }
   const report = analyzeFlowBehavior({
     ...input,
-    targets: [primary, peer, distant, ...input.targets.slice(1)],
-    visible: [...input.visible, peer.id, distant.id],
+    targets: [primary, peer, distant, standard, ...input.targets.slice(1)],
+    visible: [...input.visible, peer.id, distant.id, standard.id],
   })
   expect(report.scopes.slice(0, 2).map(({ target }) => target)).toEqual([primary.id, peer.id])
   const output = renderFlowBehavior({
     ...report,
     scopes: report.scopes.filter((scope) => scope.target !== distant.id),
   })
+  expect(output).toContain(
+    '**Binding setting to edit for this use** · preview in [bindings/code.ts](./bindings/code.ts) · Applies to callers selecting binding:code.',
+  )
+  expect(output).toContain('**Shared Flow check** · run.settings?.preview === true')
+  expect(output).toContain(
+    '**Setting-only alternative at this check** · Set preview to false in [bindings/code.ts](./bindings/code.ts) to match the value used by binding:standard.',
+  )
   expect(output).toMatch(
     /binding:code[^\n]+preview = true \| Predicate is true → Returns "blocked"/,
   )
@@ -2756,4 +2764,10 @@ test('shared setting checks pair each Binding with its own analyzed continuation
   expect(output).toContain(
     '| binding:older · [bindings/code.ts](./bindings/code.ts) | preview = false | Unresolved |',
   )
+  expect(
+    renderFlowBehavior({
+      ...report,
+      scopes: report.scopes.filter(({ target }) => target !== distant.id && target !== standard.id),
+    }),
+  ).not.toContain('**Setting-only alternative at this check**')
 })
