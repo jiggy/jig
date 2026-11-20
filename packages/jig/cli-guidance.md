@@ -342,6 +342,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Keep independently callable inputs distinct from the selected target of each slot.
   Show declared input paths beside write evidence without claiming an input case used every declared field.
   Keep the writer's result contract beside its represented exits.
+  If analysis stops before any write, keep the declared writer boundary beside its authored write locations.
 
   Name the passing and rejecting branches of a direct validation guard.
   Show source locations and whether the displayed routes resolve each predicate.

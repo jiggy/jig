@@ -748,11 +748,31 @@ function nextSteps(after: readonly BehaviorStep[], linkSource = false): string {
   )
 }
 
+function writerContract(
+  fields: BehaviorReport['inputFields'],
+  target: BehaviorTarget | undefined,
+): string[] {
+  const lines: string[] = []
+  if (fields?.paths.length || fields?.truncated)
+    lines.push(
+      [
+        '**Declared writer input fields**',
+        fields.paths.map(text).join(', '),
+        fields.truncated ? 'Additional paths omitted.' : '',
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      '',
+    )
+  if (target) lines.push('**Writer result contract** · ' + resultContract(target), '')
+  return lines
+}
+
 function renderFirstWrites(
-  report: BehaviorReport,
   scope: Scope,
   callers: CallDetails,
-  target: BehaviorTarget | undefined,
+  childPaths: BehaviorReport['childPaths'],
+  contract: readonly string[],
 ): string[] {
   type WritePath = {
     write: Extract<BehaviorStep, { kind: 'effect' }>
@@ -814,7 +834,7 @@ function renderFirstWrites(
     add(route, 'direct', 'Direct invocation of ' + text(scope.target))
   for (const [anchor, cases] of callers) {
     for (const { call, after } of cases.values()) {
-      const child = report.childPaths[call.childPath ?? -1]
+      const child = childPaths[call.childPath ?? -1]
       if (!child) continue
       const qualifier =
         call.completion === 'if-returned'
@@ -836,20 +856,8 @@ function renderFirstWrites(
     '',
     'These examples link the first modeled write attempt in this Flow to how it was entered.',
     '',
+    ...contract,
   ]
-  const fields = report.inputFields
-  if (fields?.paths.length || fields?.truncated)
-    lines.push(
-      [
-        '**Declared writer input fields**',
-        fields.paths.map(text).join(', '),
-        fields.truncated ? 'Additional paths omitted.' : '',
-      ]
-        .filter(Boolean)
-        .join(' · '),
-      '',
-    )
-  if (target) lines.push('**Writer result contract** · ' + resultContract(target), '')
   const earlyStops = new Set<string>()
   for (const route of scope.routes) {
     const end = route.at(-1)
@@ -1394,13 +1402,14 @@ function otherResults(routes: readonly Route[], shown: readonly Route[]): string
   return [...lines, '']
 }
 
-function authoredFileWrites(scope: Scope): string[] {
+function authoredFileWrites(scope: Scope, contract: readonly string[] = []): string[] {
   if (!scope.authoredFileWrites?.length) return []
   const lines = [
     '#### Authored file writes beyond analyzed routes',
     '',
     'Whether these writes are attempted depends on the unresolved continuation.',
     '',
+    ...contract,
   ]
   for (const write of scope.authoredFileWrites) {
     lines.push('- writeFile(' + text(write.destination) + ') (' + sourceLink(write.site) + ')')
@@ -1898,8 +1907,15 @@ export function renderFlowBehavior(report: BehaviorReport): string {
         }),
       focus,
     )
+    const writesContract = writerContract(report.inputFields, target)
+    const firstWrites = renderFirstWrites(
+      selected,
+      callers.shown,
+      report.childPaths,
+      writesContract,
+    )
     lines.push(
-      ...renderFirstWrites(report, selected, callers.shown, target),
+      ...(firstWrites.length ? firstWrites : authoredFileWrites(selected, writesContract)),
       ...renderCallContinuations(callers.shown, targets, true, callers.omitted),
       ...renderNestedContinuations(report, focus, targets),
       ...renderCallContinuations(details.shown, targets, false),
@@ -1925,7 +1941,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     lines.push(
       ...otherResults(selected.routes, routes),
       ...alternatives(selected),
-      ...authoredFileWrites(selected),
+      ...(firstWrites.length ? authoredFileWrites(selected) : []),
     )
     if (selected.gaps.length) {
       lines.push('### Coverage gaps', '')

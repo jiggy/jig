@@ -78,6 +78,7 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
 - Carry captured local result contract paths into the behavior inventory for navigation.
   Use the caller's own outcome declarations when showing a forwarding requirement.
 - Keep declared input paths and the retained input for a write case separate from route identity.
+  Keep declaration evidence available for an authored write when its reachability is unresolved.
 - Keep nested continuation evidence within the same retained child evaluation.
   A return may identify its original Call step when it returns the same modeled object.
   Keep this annotation outside route identity and reproduce conditional probes through intermediate callers.
