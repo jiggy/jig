@@ -656,10 +656,13 @@ test('focused orientation shows distinct slots and variant callers before analys
     outcomes: ['done'],
   })
   const targets = [
-    target(compare, 'flows/compare', [
-      ['current', focus],
-      ['baseline', baseline],
-    ]),
+    {
+      ...target(compare, 'flows/compare', [
+        ['current', focus],
+        ['baseline', baseline],
+      ]),
+      declarationPath: 'bindings/compare-writing.ts',
+    },
     {
       ...target(focus, 'flows/draft-chapter', [], { prompt: 'reading' }),
       declarationPath: 'bindings/chapter-reading.ts',
@@ -686,7 +689,26 @@ test('focused orientation shows distinct slots and variant callers before analys
   )
   expect(orientation).toContain('binding:produce-book · chapter')
   expect(orientation).toContain('binding:produce-book · polish')
-  expect(orientation).toContain('binding:compare-writing · current')
+  expect(orientation).toContain(
+    'binding:compare-writing · current · wiring [bindings/compare-writing.ts](./bindings/compare-writing.ts)',
+  )
+  expect(orientation).toContain(
+    'These caller slots share this Binding’s settings and child slot selections.',
+  )
+  expect(orientation).toContain(
+    'To vary configuration for one caller slot, have it select a separate Binding of this Flow.',
+  )
+  const singleCaller = renderFlowBehavior({
+    ...report,
+    focus: baseline,
+    inventory: report.inventory.map((item) =>
+      item.id === baseline
+        ? { ...item, declarationPath: 'bindings/chapter-reading-baseline.ts' }
+        : item,
+    ),
+  })
+  expect(singleCaller).toContain('binding:compare-writing · baseline · wiring')
+  expect(singleCaller).not.toContain('These caller slots share this Binding')
   expect(orientation).toContain(
     'binding:chapter-reading-baseline · called by binding:compare-writing · baseline · settings differ: prompt = "baseline" · same slot selections',
   )
