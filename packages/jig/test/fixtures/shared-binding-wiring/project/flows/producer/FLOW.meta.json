@@ -1,0 +1,12 @@
+{
+  "name": "producer",
+  "description": "Review fresh or resumed chapters and the whole manuscript.",
+  "uses": {
+    "review": {
+      "contract": "./contracts/review.json"
+    },
+    "post-edit": {
+      "contract": "./contracts/review.json"
+    }
+  }
+}

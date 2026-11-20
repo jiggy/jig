@@ -1,0 +1,8 @@
+{
+  "name": "publishing-workflows",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "flows/*"
+  ]
+}

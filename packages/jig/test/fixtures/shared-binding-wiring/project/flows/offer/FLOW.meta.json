@@ -1,0 +1,7 @@
+{
+  "name": "offer",
+  "description": "Prepare manuscript reviews for a publishing offer.",
+  "uses": {
+    "producer": {}
+  }
+}

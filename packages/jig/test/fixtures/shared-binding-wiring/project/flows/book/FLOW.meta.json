@@ -1,0 +1,7 @@
+{
+  "name": "book",
+  "description": "Produce the review packet for a book.",
+  "uses": {
+    "producer": {}
+  }
+}
