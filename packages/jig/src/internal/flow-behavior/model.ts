@@ -117,6 +117,7 @@ export type BehaviorStep =
       readonly detail: string
       readonly returned?: BehaviorReturn
       readonly contractPath?: string
+      readonly forwardedCall?: number
     }
 
 export function isFileOperation(

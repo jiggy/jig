@@ -337,6 +337,100 @@ test('focused checks link the selected Binding setting without attributing shado
   expect(shadowed).not.toContain(`Captured setting preview = true from ${linked}`)
 })
 
+test('a focused result follows exact nested paths through configured forwarding and translation', () => {
+  const input = snapshot(
+    method(
+      handlerSource(`
+      const answer = await run.call({ slot: 'review', operationId: 'review', input: run.input })
+      if (run.settings.pass) return answer
+      return { outcome: 'done', output: { status: answer.outcome === 'blocked' ? 'review' : 'ready' } }
+    `),
+    ),
+    method(
+      handlerSource(`
+      const answer = await run.call({ slot: 'converter', operationId: 'convert', input: run.input })
+      if (answer.outcome === 'blocked' || answer.output.status === 'review') {
+        if (run.input.opaque) opaque()
+        return { outcome: 'done', output: { status: 'paused' } }
+      }
+      return await run.call({ slot: 'credit', operationId: 'credit', input: {} })
+    `),
+      { contractPath: 'flows/import/FLOW.contract.json' },
+    ),
+  )
+  const [outer, middle, inner] = input.targets
+  const leaf = { ...inner!, outcomes: ['done', 'blocked'] }
+  const forward = {
+    ...middle!,
+    id: 'binding:forward',
+    settings: { pass: true },
+    slots: new Map([['review', leaf.id]]),
+  }
+  const translate = { ...forward, id: 'binding:translate', settings: { pass: false } }
+  const credit = { ...leaf, id: 'flow:flows/credit', implementation: 'flows/credit' }
+  const root = (id: string, selected: string) => ({
+    ...outer!,
+    id,
+    slots: new Map([
+      ['converter', selected],
+      ['credit', credit.id],
+    ]),
+  })
+  const unrelated = Array.from({ length: BEHAVIOR_LIMITS.scopes }, (_, ordinal) => ({
+    ...leaf,
+    id: 'binding:unrelated-' + ordinal,
+  }))
+  const targets = [
+    ...unrelated,
+    root('binding:outer-forward', forward.id),
+    root('binding:outer-translate', translate.id),
+    forward,
+    translate,
+    leaf,
+    credit,
+  ]
+  const ready = method(handlerSource(`return { outcome: 'done', output: { status: 'ready' } }`))
+  const report = analyzeFlowBehavior({
+    ...input,
+    focus: leaf.id,
+    targets,
+    visible: targets.map(({ id }) => id),
+    packages: new Map([
+      ...input.packages,
+      [leaf.implementation, ready],
+      [credit.implementation, ready],
+    ]),
+  })
+  const paths =
+    renderFlowBehavior(report)
+      .split('### Through intermediate callers')[1]
+      ?.split('### Consequences')[0] ?? ''
+  const forwarded = paths
+    .split('**binding:outer-forward · converter → binding:forward**')[1]
+    ?.split('**binding:')[0]
+  const translated = paths
+    .split('**binding:outer-translate · converter → binding:translate**')[1]
+    ?.split('**binding:')[0]
+  expect(forwarded).toMatch(
+    /if admitted "blocked"[^\n]+binding:forward forwards this result[^\n]+if admitted "blocked"[^\n]+status = "paused"/,
+  )
+  expect(
+    forwarded?.split('\n').find((line) => line.startsWith('| if admitted "blocked"')),
+  ).toContain('status = "paused"')
+  expect(forwarded).toMatch(
+    /returns "done"[^\n]+binding:forward forwards this result[^\n]+Call credit/,
+  )
+  expect(forwarded).not.toContain('binding:translate')
+  expect(translated).toMatch(
+    /if admitted "blocked"[^\n]+binding:translate[^\n]+status = "review"[^\n]+status = "paused"/,
+  )
+  expect(translated).toMatch(
+    /returns "done"[^\n]+binding:translate[^\n]+status = "ready"[^\n]+Call credit/,
+  )
+  expect(translated).not.toContain('forwards this result')
+  expect(translated).not.toContain('binding:forward')
+})
+
 test('Boolean guards keep both continuations visible and respect local shadowing', () => {
   const callee = method(handlerSource('return { outcome: "done", output: {} }'))
   const analyze = (body: string) =>
