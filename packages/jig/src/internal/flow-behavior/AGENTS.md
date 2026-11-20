@@ -96,6 +96,9 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
 - A repeated handoff can retain its enclosing loop, direct control statements, and nearby exit.
   Keep these references in the active function and disclose unfinished loop analysis.
   Pair a catch with its single protected statement when identifiable.
+  Preserve direct earlier exits within a catch when they constrain a shown transfer.
+  Disclose any omitted enclosing conditions beside their transfer.
+  The false branch of a trailing one-sided exit check reaches the iteration boundary.
 - Keep the private result independent of CLI and display rendering.
 - Keep per-slot omission counts exact and retain up to three omitted source locations for navigation.
 - Package inspection uses source analysis to add call-site locations to configured caller slots.

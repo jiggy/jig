@@ -164,6 +164,7 @@ export interface AuthoredRepeat {
     readonly statement: SourceExpression
     readonly kind: 'break' | 'continue' | 'return' | 'throw'
     readonly guards: readonly BehaviorGuard[]
+    readonly omittedGuards?: number
     readonly region?: {
       readonly kind: 'catch' | 'finally'
       readonly site: SourceSite
@@ -171,6 +172,7 @@ export interface AuthoredRepeat {
     }
   }[]
   readonly omittedActions: number
+  readonly iterationEnd?: BehaviorGuard
   readonly following?: SourceExpression
 }
 

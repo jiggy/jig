@@ -334,6 +334,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Disclose projection limits without joining unrelated case variants.
 
   Around a coverage gap, put a repeated handoff beside its loop header, control statements, and nearby exit.
+  Pair each displayed condition or handler with its transfer.
+  Put a trailing exit check beside the alternative that completes the iteration.
   Link an identifiable bound declaration and keep iteration counts unresolved.
 
   Lead with route consequences and attach the conditions that select them.
