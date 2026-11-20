@@ -1075,7 +1075,8 @@ Checks and subsequent calls link to their source locations.
 
 The continuation lists the outcomes for the child's result and the caller's own result.
 It links local captured contract files for both.
-Where a displayed child outcome is absent from the caller's declarations, the view explains the declaration needed to forward that outcome.
+When a displayed child outcome is absent from the caller's declarations, the view identifies the `outcomes` entry needed to forward it.
+It also directs the reader to check that the caller's `result` schema, when present, accepts the returned shape.
 The focused report lists the direct Flow targets in scope.
 
 The callee view also shows retained paths through intermediate callers to the next configured caller's decision.
