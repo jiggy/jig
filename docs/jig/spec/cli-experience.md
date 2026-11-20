@@ -1017,7 +1017,9 @@ The output flags when a later property may override an authored value.
 It reports omitted caller sites by slot and shows other slots that use the same Flow.
 
 Caller decisions link the captured slot declaration and Binding wiring when available.
-Multiple sites for a slot appear in one comparison.
+Multiple sites for a slot appear in one comparison beside their shared configuration links.
+Focused targets can also show authored decisions from direct callers that select that exact target.
+These incoming decisions identify the caller, slot, and supported request fields even if route analysis stops earlier.
 Shared helper request metadata appears once beside its helper.
 Related slots appear together for each selected Flow implementation.
 

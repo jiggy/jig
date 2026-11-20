@@ -346,17 +346,23 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     fallback: boolean,
   ) {
     const showDecisions = target.id === focus || application
+    const slots =
+      focus !== undefined && !showDecisions
+        ? new Map([...target.slots].filter(([, destination]) => destination === focus))
+        : target.slots
+    const selectSites = showDecisions || (focus !== undefined && slots.size > 0)
+    const showReferences = fallback && (showDecisions || packagePath !== undefined)
     const callReferences =
-      target.slots.size > 0 && (showDecisions || (fallback && packagePath !== undefined))
-        ? sourceFor(target)?.callReferences(target.slots, represented, {
+      slots.size > 0 && (selectSites || showReferences)
+        ? sourceFor(target)?.callReferences(slots, represented, {
             limit: BEHAVIOR_LIMITS.authoredHandoffs,
-            fallback,
-            focused: showDecisions,
+            fallback: showReferences,
+            focused: selectSites,
           })
         : undefined
     const selected = callReferences?.selected
     const selectedSlots = new Map<string, Set<string>>()
-    for (const { slot } of selected?.sites ?? []) {
+    for (const { slot } of (showDecisions ? selected?.sites : undefined) ?? []) {
       const child = targets.get(target.slots.get(slot) ?? '')
       if (!child) continue
       const slots = selectedSlots.get(child.implementation) ?? new Set<string>()
