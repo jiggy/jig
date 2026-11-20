@@ -187,11 +187,17 @@ export function renderFlowOrientation(
         '',
       )
     }
-    appendList(
-      'Configured callers',
-      incoming.get(selected.id) ?? [],
-      (edge) => callerLabel(edge) + sourceLabel(edge, text),
-    )
+    const callers = incoming.get(selected.id) ?? []
+    appendList('Configured callers', callers, (edge) => {
+      const path = targets.find(({ id }) => id === edge.from)?.declarationPath
+      const wiring = path === undefined ? undefined : options.declarationLink?.(path)
+      return callerLabel(edge) + sourceLabel(edge, text) + (wiring ? ' · wiring ' + wiring : '')
+    })
+    if (declaration !== undefined && callers.length > 1)
+      lines.push(
+        'These caller slots share this Binding’s settings and child slot selections. To vary configuration for one caller slot, have it select a separate Binding of this Flow.',
+        '',
+      )
     appendList('Other configured uses of ' + text(selected.implementation), otherUses, (target) => {
       const callers = incoming.get(target.id) ?? []
       const via = callers.slice(0, 3).map(callerLabel).join(', ')

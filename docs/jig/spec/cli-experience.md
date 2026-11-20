@@ -999,6 +999,9 @@ Supported direct setting checks link the checked expression to the selected valu
 An authored exit can link the same configuration while its reachability remains unresolved.
 With `--all`, the document shows the project entrypoint and includes every configured target within the topology limits.
 
+The configured caller list links available caller Binding declarations.
+When multiple caller slots select the focused Binding, it explains that they share its configuration and can select separate Bindings of the same Flow.
+
 Focused reports can compare a direct setting check across configured uses of the same implementation.
 The comparison identifies the selected Binding as the edit site for a change to its setting.
 Each row links that use's declaration and gives its captured value.
