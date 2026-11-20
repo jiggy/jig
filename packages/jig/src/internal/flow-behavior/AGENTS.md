@@ -97,6 +97,7 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
   Pair helper arguments with one identifiable request in the helper's function body.
   Retain the request field and formal parameter together for each directly forwarded argument.
   Use configured targets to identify other callers of the same implementation.
+- Collect related slots once per selected implementation and preserve each configured destination.
 - Supplement cutoffs with source references whose receiver is an SDK context parameter.
   Spend the application route budget on the entrypoint and configured callers first.
   Continue bounded authored inspection when the route budget ends.

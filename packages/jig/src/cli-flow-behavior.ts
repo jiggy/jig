@@ -1628,10 +1628,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   )
   const selected = scopes.find((scope) => scope.target === focus)
   if (selected) {
-    lines.push(
-      ...renderCallSelections(selected, target?.slots),
-      ...configuredChecks(selected, target),
-    )
+    lines.push(...renderCallSelections(selected, target), ...configuredChecks(selected, target))
     lines.push(...renderCallReferences([selected], inventory))
     lines.push(...authoredRepeats(selected))
     lines.push(...authoredHandoffs(selected, undefined, target))
@@ -1707,17 +1704,17 @@ export function renderFlowBehavior(report: BehaviorReport): string {
 
 function renderCallSelections(
   scope: Scope,
-  slots: ReadonlyMap<string, string> | undefined,
+  target: BehaviorTarget | undefined,
   heading = '### Caller decisions',
 ): string[] {
   const selections = scope.callSelections
-  if (!selections || !slots) return []
-  const lines = [
-    heading,
-    '',
-    'The `intent` option of the `run.call` request sets the displayed call label.',
-    '',
-  ]
+  if (!selections || !target) return []
+  const lines = [heading, '']
+  const declarations = [
+    target.slotDeclarationPath && 'Declared slots ' + sourcePathLink(target.slotDeclarationPath),
+    target.declarationPath && 'Binding wiring ' + sourcePathLink(target.declarationPath),
+  ].filter(Boolean)
+  if (declarations.length) lines.push(declarations.join(' · '), '')
   const dispatches = new Set<string>()
   const groups = new Map<string, (typeof selections.sites)[number][]>()
   for (const selection of selections.sites) {
@@ -1730,52 +1727,65 @@ function renderCallSelections(
     if (!dispatch || !key || dispatches.has(key)) continue
     dispatches.add(key)
     lines.push(
-      `- Helper ${text(dispatch.helper)} (${text(site(dispatch.declaration))}) issues ${text(dispatch.request)} (${text(site(dispatch))}).`,
+      `- Helper ${text(dispatch.helper)} (${sourceLink(dispatch.declaration)}) issues ${text(dispatch.request)} (${sourceLink(dispatch)}).`,
     )
     for (const { field, index, parameter } of dispatch.arguments)
       lines.push(`  - Argument ${index + 1} ${text(parameter)} → request field ${field}.`)
+    for (const field of selection.requestMetadata)
+      lines.push(
+        `  - Request metadata ${text(field.field)} = ${text(field.code)} (${text(site(field.site))})`,
+      )
   }
 
   for (const [slot, group] of groups) {
-    const target = slots.get(slot)
-    if (target === undefined) continue
-    lines.push('', `**${text(slot)} → ${text(target)}**`, '')
+    const destination = target.slots.get(slot)
+    if (destination === undefined) continue
+    lines.push('', `**${text(slot)} → ${text(destination)}**`, '')
     const varying = varyingInputFields(group)
+    if (group.length > 1) lines.push('| Call site | Conditions and request |', '| --- | --- |')
     for (const selection of group) {
       const { dispatch, guards, requestMetadata, inputSite, inputFields } = selection
-      lines.push(
-        `- ${sourceLink(selection.site)}` +
-          (dispatch ? ` · run.call in helper at ${text(site(dispatch))}` : ''),
+      const near = (location: SourceSite) =>
+        location.path === selection.site.path ? `L${location.line}` : text(site(location))
+      const call = sourceLink(selection.site) + (dispatch ? ` · helper ${near(dispatch)}` : '')
+      const facts = guards.map(
+        (guard) =>
+          `${text(guard.code)} · ${guard.taken ? 'true' : 'false'} branch (${near(guard.site)})`,
       )
-      for (const guard of guards)
-        lines.push(
-          `  - Inside ${text(guard.code)} · ${guard.taken ? 'true' : 'false'} branch (${text(site(guard.site))})`,
-        )
-      for (const field of requestMetadata)
-        lines.push(
-          `  - Request metadata ${text(field.field)} = ${text(field.code)} (${text(site(field.site))})`,
-        )
-      if (inputSite) lines.push(`  - Child input at ${text(site(inputSite))}`)
+      if (!dispatch)
+        for (const field of requestMetadata)
+          facts.push(
+            `Request metadata ${text(field.field)} = ${text(field.code)} (${near(field.site)})`,
+          )
+      if (
+        inputSite &&
+        (inputSite.path !== selection.site.path || inputSite.line !== selection.site.line)
+      )
+        facts.push(`Child input at ${sourceLink(inputSite)}`)
       for (const field of inputFields) {
         if (field.kind === 'literal' && !field.guard && !varying.has(field.field)) continue
         const guard = field.guard
-          ? ` · when ${text(field.guard.code)} is ${field.guard.taken} (${text(site(field.guard.site))})`
+          ? ` · when ${text(field.guard.code)} is ${field.guard.taken} (${near(field.guard.site)})`
           : ''
         const override = field.possibleOverride
-          ? ` · later property may override (${text(site(field.possibleOverride))})`
+          ? ` · later property may override (${near(field.possibleOverride)})`
           : ''
-        lines.push(
-          `    - ${text(field.field)} = ${text(field.code)} (${text(site(field.site))})${guard}${override}`,
+        facts.push(
+          `${text(field.field)} = ${text(field.code)} (${near(field.site)})${guard}${override}`,
         )
       }
+      if (group.length > 1) lines.push(`| ${call} | ${facts.join('<br>') || '—'} |`)
+      else lines.push(`- ${call}` + (facts.length ? ` · ${facts.join(' · ')}` : ''))
     }
-    const related = selections.related.get(slot)
-    if (related) {
-      lines.push('- Other slots using the same Flow')
-      for (const call of related.calls)
-        lines.push(`  - ${text(call.caller)} · ${text(call.slot)} → ${text(call.target)}`)
-      if (related.omitted) lines.push(`  - ${related.omitted} more configured slots.`)
-    }
+  }
+  for (const { slots, calls, omitted } of selections.related) {
+    const lead = calls.length
+      ? 'Other slots using the same Flow as '
+      : 'Slots sharing the same Flow · '
+    lines.push('', `**${lead}${text(slots.join(', '))}**`, '')
+    for (const call of calls)
+      lines.push(`- ${text(call.caller)} · ${text(call.slot)} → ${text(call.target)}`)
+    if (omitted) lines.push(`- ${omitted} more configured slots.`)
   }
   for (const [slot, omitted] of selections.omittedBySlot) {
     const locations = omitted.locations.map(sourceLink)
@@ -2055,7 +2065,7 @@ function applicationMap(report: BehaviorReport): string[] {
       if (routes.length && !body.length)
         lines.push('This configured target exceeds the diagram limit.', '')
       const details = callDetails(report, [...routes, ...scope.alternatives])
-      lines.push(...renderCallSelections(scope, target.slots, '#### Caller decisions'))
+      lines.push(...renderCallSelections(scope, target, '#### Caller decisions'))
       if (!routes.length) lines.push(...renderCallReferences([scope], [target], undefined, '####'))
       lines.push(...contractChecks(scope))
       if (routes.length) lines.push(...consequences(report, scope, routes, details.shown))

@@ -355,27 +355,30 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
           })
         : undefined
     const selected = callReferences?.selected
-    const related = new Map<string, { calls: RelatedCall[]; omitted: number }>()
-    if (selected?.sites.length) {
-      for (const { slot } of selected.sites) {
-        if (related.has(slot)) continue
-        const child = targets.get(target.slots.get(slot) ?? '')
-        if (!child) continue
-        const uses = { calls: [] as RelatedCall[], omitted: 0 }
-        for (const caller of targets.values()) {
-          for (const [otherSlot, destination] of caller.slots) {
-            if (
-              (caller.id === target.id && otherSlot === slot) ||
-              targets.get(destination)?.implementation !== child.implementation
-            )
-              continue
-            if (uses.calls.length < BEHAVIOR_LIMITS.focusedRelatedCalls)
-              uses.calls.push({ caller: caller.id, slot: otherSlot, target: destination })
-            else uses.omitted++
-          }
+    const selectedSlots = new Map<string, Set<string>>()
+    for (const { slot } of selected?.sites ?? []) {
+      const child = targets.get(target.slots.get(slot) ?? '')
+      if (!child) continue
+      const slots = selectedSlots.get(child.implementation) ?? new Set<string>()
+      slots.add(slot)
+      selectedSlots.set(child.implementation, slots)
+    }
+    const related = []
+    for (const [implementation, slots] of selectedSlots) {
+      const uses = { slots: [...slots], calls: [] as RelatedCall[], omitted: 0 }
+      for (const caller of targets.values()) {
+        for (const [otherSlot, destination] of caller.slots) {
+          if (
+            (caller.id === target.id && slots.has(otherSlot)) ||
+            targets.get(destination)?.implementation !== implementation
+          )
+            continue
+          if (uses.calls.length < BEHAVIOR_LIMITS.focusedRelatedCalls)
+            uses.calls.push({ caller: caller.id, slot: otherSlot, target: destination })
+          else uses.omitted++
         }
-        if (uses.calls.length) related.set(slot, uses)
       }
+      if (uses.calls.length || uses.slots.length > 1) related.push(uses)
     }
     return {
       ...(callReferences?.references.length ? { callReferences: callReferences.references } : {}),
