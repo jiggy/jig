@@ -147,11 +147,13 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
     '| flows/import | `jig inspect --flow binding:manual` · [wiring](./bindings/manual.ts) | — | converter → flow:flows/opaque · exporter → flow:flows/export |',
   )
   expect(navigation.stdout).toContain(
-    '| flows/export | `jig inspect --flow flow:flows/export` | [binding:code · exporter](./bindings/code.ts), [binding:manual · exporter](./bindings/manual.ts) | — |',
+    '| flows/export | `jig inspect --flow flow:flows/export` | [binding:code · exporter](./bindings/code.ts), [binding:manual · exporter](./bindings/manual.ts), Independent Run · flow:flows/export | — |',
   )
   expect(navigation.stdout).not.toContain('```mermaid')
   expect(navigation.stdout).not.toContain('Unsupported statement')
-  expect((await inspect('binding:code')).stdout).toContain('status = "attention"')
+  const focused = await inspect('binding:code')
+  expect(focused.stdout).toContain('status = "attention"')
+  expect((await inspect('bindings/code.ts')).stdout).toBe(focused.stdout)
   expect((await inspect('--all')).stdout).toContain('## Application overview')
   expect((await inspect('--topology')).stdout).toStartWith('# Configured topology\n')
   await put('jig.ts', projectSource(", entrypoint: 'binding:code'"))
