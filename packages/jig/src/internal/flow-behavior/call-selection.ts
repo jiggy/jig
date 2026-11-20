@@ -26,6 +26,24 @@ export type CallRequest = {
   readonly fields: ReadonlyMap<string, ts.Expression | undefined>
 }
 
+type SlotChoice = { readonly slot: string; readonly guard?: BehaviorGuard }
+
+function slotChoices(source: Source, value: ts.Expression): readonly SlotChoice[] {
+  const expression = unwrap(value)
+  if (ts.isStringLiteralLike(expression)) return [{ slot: expression.text }]
+  if (!ts.isConditionalExpression(expression)) return []
+  const yes = unwrap(expression.whenTrue)
+  const no = unwrap(expression.whenFalse)
+  if (!ts.isStringLiteralLike(yes) || !ts.isStringLiteralLike(no)) return []
+  if (yes.text === no.text) return [{ slot: yes.text }]
+  const code = shortText(expression.condition)
+  const site = source.site(expression.condition)
+  return [
+    { slot: yes.text, guard: { code, site, taken: true, unresolved: true } },
+    { slot: no.text, guard: { code, site, taken: false, unresolved: true } },
+  ]
+}
+
 /** Project local source selections independently of route feasibility. */
 export function selectCallSites(
   source: Source,
@@ -48,7 +66,7 @@ export function selectCallSites(
   const hasChoice = (entry: AuthoredCallSelection) =>
     entry.inputFields.some((field) => field.guard || field.kind === 'choice')
   const append = (
-    slot: string,
+    { slot, guard }: SlotChoice,
     call: ts.CallExpression,
     input: ts.Expression | undefined,
     requestMetadata: AuthoredCallSelection['requestMetadata'],
@@ -56,6 +74,7 @@ export function selectCallSites(
   ) => {
     if (!slots.has(slot)) return
     const guards = lexicalGuards(call, (node) => source.site(node)).slice(-2)
+    if (guard) guards.push(guard)
     const item: AuthoredCallSelection = {
       slot,
       site: source.site(call),
@@ -63,7 +82,7 @@ export function selectCallSites(
       guards,
       requestMetadata,
       ...(input ? { inputSite: source.site(input) } : {}),
-      inputFields: selectedInputs(source, input),
+      inputFields: selectedInputs(source, input, writes, hasEval),
     }
     const group = groups.get(slot) ?? { sites: [], count: 0, dropped: [] }
     group.count++
@@ -84,9 +103,12 @@ export function selectCallSites(
       const value = request.fields.get(field)
       return value ? [{ field, code: shortText(value), site: source.site(value) }] : []
     })
-    if (slot && ts.isStringLiteralLike(slot)) {
-      append(slot.text, call, input, requestMetadata)
-      continue
+    if (slot) {
+      const choices = slotChoices(source, slot)
+      if (choices.length > 0) {
+        for (const choice of choices) append(choice, call, input, requestMetadata)
+        continue
+      }
     }
     if (hasEval || !slot || !ts.isIdentifier(slot) || writes.has(request.receiver)) continue
     const parameter = source.declaration(slot)
@@ -122,15 +144,15 @@ export function selectCallSites(
     for (const invocation of calls.get(fn.parent) ?? []) {
       if (invocation.questionDotToken || invocation.arguments.some(ts.isSpreadElement)) continue
       const slotArgument = invocation.arguments[fn.parameters.indexOf(parameter)]
-      const selected = slotArgument && unwrap(slotArgument)
-      if (!selected || !ts.isStringLiteralLike(selected)) continue
-      append(
-        selected.text,
-        invocation,
-        inputIndex === undefined ? input : invocation.arguments[inputIndex],
-        requestMetadata,
-        dispatch,
-      )
+      if (!slotArgument) continue
+      for (const choice of slotChoices(source, slotArgument))
+        append(
+          choice,
+          invocation,
+          inputIndex === undefined ? input : invocation.arguments[inputIndex],
+          requestMetadata,
+          dispatch,
+        )
     }
   }
   // Keep comparable sites together before spending the budget on isolated calls.
@@ -165,13 +187,21 @@ export function selectCallSites(
   return { sites, omittedBySlot }
 }
 
-function selectedInputs(source: Source, input: ts.Expression | undefined) {
+function selectedInputs(
+  source: Source,
+  input: ts.Expression | undefined,
+  writes: ReadonlySet<ts.Declaration>,
+  hasEval: boolean,
+) {
   const object = input && unwrap(input)
   if (!object || !ts.isObjectLiteralExpression(object)) return []
   const fields: AuthoredInputField[] = []
   const assigned = new Set<string>()
   const optional = new Map<string, SourceSite>()
   let dynamic: SourceSite | undefined
+  const spreadMembers = (expression: ts.Expression) =>
+    namedProperties(expression) ??
+    (hasEval ? undefined : returnedProperties(source, expression, writes))
   const append = (name: string, property: ts.ObjectLiteralElementLike, guard?: BehaviorGuard) => {
     if (assigned.has(name)) return
     if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) return
@@ -207,8 +237,8 @@ function selectedInputs(source: Source, input: ts.Expression | undefined) {
     if (ts.isSpreadAssignment(property)) {
       const spread = unwrap(property.expression)
       const conditional = ts.isConditionalExpression(spread) ? spread : undefined
-      const first = namedProperties(conditional ? unwrap(conditional.whenTrue) : spread)
-      const second = conditional ? namedProperties(unwrap(conditional.whenFalse)) : first
+      const first = spreadMembers(conditional ? unwrap(conditional.whenTrue) : spread)
+      const second = conditional ? spreadMembers(unwrap(conditional.whenFalse)) : first
       if (!first || !second) {
         dynamic = source.site(property)
         continue
@@ -245,6 +275,56 @@ function selectedInputs(source: Source, input: ts.Expression | undefined) {
   const choices = fields.filter((field) => field.kind === 'choice' || field.guard)
   const literals = fields.filter((field) => field.kind === 'literal' && !field.guard)
   return [...choices.slice(0, 4), ...literals.slice(0, 8)]
+}
+
+/** Inspect the keys returned by a direct local helper without evaluating its values. */
+function returnedProperties(
+  source: Source,
+  expression: ts.Expression,
+  writes: ReadonlySet<ts.Declaration>,
+) {
+  if (!ts.isCallExpression(expression) || expression.questionDotToken) return undefined
+  const callee = unwrap(expression.expression)
+  if (!ts.isIdentifier(callee)) return undefined
+  const declaration = source.declaration(callee)
+  if (!declaration || writes.has(declaration)) return undefined
+  const fn = ts.isFunctionDeclaration(declaration) ? declaration : constInitializer(declaration)
+  if (
+    !fn ||
+    !isLocalFunction(fn) ||
+    fn.asteriskToken ||
+    fn.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) ||
+    !fn.body
+  )
+    return undefined
+
+  let returned: ts.Expression | undefined
+  if (ts.isBlock(fn.body)) {
+    const statements = fn.body.statements
+    const last = statements.at(-1)
+    if (
+      !last ||
+      !ts.isReturnStatement(last) ||
+      !statements
+        .slice(0, -1)
+        .every(
+          (statement) => ts.isVariableStatement(statement) || ts.isFunctionDeclaration(statement),
+        )
+    )
+      return undefined
+    returned = last.expression
+  } else returned = fn.body
+  if (!returned) return undefined
+  const literal = unwrap(returned)
+  if (
+    !ts.isObjectLiteralExpression(literal) ||
+    !literal.properties.every(
+      (property) => ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property),
+    )
+  )
+    return undefined
+  const properties = namedProperties(literal)
+  return properties?.has('__proto__') ? undefined : properties
 }
 
 function namedProperties(expression: ts.Expression) {

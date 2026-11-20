@@ -29,3 +29,4 @@ Before editing, it can name both affected chapter sites and explain which calls 
 
 The portable scenario `caller slot groups compare authored literals and identify guarded or overridden fields` exercises the three-site chapter and book pattern.
 It checks grouping, conditional purposes, possible overrides, and links to omitted sites. [Executable scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L705)
+The scenario `caller fields survive a local helper spread with disjoint keys` checks fixed spread keys and both configured branches of an authored slot choice. [Conditional slot scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L790)

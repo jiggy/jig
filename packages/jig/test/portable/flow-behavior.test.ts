@@ -787,6 +787,59 @@ test('focused source sites decline reassigned or ambiguous requests and retain d
   expect(scope.callSelections?.sites[0]?.dispatch).toBeUndefined()
 })
 
+test('caller fields survive a local helper spread with disjoint keys', () => {
+  const entry = `
+    import { handle } from '@jigging/flow'
+    import { context, uncertain } from './context.ts'
+    await handle(async (run) => {
+      const dispatch = (slot, input) => run.call({slot, operationId:'review', input})
+      opaque()
+      await dispatch(run.input.specialist ? 'exporter' : 'converter', {scale:'chapter',...context(run.input)})
+      await run.call({slot:'converter', operationId:'book', input:{scale:'book',...uncertain(run.input)}})
+    })
+  `
+  const caller = method(entry, {
+    sources: new Map([
+      ['FLOW.ts', entry],
+      [
+        'context.ts',
+        `
+        export function context(input) {
+          const label = format(input)
+          return { label, status: 'available' }
+        }
+        export function uncertain(input) {
+          if (input.override) return { scale: 'unknown' }
+          return { label: 'uncertain' }
+        }
+      `,
+      ],
+    ]),
+  })
+  const report = analyzeFlowBehavior(snapshot(method(''), caller))
+  const sites = report.scopes[0]?.callSelections?.sites ?? []
+  expect(sites).toHaveLength(3)
+  for (const slot of ['converter', 'exporter']) {
+    const branch = sites.find((selection) => selection.slot === slot && selection.dispatch)
+    expect(branch?.guards).toMatchObject([
+      { code: 'run.input.specialist', taken: slot === 'exporter', unresolved: true },
+    ])
+    expect(branch?.inputFields.find((field) => field.field === 'scale')).toMatchObject({
+      code: "'chapter'",
+    })
+    expect(
+      branch?.inputFields.find((field) => field.field === 'scale')?.possibleOverride,
+    ).toBeUndefined()
+  }
+  const direct = sites.find((selection) => !selection.dispatch)
+  expect(
+    direct?.inputFields.find((field) => field.field === 'scale')?.possibleOverride,
+  ).toBeDefined()
+  expect(renderFlowBehavior(report)).toMatch(
+    /\[flows\/import\/FLOW.ts:7\]\(\.\/flows\/import\/FLOW.ts#L7\)/,
+  )
+})
+
 test('whole application maps retain authored decisions after reserving route analysis for callers', () => {
   const input = snapshot(
     method(handlerSource(`return { outcome: 'done', output: {} }`)),
