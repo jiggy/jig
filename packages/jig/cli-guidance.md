@@ -272,7 +272,11 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   Pair supported direct setting checks with the selected value and declaration.
   Compare the same authored check across uses when captured setting values differ.
+  Distinguish a setting edit in the selected Binding from editing the shared check.
   Show each use's own first handoff or exit. Leave unrepresented continuations unresolved.
+
+  Present a peer's value as an alternative at the check only when the other settings and slot targets match.
+  Require resolved opposite branches with represented continuations in both uses.
 
   Each configured use retains its own analyzed routes, coverage, and caller continuations.
   Flow and target links use selectors. Call links use captured source identity.
