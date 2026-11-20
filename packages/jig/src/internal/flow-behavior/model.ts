@@ -274,6 +274,11 @@ export interface BehaviorReport {
   readonly packagePath?: string
   readonly entrypoint?: string
   readonly inventory: readonly BehaviorTarget[]
+  readonly directHandoffs?: readonly {
+    readonly slot: string
+    readonly selected: string
+    readonly direct: string
+  }[]
   readonly childPaths: readonly BehaviorChildPath[]
   readonly importBoundary?: FlowImportBoundary & {
     readonly sourcePackage: string

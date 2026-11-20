@@ -856,23 +856,13 @@ function renderFirstWrites(report: BehaviorReport, scope: Scope, callers: CallDe
 
 function directInvocations(
   target: BehaviorTarget | undefined,
-  inventory: ReadonlyMap<string, BehaviorTarget>,
+  entries: BehaviorReport['directHandoffs'],
 ): string[] {
   if (!target) return []
-  const direct = new Map<string, string>()
-  for (const use of inventory.values())
-    if (use.id.startsWith('flow:')) direct.set(use.implementation, use.id)
   const lines: string[] = []
   if (target.id.startsWith('flow:'))
     lines.push('**Direct invocation** · Starts at ' + text(target.id) + ' with its own input.', '')
-  const handoffs: string[] = []
-  for (const [slot, selected] of target.slots) {
-    const implementation = inventory.get(selected)?.implementation
-    const standalone = implementation === undefined ? undefined : direct.get(implementation)
-    if (standalone === undefined) continue
-    handoffs.push(`| ${text(slot)} | ${text(selected)} | ${text(standalone)} |`)
-  }
-  if (handoffs.length)
+  if (entries?.length)
     lines.push(
       '**Direct entries alongside this Flow’s handoffs**',
       '',
@@ -880,10 +870,14 @@ function directInvocations(
       '',
       '| Caller slot | Configured target | Direct entry to the same Flow |',
       '| --- | --- | --- |',
-      ...handoffs.slice(0, 8),
+      ...entries
+        .slice(0, 8)
+        .map(
+          ({ slot, selected, direct }) => `| ${text(slot)} | ${text(selected)} | ${text(direct)} |`,
+        ),
       '',
-      ...(handoffs.length > 8
-        ? [`${handoffs.length - 8} more handoffs with direct entries.`, '']
+      ...(entries.length > 8
+        ? [`${entries.length - 8} more handoffs with direct entries.`, '']
         : []),
     )
   return lines
@@ -1824,7 +1818,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     '## ' + text(focus),
     '',
     ...configuredOrientation(report, focus),
-    ...directInvocations(target, targets),
+    ...directInvocations(target, report.directHandoffs),
     ...requiredSlotFacts(target),
     ...(target ? ['**Own result contract** · ' + resultContract(target), ''] : []),
     ...(independent.length

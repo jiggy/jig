@@ -122,6 +122,20 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   let childSteps = 0
   const { focus, entrypoint, packagePath, revision } = input
   const application = focus === undefined && packagePath === undefined
+  const directHandoffs = []
+  const focused = focus === undefined ? undefined : targets.get(focus)
+  if (focused?.slots.size) {
+    const directByPackage = new Map(
+      input.targets.flatMap(({ id, implementation }) =>
+        id.startsWith('flow:') ? [[implementation, id] as const] : [],
+      ),
+    )
+    for (const [slot, selected] of focused.slots) {
+      const target = targets.get(selected)
+      const direct = target && directByPackage.get(target.implementation)
+      if (direct !== undefined) directHandoffs.push({ slot, selected, direct })
+    }
+  }
 
   const incoming = focus === undefined ? undefined : incomingScopes(focus, input.visible, targets)
   const focusedBinding = inventory.find(
@@ -223,6 +237,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     focus,
     ...(packagePath === undefined ? {} : { packagePath }),
     ...(entrypoint === undefined ? {} : { entrypoint }),
+    ...(directHandoffs.length ? { directHandoffs } : {}),
     inventory,
     scopes,
     childPaths,

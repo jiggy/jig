@@ -1090,6 +1090,7 @@ The examples retain checks before the write and subsequent checks or actions. Co
 If the same write has both kinds of entries, the view identifies a common place for validation before that write.
 A focused view also identifies direct inputs separately from its configured call slots.
 For a configured handoff, it can show an independently callable entry that uses the same Flow implementation.
+That entry can be outside the focused analysis scope if it is present in the captured project.
 
 Small known scalar sets and literal numeric products can contribute to reported progress.
 Route consequences give the final requested progress alongside its recorded helper call or update location.
