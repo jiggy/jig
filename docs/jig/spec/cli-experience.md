@@ -998,7 +998,9 @@ Modeled direct returns that lack unresolved conditions or assumed call results m
 The caller continuation stays in the caller's context.
 
 Focused source inspection links to the captured Binding declaration and shows the selected values for settings that differ across uses.
-It identifies peers with the same slot selections and names slots that select differently.
+It identifies peers with the same slot selections and gives the exact peer selections for displayed differences.
+The default entrypoint view includes other configured uses of its implementation and their callers from the same capture.
+This configuration summary can include targets outside the analyzed routes.
 It links captured peer Binding declarations and identifies equal settings.
 
 For a local Flow shared by Bindings, it identifies the package settings schema or its absence.

@@ -699,14 +699,15 @@ test('focused orientation shows distinct slots and variant callers before analys
       ['polish', focus],
     ]),
   ]
-  const report = analyzeFlowBehavior({
+  const input: BehaviorInput = {
     revision: 'capture',
     targets,
     focus,
     entrypoint: producer,
     visible: targets.map(({ id }) => id),
     packages: new Map(),
-  })
+  }
+  const report = analyzeFlowBehavior(input)
   const orientation = renderFlowBehavior(report).split('## Configured targets')[0]!
   expect(orientation).toContain('binding:chapter-reading uses flows/draft-chapter.')
   expect(orientation).toContain(
@@ -738,7 +739,7 @@ test('focused orientation shows distinct slots and variant callers before analys
     'binding:chapter-reading-baseline · called by binding:compare-writing · baseline · settings differ: prompt = "baseline" · same slot selections',
   )
   expect(orientation).toContain(
-    'binding:chapter-with-review · settings differ: prompt = unset · different slot selections: review',
+    'binding:chapter-with-review · settings differ: prompt = unset · different slot selections: review → binding:compare-writing',
   )
   expect(orientation).toContain(
     'binding:chapter-peer · same slot selections · same settings · [bindings/chapter-peer.ts](./bindings/chapter-peer.ts)',
@@ -749,6 +750,17 @@ test('focused orientation shows distinct slots and variant callers before analys
   expect(orientation).toContain(
     'Settings schema · [flows/draft-chapter/settings.schema.json](./flows/draft-chapter/settings.schema.json).',
   )
+  const defaultFocus = analyzeFlowBehavior({ ...input, entrypoint: focus, visible: [focus] })
+  expect(defaultFocus.inventory.map(({ id }) => id)).toEqual([focus])
+  expect(defaultFocus.scopes.map(({ target }) => target)).toEqual([focus])
+  const defaultOrientation = renderFlowBehavior(defaultFocus).split('## Configured targets')[0]!
+  for (const fact of [
+    'binding:compare-writing · current · wiring [bindings/compare-writing.ts]',
+    'binding:chapter-reading-baseline · called by binding:compare-writing · baseline',
+    'different slot selections: review → binding:compare-writing',
+    '[bindings/chapter-peer.ts](./bindings/chapter-peer.ts)',
+  ])
+    expect(defaultOrientation).toContain(fact)
   const application = renderFlowBehavior({ ...report, focus: undefined })
   const opening = application.split('| Configured target')[0]!
   expect(opening).toContain('[binding:produce-book]')

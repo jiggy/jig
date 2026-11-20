@@ -113,6 +113,7 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
 - Keep per-slot omission counts exact and retain up to three omitted source locations for navigation.
 - Package inspection uses source analysis to add call-site locations to configured caller slots.
   Caller slots remain visible without source interpretation.
+- Retain off-scope uses of the focused package and their incoming wiring for orientation without expanding the analyzed scope.
 - Focused source and configured-use expansions put authored call decisions before route details.
   The decision shows where the caller supplies its slot and conditional fields.
   Keep request metadata at the resolved `run.call` and child input at its authored expression or proven forwarding argument.

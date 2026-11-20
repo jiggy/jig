@@ -2761,15 +2761,24 @@ function configuredOrientation(
   focus: string | undefined,
   linkedTargets?: ReadonlySet<string>,
 ): string[] {
+  const targets =
+    linkedTargets === undefined && report.orientationExtras
+      ? [...report.inventory, ...report.orientationExtras]
+      : report.inventory
   return renderFlowOrientation(
-    report.inventory,
-    configuredConnections(report, (caller, target) => caller === focus || target === focus),
+    targets,
+    configuredConnections(
+      report,
+      (caller, target) => caller === focus || target === focus,
+      targets,
+    ),
     focus,
     {
       text,
       target: (id) =>
         linkedTargets?.has(id) ? `[${text(id)}](#${idFor('target', id)})` : text(id),
       includeCallers: linkedTargets === undefined,
+      includeSlotTargets: true,
       declarationLink: sourcePathLink,
     },
   )
@@ -2778,6 +2787,7 @@ function configuredOrientation(
 function configuredConnections(
   report: BehaviorReport,
   relevant: (caller: string, target: string) => boolean,
+  targets = report.inventory,
 ): ConfiguredConnection[] {
   const sites = new Map<string, Set<string>>()
   const edgeKey = (caller: string, slot: string, target: string) =>
@@ -2798,7 +2808,7 @@ function configuredConnections(
         if (step.kind === 'call' && step.caller === scope.target) recordSite(scope.target, step)
     for (const handoff of scope.authoredHandoffs ?? []) recordSite(scope.target, handoff)
   }
-  return report.inventory.flatMap((target) =>
+  return targets.flatMap((target) =>
     [...target.slots].map(([slot, to]) => ({
       from: target.id,
       slot,
