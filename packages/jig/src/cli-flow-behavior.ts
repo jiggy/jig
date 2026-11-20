@@ -10,6 +10,7 @@ import {
   type AuthoredPriorExit,
   type AuthoredRepeat,
   type AuthoredRepeatedCall,
+  BEHAVIOR_LIMITS,
   type BehaviorGuard,
   type BehaviorReport,
   type BehaviorReturn,
@@ -1627,6 +1628,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     ...importBoundaryNotice(report),
   )
   const selected = scopes.find((scope) => scope.target === focus)
+  lines.push(...incomingCallDecisions(scopes, targets, focus))
   if (selected) {
     lines.push(...renderCallSelections(selected, target), ...configuredChecks(selected, target))
     lines.push(...renderCallReferences([selected], inventory))
@@ -1702,6 +1704,27 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   return lines.join('\n') + '\n'
 }
 
+function incomingCallDecisions(
+  scopes: readonly Scope[],
+  targets: ReadonlyMap<string, BehaviorTarget>,
+  focus: string,
+): string[] {
+  const callers = scopes.filter((scope) => scope.target !== focus && scope.callSelections)
+  if (!callers.length) return []
+  const shown = callers.slice(0, BEHAVIOR_LIMITS.focusedRelatedCalls)
+  const lines = ['### Incoming caller decisions', '']
+  for (const caller of shown)
+    lines.push(
+      ...renderCallSelections(caller, targets.get(caller.target), `#### ${text(caller.target)}`),
+    )
+  if (callers.length > shown.length)
+    lines.push(
+      `- ${callers.length - shown.length} more callers with authored sites. Inspect each caller to see its decisions.`,
+      '',
+    )
+  return lines
+}
+
 function renderCallSelections(
   scope: Scope,
   target: BehaviorTarget | undefined,
@@ -1714,14 +1737,19 @@ function renderCallSelections(
     target.slotDeclarationPath && 'Declared slots ' + sourcePathLink(target.slotDeclarationPath),
     target.declarationPath && 'Binding wiring ' + sourcePathLink(target.declarationPath),
   ].filter(Boolean)
-  if (declarations.length) lines.push(declarations.join(' · '), '')
-  const dispatches = new Set<string>()
   const groups = new Map<string, (typeof selections.sites)[number][]>()
   for (const selection of selections.sites) {
     const group = groups.get(selection.slot) ?? []
     group.push(selection)
     groups.set(selection.slot, group)
+  }
+  const sharesSlot = (slot: string, count: number) =>
+    count + (selections.omittedBySlot.get(slot)?.count ?? 0) > 1
+  if (declarations.length && ![...groups].some(([slot, group]) => sharesSlot(slot, group.length)))
+    lines.push(declarations.join(' · '), '')
 
+  const dispatches = new Set<string>()
+  for (const selection of selections.sites) {
     const dispatch = selection.dispatch
     const key = dispatch && JSON.stringify([dispatch.path, dispatch.line, dispatch.column])
     if (!dispatch || !key || dispatches.has(key)) continue
@@ -1741,6 +1769,11 @@ function renderCallSelections(
     const destination = target.slots.get(slot)
     if (destination === undefined) continue
     lines.push('', `**${text(slot)} → ${text(destination)}**`, '')
+    if (sharesSlot(slot, group.length))
+      lines.push(
+        ['One configured selection for all calls through this slot.', ...declarations].join(' '),
+        '',
+      )
     const varying = varyingInputFields(group)
     if (group.length > 1) lines.push('| Call site | Conditions and request |', '| --- | --- |')
     for (const selection of group) {

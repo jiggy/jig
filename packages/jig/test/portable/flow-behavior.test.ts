@@ -732,12 +732,25 @@ test('caller slot groups compare authored literals and identify guarded or overr
     ${'await dispatch("exporter", {})\n'.repeat(BEHAVIOR_LIMITS.focusedCallSelections)}
   `),
   )
-  const report = analyzeFlowBehavior(
-    snapshot(method(handlerSource(`return {outcome:'done',output:{}}`)), caller),
+  const input = snapshot(method(handlerSource(`return {outcome:'done',output:{}}`)), caller)
+  const targets = input.targets.map((target) =>
+    target.id === 'binding:code'
+      ? {
+          ...target,
+          declarationPath: 'bindings/code.ts',
+          slotDeclarationPath: 'flows/import/FLOW.meta.json',
+        }
+      : target,
   )
+  const report = analyzeFlowBehavior({ ...input, targets })
   const rendered = renderFlowBehavior(report)
   const group = rendered.split('**converter → flow:flows/convert**')[1]?.split('**exporter →')[0]
   expect(group).toContain('| Call site | Conditions and request |')
+  expect(group).toContain('One configured selection for all calls through this slot.')
+  expect(group).toContain(
+    'Declared slots [flows/import/FLOW.meta.json](./flows/import/FLOW.meta.json)',
+  )
+  expect(group).toContain('Binding wiring [bindings/code.ts](./bindings/code.ts)')
   expect(group?.split('\n').filter((line) => line.startsWith('| [flows/import/'))).toHaveLength(3)
   expect(rendered.match(/Request metadata operationId = slot \(/g)).toHaveLength(1)
   expect(group).toContain("scale = 'chapter'")
@@ -759,6 +772,50 @@ test('caller slot groups compare authored literals and identify guarded or overr
   expect(rendered).toMatch(
     /Additional call sites for exporter \(4\)[^\n]+\.\/flows\/import\/FLOW\.ts#L21[^\n]+1 more/,
   )
+})
+
+test('focused callee shows authored requests through the exact incoming Binding and slot', () => {
+  const input = snapshot(
+    method(handlerSource(`return {outcome:'done',output:{}}`)),
+    method(
+      handlerSource(`
+      const dispatch = (slot, value) => run.call({slot, operationId: slot, input: value})
+      opaque()
+      await dispatch('converter', {scope: 'chapter', purpose: run.input.resume ? 'post-edit' : 'developmental'})
+      await dispatch('converter', {scope: 'book', purpose: 'post-edit'})
+      await dispatch('exporter', {scope: 'unrelated', purpose: 'archive'})
+    `),
+    ),
+  )
+  const code = input.targets[0]!
+  const audit: BehaviorTarget = {
+    ...code,
+    id: 'binding:audit',
+    slots: new Map([
+      ['converter', 'flow:flows/export'],
+      ['exporter', 'flow:flows/export'],
+    ]),
+  }
+  const target = 'flow:flows/convert'
+  const report = analyzeFlowBehavior({
+    ...input,
+    focus: target,
+    targets: [...input.targets, audit],
+    visible: [...input.visible, audit.id],
+  })
+  const rendered = renderFlowBehavior(report)
+  const decisions = rendered
+    .split('### Incoming caller decisions\n')[1]
+    ?.split('### Consequences')[0]
+  expect(decisions).toContain('#### binding:code')
+  expect(decisions).toContain('**converter → flow:flows/convert**')
+  expect(decisions).toContain('Argument 1 slot → request field slot.')
+  expect(decisions).toContain("scope = 'chapter'")
+  expect(decisions).toContain("scope = 'book'")
+  expect(decisions).toContain("purpose = run.input.resume ? 'post-edit' : 'developmental'")
+  expect(decisions).not.toContain('binding:audit')
+  expect(decisions).not.toContain("scope = 'unrelated'")
+  expect(decisions).not.toContain('**exporter →')
 })
 
 test('focused source sites decline reassigned or ambiguous requests and retain direct decisions', () => {
