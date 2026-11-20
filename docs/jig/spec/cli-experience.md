@@ -1067,6 +1067,9 @@ They can also show which configured caller slots select that caller.
 An incoming decision can show how the caller returns after its next handoff.
 The next handoff must have a source result on the same modeled path, with no intervening call before the return.
 Keep each displayed return tied to the configured path that supports it.
+Beside the decision, show any local direct Flow entry for its displayed next destinations.
+Link the captured entry source and identify when the caller selects a Binding of that Flow.
+The direct entry supplies its own input.
 
 For an incoming slot, show other configured uses of the caller's package even when its source is opaque.
 Show the selected target or absent selection for each displayed use, even outside the focused topology.

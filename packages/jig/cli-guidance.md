@@ -335,6 +335,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Supported literal lookups can show their authored rows, source assignments, and preceding returns.
 
   Before the route chart, link incoming call results to the configured caller's checks and next step.
+  List each next local Flow's captured direct entry once, alongside any selected Bindings of that Flow.
   Apply the same projection to outgoing calls with distinct displayed results.
   Label the returning Flow and the acting caller. Put child conditions in their own column.
   Call-case links lead to the full caller-local expansion.
