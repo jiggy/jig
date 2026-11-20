@@ -2312,9 +2312,11 @@ function renderCallSelections(
         const override = field.possibleOverride
           ? ` · later property may override (${near(field.possibleOverride)})`
           : ''
-        facts.push(
-          `${text(field.field)} = ${text(field.code)} (${near(field.site)})${guard}${override}`,
-        )
+        const branch = field.branches
+        const value = branch
+          ? ` · ${text(branch.condition.code)} (${sourceLink(branch.condition.site)}) · true → ${text(branch.whenTrue)}, false → ${text(branch.whenFalse)}`
+          : ` = ${text(field.code)} (${near(field.site)})`
+        facts.push(text(field.field) + value + guard + override)
       }
       if (group.length > 1) lines.push(`| ${call} | ${facts.join('<br>') || '—'} |`)
       else lines.push(`- ${call}` + (facts.length ? ` · ${facts.join(' · ')}` : ''))

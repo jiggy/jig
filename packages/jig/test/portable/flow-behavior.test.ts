@@ -839,7 +839,9 @@ test('caller slot groups compare authored literals and identify guarded or overr
   expect(group).toMatch(
     /purpose = 'post-edit'[^\n]+when run\.input\.edited is true[^\n]+later property may override/,
   )
-  expect(group).toContain("purpose = run.input.polished ? 'post-edit'")
+  expect(group).toMatch(
+    /purpose · run\.input\.polished[^\n]+true → 'post-edit', false → 'developmental'/,
+  )
   expect(group).not.toContain('discarded')
   expect(group).not.toContain('profile =')
   const omitted = report.scopes
@@ -919,7 +921,9 @@ test('focused callee shows authored requests through the exact incoming Binding 
   expect(decisions).toMatch(/\| \[[^\n]+\[helper L(\d+)\]\(\.\/flows\/import\/FLOW\.ts#L\1\)/)
   expect(decisions).toContain("scope = 'chapter'")
   expect(decisions).toContain("scope = 'book'")
-  expect(decisions).toContain("purpose = run.input.resume ? 'post-edit' : 'developmental'")
+  expect(decisions).toMatch(
+    /purpose · run\.input\.resume[^\n]+true → 'post-edit', false → 'developmental'/,
+  )
   expect(decisions).not.toContain('binding:audit')
   expect(decisions).not.toContain("scope = 'unrelated'")
   expect(decisions).not.toContain('**exporter →')

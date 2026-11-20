@@ -1020,6 +1020,7 @@ Source checks identify evaluated predicates and predicates that remain condition
 Focused source output and configured-use expansions group supported caller decisions by slot before analyzed routes.
 It can link a literal slot argument at a local helper call to the corresponding request.
 Each group can include enclosing branches, differing literal input values, and conditional fields.
+When a field has two literal alternatives, the report pairs both values with the same source predicate.
 The output flags when a later property may override an authored value.
 It reports omitted caller sites by slot and shows other slots that use the same Flow.
 
