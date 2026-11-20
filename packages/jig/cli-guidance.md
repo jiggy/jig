@@ -319,6 +319,9 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Keep the configured call site and inherited assumptions on each hop.
   Disclose projection limits without joining unrelated case variants.
 
+  Around a coverage gap, put a repeated handoff beside its loop header, control statements, and nearby exit.
+  Link an identifiable bound declaration and keep iteration counts unresolved.
+
   Lead with route consequences and attach the conditions that select them.
   Show the source of the final progress request beside the reported count.
 

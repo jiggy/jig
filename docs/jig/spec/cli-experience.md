@@ -1053,6 +1053,12 @@ Additional source results include distinct throws with a known error type or mes
 Supported finite array loops show repeated calls and early stops.
 Other synchronous collection loops can show repetition with an unknown count.
 An opaque loop can leave its body or continuation unknown.
+
+If analysis stops before or within a loop, a source view can link its configured call sites to the loop header and nearby control statements.
+It can show an identifiable loop bound declaration and a later exit in the same block.
+A transfer inside a catch can link the single statement protected by its try block.
+These source locations leave reachability and iteration counts unresolved.
+
 The analyzer follows data-only callbacks on small known arrays, including explicit validation failures.
 When validation callbacks operate on unresolved contents, the displayed continuation assumes mapping completes.
 

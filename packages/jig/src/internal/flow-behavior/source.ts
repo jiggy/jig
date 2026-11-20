@@ -10,10 +10,12 @@ import {
 import type {
   AuthoredFileWrite,
   AuthoredHandoff,
+  AuthoredRepeat,
   BehaviorPackage,
   CallReference,
   SourceSite,
 } from './model.js'
+import { describeRepeat, enclosingLoop } from './repetition.js'
 import { slotSelection } from './slot-selection.js'
 import {
   branchExit,
@@ -39,7 +41,10 @@ const compilerOptions: ts.CompilerOptions = {
 
 type ErrorBase = 'Error' | 'TypeError' | 'RangeError' | 'SyntaxError'
 export type ErrorClass = { readonly base: ErrorBase; readonly identity?: string }
-type HandoffSite = Omit<AuthoredHandoff, 'target'> & { receiver: ts.Declaration }
+type HandoffSite = Omit<AuthoredHandoff, 'target'> & {
+  receiver: ts.Declaration
+  repeat?: { readonly loop: AuthoredRepeat; readonly end: number }
+}
 type ContinuationSites = {
   handoffs: readonly HandoffSite[]
   fileWrites: readonly AuthoredFileWrite[]
@@ -60,6 +65,7 @@ export class SourceIndex {
   readonly #callIdentities = new Map<ts.CallExpression, string>()
   readonly #indexedCalls = new Set<ts.SourceFile>()
   readonly #continuations = new Map<LocalFunction, ContinuationSites>()
+  readonly #repeats = new WeakMap<ts.IterationStatement, AuthoredRepeat>()
   readonly entry: ts.SourceFile | undefined
 
   constructor(
@@ -415,6 +421,13 @@ export class SourceIndex {
     if (!slot) return undefined
     const intentValue = fields.get('intent')
     const intent = intentValue && ts.isStringLiteralLike(intentValue) ? intentValue.text : undefined
+    const loop = writes.has(receiver) ? undefined : enclosingLoop(call)
+    let repeat: HandoffSite['repeat']
+    if (loop) {
+      const description = this.#repeats.get(loop) ?? describeRepeat(this, loop)
+      this.#repeats.set(loop, description)
+      repeat = { loop: description, end: loop.end }
+    }
     const priorExits = priorBranchExits(call).map(({ condition, taken, statement }) => {
       const setting = writes.has(receiver)
         ? undefined
@@ -431,6 +444,7 @@ export class SourceIndex {
       slot,
       site: this.callSite(call),
       ...(intent ? { intent: intent.length <= 140 ? intent : intent.slice(0, 139) + '…' } : {}),
+      ...(repeat ? { repeat } : {}),
       guards: lexicalGuards(call, (node) => this.site(node)).slice(0, 4),
       ...(priorExits.length ? { priorExits } : {}),
       exitChecks: this.resultExitChecks(call),

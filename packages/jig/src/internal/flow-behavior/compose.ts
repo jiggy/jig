@@ -9,6 +9,7 @@ import {
   type AuthoredContinuation,
   type AuthoredFileWrite,
   type AuthoredHandoff,
+  type AuthoredRepeatedCall,
   BEHAVIOR_LIMITS,
   type BehaviorAssumption,
   type BehaviorChildPath,
@@ -246,12 +247,14 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     const alternate = new Map<string, Route>()
     const authored = new Map<string, AuthoredHandoff>()
     const writes = new Map<string, AuthoredFileWrite>()
+    const repeats = new Map<string, AuthoredRepeatedCall>()
     const record = handoff
       ? undefined
       : (item: AuthoredContinuation) => {
           const key = JSON.stringify(item.value.site)
           if (item.kind === 'handoff') authored.set(key, item.value)
-          else writes.set(key, item.value)
+          else if (item.kind === 'file-write') writes.set(key, item.value)
+          else repeats.set(key, item.value)
         }
     try {
       const argument = input.packages.get(target.implementation)?.acceptedInput ?? unknown
@@ -296,6 +299,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
           writes.delete(JSON.stringify(step.site))
       }
     const fileWrites = evidence.size ? [...writes.values()] : []
+    const repeatedCalls = evidence.size ? [...repeats.values()] : []
     const authoredHandoffs = evidence.size
       ? [...authored]
           .filter(([key]) => !analyzedHandoffs.has(key))
@@ -319,6 +323,12 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
         : {}),
       ...(fileWrites.length > BEHAVIOR_LIMITS.authoredFileWrites
         ? { authoredFileWritesOmitted: fileWrites.length - BEHAVIOR_LIMITS.authoredFileWrites }
+        : {}),
+      ...(repeatedCalls.length
+        ? { authoredRepeats: repeatedCalls.slice(0, BEHAVIOR_LIMITS.authoredRepeats) }
+        : {}),
+      ...(repeatedCalls.length > BEHAVIOR_LIMITS.authoredRepeats
+        ? { authoredRepeatsOmitted: repeatedCalls.length - BEHAVIOR_LIMITS.authoredRepeats }
         : {}),
       ...(!handoff
         ? authoredContext(

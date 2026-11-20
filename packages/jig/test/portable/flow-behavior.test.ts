@@ -2326,6 +2326,58 @@ test('a finite array repeats the same call site and an early return skips later 
   expect(renderFlowBehavior(report)).toContain('up to 3 times')
 })
 
+test('after a cutoff a repeat links its configured call, loop condition and authored exits', () => {
+  const caller = method(
+    handlerSource(`
+      const attempts = run.settings.attempts ?? 2
+      opaque()
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        const review = await run.call({slot:'converter', operationId:String(attempt), input:{}})
+        if (review.outcome === 'blocked') return review
+        try {
+          checkProposal(review.output)
+        } catch (error) {
+          if (review.output.retry) continue
+          throw error
+        }
+        switch (review.output.kind) { case 'retry': break }
+        function later() { throw new Error('outside the loop transfer') }
+        if (review.output.accepted) return {outcome:'done', output:{state:'accepted'}}
+      }
+      return {outcome:'done', output:{state:'exhausted'}}
+    `),
+  )
+  const input = snapshot(method(handlerSource(`return {outcome:'done', output:{}}`)), caller)
+  const report = analyzeFlowBehavior(input)
+  const selected = report.scopes.find((scope) => scope.target === input.focus)!
+  expect(selected.authoredRepeats).toHaveLength(1)
+  const repeat = selected.authoredRepeats![0]!
+  expect(repeat).toMatchObject({ slot: 'converter', target: 'flow:flows/convert' })
+  expect(repeat.loop.actions.map(({ kind }) => kind)).toEqual([
+    'return',
+    'continue',
+    'throw',
+    'return',
+  ])
+  expect(repeat.loop.actions[1]?.region?.protectedStatement?.code).toBe(
+    'checkProposal(review.output)',
+  )
+  expect(repeat.loop.control?.code).toBe('attempts = run.settings.attempts ?? 2')
+  expect(repeat.loop.following?.code).toContain("state:'exhausted'")
+  const section = renderFlowBehavior(report).split('#### Repeated handoffs near coverage gaps')[1]
+  expect(section).toMatch(/for[^\n]+flows\/import\/FLOW.ts#L4/)
+  expect(section).toContain('converter → flow:flows/convert')
+  expect(section).toContain('Reachability and iteration counts remain unresolved.')
+  expect(section).toContain('Later in the same block, return')
+  expect(section).toMatch(/continue[^\n]+catch[^\n]+for checkProposal/)
+  const application = renderFlowBehavior(analyzeFlowBehavior({ ...input, focus: undefined }))
+  const fragment = application.match(
+    /converter → \[flow:flows\/convert\]\(#(target-[a-f0-9]+)\)/,
+  )?.[1]
+  expect(fragment).toBeDefined()
+  expect(application).toContain(`<a id="${fragment}"></a>`)
+})
+
 test('a bounded data map preserves validation failures before a write', () => {
   const inspect = (items: string) =>
     analyzeFlowBehavior({
