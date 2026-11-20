@@ -2178,8 +2178,10 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     '',
     ...entrySourceFacts(report, focus),
     ...configuredOrientation(report, focus),
-    ...directInvocations(target, report.directHandoffs, report.inputFields, routes),
     ...requiredSlotFacts(target),
+    ...importBoundaryNotice(report),
+    ...(selected ? renderCallSelections(selected, target, targets) : []),
+    ...directInvocations(target, report.directHandoffs, report.inputFields, routes),
     ...(target ? ['**Own result contract** · ' + resultContract(target), ''] : []),
     ...(independent.length
       ? ['**Direct Flow targets in this scope** · ' + brief(independent), '']
@@ -2187,7 +2189,6 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     ...(bindingEntries.length
       ? ['**Standalone Binding selectors also used by callers** · ' + brief(bindingEntries), '']
       : []),
-    ...importBoundaryNotice(report),
   )
   const incoming = incomingCallDecisions(report, targets, focus)
   if (selected) {
@@ -2217,7 +2218,6 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       ...renderEarlierReturns(report),
       ...incoming,
       ...configuredChecks(report, selected, target),
-      ...renderCallSelections(selected, target, targets),
     )
     lines.push(...renderCallReferences([selected], inventory))
     lines.push(...authoredRepeats(selected))
@@ -2323,7 +2323,7 @@ function incomingCallDecisions(
     }
     const target = targets.get(caller)!
     const scope = authored.get(caller)
-    if (scope) lines.push(...renderCallSelections(scope, target, targets, null))
+    if (scope) lines.push(...renderCallSelections(scope, target, targets, { heading: null }))
     const uses = incomingCallerUses?.get(caller)
     if (!uses) continue
     const slots = [...target.slots].flatMap(([slot, selected]) =>
@@ -2374,11 +2374,16 @@ function renderCallSelections(
   scope: Scope,
   target: BehaviorTarget | undefined,
   targets: ReadonlyMap<string, BehaviorTarget>,
-  heading: string | null = '### Caller decisions',
+  options?: { readonly heading: string | null; readonly linkDestinations?: true },
 ): string[] {
   const selections = scope.callSelections
   if (!selections || !target) return []
+  const heading = options === undefined ? '### Caller decisions' : options.heading
   const lines = heading === null ? [] : [heading, '']
+  const destinationLabel = (id: string) =>
+    options?.linkDestinations && targets.has(id)
+      ? `[${text(id)}](#${idFor('target', id)})`
+      : text(id)
   const declarations = [
     target.slotDeclarationPath && 'Declared slots ' + sourcePathLink(target.slotDeclarationPath),
     target.declarationPath && 'Binding wiring ' + sourcePathLink(target.declarationPath),
@@ -2397,6 +2402,36 @@ function renderCallSelections(
   )
     lines.push('Each slot selection applies to all its calls in this configured use.', '')
 
+  const alternatives = new Map<string, (typeof selections.sites)[number][]>()
+  for (const selection of selections.sites) {
+    if (!selection.slotGuard || !target.slots.has(selection.slot)) continue
+    const key = JSON.stringify([selection.site, selection.slotGuard.site])
+    const choices = alternatives.get(key) ?? []
+    choices.push(selection)
+    alternatives.set(key, choices)
+  }
+  const paired = new Set<(typeof selections.sites)[number]>()
+  const choiceRows: string[] = []
+  for (const choices of alternatives.values()) {
+    const yes = choices.find((choice) => choice.slotGuard?.taken)
+    const no = choices.find((choice) => choice.slotGuard?.taken === false)
+    if (!yes?.slotGuard || !no) continue
+    paired.add(yes)
+    paired.add(no)
+    choiceRows.push(
+      `| ${sourceLink(yes.site)} · ${text(yes.slotGuard.code)} | ${text(yes.slot)} → ${destinationLabel(target.slots.get(yes.slot)!)} | ${text(no.slot)} → ${destinationLabel(target.slots.get(no.slot)!)} |`,
+    )
+  }
+  if (choiceRows.length)
+    lines.push(
+      '**Conditional slot choices**',
+      '',
+      '| Call and condition | If true | If false |',
+      '| --- | --- | --- |',
+      ...choiceRows,
+      '',
+    )
+
   const varyingBySlot = new Map<string, ReadonlySet<string>>()
   for (const { slots } of selections.related) {
     const varying = varyingInputFields(slots.flatMap((slot) => groups.get(slot) ?? []))
@@ -2406,6 +2441,7 @@ function renderCallSelections(
   const dispatches = new Set<string>()
   const describedTargets = new Set<string>()
   const selectedConfiguration = (selector: string) => {
+    if (options?.linkDestinations) return ''
     const selected = targets.get(selector)
     if (!selected || describedTargets.has(selector)) return ''
     describedTargets.add(selector)
@@ -2432,7 +2468,7 @@ function renderCallSelections(
     if (destination === undefined) continue
     lines.push(
       '',
-      `**${text(slot)} → ${text(destination)}**` + selectedConfiguration(destination),
+      `**${text(slot)} → ${destinationLabel(destination)}**` + selectedConfiguration(destination),
       '',
     )
     for (const { dispatch, requestMetadata } of group) {
@@ -2454,7 +2490,7 @@ function renderCallSelections(
     const varying = varyingBySlot.get(slot) ?? varyingInputFields(group)
     if (group.length > 1) lines.push('| Call site | Conditions and request |', '| --- | --- |')
     for (const selection of group) {
-      const { dispatch, guards, requestMetadata, inputSite, inputFields } = selection
+      const { dispatch, guards, slotGuard, requestMetadata, inputSite, inputFields } = selection
       const near = (location: SourceSite) =>
         location.path === selection.site.path ? `L${location.line}` : text(site(location))
       const call =
@@ -2468,7 +2504,8 @@ function renderCallSelections(
                 (dispatch.path === selection.site.path ? `L${dispatch.line}` : site(dispatch)),
             )
           : '')
-      const facts = guards.map(
+      const conditions = slotGuard && !paired.has(selection) ? [...guards, slotGuard] : guards
+      const facts = conditions.map(
         (guard) =>
           `${text(guard.code)} · ${guard.taken ? 'true' : 'false'} branch (${near(guard.site)})`,
       )
@@ -2507,7 +2544,7 @@ function renderCallSelections(
     lines.push('', `**${lead}${text(slots.join(', '))}**`, '')
     for (const call of calls)
       lines.push(
-        `- ${text(call.caller)} · ${text(call.slot)} → ${text(call.target)}` +
+        `- ${text(call.caller)} · ${text(call.slot)} → ${destinationLabel(call.target)}` +
           selectedConfiguration(call.target),
       )
     if (omitted) lines.push(`- ${omitted} more configured slots.`)
@@ -2779,6 +2816,9 @@ function applicationMap(report: BehaviorReport): string[] {
         '<a id="' + idFor('target', target.id) + '"></a>',
         '### ' + text(target.id),
         '',
+        ...(target.declarationPath
+          ? ['**Binding declaration** · ' + sourcePathLink(target.declarationPath), '']
+          : []),
         boundaryFacts(target),
         '',
         ...requiredSlotFacts(target),
@@ -2792,7 +2832,12 @@ function applicationMap(report: BehaviorReport): string[] {
       if (routes.length && !body.length)
         lines.push('This configured target exceeds the diagram limit.', '')
       const details = callDetails(report, [...routes, ...scope.alternatives])
-      lines.push(...renderCallSelections(scope, target, targets, '#### Caller decisions'))
+      lines.push(
+        ...renderCallSelections(scope, target, targets, {
+          heading: '#### Caller decisions',
+          linkDestinations: true,
+        }),
+      )
       if (!routes.length) lines.push(...renderCallReferences([scope], [target], undefined, '####'))
       lines.push(...contractChecks(scope))
       if (routes.length) lines.push(...consequences(report, scope, routes, details.shown))

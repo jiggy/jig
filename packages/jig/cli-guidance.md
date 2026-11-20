@@ -301,13 +301,17 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Link authored result checks to the handoff and their local result definitions.
 
   Focused source and configured-use expansions lead with caller decisions from the selected implementation.
+  Place focused caller decisions beside the configured caller and slot summary.
   Group authored sites by configured caller slot.
   Put the slot declaration and Binding wiring beside calls that share a selection.
-  Identify each displayed destination's implementation, available declaration, and bounded configured child slots once in that caller's decision section.
+  In focused views, identify each destination's implementation, available declaration, and bounded configured child slots once in that caller's decision section.
+  In application maps, link each represented destination to its own configured-use section and available declaration.
 
   On a focused callee, show decisions for slots that select that exact target beside the caller's configured incoming slots.
   Give the count and up to three source links for sites beyond the detailed view.
   Show differing literals, the branches selecting a literal field value, and possible later overrides.
+  Pair both displayed choices of an authored slot predicate at its source site.
+  Keep polarity beside a single displayed alternative.
 
   Beside each incoming slot, show the other configured uses of its caller's code and their selection for the same slot.
   Keep those uses separate from callers of the focused callee and disclose omissions.

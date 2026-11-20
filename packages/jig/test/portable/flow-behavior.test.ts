@@ -808,6 +808,9 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
   expect(markdown.indexOf('### Caller decisions')).toBeLessThan(
     markdown.indexOf('### Coverage gaps'),
   )
+  expect(markdown.indexOf('### Caller decisions')).toBeLessThan(
+    markdown.indexOf('**Direct Flow targets in this scope**'),
+  )
   expect(markdown).toContain('binding:other · review → binding:variant')
   expect(markdown).toContain('Other slots using the same Flow as converter, exporter')
   expect(markdown.match(/binding:other · review → binding:variant/g)).toHaveLength(1)
@@ -822,6 +825,9 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
   )
   expect(exporter).not.toContain('http-request')
   const decisions = markdown.split('### Caller decisions')[1]?.split('### Caller source')[0]
+  expect(decisions).toMatch(
+    /\| \[flows\/import\/FLOW\.ts:\d+\][^\n]+run\.input\.archive \| exporter → binding:variant \| alternate → binding:variant \|/,
+  )
   expect(decisions).toContain('**alternate → binding:variant**')
   expect(decisions?.match(/configured child slots: agent → binding:variant-agent/g)).toHaveLength(1)
   expect(markdown).toContain('helper L4')
@@ -836,6 +842,23 @@ test('focused caller decisions join helper arguments, lexical branches, and shar
   expect(owner).toContain('#### Caller decisions')
   expect(owner).toContain('Argument 2 input → request field input.')
   expect(owner).toContain('flows/import/FLOW.ts:8')
+  const variantAnchor = application.match(/<a id="([^"]+)"><\/a>\n### binding:variant\n/)?.[1]
+  expect(variantAnchor).toBeDefined()
+  expect(owner).toContain(`exporter → [binding:variant](#${variantAnchor})`)
+  expect(owner).not.toContain('configured child slots: agent → binding:variant-agent')
+  const singleSelection = renderFlowBehavior(
+    analyzeFlowBehavior({
+      ...inspected,
+      focus: variant.id,
+      targets: targets.map((target) =>
+        target === caller
+          ? { ...caller, slots: new Map([...caller.slots, ['alternate', 'flow:flows/export']]) }
+          : target,
+      ),
+    }),
+  ).split('### Incoming caller decisions')[1]
+  expect(singleSelection).toContain('run.input.archive · true branch')
+  expect(singleSelection).not.toContain('**Conditional slot choices**')
 })
 
 test('caller slot groups compare authored literals and identify guarded or overridden fields', () => {
@@ -1082,9 +1105,11 @@ test('caller fields survive a local helper spread with disjoint keys', () => {
   expect(sites).toHaveLength(3)
   for (const slot of ['converter', 'exporter']) {
     const branch = sites.find((selection) => selection.slot === slot && selection.dispatch)
-    expect(branch?.guards).toMatchObject([
-      { code: 'run.input.specialist', taken: slot === 'exporter', unresolved: true },
-    ])
+    expect(branch?.slotGuard).toMatchObject({
+      code: 'run.input.specialist',
+      taken: slot === 'exporter',
+      unresolved: true,
+    })
     expect(branch?.inputFields.find((field) => field.field === 'scale')).toMatchObject({
       code: "'chapter'",
     })

@@ -74,12 +74,12 @@ export function selectCallSites(
   ) => {
     if (!slots.has(slot)) return
     const guards = lexicalGuards(call, (node) => source.site(node)).slice(-2)
-    if (guard) guards.push(guard)
     const item: AuthoredCallSelection = {
       slot,
       site: source.site(call),
       ...(dispatch ? { dispatch } : {}),
       guards,
+      ...(guard ? { slotGuard: guard } : {}),
       requestMetadata,
       ...(input ? { inputSite: source.site(input) } : {}),
       inputFields: selectedInputs(source, input, writes, hasEval),

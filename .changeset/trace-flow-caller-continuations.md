@@ -17,3 +17,5 @@ Show different modeled inputs and results at the same write site. Combine entrie
 Link configured caller slots to their Binding declarations and explain how to vary configuration when callers share a Binding.
 
 Show the selected Flow implementation and its configured child slots beside caller decisions.
+
+Put focused caller decisions beside shared Binding wiring and show both sides of an authored slot choice together. Link application-map decisions to their configured destination sections.
