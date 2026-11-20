@@ -365,10 +365,10 @@ export function assignmentTarget(node: ts.Node): ts.Node | undefined {
   return undefined
 }
 
-export function recordWrites(source: Source, target: ts.Node, writes: Set<ts.Declaration>): void {
+export function* writtenBindings(source: Source, target: ts.Node): Iterable<ts.Declaration> {
   for (const reference of sourceNodes(target)) {
     if (!ts.isIdentifier(reference)) continue
     const declaration = source.declaration(reference)
-    if (declaration) writes.add(declaration)
+    if (declaration) yield declaration
   }
 }

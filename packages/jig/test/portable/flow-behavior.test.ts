@@ -1500,6 +1500,57 @@ test('authored handoffs retain caller exit checks beyond an opaque operation', (
   )
 })
 
+test('authored checks follow a result through a local definition past an opaque operation', () => {
+  const inspect = (handler: string, extra = '') =>
+    analyzeFlowBehavior(
+      snapshot(
+        method(handlerSource("return {outcome:'done',output:{}}")),
+        method(
+          handlerSource(`
+            opaque()
+            const response = await run.call({slot:'converter'})
+            let decoded
+            try {
+              decoded = normalize(response).output
+            } ${handler}
+            ${extra}
+            const receipt = decoded.receipt
+            if (run.settings.requireReceipt && receipt === undefined) throw new Error('Receipt missing')
+            if (response.outcome === 'blocked') return response
+          `),
+        ),
+      ),
+    )
+  const exitingCatch = "catch { throw new TypeError('Invalid output') }"
+  const report = inspect(exitingCatch)
+  expect(report.scopes[0]?.authoredHandoffs?.[0]?.exitChecks).toMatchObject([
+    {
+      code: 'run.settings.requireReceipt && receipt === undefined',
+      taken: true,
+      exit: 'throw',
+      via: [
+        { code: 'decoded = normalize(response).output' },
+        { code: 'receipt = decoded.receipt' },
+      ],
+    },
+    { code: "response.outcome === 'blocked'", taken: true, exit: 'return' },
+  ])
+  const rendered = renderFlowBehavior(report)
+  expect(rendered).toMatch(
+    /Later result check run.settings.requireReceipt[^\n]+#L\d+\)\) · via decoded/,
+  )
+  expect(rendered).toMatch(/via decoded[^\n]+#L\d+\)\) → receipt[^\n]+#L\d+/)
+  for (const uncertain of [
+    inspect('catch {}'),
+    inspect(exitingCatch + ' finally { opaque() }'),
+    inspect(exitingCatch, 'function change() { decoded = other() }'),
+  ]) {
+    expect(uncertain.scopes[0]?.authoredHandoffs?.[0]?.exitChecks).toMatchObject([
+      { code: "response.outcome === 'blocked'", taken: true, exit: 'return' },
+    ])
+  }
+})
+
 test('prior exits keep later call sites when additional local checks occupy the bound', () => {
   const restrictions = Array.from(
     { length: 10 },

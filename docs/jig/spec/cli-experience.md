@@ -1057,6 +1057,8 @@ When alternatives exceed the allowance, the map retains supported continuations 
 
 When route analysis stops in a function, inspection can show later authored calls at configured slots.
 This part shows local branch predicates and result checks with their source locations.
+An authored result check can link through a local definition, including a protected assignment whose catch exits.
+
 An earlier branch ending in a direct return or throw can identify which later call sites it bypasses in the same block.
 The bounded list preserves the call sites associated with each retained exit and discloses omitted exits.
 Reachability, execution order, and returned values remain unresolved there.
