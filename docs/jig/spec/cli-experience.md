@@ -989,6 +989,10 @@ Source behavior links the captured entry file for a local target and for display
 The application map shows the entry file once per Flow package. Package inspection shows it when a configured use is present.
 Entry links remain available when source analysis cannot inspect the entry or later behavior.
 
+Focused target and incoming caller sections show the exact Run selector beside its implementation source.
+For a Binding, show a direct selector for the same package when the capture contains one, including outside the focused scope.
+Label a package with only Binding selectors as Binding-only in the capture.
+
 For a direct Flow target, show its own required top-level input fields from the captured contract.
 Modeled direct returns that lack unresolved conditions or assumed call results may appear beside the selector.
 The caller continuation stays in the caller's context.

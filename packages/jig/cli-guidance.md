@@ -276,6 +276,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   Link local Flow entry files from the same capture as the configured targets.
   Show the entry source with focused targets, their displayed incoming callers and alternative slot targets, and once per Flow in an application map.
+  Place the exact Run selector beside the focused and incoming caller entry files.
+  Identify Binding-only packages using the whole capture. Include a direct selector even when it falls outside the focused scope.
 
   Pair supported direct setting checks with the selected value and declaration.
   Compare the same authored check across uses when captured setting values differ.
