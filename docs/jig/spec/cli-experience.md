@@ -1110,6 +1110,8 @@ The caller continuation still depends on the unresolved work.
 A focused view can show the first modeled write attempt in the selected Flow for each represented path.
 It links direct invocation and configured callers to the same source write when their retained paths reach it.
 The examples retain checks before the write and subsequent checks or actions. Conditional child results keep their labels.
+Within the display bound, show each represented entry before giving an entry additional input or result variants.
+Entry labels can share a row when their displayed inputs, exits, checks, destinations, and later actions agree.
 
 The write view can show declared input paths and the writer's result contract.
 Modeled caller inputs and writer exits remain tied to their represented write cases.

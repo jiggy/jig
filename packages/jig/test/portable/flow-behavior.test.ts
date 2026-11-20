@@ -3097,7 +3097,8 @@ test('direct entry navigation retains the selected Binding and marks a shared wr
     writer,
     method(
       handlerSource(
-        `return await run.call({slot:'converter', operationId:'write', input:{mode:'ready'}})`,
+        `const mode = run.input.mapped ? 'ready' : 'needs_mapping'
+        return await run.call({slot:'converter', operationId:'write', input:{mode}})`,
       ),
     ),
   )
@@ -3128,6 +3129,9 @@ test('direct entry navigation retains the selected Binding and marks a shared wr
   expect(write).toContain('**Writer result contract** · [flows/convert/FLOW.contract.json]')
   expect(write).toContain('**Modeled rejections before writing**\n\n- Throws: Input unavailable')
   expect(write).toMatch(/binding:code via converter[^\n]+mode = "ready"[^\n]+status = "ready"/)
+  expect(write).toMatch(
+    /binding:code via converter[^\n]+mode = "needs\\_mapping"[^\n]+status = "needs\\_mapping"/,
+  )
   expect(write).not.toContain('binding:audit via converter')
   const aliasCaller = renderFlowBehavior(
     analyzeFlowBehavior({
