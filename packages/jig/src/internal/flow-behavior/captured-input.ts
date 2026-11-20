@@ -49,7 +49,8 @@ export async function prepareFlowBehavior(
         ],
       ),
     )
-    const requiredSlots = Object.entries(flow.uses)
+    const requirements = Object.entries(flow.uses)
+    const requiredSlots = requirements
       .filter(([, requirement]) => requirement.optional !== true)
       .map(([name]) => name)
       .sort()
@@ -62,11 +63,9 @@ export async function prepareFlowBehavior(
       settings: binding?.settings ?? {},
       slots,
       ...(binding === undefined ? {} : { declarationPath: binding.declarationPath }),
-      ...(requiredSlots.length
-        ? {
-            requiredSlots,
-            ...(declaration === undefined ? {} : { slotDeclarationPath: declaration }),
-          }
+      ...(requiredSlots.length ? { requiredSlots } : {}),
+      ...(requirements.length && declaration !== undefined
+        ? { slotDeclarationPath: declaration }
         : {}),
       outcomes: ['done', ...Object.keys(flow.invocation.outcomes ?? {})],
       attachments: flow.invocation.attachments ?? {},
