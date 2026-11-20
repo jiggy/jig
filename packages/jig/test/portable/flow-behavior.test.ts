@@ -2628,6 +2628,8 @@ test('after a cutoff a repeat links its configured call, loop condition and auth
           if (attempt === 0) prepareSession()
           else if (!review.output.retained) return review
         }
+        const decoded = normalize(review).output
+        if (decoded.receipt === undefined) throw new Error('Receipt missing')
         try {
           checkProposal(review.output)
         } catch (error) {
@@ -2650,13 +2652,14 @@ test('after a cutoff a repeat links its configured call, loop condition and auth
   expect(repeat.loop.actions.map(({ kind }) => kind)).toEqual([
     'return',
     'throw',
+    'throw',
     'continue',
     'return',
   ])
-  expect(repeat.loop.actions[2]?.region?.protectedStatement?.code).toBe(
+  expect(repeat.loop.actions[3]?.region?.protectedStatement?.code).toBe(
     'checkProposal(review.output)',
   )
-  expect(repeat.loop.actions[2]?.guards).toMatchObject([
+  expect(repeat.loop.actions[3]?.guards).toMatchObject([
     { code: '!review.output.retry', taken: false },
   ])
   expect(repeat.loop.actions[0]?.guards).toMatchObject([
@@ -2671,6 +2674,10 @@ test('after a cutoff a repeat links its configured call, loop condition and auth
   expect(section).toMatch(/for[^\n]+flows\/import\/FLOW.ts#L4/)
   expect(section).toContain('converter → flow:flows/convert')
   expect(section).toContain('Reachability and iteration counts remain unresolved.')
+  expect(section?.split('#### Authored handoffs')[0]).toContain(
+    'Later result check decoded.receipt === undefined',
+  )
+  expect(section?.match(/Later result check decoded.receipt === undefined/g)).toHaveLength(1)
   expect(section).toContain('Later in the same block after the loop | return')
   expect(section).toMatch(
     /catch[^\n]+for checkProposal[^\n]+retry is false[^\n]+Continue this loop/,

@@ -336,6 +336,7 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   Around a coverage gap, put a repeated handoff beside its loop header, control statements, and nearby exit.
   Pair each displayed condition or handler with its transfer.
+  Put result checks through local definitions beside the repeated call they follow.
   Put a trailing exit check beside the alternative that completes the iteration.
   Link an identifiable bound declaration and keep iteration counts unresolved.
 

@@ -7,6 +7,7 @@ import {
 } from './cli-flow-orientation.js'
 import type { ComparisonFact, compareFlowBehavior } from './internal/flow-behavior/comparison.js'
 import {
+  type AuthoredHandoff,
   type AuthoredPriorExit,
   type AuthoredRepeat,
   type AuthoredRepeatedCall,
@@ -1800,6 +1801,7 @@ function authoredHandoffs(
     '',
   ]
   const priorExits = new Map<string, { exit: AuthoredPriorExit; slots: Set<string> }>()
+  const repeats = new Set(scope.authoredRepeats?.map((call) => JSON.stringify(call.site)))
   for (const handoff of scope.authoredHandoffs) {
     for (const exit of handoff.priorExits ?? []) {
       const key = JSON.stringify(exit)
@@ -1856,31 +1858,35 @@ function authoredHandoffs(
           ')',
       )
     for (const check of handoff.exitChecks)
-      lines.push(
-        '  - Later result check ' +
-          text(check.code) +
-          ' · ' +
-          check.taken +
-          ' branch ends with ' +
-          check.exit +
-          ' (' +
-          sourceLink(check.site) +
-          ')' +
-          (check.via
-            ? ' · via ' +
-              check.via
-                .map(({ code, site }) => text(code) + ' (' + sourceLink(site) + ')')
-                .join(' → ')
-            : ''),
-      )
+      if (!check.via || !repeats.has(JSON.stringify(handoff.site)))
+        lines.push(authoredResultCheck(check))
   }
   if (scope.authoredHandoffsOmitted)
     lines.push('- ' + scope.authoredHandoffsOmitted + ' additional authored handoffs omitted.')
   return [...lines, '']
 }
 
+function authoredResultCheck(check: AuthoredHandoff['exitChecks'][number]): string {
+  return (
+    '  - Later result check ' +
+    text(check.code) +
+    ' · ' +
+    check.taken +
+    ' branch ends with ' +
+    check.exit +
+    ' (' +
+    sourceLink(check.site) +
+    ')' +
+    (check.via
+      ? ' · via ' +
+        check.via.map(({ code, site }) => text(code) + ' (' + sourceLink(site) + ')').join(' → ')
+      : '')
+  )
+}
+
 function authoredRepeats(scope: Scope, linkedTargets?: ReadonlySet<string>): string[] {
   if (!scope.authoredRepeats?.length) return []
+  const handoffs = new Map(scope.authoredHandoffs?.map((call) => [JSON.stringify(call.site), call]))
   const loops = new Map<AuthoredRepeat, AuthoredRepeatedCall[]>()
   for (const repeat of scope.authoredRepeats) {
     const calls = loops.get(repeat.loop) ?? []
@@ -1924,6 +1930,8 @@ function authoredRepeats(scope: Scope, linkedTargets?: ReadonlySet<string>): str
           sourceLink(call.site) +
           ')',
       )
+      for (const check of handoffs.get(JSON.stringify(call.site))?.exitChecks ?? [])
+        if (check.via) lines.push(authoredResultCheck(check))
     }
     lines.push('', '| Source condition or region | What follows |', '| --- | --- |')
     for (const action of loop.actions) {
