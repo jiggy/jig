@@ -341,7 +341,11 @@ test('focused checks link the selected Binding setting without attributing shado
 })
 
 test('a focused callee shows earlier forwarded returns on paths that skip its call', () => {
-  const inspect = (sourceRefusal: boolean, callBeforeCheck = false) => {
+  const inspect = (
+    sourceRefusal: boolean,
+    callBeforeCheck = false,
+    focus = 'flow:flows/convert',
+  ) => {
     const convert = `const conversion = await run.call({ slot: 'converter', operationId: 'convert', input: {} })`
     const guard = `if (mapping.outcome === 'blocked' || mapping.outcome === 'limit') return mapping`
     const input = snapshot(
@@ -372,7 +376,7 @@ test('a focused callee shows earlier forwarded returns on paths that skip its ca
     )
     const report = analyzeFlowBehavior({
       ...input,
-      focus: 'flow:flows/convert',
+      focus,
       targets: [...targets, mapper],
       visible: [...input.visible, mapperId],
       packages: new Map([
@@ -389,11 +393,11 @@ test('a focused callee shows earlier forwarded returns on paths that skip its ca
       ]),
     })
     return renderFlowBehavior(report)
-      .split('### Earlier returns in these callers')[1]
-      ?.split('### ')[0]
   }
 
-  const conditional = inspect(false)
+  const incoming = (report: string) =>
+    report.split('### Earlier returns in these callers')[1]?.split('### ')[0]
+  const conditional = incoming(inspect(false))
   expect(conditional).toContain('binding:code · mapper → flow:flows/map')
   expect(conditional).toContain('Source-supported outcomes on paths to the later call · "done"')
   expect(conditional).toMatch(
@@ -402,8 +406,24 @@ test('a focused callee shows earlier forwarded returns on paths that skip its ca
   expect(conditional).toMatch(
     /mapper if admitted "limit" · contract alternative[^\n]+Returns "limit"/,
   )
-  expect(inspect(true)).toMatch(/mapper returns "blocked" →[^\n]+Returns "blocked"/)
-  expect(inspect(false, true)).toBeUndefined()
+  expect(incoming(inspect(true))).toMatch(/mapper returns "blocked" →[^\n]+Returns "blocked"/)
+  expect(incoming(inspect(false, true))).toBeUndefined()
+
+  const outgoing = inspect(false, false, 'binding:code')
+  const related = outgoing.split('**Earlier returns that bypass converter**')[1]?.split('### ')[0]
+  expect(related).toMatch(
+    /mapper if admitted "blocked"[^\n]+mapping\.outcome[^\n]+Returns "blocked"/,
+  )
+  expect(related).toMatch(/mapper if admitted "limit"[^\n]+Returns "limit"/)
+  expect(related).toContain(
+    'Independent entry to the same Flow · flow:flows/convert supplies its own input.',
+  )
+  expect(inspect(true, false, 'binding:code')).toMatch(
+    /mapper returns "blocked"[^\n]+Returns "blocked"/,
+  )
+  expect(inspect(false, true, 'binding:code')).not.toContain(
+    'Earlier returns that bypass converter',
+  )
 })
 
 test('a focused result follows exact nested paths through configured forwarding and translation', () => {

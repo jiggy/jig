@@ -30,6 +30,7 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
 - `data.ts` checks which data computations can safely lose value precision.
 - `file-access.ts` recognizes read-only opens and strict UTF-8 decoding. The interpreter keeps file handles and bytes inert.
 - `compose.ts` owns configured handoffs, caller continuations, and coverage.
+- `model.ts` exposes the earlier child call referenced by a modeled forwarded return.
 - `comparison.ts` owns the bounded snapshot format and comparison of represented paths.
 - `reporting-capture.ts` recognizes local installed Reporting bytes.
 - `reporting.ts` describes supported progress payloads and traces their field sources.

@@ -334,6 +334,9 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Label the returning Flow and the acting caller. Put child conditions in their own column.
   Call-case links lead to the full caller-local expansion.
 
+  Show an earlier forwarded return beside a subsequent call when modeled paths establish both the call and its bypass.
+  Pair paths through the same earlier call site in the focused Binding. Link the later site and any independent entry to its selected Flow.
+
   When a callee is focused, probe conditional continuations for its represented caller sites within the existing allowance.
   Preserve the distinction between a source return and a contract possibility in the incoming table.
   Show an earlier forwarded return beside the focused call it bypasses when captured paths establish both cases.

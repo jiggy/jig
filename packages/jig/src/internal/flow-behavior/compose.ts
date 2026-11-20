@@ -20,6 +20,7 @@ import {
   type BehaviorReport,
   type BehaviorStep,
   type BehaviorTarget,
+  forwardedResult,
   isFileOperation,
   type RelatedCall,
   type SourceSite,
@@ -75,10 +76,8 @@ function earlierHandoffs(scope: Scope, focus: string) {
 }
 
 function earlierReturn(route: Route, focus: string): Call | undefined {
-  const end = route.at(-1)
-  if (end?.kind !== 'end' || end.completion !== 'return' || end.forwardedCall === undefined) return
-  const trigger = route[end.forwardedCall]
-  if (trigger?.kind !== 'call' || !trigger.returned) return
+  const trigger = forwardedResult(route)?.call
+  if (!trigger) return
   if (
     route.some(
       (step) => step.kind === 'call' && step.caller === trigger.caller && step.target === focus,
