@@ -146,7 +146,8 @@ export function invocationGuide(snapshot: JsonValue): string {
 
 /** Small native shell adapters; dynamic lookup reads approval, never project code. */
 export function completionScript(shell: string): string | undefined {
-  const commands = 'init new review run explore inspect views completion import-contract'
+  const commands =
+    'init new split-binding review run explore inspect views completion import-contract'
   const contracts = JIG_STANDARD_CONTRACTS.map((entry) => `jig:${entry.name}`).join(' ')
   const runOptions =
     '--help --input --attach --select --out --receive --updates --timeout --verification --json --display --display-bundle'
@@ -183,6 +184,7 @@ export function completionScript(shell: string): string | undefined {
       inspect) opts='--help --json --verification --result --display --flow --approved --all --package --topology --snapshot --compare';;
       views) opts='list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision';;
       init) opts='--help --bare --agent';;
+      split-binding) opts='--help --slot --as --select';;
       import-contract) opts='--help --list';;
     esac
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W "$opts" -- "$cur")
@@ -227,6 +229,7 @@ _jig() {
       inspect) choices=(--help --json --verification --result --display --flow --approved --all --package --topology --snapshot --compare);;
       views) choices=(list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision);;
       init) choices=(--help --bare --agent);;
+      split-binding) choices=(--help --slot --as --select);;
       import-contract) choices=(--help --list);;
       *) choices=(--help);;
     esac
@@ -245,6 +248,7 @@ compdef _jig jig
     return `complete -c jig -n '__fish_use_subcommand' -a '${commands}'
 complete -c jig -l help
 complete -c jig -l version -n '__fish_use_subcommand'
+complete -c jig -n '__fish_seen_subcommand_from split-binding' -l slot -l as -l select
 complete -c jig -n '__fish_seen_subcommand_from import-contract' -l list
 complete -c jig -n '__fish_seen_subcommand_from import-contract' -a '${contracts}'
 complete -c jig -n '__fish_seen_subcommand_from run inspect explore' -a '(jig completion targets (commandline -ct) 2>/dev/null)'

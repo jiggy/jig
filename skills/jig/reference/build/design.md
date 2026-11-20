@@ -229,3 +229,22 @@ Review the edited source before running the affected inputs.
 Assert the selected configured instance and the meaning of its result, rather than command success alone.
 Exercise the changed condition and relevant preserved alternatives, including explicit choices, automatic selection, and affected failure or cancellation paths.
 Report which alternatives were executed, which were inspected in source, and which remain unknown.
+
+
+### Give one caller its own Binding
+
+When several callers share a Binding, use `jig split-binding` to give one caller a different child selection.
+Identify the caller Binding, its slot, and the child slot with `jig inspect --flow`.
+For example, an audit import can use a stricter validator while standard imports keep the original.
+
+```sh
+jig split-binding binding:audit --slot import --as audit-import --select validate=binding:strict-validator
+jig inspect --flow binding:audit-import
+```
+
+Jig copies the selected import Binding beside its original and changes its `validate` slot.
+It updates the audit caller's `import` slot to use that copy.
+Open the reported declaration paths to review the edit.
+Run `jig review` separately before running the new configuration.
+Use ordinary source edits for explicit membership, computed declarations, or conditional call sites.
+See the [CLI contract](https://jig.md/spec/cli-experience.md#give-one-caller-its-own-binding) for supported declaration shapes and interruption behavior.

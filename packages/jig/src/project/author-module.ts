@@ -239,6 +239,18 @@ export function isCapturedAuthorClosure(value: unknown): value is CapturedAuthor
   return typeof value === 'object' && value !== null && authenticClosures.has(value)
 }
 
+/** A standalone declaration contributes one entry and module and no local import edges. */
+export function checkStandaloneAuthorAddition(
+  closure: CapturedAuthorClosure,
+  additionalBytes: number,
+): void {
+  if (
+    closure.modules.length >= MAX_CLOSURE_MODULES ||
+    closure.sourceBytes + additionalBytes > MAX_CLOSURE_SOURCE_BYTES
+  )
+    invalid('PROJECT_EVALUATION_LIMIT', 'the new Binding would exceed the author closure limits')
+}
+
 function createCapture(projectPath: string, source: Uint8Array): CapturedAuthorModule {
   const bytes = source.slice()
   let disposed = false

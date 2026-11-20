@@ -605,6 +605,34 @@ Creation with contracts stages the complete source outside `flows` discovery,
 then publishes to an absent destination. Failure or cancellation before publication
 removes unpublished source; completed publication is not undone. Process loss
 can leave an unpublished `.jig-new-*` directory in the project root.
+## Give one caller its own Binding
+
+`jig split-binding binding:<caller> --slot <slot> --as <name> --select <child-slot>=<target>`
+edits a discovered caller Binding and creates a Binding beside its current child.
+Run from the project root. Use a new LocalName for `--as`.
+
+The caller slot must explicitly select a Binding.
+The child slot must explicitly select a Flow or Binding.
+The replacement must select a different target in the working configuration.
+Use an exact `flow:`, `npm:`, or `binding:` selector.
+
+Both declarations must use a standalone `export default defineBinding({...})`
+with a direct `@jigging/jig` import and literal values.
+The command changes only the two selected target strings.
+It preserves attachment maps, settings, comments, and other selections.
+The original child stays available to its existing callers and as a direct Run target.
+The command validates the proposed configuration and reports the source paths and route changes.
+It leaves grant files, approval, and the project lock untouched.
+
+An existing name, unsupported declaration, or invalid proposal fails before publication.
+A repeat with the same new name refuses and preserves the earlier edit.
+The command stages both files and publishes the new Binding without replacement.
+It checks the caller again before replacing it. If replacement fails, it removes the new Binding when its published bytes still match.
+
+Abrupt process loss can leave an unreferenced new Binding and the `.jig-split-binding-stage` directory.
+Confirm that the edit process has ended before removing its staging directory.
+Inspect both declarations before retrying an interrupted edit.
+
 ## Diagnostic evidence and interruption
 
 Configuration-evaluator refusals retain the captured declaration location and

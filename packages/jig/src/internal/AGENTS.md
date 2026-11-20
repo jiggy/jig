@@ -60,6 +60,9 @@ tests use genuine host capture through their own fixture entry.
   Rejection immediately stops the root Run before exposing a catchable child failure.
   The Agent guide owns matching limits and launch-copy cleanup.
 
+- Binding split publication uses held declaration directories and the captured authoring closure.
+  The [authoring guide](../../authoring-guidance.md#src-project-author) owns its source edit contract.
+
 - Source capture and freshness walks reject mount transitions through the shared native source open operation.
   Bun workspace capture may switch at an exact operator-selected directory prefix to its pinned, qualified source root.
   `workspace-source-roots.ts` owns these review-only roots and their mount identity checks.
