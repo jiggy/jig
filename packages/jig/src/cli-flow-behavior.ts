@@ -8,6 +8,8 @@ import {
 import type { ComparisonFact, compareFlowBehavior } from './internal/flow-behavior/comparison.js'
 import {
   type AuthoredPriorExit,
+  type AuthoredRepeat,
+  type AuthoredRepeatedCall,
   type BehaviorGuard,
   type BehaviorReport,
   type BehaviorReturn,
@@ -1352,6 +1354,83 @@ function authoredHandoffs(
   return [...lines, '']
 }
 
+function authoredRepeats(scope: Scope, linkedTargets?: ReadonlySet<string>): string[] {
+  if (!scope.authoredRepeats?.length) return []
+  const loops = new Map<AuthoredRepeat, AuthoredRepeatedCall[]>()
+  for (const repeat of scope.authoredRepeats) {
+    const calls = loops.get(repeat.loop) ?? []
+    calls.push(repeat)
+    loops.set(repeat.loop, calls)
+  }
+  const lines = [
+    '#### Repeated handoffs near coverage gaps',
+    '',
+    'Source locations for loop control. Reachability and iteration counts remain unresolved.',
+    '',
+  ]
+  for (const [loop, calls] of loops) {
+    lines.push('- ' + text(loop.header) + ' (' + sourceLink(loop.site) + ')')
+    if (loop.control)
+      lines.push(
+        '  - Loop condition uses ' +
+          text(loop.control.code) +
+          ' (' +
+          sourceLink(loop.control.site) +
+          ')',
+      )
+    for (const call of calls) {
+      const target = linkedTargets?.has(call.target)
+        ? '[' + text(call.target) + '](#' + idFor('target', call.target) + ')'
+        : text(call.target)
+      lines.push('  - ' + text(call.slot) + ' → ' + target + ' (' + sourceLink(call.site) + ')')
+    }
+    for (const action of loop.actions) {
+      const region = action.region
+      const protectedStatement = region?.protectedStatement
+      const where =
+        region === undefined
+          ? ''
+          : ' · ' +
+            region.kind +
+            ' (' +
+            sourceLink(region.site) +
+            ')' +
+            (protectedStatement === undefined
+              ? ''
+              : ' for ' +
+                text(protectedStatement.code) +
+                ' (' +
+                sourceLink(protectedStatement.site) +
+                ')')
+      const checks = action.guards.map(
+        (guard) => text(guard.code) + ' is ' + guard.taken + ' (' + sourceLink(guard.site) + ')',
+      )
+      lines.push(
+        '  - ' +
+          (checks.length ? 'When ' + checks.join(' and ') + ', ' : '') +
+          text(action.statement.code) +
+          ' (' +
+          sourceLink(action.statement.site) +
+          ')' +
+          where,
+      )
+    }
+    if (loop.omittedActions)
+      lines.push('  - ' + loop.omittedActions + ' additional control statements omitted.')
+    if (loop.following)
+      lines.push(
+        '  - Later in the same block, ' +
+          text(loop.following.code) +
+          ' (' +
+          sourceLink(loop.following.site) +
+          ')',
+      )
+  }
+  if (scope.authoredRepeatsOmitted)
+    lines.push('- ' + scope.authoredRepeatsOmitted + ' additional loop call sites omitted.')
+  return [...lines, '']
+}
+
 function importBoundaryNotice(report: BehaviorReport): string[] {
   const boundary = report.importBoundary
   const selected = report.focus ?? report.entrypoint
@@ -1455,6 +1534,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       ...configuredChecks(selected, target),
     )
     lines.push(...renderCallReferences([selected], inventory))
+    lines.push(...authoredRepeats(selected))
     lines.push(...authoredHandoffs(selected, undefined, target))
     lines.push(...contractChecks(selected))
     const routes = selectRoutes(selected)
@@ -1830,6 +1910,7 @@ function applicationMap(report: BehaviorReport): string[] {
     const scope = scopes.get(target.id)
     const hasAuthored =
       scope?.authoredHandoffs?.length ||
+      scope?.authoredRepeats?.length ||
       scope?.callSelections?.sites.length ||
       scope?.callReferences?.length
     const continuation =
@@ -1888,6 +1969,7 @@ function applicationMap(report: BehaviorReport): string[] {
       lines.push(
         ...otherResults(scope.routes, routes),
         ...alternatives(scope),
+        ...authoredRepeats(scope, linkedTargets),
         ...authoredHandoffs(scope, linkedTargets),
         ...authoredFileWrites(scope),
       )

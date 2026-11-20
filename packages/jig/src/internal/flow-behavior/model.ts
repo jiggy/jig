@@ -155,9 +155,35 @@ export interface AuthoredFileWrite {
   readonly guards: readonly BehaviorGuard[]
 }
 
+export interface AuthoredRepeat {
+  readonly site: SourceSite
+  readonly header: string
+  readonly control?: SourceExpression
+  readonly actions: readonly {
+    readonly statement: SourceExpression
+    readonly kind: 'break' | 'continue' | 'return' | 'throw'
+    readonly guards: readonly BehaviorGuard[]
+    readonly region?: {
+      readonly kind: 'catch' | 'finally'
+      readonly site: SourceSite
+      readonly protectedStatement?: SourceExpression
+    }
+  }[]
+  readonly omittedActions: number
+  readonly following?: SourceExpression
+}
+
+export interface AuthoredRepeatedCall {
+  readonly site: SourceSite
+  readonly slot: string
+  readonly target: string
+  readonly loop: AuthoredRepeat
+}
+
 export type AuthoredContinuation =
   | { readonly kind: 'handoff'; readonly value: AuthoredHandoff }
   | { readonly kind: 'file-write'; readonly value: AuthoredFileWrite }
+  | { readonly kind: 'repeat'; readonly value: AuthoredRepeatedCall }
 
 export interface AuthoredPriorExit {
   readonly condition: SourceExpression
@@ -263,6 +289,8 @@ export interface BehaviorReport {
     readonly authoredPriorExitsOmitted?: number
     readonly authoredFileWrites?: readonly AuthoredFileWrite[]
     readonly authoredFileWritesOmitted?: number
+    readonly authoredRepeats?: readonly AuthoredRepeatedCall[]
+    readonly authoredRepeatsOmitted?: number
     readonly callReferences?: readonly CallReference[]
     readonly callReferencesOmitted?: number
     readonly callSelections?: {
@@ -297,6 +325,7 @@ export const BEHAVIOR_LIMITS = {
   authoredHandoffs: 24,
   authoredPriorExits: 8,
   authoredFileWrites: 8,
+  authoredRepeats: 8,
   focusedCallSelections: 6,
   focusedOmittedCallLocations: 3,
   focusedRelatedCalls: 6,

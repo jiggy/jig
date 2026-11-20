@@ -314,10 +314,16 @@ export class Interpreter {
         site.path === cut.path &&
         (site.line > cut.line || (site.line === cut.line && (site.column ?? 0) > (cut.column ?? 0)))
       const { handoffs, fileWrites } = this.source.continuationSites(fn)
-      for (const { receiver, priorExits, ...handoff } of handoffs) {
-        if (result.values.get(receiver)?.kind !== 'context' || !afterCut(handoff.site)) continue
+      for (const { receiver, priorExits, repeat, ...handoff } of handoffs) {
+        if (result.values.get(receiver)?.kind !== 'context') continue
         const target = this.target.slots.get(handoff.slot)
         if (target === undefined) continue
+        if (repeat && repeat.end > stoppedAt.getStart())
+          this.recordAuthoredContinuation({
+            kind: 'repeat',
+            value: { loop: repeat.loop, site: handoff.site, slot: handoff.slot, target },
+          })
+        if (!afterCut(handoff.site)) continue
         const exits = priorExits?.filter(({ condition }) => afterCut(condition.site))
         this.recordAuthoredContinuation({
           kind: 'handoff',

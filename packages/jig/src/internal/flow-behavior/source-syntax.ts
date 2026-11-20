@@ -42,13 +42,14 @@ export function constInitializer(
 }
 
 export function lexicalGuards(
-  expression: ts.Expression,
+  expression: ts.Node,
   site: (node: ts.Node) => SourceSite,
+  boundary?: ts.Node,
 ): BehaviorGuard[] {
   const guards: BehaviorGuard[] = []
   for (
     let node: ts.Node = expression;
-    node.parent && !ts.isFunctionLike(node);
+    node.parent && node !== boundary && !ts.isFunctionLike(node);
     node = node.parent
   ) {
     const parent: ts.Node = node.parent
