@@ -39,6 +39,7 @@ import {
 
 type Scope = BehaviorReport['scopes'][number]
 type Route = Scope['routes'][number]
+type Call = Extract<BehaviorStep, { kind: 'call' }>
 type Handoff = { readonly caller: string; readonly slot: string; readonly site: SourceSite }
 
 /** Spend the application budget on the entrypoint and configured callers first. */
@@ -55,6 +56,23 @@ export function applicationScopeOrder(
     }))
     .sort((a, b) => Number(b.id === entrypoint) - Number(a.id === entrypoint) || b.calls - a.calls)
     .map(({ id }) => id)
+}
+
+function incomingScopes(
+  focus: string,
+  visible: readonly string[],
+  targets: ReadonlyMap<string, BehaviorTarget>,
+): Set<string> {
+  const callers = new Map<string, string[]>()
+  for (const id of visible)
+    for (const child of targets.get(id)?.slots.values() ?? []) {
+      const owners = callers.get(child) ?? []
+      owners.push(id)
+      callers.set(child, owners)
+    }
+  const incoming = new Set([focus])
+  for (const child of incoming) for (const caller of callers.get(child) ?? []) incoming.add(caller)
+  return incoming
 }
 
 /** Apply the display allowance after relating each exit to its later call sites. */
@@ -99,16 +117,23 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   const scopes: Scope[] = []
   const childPaths: BehaviorChildPath[] = []
   const childKeys = new Map<string, number>()
+  const resultOrigins = new WeakMap<Value, Call>()
   let childSteps = 0
   const { focus, entrypoint, packagePath, revision } = input
   const application = focus === undefined && packagePath === undefined
 
-  const primary = new AnalysisBudget(signal, focus === undefined ? 72_000 : BEHAVIOR_LIMITS.steps)
+  const incoming = focus === undefined ? undefined : incomingScopes(focus, input.visible, targets)
+  // An upstream chain uses the same total allowance as application inspection.
+  // Each configured use still has its own source analysis bound.
+  const primary = new AnalysisBudget(
+    signal,
+    focus === undefined || (incoming?.size ?? 0) > 1 ? 72_000 : BEHAVIOR_LIMITS.steps,
+  )
   const visible = application
     ? applicationScopeOrder(input.visible, targets, entrypoint)
-    : focus === undefined
+    : incoming === undefined
       ? input.visible
-      : [focus, ...input.visible.filter((id) => id !== focus)]
+      : [...incoming, ...input.visible.filter((id) => !incoming.has(id))]
   // Finish all primary analysis before spending work on secondary alternatives.
   for (const id of visible) {
     signal?.throwIfAborted()
@@ -138,15 +163,14 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   for (const [index, scope] of (packagePath === undefined ? scopes : []).entries()) {
     const target = targets.get(scope.target)!
     const callerOfFocus = focus !== undefined && scope.target !== focus
-    if (callerOfFocus && ![...target.slots.values()].includes(focus)) continue
+    if (callerOfFocus && !incoming?.has(scope.target)) continue
     const seeds = new Map<string, Handoff>()
     const visitedPaths = new Set<number>()
     function collect(route: Route): void {
       for (const step of route) {
         if (step.kind !== 'call') continue
-        if (callerOfFocus && (step.caller !== target.id || step.target !== focus)) continue
-        seeds.set(JSON.stringify([step.caller, step.slot, step.site]), step)
-        if (callerOfFocus) continue
+        if (!callerOfFocus || step.target === focus)
+          seeds.set(JSON.stringify([step.caller, step.slot, step.site]), step)
         const id = step.childPath
         if (id === undefined || visitedPaths.has(id)) continue
         visitedPaths.add(id)
@@ -155,6 +179,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       }
     }
     for (const route of scope.routes) collect(route)
+    if (!seeds.size) continue
     const alternatives = new Map<string, Route>()
     const gaps = new Map(scope.gaps.map((gap) => [JSON.stringify(gap), gap]))
     for (const seed of [...seeds.values()].slice(0, 8)) {
@@ -182,6 +207,12 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     inventory,
     scopes,
     childPaths,
+  }
+
+  function complete(state: State, site: SourceSite, refusal?: string, contractPath?: string) {
+    const call = state.mode === 'return' ? resultOrigins.get(state.value) : undefined
+    const forwardedCall = call === undefined ? -1 : state.steps.indexOf(call)
+    return completedRoute(state, site, refusal, contractPath, forwardedCall)
   }
 
   function retainChild(argument: string, steps: Route): number | undefined {
@@ -244,7 +275,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
         const pkg = input.packages.get(target.implementation)
         const refusal =
           state.mode === 'return' ? resultRefusal(state.value, target, pkg) : undefined
-        const route = completedRoute(state, site, refusal, pkg?.contractPath)
+        const route = complete(state, site, refusal, pkg?.contractPath)
         ;(isAlternative ? alternate : routes).set(JSON.stringify(route, mapEntries), route)
       }
     } catch (error) {
@@ -418,12 +449,8 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
       assumptions: readonly BehaviorAssumption[],
       guards: readonly BehaviorGuard[] = [],
       childPath?: number,
-    ): ChildResult => ({
-      mode,
-      value,
-      prefix,
-      assumptions,
-      step: {
+    ): ChildResult => {
+      const step: Call = {
         kind: 'call',
         site,
         caller,
@@ -436,8 +463,10 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
         ...(guards.length ? { guards } : {}),
         ...(childPath !== undefined ? { childPath } : {}),
         ...(mode === 'next' ? { returned: returnFacts(value) } : {}),
-      },
-    })
+      }
+      if (mode === 'next') resultOrigins.set(value, step)
+      return { mode, value, prefix, assumptions, step }
+    }
     const newAssumption = (
       kind: BehaviorAssumption['kind'],
       detail: string,
@@ -469,7 +498,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
         state.mode === 'return' && callee ? resultRefusal(state.value, callee, pkg) : undefined
       const childPath = retainChild(
         inputSummary,
-        completedRoute(state, callee ? location(callee) : site, refusal, pkg?.contractPath),
+        complete(state, callee ? location(callee) : site, refusal, pkg?.contractPath),
       )
       if (state.mode === 'unknown') {
         opaque.push({ steps: prefix, assumptions: state.assumptions, guards, childPath })
@@ -677,6 +706,7 @@ function completedRoute(
   fallback: SourceSite,
   refusal?: string,
   contractPath?: string,
+  forwardedCall = -1,
 ): Route {
   if (state.mode === 'unknown' && state.steps.at(-1)?.kind === 'end') return state.steps
   if (refusal !== undefined)
@@ -706,6 +736,7 @@ function completedRoute(
               ? 'Continuation unknown'
               : 'Finishes without an explicit return',
       ...(state.mode === 'return' ? { returned: returnFacts(state.value) } : {}),
+      ...(forwardedCall < 0 ? {} : { forwardedCall }),
     },
   ]
 }
@@ -748,7 +779,8 @@ function failureText(value: Value): string {
 
 function mapEntries(key: string, value: unknown): unknown {
   // Retaining a representative child path must not change the analysis budget.
-  if (key === 'childPath' || key === 'representativeChild') return undefined
+  if (key === 'childPath' || key === 'representativeChild' || key === 'forwardedCall')
+    return undefined
   if (value instanceof Map) return [...value]
   if (typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'function')
     return { kind: 'function' }

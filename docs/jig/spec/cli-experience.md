@@ -1078,6 +1078,16 @@ It links local captured contract files for both.
 Where a displayed child outcome is absent from the caller's declarations, the view explains the declaration needed to forward that outcome.
 The focused report lists the direct Flow targets in scope.
 
+The callee view also shows retained paths through intermediate callers to the next configured caller's decision.
+The intermediate and outer results come from the same modeled call evaluation.
+An intermediate return labeled as forwarding uses the child result itself.
+Other intermediate returns retain their own values and represented checks.
+Hypothetical child outcomes remain conditional at subsequent handoffs.
+Within each displayed outcome, the view prefers a modeled next call or exit over an unresolved continuation.
+
+Focused callee inspection analyzes its configured upstream callers before the remaining visible targets.
+It uses the application inspection allowance for this work and retains the per-target bounds.
+
 The focused view summarizes selected route consequences and evidence.
 It prioritizes distinct return outcomes and consequential differences before further variants.
 The main diagram projects supported calls, loops, and file writes within a fixed display bound.

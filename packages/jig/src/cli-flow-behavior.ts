@@ -572,7 +572,7 @@ function selectRoutes(scope: Scope): Route[] {
 }
 
 function withoutChildPath(key: string, value: unknown): unknown {
-  return key === 'childPath' || key === 'representativeChild'
+  return key === 'childPath' || key === 'representativeChild' || key === 'forwardedCall'
     ? undefined
     : withoutReportingLocations(key, value)
 }
@@ -777,7 +777,11 @@ function renderCallContinuations(
         sourceLink(call.site) +
         ')',
       '',
-      ...continuationContracts(call, targets, visible),
+      ...continuationContracts(
+        call,
+        targets,
+        visible.map(([, { call: choice }]) => choice),
+      ),
       '| Result from ' +
         text(call.target) +
         ' | Next in ' +
@@ -819,7 +823,7 @@ function resultContract(target: BehaviorTarget): string {
 function continuationContracts(
   call: Call,
   targets: ReadonlyMap<string, BehaviorTarget>,
-  cases: readonly [string, CallCase][],
+  cases: readonly Call[],
 ): string[] {
   const lines: string[] = []
   const child = targets.get(call.target)
@@ -827,7 +831,7 @@ function continuationContracts(
   if (child) lines.push('- Child result contract · ' + resultContract(child))
   if (caller) {
     lines.push('- Caller’s own result contract · ' + resultContract(caller))
-    const shown = new Set(cases.map(([, { call: choice }]) => choice.returned?.outcome))
+    const shown = new Set(cases.map((choice) => choice.returned?.outcome))
     const additional = (child?.outcomes ?? []).filter(
       (outcome) => shown.has(JSON.stringify(outcome)) && !caller.outcomes.includes(outcome),
     )
@@ -839,6 +843,147 @@ function continuationContracts(
       )
   }
   if (lines.length) lines.push('')
+  return lines
+}
+
+type CallOnRoute = { call: Call; route: Route; index: number }
+
+function renderNestedContinuations(
+  report: BehaviorReport,
+  focus: string,
+  targets: ReadonlyMap<string, BehaviorTarget>,
+): string[] {
+  // Each retained child path references only previously retained paths. Reuse
+  // suffixes while keeping the actual outer call and its selected child path.
+  const paths: CallOnRoute[][][] = []
+  let limited = false
+  function* calls(route: Route) {
+    for (const [index, call] of route.entries())
+      if (call.kind === 'call' && call.returned !== undefined) yield { call, route, index }
+  }
+  for (const { steps } of report.childPaths) {
+    const end = steps.at(-1)
+    const inside: CallOnRoute[][] = []
+    if (end?.kind === 'end' && end.completion === 'return') {
+      for (const entry of calls(steps)) {
+        const { call } = entry
+        const nested = call.target === focus ? [[]] : (paths[call.childPath ?? -1] ?? [])
+        for (const inner of nested) {
+          if (inside.length < 8) inside.push([...inner, entry])
+          else limited = true
+        }
+      }
+    }
+    paths.push(inside)
+  }
+
+  const groups = new Map<
+    string,
+    { call: Call; rows: Map<string, { outcome: string; call: Call; established: boolean }> }
+  >()
+  const resultLabel = (call: Call) =>
+    text((call.completion === 'if-returned' ? 'if admitted ' : 'returns ') + result(call.returned!))
+  for (const scope of report.scopes) {
+    if (scope.target === focus) continue
+    for (const route of [...scope.routes, ...scope.alternatives]) {
+      for (const { call, index } of calls(route)) {
+        const inner = paths[call.childPath ?? -1]
+        if (!inner?.length || call.target === focus) continue
+        const anchor = callAnchor(call)
+        let group = groups.get(anchor)
+        if (!group) {
+          if (groups.size >= 8) {
+            limited = true
+            continue
+          }
+          group = { call, rows: new Map() }
+          groups.set(anchor, group)
+        }
+        const after = continuation(route, index, call)
+        const terminal = after.at(-1)
+        const established =
+          terminal?.kind === 'call' ||
+          (terminal?.kind === 'end' && terminal.completion !== 'unknown')
+        for (const chain of inner) {
+          const first = chain[0]!.call
+          const callers = chain.map(({ call: nested, route: steps, index: at }) => {
+            const end = steps.at(-1)!
+            const handoff = text(nested.slot) + ' (' + sourceLink(nested.site) + ')'
+            if (end.kind === 'end' && end.forwardedCall === at)
+              return (
+                text(nested.caller + ' forwards this result') +
+                ' (' +
+                sourceLink(end.site) +
+                ') from ' +
+                handoff
+              )
+            const next = continuation(steps, at, nested)
+            if (next.at(-1) !== end) next.push(end)
+            return text(nested.caller) + ' · ' + handoff + ' → ' + nextSteps(next, true)
+          })
+          const row =
+            '| ' +
+            resultLabel(first) +
+            ' (' +
+            sourceLink(first.site) +
+            ') | ' +
+            callers.join(' → ') +
+            ' | ' +
+            resultLabel(call) +
+            ' → ' +
+            nextSteps(after, true) +
+            ' |'
+          if (group.rows.size < 32 || group.rows.has(row))
+            group.rows.set(row, {
+              outcome: first.completion + ':' + first.returned!.outcome,
+              call,
+              established,
+            })
+          else limited = true
+        }
+      }
+    }
+  }
+  if (!groups.size) return []
+  const lines = [
+    '### Through intermediate callers',
+    '',
+    'These paths use the intermediate returns from the same modeled call evaluation.',
+    '',
+  ]
+  for (const { call, rows } of groups.values()) {
+    const distinct = new Map<string, string>()
+    for (const [row, { outcome, established }] of rows) {
+      const prior = distinct.get(outcome)
+      if (prior === undefined || (established && !rows.get(prior)!.established))
+        distinct.set(outcome, row)
+    }
+    const shown = [...new Set([...distinct.values(), ...rows.keys()])].slice(0, callCaseLimit)
+    lines.push(
+      '**' +
+        text(call.caller + ' · ' + call.slot + ' → ' + call.target) +
+        '** (' +
+        sourceLink(call.site) +
+        ')',
+      '',
+      ...continuationContracts(
+        call,
+        targets,
+        shown.map((row) => rows.get(row)!.call),
+      ),
+      '| Result from ' +
+        text(focus) +
+        ' | Intermediate returns | Next in ' +
+        text(call.caller) +
+        ' |',
+      '| --- | --- | --- |',
+      ...shown,
+      '',
+    )
+    if (rows.size > shown.length)
+      lines.push('- ' + (rows.size - shown.length) + ' additional modeled paths omitted.', '')
+  }
+  if (limited) lines.push('Some nested caller paths exceed the display allowance.', '')
   return lines
 }
 
@@ -1333,6 +1478,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     )
     lines.push(
       ...renderCallContinuations(callers.shown, targets, true, callers.omitted),
+      ...renderNestedContinuations(report, focus, targets),
       ...renderCallContinuations(details.shown, targets, false),
     )
     if (routes.length) {

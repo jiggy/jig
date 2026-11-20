@@ -314,6 +314,11 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Name any declaration required if a displayed child outcome is forwarded as the caller's own result.
   List the focused scope's direct Flow targets near its opening.
 
+  Follow retained nested call evaluations into intermediate returns and the outer caller's next action.
+  Identify direct forwarding through result identity and preserve the intermediate outcome otherwise.
+  Keep the configured call site and inherited assumptions on each hop.
+  Disclose projection limits without joining unrelated case variants.
+
   Lead with route consequences and attach the conditions that select them.
   Show the source of the final progress request beside the reported count.
 
