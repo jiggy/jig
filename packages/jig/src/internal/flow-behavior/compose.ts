@@ -124,17 +124,35 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   const application = focus === undefined && packagePath === undefined
 
   const incoming = focus === undefined ? undefined : incomingScopes(focus, input.visible, targets)
-  // An upstream chain uses the same total allowance as application inspection.
+  const focusedBinding = inventory.find(
+    ({ id, declarationPath }) => id === focus && declarationPath,
+  )
+  const siblingUses = focusedBinding
+    ? inventory.filter(
+        ({ id, implementation }) =>
+          id !== focus && implementation === focusedBinding.implementation,
+      )
+    : []
+  const comparableUses =
+    focusedBinding &&
+    siblingUses.some(
+      (use) => JSON.stringify(use.settings) !== JSON.stringify(focusedBinding.settings),
+    )
+      ? siblingUses.slice(0, BEHAVIOR_LIMITS.focusedComparedUses)
+      : []
+  // Upstream callers and compared uses share the bounded application allowance.
   // Each configured use still has its own source analysis bound.
   const primary = new AnalysisBudget(
     signal,
-    focus === undefined || (incoming?.size ?? 0) > 1 ? 72_000 : BEHAVIOR_LIMITS.steps,
+    focus === undefined || (incoming?.size ?? 0) > 1 || comparableUses.length
+      ? 72_000
+      : BEHAVIOR_LIMITS.steps,
   )
   const visible = application
     ? applicationScopeOrder(input.visible, targets, entrypoint)
     : incoming === undefined
       ? input.visible
-      : [...incoming, ...input.visible.filter((id) => !incoming.has(id))]
+      : [...new Set([...incoming, ...comparableUses.map(({ id }) => id), ...input.visible])]
   // Finish all primary analysis before spending work on secondary alternatives.
   for (const id of visible) {
     signal?.throwIfAborted()

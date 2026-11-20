@@ -28,3 +28,4 @@ Before editing, it can identify the intended use and the sibling route to preser
 The portable scenario `focused orientation shows distinct slots and variant callers before analysis` exercises two Bindings of the same writer.
 It checks that the selected declaration, differing settings, slot selections, and callers appear together. [Executable scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L561)
 A direct setting check can also link to the Binding declaration that supplies its captured value. [Setting check scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L294)
+The shared setting scenario checks that each Binding shows its own result or selected next call. [Comparison scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L2716)
