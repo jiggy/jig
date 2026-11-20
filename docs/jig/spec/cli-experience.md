@@ -1065,6 +1065,10 @@ When validation callbacks operate on unresolved contents, the displayed continua
 A later authored file write can remain visible with its destination expression and source location.
 The caller continuation still depends on the unresolved work.
 
+A focused view can show the first modeled write attempt in the selected Flow for each represented path.
+It links direct invocation and configured callers to the same source write when their retained paths reach it.
+The examples retain checks before the write and subsequent checks or actions. Conditional child results keep their labels.
+
 Small known scalar sets and literal numeric products can contribute to reported progress.
 Route consequences give the final requested progress alongside its recorded helper call or update location.
 For a single evaluated progress block, the report links count and total expressions shared by the represented payloads.

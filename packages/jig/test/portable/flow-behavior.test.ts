@@ -2012,6 +2012,27 @@ test('a guard before a child write labels the incoming edge and later guards sta
     /Child path[^\n]+run\.input\.allow[^\n]+writeFile[^\n]+run\.input\.valid/,
   )
   expect(expansion).toContain('Metadata rejected')
+
+  const input = snapshot(child, root)
+  const audit = { ...input.targets[0]!, id: 'binding:audit' }
+  const focused = renderFlowBehavior(
+    analyzeFlowBehavior({
+      ...input,
+      focus: 'flow:flows/convert',
+      targets: [...input.targets, audit],
+      visible: [...input.visible, audit.id],
+    }),
+  )
+  const writes = focused
+    .split('### First writes in this Flow')[1]
+    ?.split('### Caller continuations')[0]
+  expect(writes).toContain('Attempts writeFile')
+  expect(writes).toMatch(
+    /Direct invocation of flow:flows\/convert[^\n]+input\.allow[^\n]+preview\.json[^\n]+input\.valid/,
+  )
+  expect(writes).toMatch(/binding:code via converter[^\n]+input\.allow[^\n]+preview\.json/)
+  expect(writes).toMatch(/binding:audit via converter[^\n]+input\.allow[^\n]+preview\.json/)
+  expect(writes).toMatch(/conditional child return|child call fails/)
 })
 
 test('a child write remains visible before a later child failure', () => {
