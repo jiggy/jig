@@ -1111,6 +1111,10 @@ Source returns and contract alternatives retain separate labels.
 From the caller's view, distinct results link to their own call expansions.
 Checks and subsequent calls link to their source locations.
 
+The callee view can also show a caller returning an earlier child's result without reaching the focused call.
+This evidence relates retained paths for the same configured caller and earlier call site.
+Earlier contract alternatives keep their conditional labels and the later source call location.
+
 The continuation lists the outcomes for the child's result and the caller's own result.
 It links local captured contract files for both.
 When a displayed child outcome is absent from the caller's declarations, the view identifies the `outcomes` entry needed to forward it.

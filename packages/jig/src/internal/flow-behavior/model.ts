@@ -281,6 +281,13 @@ export interface BehaviorReport {
     readonly selected: string
     readonly direct: string
   }[]
+  readonly earlierReturns?: readonly {
+    readonly trigger: Extract<BehaviorStep, { kind: 'call' }>
+    readonly later: Extract<BehaviorStep, { kind: 'call' }>
+    readonly sourceOutcomes: readonly string[]
+    readonly after: readonly BehaviorStep[]
+  }[]
+  readonly earlierReturnsLimited?: true
   readonly childPaths: readonly BehaviorChildPath[]
   readonly importBoundary?: FlowImportBoundary & {
     readonly sourcePackage: string

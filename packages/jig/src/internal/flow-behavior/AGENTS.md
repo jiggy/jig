@@ -75,6 +75,8 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
   Carry the same outcome and assumptions into the incoming continuation.
   Analyze the selected target and its upstream callers before the remaining visible scopes.
   An upstream chain can use the existing application allowance within the per-use bounds.
+  Use the remaining secondary allowance for direct predecessors on retained caller paths.
+  Record a bypass only when a caller returns that earlier result and the route never calls the focused target.
 - Carry captured local result contract paths into the behavior inventory for navigation.
   Use the caller's own outcome declarations when showing a forwarding requirement.
 - Keep declared input paths and the retained input for a write case separate from route identity.

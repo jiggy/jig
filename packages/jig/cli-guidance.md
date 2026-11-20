@@ -318,6 +318,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   When a callee is focused, probe conditional continuations for its represented caller sites within the existing allowance.
   Preserve the distinction between a source return and a contract possibility in the incoming table.
+  Show an earlier forwarded return beside the focused call it bypasses when captured paths establish both cases.
+  Keep earlier outcome hypotheses conditional and tied to the configured caller.
 
   Put both result contracts beside the continuation and link their captured local files.
   For a displayed child outcome absent from the caller's declarations, name `outcomes` and the applicable `result` schema check.

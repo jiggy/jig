@@ -1298,6 +1298,54 @@ function renderResultDecisions(
   ]
 }
 
+function renderEarlierReturns(report: BehaviorReport): string[] {
+  const entries = report.earlierReturns ?? []
+  if (!entries.length && !report.earlierReturnsLimited) return []
+  const lines = ['### Earlier returns in these callers', '']
+  if (entries.length) {
+    lines.push(
+      '| Caller and earlier handoff | Returned case | Later call skipped |',
+      '| --- | --- | --- |',
+    )
+    for (const { trigger, later, sourceOutcomes, after } of entries) {
+      const earlier =
+        text(trigger.caller + ' · ' + trigger.slot + ' → ' + trigger.target) +
+        ' (' +
+        sourceLink(trigger.site) +
+        ')'
+      const support =
+        '<br>Source-supported outcomes on paths to the later call · ' + brief(sourceOutcomes)
+      const contractAlternative = trigger.assumptions?.some(
+        ({ kind, slot, site }) =>
+          kind === 'contract-return' &&
+          slot === trigger.slot &&
+          site.path === trigger.site.path &&
+          site.line === trigger.site.line &&
+          site.column === trigger.site.column,
+      )
+      const result = text(label(trigger)) + (contractAlternative ? ' · contract alternative' : '')
+      lines.push(
+        '| ' +
+          earlier +
+          support +
+          ' | ' +
+          result +
+          ' → ' +
+          nextSteps(after, true) +
+          ' | ' +
+          text(later.slot) +
+          ' (' +
+          sourceLink(later.site) +
+          ') |',
+      )
+    }
+    lines.push('')
+  }
+  if (report.earlierReturnsLimited)
+    lines.push('Some earlier returns remain unresolved within the source analysis limits.', '')
+  return lines
+}
+
 function renderCallDetails(
   report: BehaviorReport,
   details: CallDetails,
@@ -2033,6 +2081,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     const nested = renderNestedContinuations(report, focus, targets, reactions)
     lines.push(
       ...renderResultDecisions(reactions, targets),
+      ...renderEarlierReturns(report),
       ...incoming,
       ...configuredChecks(report, selected, target),
       ...renderCallSelections(selected, target),

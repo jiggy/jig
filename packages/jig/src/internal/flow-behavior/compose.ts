@@ -43,6 +43,50 @@ type Scope = BehaviorReport['scopes'][number]
 type Route = Scope['routes'][number]
 type Call = Extract<BehaviorStep, { kind: 'call' }>
 type Handoff = { readonly caller: string; readonly slot: string; readonly site: SourceSite }
+type EarlierReturn = NonNullable<BehaviorReport['earlierReturns']>[number]
+
+function earlierHandoffs(scope: Scope, focus: string) {
+  const sites = new Map<
+    string,
+    { calls: Map<string, Call>; sourceOutcomes: Set<string>; trigger: Call }
+  >()
+  for (const route of scope.routes) {
+    const later: Call[] = []
+    for (let index = route.length - 1; index >= 0; index--) {
+      const step = route[index]
+      if (step?.kind !== 'call' || step.caller !== scope.target) continue
+      if (step.target === focus) {
+        later.push(step)
+        continue
+      }
+      if (!later.length || step.completion !== 'source-return' || !step.returned) continue
+      const identity = JSON.stringify([step.slot, step.site])
+      const prior = sites.get(identity) ?? {
+        calls: new Map(),
+        sourceOutcomes: new Set(),
+        trigger: step,
+      }
+      prior.sourceOutcomes.add(step.returned.outcome)
+      for (const call of later) prior.calls.set(JSON.stringify([call.slot, call.site]), call)
+      sites.set(identity, prior)
+    }
+  }
+  return [...sites.values()]
+}
+
+function earlierReturn(route: Route, focus: string): Call | undefined {
+  const end = route.at(-1)
+  if (end?.kind !== 'end' || end.completion !== 'return' || end.forwardedCall === undefined) return
+  const trigger = route[end.forwardedCall]
+  if (trigger?.kind !== 'call' || !trigger.returned) return
+  if (
+    route.some(
+      (step) => step.kind === 'call' && step.caller === trigger.caller && step.target === focus,
+    )
+  )
+    return
+  return trigger
+}
 
 /** Spend the application budget on the entrypoint and configured callers first. */
 export function applicationScopeOrder(
@@ -236,6 +280,74 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     }
     scopes[index] = { ...scope, alternatives: [...alternatives.values()], gaps: [...gaps.values()] }
   }
+  const earlierReturns = new Map<string, EarlierReturn>()
+  let earlierReturnsLimited = false
+  if (focus !== undefined && packagePath === undefined) {
+    for (const scope of scopes) {
+      const target = targets.get(scope.target)!
+      if (scope.target === focus || ![...target.slots.values()].includes(focus)) continue
+      const candidates = earlierHandoffs(scope, focus)
+      const probes = candidates.filter(({ trigger, sourceOutcomes }) =>
+        targets
+          .get(trigger.target)
+          ?.outcomes.some(
+            (outcome) => outcome !== 'done' && !sourceOutcomes.has(JSON.stringify(outcome)),
+          ),
+      )
+      const routes: { route: Route; probe?: Call }[] = scope.routes.map((route) => ({ route }))
+      for (const { trigger } of probes.slice(0, 2)) {
+        const conditional = inspect(target, new AnalysisBudget(signal, 12_000, secondary), trigger)
+        routes.push(...conditional.alternatives.map((route) => ({ route, probe: trigger })))
+        earlierReturnsLimited ||= conditional.gaps.length > 0
+      }
+      earlierReturnsLimited ||= probes.length > 2
+      for (const { route, probe } of routes) {
+        const trigger = earlierReturn(route, focus)
+        if (!trigger || trigger.caller !== scope.target) continue
+        if (probe && (probe.slot !== trigger.slot || !sameSite(probe.site, trigger.site))) continue
+        const prior = candidates.find(
+          ({ trigger: call }) => trigger.slot === call.slot && sameSite(trigger.site, call.site),
+        )
+        if (!prior) continue
+        const after = route
+          .slice(route.indexOf(trigger) + 1)
+          .filter(
+            (step) =>
+              step.kind === 'condition' ||
+              step.kind === 'call' ||
+              step.kind === 'end' ||
+              (isFileOperation(step) &&
+                step.owner === trigger.caller &&
+                step.operation === 'writeFile'),
+          )
+        for (const later of prior.calls.values()) {
+          const key = JSON.stringify(
+            [
+              trigger.caller,
+              trigger.site,
+              trigger.slot,
+              trigger.completion,
+              trigger.returned,
+              trigger.assumptions,
+              later.site,
+              later.slot,
+              after,
+            ],
+            withoutReportingLocations,
+          )
+          if (earlierReturns.has(key)) continue
+          if (earlierReturns.size >= 8) earlierReturnsLimited = true
+          else
+            earlierReturns.set(key, {
+              trigger,
+              later,
+              sourceOutcomes: [...prior.sourceOutcomes],
+              after,
+            })
+        }
+      }
+    }
+  }
   return {
     revision,
     focus,
@@ -243,6 +355,8 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     ...(entrypoint === undefined ? {} : { entrypoint }),
     ...(inputFields?.paths.length || inputFields?.truncated ? { inputFields } : {}),
     ...(directHandoffs.length ? { directHandoffs } : {}),
+    ...(earlierReturns.size ? { earlierReturns: [...earlierReturns.values()] } : {}),
+    ...(earlierReturnsLimited ? { earlierReturnsLimited: true } : {}),
     inventory,
     scopes,
     childPaths,
