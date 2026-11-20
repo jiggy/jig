@@ -26,5 +26,5 @@ Before editing, it can identify the intended use and the sibling route to preser
 [JOB-001](JOB-001-locate-a-workflow-edit.md) · [FEAT-001 Flow inspection](JOB-001-locate-a-workflow-edit.md#feat-001-flow-inspection) · [Binding declaration](../../docs/jig/spec/project-sdk.md#binding-declaration)
 
 The portable scenario `focused orientation shows distinct slots and variant callers before analysis` exercises two Bindings of the same writer.
-It checks that the selected declaration, differing settings, slot selections, and callers appear together. [Executable scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L414)
-A direct setting check can also link to the Binding declaration that supplies its captured value. [Setting check scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L241)
+It checks that the selected declaration, differing settings, slot selections, and callers appear together. [Executable scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L467)
+A direct setting check can also link to the Binding declaration that supplies its captured value. [Setting check scenario](../../packages/jig/test/portable/flow-behavior.test.ts#L294)

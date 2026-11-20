@@ -238,6 +238,59 @@ test('callee inspection shows conditional caller reactions alongside source retu
   ).toBe(false)
 })
 
+test('continuations place both result contracts and forwarding requirements at the call', () => {
+  const input = snapshot(
+    method(
+      handlerSource(`
+        if (run.input.missing) return { outcome: 'needs-evidence', output: { reason: 'Supply invoice' } }
+        return { outcome: 'done', output: {} }
+      `),
+      { contractPath: 'flows/convert/FLOW.contract.json' },
+    ),
+    method(
+      handlerSource(`
+        const answer = await run.call({ slot: 'converter', operationId: 'convert', input: run.input })
+        if (answer.outcome !== 'done') throw new TypeError('Unexpected outcome')
+        return await run.call({ slot: 'exporter', operationId: 'export', input: {} })
+      `),
+      { contractPath: 'flows/import/FLOW.contract.json' },
+    ),
+  )
+  const [caller, child, exporter] = input.targets
+  const targets = [caller!, { ...child!, outcomes: ['done', 'needs-evidence'] }, exporter!]
+  const inspect = (focus: string, declared: readonly string[]) =>
+    renderFlowBehavior(
+      analyzeFlowBehavior({
+        ...input,
+        focus,
+        targets: [{ ...targets[0]!, outcomes: declared }, ...targets.slice(1)],
+      }),
+    )
+  const incoming = inspect(child!.id, ['done'])
+  expect(incoming).toContain(
+    '**Direct Flow targets in this scope** · flow:flows/convert, flow:flows/export',
+  )
+  const table = incoming.split('### Caller continuations')[1]?.split('### Consequences')[0]
+  expect(table).toContain(
+    'Child result contract · [flows/convert/FLOW.contract.json](./flows/convert/FLOW.contract.json) · declared outcomes done, needs-evidence',
+  )
+  expect(table).toContain(
+    'Caller’s own result contract · [flows/import/FLOW.contract.json](./flows/import/FLOW.contract.json) · declared outcomes done',
+  )
+  expect(table).toContain(
+    'Forwarding "needs-evidence" as the caller’s own result requires declaring the outcome',
+  )
+  expect(table).toMatch(/returns "needs-evidence"[^\n]+Throws: Unexpected outcome/)
+  const receiver = inspect(caller!.id, ['done', 'needs-evidence']).split(
+    '### Child results and next steps',
+  )[1]
+  expect(receiver).toContain(
+    'Caller’s own result contract · [flows/import/FLOW.contract.json](./flows/import/FLOW.contract.json) · declared outcomes done, needs-evidence',
+  )
+  expect(receiver).toMatch(/returns "needs-evidence"[^\n]+Throws: Unexpected outcome/)
+  expect(receiver).not.toContain('Forwarding "needs-evidence"')
+})
+
 test('focused checks link the selected Binding setting without attributing shadowed or rewritten receivers', () => {
   const makeReport = (body: string, preview: boolean) => {
     const input = snapshot(
