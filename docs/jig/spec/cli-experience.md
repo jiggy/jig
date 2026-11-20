@@ -1039,6 +1039,10 @@ It reports omitted caller sites by slot and shows other slots that use the same 
 
 Caller decisions link the captured slot declaration and Binding wiring once per configured use when available.
 Multiple sites for a slot appear in one comparison.
+Each section identifies a displayed destination's implementation and available Binding declaration.
+It shows up to three of that target's configured child slots, with known implementations for their selections.
+Repeat uses in the same section share these details.
+
 Focused targets can also show authored decisions from direct callers that select that exact target.
 These incoming decisions identify the caller, slot, and supported request fields even if route analysis stops earlier.
 They can also show which configured caller slots select that caller.
