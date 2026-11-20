@@ -1154,6 +1154,11 @@ Source returns and contract alternatives retain separate labels.
 From the caller's view, distinct results link to their own call expansions.
 Checks and subsequent calls link to their source locations.
 
+Beside a displayed subsequent call, show earlier forwarded returns that bypass that site on modeled paths.
+An earlier result from the same source call must reach the displayed call on a separate path.
+When the destination's Flow also has a direct entry, show that independent input boundary beside the bypasses.
+Contract alternatives and source returns keep their respective labels.
+
 The callee view can also show a caller returning an earlier child's result without reaching the focused call.
 This evidence relates retained paths for the same configured caller and earlier call site.
 Earlier contract alternatives keep their conditional labels and the later source call location.

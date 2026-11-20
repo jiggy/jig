@@ -17,6 +17,7 @@ import {
   type BehaviorReturn,
   type BehaviorStep,
   type BehaviorTarget,
+  forwardedResult,
   isFileOperation,
   type SourceSite,
   varyingInputFields,
@@ -1010,15 +1011,85 @@ function directInvocations(
   return lines
 }
 
+function pathsBesideNextCalls(scope: Scope, report: BehaviorReport) {
+  const predecessors = new Map<string, Set<string>>()
+  for (const route of scope.routes) {
+    const seen = new Set<string>()
+    for (const step of route) {
+      if (step.kind !== 'call' || step.caller !== scope.target) continue
+      const key = callAnchor(step)
+      const prior = predecessors.get(key) ?? new Set<string>()
+      for (const site of seen) if (site !== key) prior.add(site)
+      predecessors.set(key, prior)
+      if (step.completion === 'source-return' && step.returned) seen.add(key)
+    }
+  }
+  const bypasses = new Map<string, Set<string>>()
+  for (const route of [...scope.routes, ...scope.alternatives]) {
+    const forwarded = forwardedResult(route)
+    if (!forwarded || forwarded.call.caller !== scope.target) continue
+    const { call, exit } = forwarded
+    const earlier = callAnchor(call)
+    const visited = new Set(
+      route.flatMap((step) =>
+        step.kind === 'call' && step.caller === scope.target ? [callAnchor(step)] : [],
+      ),
+    )
+    const check = route
+      .slice(route.indexOf(call) + 1)
+      .find((step) => step.kind === 'condition' && step.site.path === call.site.path)
+    const line =
+      text(label(call)) +
+      ' (' +
+      sourceLink(call.site) +
+      ') → ' +
+      nextSteps(check ? [check, exit] : [exit], true)
+    for (const [key, prior] of predecessors) {
+      if (!prior.has(earlier) || visited.has(key)) continue
+      const paths = bypasses.get(key) ?? new Set<string>()
+      paths.add(line)
+      bypasses.set(key, paths)
+    }
+  }
+  return (call: Call): string[] => {
+    const paths = bypasses.get(callAnchor(call))
+    if (!paths?.size) return []
+    const entry = report.directHandoffs?.find(
+      ({ slot, selected }) => slot === call.slot && selected === call.target,
+    )
+    const source = entry && report.entrySources?.get(entry.direct)
+    return [
+      '**Earlier returns that bypass ' + text(call.slot) + '** (' + sourceLink(call.site) + ')',
+      '',
+      ...[...paths].slice(0, 4).map((path) => '- ' + path),
+      ...(paths.size > 4 ? ['- ' + (paths.size - 4) + ' more modeled returns.'] : []),
+      ...(entry
+        ? [
+            '- Independent entry to the same Flow · ' +
+              text(entry.direct) +
+              ' supplies its own input' +
+              (source ? ' (' + sourcePathLink(source) + ').' : '.'),
+          ]
+        : []),
+      '',
+    ]
+  }
+}
+
 /** Read both directions from the same caller-local case used by the call expansion. */
 function renderCallContinuations(
   details: CallDetails,
   targets: ReadonlyMap<string, BehaviorTarget>,
   incoming: boolean,
-  omitted = 0,
-  reactions?: CallerReaction[],
+  options: {
+    omitted?: number
+    reactions?: CallerReaction[]
+    neighbors?: (call: Call) => string[]
+  } = {},
 ): string[] {
+  const { omitted = 0, reactions, neighbors } = options
   const lines: string[] = []
+  const noted = new Set<string>()
   for (const cases of details.values()) {
     const returned = ([, { call, after }]: [string, CallCase]) =>
       call.returned !== undefined && after.length > 0
@@ -1082,6 +1153,15 @@ function renderCallContinuations(
     lines.push('')
     if (cases.size > callCaseLimit)
       lines.push('- ' + (cases.size - callCaseLimit) + ' additional call paths omitted.', '')
+    if (neighbors)
+      for (const [, { after }] of visible) {
+        const next = after.at(-1)
+        if (next?.kind !== 'call') continue
+        const key = callAnchor(next)
+        if (noted.has(key)) continue
+        noted.add(key)
+        lines.push(...neighbors(next))
+      }
   }
   if (!lines.length) return []
   if (omitted > 0)
@@ -2211,7 +2291,10 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       focus,
     )
     const reactions: CallerReaction[] = []
-    const direct = renderCallContinuations(callers.shown, targets, true, callers.omitted, reactions)
+    const direct = renderCallContinuations(callers.shown, targets, true, {
+      omitted: callers.omitted,
+      reactions,
+    })
     const nested = renderNestedContinuations(report, focus, targets, reactions)
     lines.push(
       ...renderResultDecisions(reactions, targets),
@@ -2234,7 +2317,9 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       ...(firstWrites.length ? firstWrites : authoredFileWrites(selected, writesContract)),
       ...direct,
       ...nested,
-      ...renderCallContinuations(details.shown, targets, false),
+      ...renderCallContinuations(details.shown, targets, false, {
+        neighbors: pathsBesideNextCalls(selected, report),
+      }),
     )
     if (routes.length) {
       lines.push(...consequences(report, selected, routes, details.shown))

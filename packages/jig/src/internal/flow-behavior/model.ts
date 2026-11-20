@@ -123,6 +123,14 @@ export type BehaviorStep =
       readonly forwardedCall?: number
     }
 
+export function forwardedResult(route: readonly BehaviorStep[]) {
+  const exit = route.at(-1)
+  if (exit?.kind !== 'end' || exit.completion !== 'return' || exit.forwardedCall === undefined)
+    return
+  const call = route[exit.forwardedCall]
+  if (call?.kind === 'call' && call.returned) return { call, exit }
+}
+
 export function isFileOperation(
   step: BehaviorStep,
 ): step is Extract<BehaviorStep, { kind: 'effect' }> {
