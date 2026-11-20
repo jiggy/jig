@@ -324,9 +324,11 @@ async function captureWorkingFlow<T>(
       targets,
     }
     const { pathOperand, ...requested } = options
-    const scope =
-      pathOperand === undefined
-        ? requested
+    let scope = requested
+    if (pathOperand !== undefined) {
+      const binding = linked.bindings.find(({ declarationPath }) => declarationPath === pathOperand)
+      scope = binding
+        ? { target: 'binding:' + binding.id }
         : await resolveFlowInspectionPath(
             pathOperand,
             targets,
@@ -335,6 +337,7 @@ async function captureWorkingFlow<T>(
               memberByPath.get(path)!.captured.files.some((entry) => entry.path === file),
             'working-tree configuration',
           )
+    }
     return await projectResult(topology, scope, linked, members)
   } catch (error) {
     operationFailure = error

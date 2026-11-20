@@ -928,6 +928,7 @@ The target records include those uses and their direct callers.
 This scope excludes a target operand, `--all`, `--snapshot`, and `--compare`.
 
 A project-relative file operand must match a file in the selected capture.
+A captured Binding declaration path selects that exact Binding in working-tree inspection.
 A file in a package with one configured use selects that target.
 A file in a package with several uses or no uses selects package scope.
 With `--approved`, file lookup uses the retained package inventory.
@@ -984,7 +985,8 @@ It groups targets by package and lists configured slots with a command for each 
 Packages containing callers appear first, beginning with those that have a caller without upstream slots.
 The index uses captured topology and skips source behavior analysis.
 
-When multiple caller slots select the same target, that row lists up to eight of them beside its outgoing slots.
+When multiple caller slots select the same target, its row puts those slots and its independent Run selector beside its outgoing slots.
+The index displays up to eight caller slots per target.
 The row counts additional caller slots. Links open the captured Binding declarations for the target and its displayed callers, where available.
 
 An exact target retains its configured context, including other uses of its implementation and callers.
@@ -1015,8 +1017,8 @@ An authored exit can link the same configuration while its reachability remains 
 
 With `--all`, the document shows the project entrypoint and includes every configured target within the topology limits.
 
-The configured caller list links available caller Binding declarations.
-When multiple caller slots select the focused Binding, it explains that they share its configuration and can select separate Bindings of the same Flow.
+Focused Binding inspection puts its independent Run selector beside its declaration and configured callers.
+The caller list links available declarations and explains how to give one caller a separate Binding when several share the configuration.
 
 Focused reports can compare a direct setting check across configured uses of the same implementation.
 The comparison identifies the selected Binding as the edit site for a change to its setting.

@@ -90,10 +90,10 @@ export function renderFlowNavigationIndex(
   const lines = [
     `${targets.length} configured targets across ${packages.size} packages. No declared entrypoint.`,
     '',
-    'Shared caller slots select the same target. Follow a wiring link to its Binding declaration or run the target command to inspect its behavior.',
+    'Shared caller slots and independent Runs use the same configured target. Follow a wiring link to its Binding declaration or run the target command to inspect its behavior.',
     'Use `jig inspect --flow --all` for application behavior.',
     '',
-    '| Package | Inspect a target | Shared caller slots | Configured slots |',
+    '| Package | Inspect a target | Shared target uses | Configured slots |',
     '| --- | --- | --- | --- |',
   ]
   for (const { name, uses } of groups) {
@@ -117,6 +117,7 @@ export function renderFlowNavigationIndex(
               return path === undefined ? label : flowSourceLink(path, label)
             })
       if (callers.length > 8) shared.push(`+${callers.length - 8} more`)
+      if (callers.length >= 2) shared.push('Independent Run · ' + text(use.id))
       const slots = outgoing.get(use.id)?.map((edge) => `${text(edge.slot)} → ${text(edge.to)}`)
       lines.push(
         `| ${text(name)} | ${target}${wiring} | ${shared.join(', ') || '—'} | ${slots?.join(' · ') || '—'} |`,
@@ -209,6 +210,8 @@ export function renderFlowOrientation(
             ? (otherUses.length ? ' · settings that differ: ' : ' · settings: ') +
               settingsText(settings, keys, PRIVATE_FLOW_CONTEXT_LIMITS.inlineValueBytes, text)
             : ''),
+        '',
+        '**Independent Run** · ' + targetLabel(selected.id),
         '',
       )
     }

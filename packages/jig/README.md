@@ -50,6 +50,7 @@ jig review [project] [--generate-contracts] [--allow-resolution-network] [--allo
 jig run [flow:path|npm:package|binding:id] [options]
 jig inspect [flow:path|npm:package|binding:id] [--json]
 jig inspect --flow [target | --all] [--topology] [--approved] [--json]
+jig inspect --flow bindings/example.ts
 jig inspect --flow --snapshot
 jig inspect --flow --compare BASELINE [--all]
 jig inspect --result <directory> [--display plain|tui|web] [--json]

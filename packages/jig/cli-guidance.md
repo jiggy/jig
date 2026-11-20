@@ -259,7 +259,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   With no entrypoint or explicit scope, `src/cli-flow-context.ts` renders a compact navigation index from the captured topology.
   `src/cli-flow-orientation.ts` groups the index by implementation and puts configured callers first.
-  Put shared caller slots on the exact selected target's row beside its outgoing slots. Link the captured Binding declarations.
+  Put shared caller slots and the independent Run on the exact selected target's row beside its outgoing slots.
+  Link the captured Binding declarations.
   The installed inspection selects the index before loading the source analyzer.
 
   The comparison renders changed source evidence from `--snapshot` and a fresh capture.
@@ -271,7 +272,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   The application view links the complete configured inventory to one chart per Flow.
   Its opening handoffs and the focused target's callers use the same configured orientation as topology.
-  Focused Binding inspection links its captured declaration and compares its settings and slot selections with other uses.
+  Focused Binding inspection groups the captured declaration and independent Run with the callers.
+  It compares the selected settings and slots with other uses.
 
   Link peer Binding declarations. For shared local Flows, identify the settings schema or its absence and show how settings reach the Flow separately from input.
   When settings need a new schema, name its exact package path. Show the same information once for each shared package in incoming caller decisions.
@@ -297,8 +299,9 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   Working-tree package inspection adds source locations to the same configured caller slots.
   A bare positional package path with `--flow` selects the same scope as `--package`.
-  Match positional files against the current or retained package inventory within one inspection.
-  A file opens its sole configured target or falls back to package scope.
+  In current inspection, use the exact captured Binding declaration path to open its target.
+  Match Flow files against the current or retained package inventory within one inspection.
+  A Flow file opens its sole configured target or falls back to package scope.
   Selector misses point to complete topology on the selected basis.
 
   Package Markdown gives each configured use a focused command using the same approval basis.
