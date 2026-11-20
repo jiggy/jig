@@ -33,6 +33,11 @@ remain supported and are not rewritten by a review default.
 
 ### src project author
 
+- `src/internal/binding-split.ts` owns the scoped Binding source edit.
+  It uses captured declaration bytes and ordinary working-tree linking to validate the proposed routes.
+  Stage both files before publishing the new child and replacing the verified caller.
+  Preserve authored bytes outside the two target literals. Keep approval and grant files out of this operation.
+
 - `project/captured-authoring.ts` owns the shared captured declaration evaluation used by review and working-tree inspection.
   It preserves bootstrap/complete-closure consistency and owns no approval or dependency preparation.
   `inspectPackageProject` applies ordinary linking rules directly to captured packages and declared Binding routes.

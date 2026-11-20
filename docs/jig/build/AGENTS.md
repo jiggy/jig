@@ -10,6 +10,7 @@ Task guides own composition, Agent setup, dependencies, effects, files,
 conversations, progress, project design, collaboration, and result interpretation.
 
 `design.md` owns source-grounded route-change guidance, including decision ownership, preserved alternatives, and affected evidence consumers.
+`design.md` also teaches the scoped Binding split and its source review.
 Authored behavioral maps remain distinct from host-computed configured topology.
 
 `results.md` explains live application maps alongside observed calls, without implying sequence, branch evaluation, or saved invocation history.

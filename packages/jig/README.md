@@ -189,6 +189,10 @@ Add `--topology` for a configured connection map.
 Focus on a target to see its caller continuations and other uses of the same implementation.
 The [source behavior guide](https://jig.md/build/results#inspect-source-behavior) explains partial coverage and how to verify a route.
 
+Use `jig split-binding` when one caller needs its own configuration of a shared child.
+Supply the exact caller Binding and slot, a new Binding name, and the child slot and target.
+See [Binding authoring](https://jig.md/build/design#give-one-caller-its-own-binding).
+
 `jig inspect --result ./result-packet --display tui` reopens saved result,
 file and diagnostic evidence without starting work or requiring a project.
 Use `--display web` for browser inspection instead.

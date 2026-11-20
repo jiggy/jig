@@ -53,6 +53,15 @@ interface OpenDirectory {
   readonly information: BigIntStats
 }
 
+/** Reopen a discovery root through the ordinary mount-safe declaration walk. */
+export async function openDeclarationDirectory(
+  project: PrivateProjectRoot,
+  root: string,
+): Promise<FileHandle> {
+  return (await openProjectDirectory(requirePrivateProjectRoot(project).handle, root, false))!
+    .handle
+}
+
 interface Fingerprint {
   readonly rootIdentity: string
   readonly records: readonly string[]

@@ -38,26 +38,75 @@ export function privateAgentSourceLocations(
   for (const slot of Object.keys(expectedAcpSlotClients)) result[slot] = unlocated(path)
   const source = scan(bytes, false)
   if (source === undefined) return Object.freeze(result)
+  const binding = bindingSlots(source)
+  if (binding === undefined) return Object.freeze(result)
+  const { slots, proven } = binding
+
+  for (const [slot, expectedClient] of Object.entries(expectedAcpSlotClients)) {
+    const selection = slots.get(slot)
+    if (selection === undefined) continue
+    result[slot] = located(path, source, selection.start, 'selection-context')
+    if (!proven) continue
+    const policy = properties(source, selection.start, selection.end)
+    const kind = policy?.get('kind')
+    const client = policy?.get('client')
+    if (
+      kind !== undefined &&
+      stringValue(source, kind) === 'acp' &&
+      client !== undefined &&
+      stringValue(source, client) === expectedClient
+    )
+      result[slot] = located(path, source, client.start, 'client-literal')
+  }
+  return Object.freeze(result)
+}
+
+/** Replace one explicit selection in a captured, standalone literal declaration. */
+export function replaceBindingSlotLiteral(
+  bytes: Uint8Array,
+  slot: string,
+  current: (selector: string) => boolean,
+  replacement: string,
+): string | undefined {
+  const source = scan(bytes, false)
+  if (source === undefined) return undefined
+  const binding = bindingSlots(source)
+  if (!binding?.proven) return undefined
+  const selected = binding.slots.get(slot)
+  if (selected === undefined) return undefined
+  const target = properties(source, selected.start, selected.end)?.get('target') ?? selected
+  const value = stringValue(source, target)
+  if (value === undefined || !current(value)) return undefined
+  const { offset } = source.tokens[target.start]!
+  const quote = source.text[offset]
+  const literal =
+    quote === "'" && !/['\\\p{Cc}\u2028\u2029]/u.test(replacement)
+      ? "'" + replacement + "'"
+      : JSON.stringify(replacement)
+  return source.text.slice(0, offset) + literal + source.text.slice(offset + value.length + 2)
+}
+
+function bindingSlots(source: Source) {
   const { tokens, closes } = source
   const defaults: number[] = []
   for (let index = 0; index < tokens.length; index += 1) {
     if (word(tokens[index], 'export') && word(tokens[index + 1], 'default')) defaults.push(index)
     if (closes.has(index)) index = closes.get(index)!
   }
-  if (defaults.length !== 1) return Object.freeze(result)
+  if (defaults.length !== 1) return undefined
   const declaration = defaults[0]!
   const call = declaration + 3
   if (!word(tokens[declaration + 2], 'defineBinding') || !punctuation(tokens[call], '('))
-    return Object.freeze(result)
+    return undefined
   const end = closes.get(call)
   const bindingStart = call + 1
   const bindingEnd = closes.get(bindingStart)
-  if (end === undefined || bindingEnd === undefined) return Object.freeze(result)
+  if (end === undefined || bindingEnd === undefined) return undefined
   const binding = properties(source, bindingStart, bindingEnd)
   const slotsProperty = binding?.get('slots')
-  if (slotsProperty === undefined) return Object.freeze(result)
+  if (slotsProperty === undefined) return undefined
   const slots = properties(source, slotsProperty.start, slotsProperty.end)
-  if (slots === undefined) return Object.freeze(result)
+  if (slots === undefined) return undefined
 
   // Even context must originate in a call to the ordinary trusted import. A local
   // lookalike can ignore this argument, so uncertain module prefixes stay unlocated.
@@ -80,31 +129,13 @@ export function privateAgentSourceLocations(
           tokens[declaration]!.offset,
         ),
       ))
-  if (!imported) return Object.freeze(result)
+  if (!imported) return undefined
   const singleArgument =
     bindingEnd + 1 === end || (bindingEnd + 2 === end && punctuation(tokens[bindingEnd + 1], ','))
   const complete =
     end + 1 === tokens.length || (end + 2 === tokens.length && punctuation(tokens[end + 1], ';'))
-  if (!singleArgument || !complete) return Object.freeze(result)
-  const proven = literal(source, bindingStart, bindingEnd)
-
-  for (const [slot, expectedClient] of Object.entries(expectedAcpSlotClients)) {
-    const selection = slots.get(slot)
-    if (selection === undefined) continue
-    result[slot] = located(path, source, selection.start, 'selection-context')
-    if (!proven) continue
-    const policy = properties(source, selection.start, selection.end)
-    const kind = policy?.get('kind')
-    const client = policy?.get('client')
-    if (
-      kind !== undefined &&
-      stringValue(source, kind) === 'acp' &&
-      client !== undefined &&
-      stringValue(source, client) === expectedClient
-    )
-      result[slot] = located(path, source, client.start, 'client-literal')
-  }
-  return Object.freeze(result)
+  if (!singleArgument || !complete) return undefined
+  return { slots, proven: literal(source, bindingStart, bindingEnd) }
 }
 
 /** Locate a named policy's client in captured valid JSON, rejecting duplicate keys. */

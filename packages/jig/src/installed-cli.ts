@@ -14,6 +14,7 @@ import {
 import { executePrivateCliAttempt } from './cli-attempt-execution.js'
 import { privateExploreHandoff, privateInstalledExploreLaunch } from './cli-explore-launch.js'
 import { privateCliStderrDiagnostic } from './cli-presentation.js'
+import { type BindingSplit, splitWorkingBinding } from './internal/binding-split.js'
 import { PrivateCliOutput } from './internal/cli-output.js'
 import {
   privateConnectFileOwner,
@@ -134,7 +135,7 @@ async function runPrivateInstalledCli(
     return run()
   try {
     return await withPrivateInstallationVerification(operatorEnvironment, run, {
-      readOnly: arguments_[0] === 'inspect',
+      readOnly: arguments_[0] === 'inspect' || arguments_[0] === 'split-binding',
     })
   } catch (error) {
     if (!(error instanceof PrivateInstallationVerificationConfigurationError)) throw error
@@ -306,6 +307,13 @@ async function runWithEnvironment(
         return exit(0)
       }
       const host: PrivateCliCommandHost = Object.freeze({
+        splitBinding: async (project: string, request: BindingSplit, signal?: AbortSignal) =>
+          splitWorkingBinding(
+            project,
+            await openPrivateInstalledDeclarationEvaluator(location, project),
+            request,
+            signal,
+          ),
         inspectFlow: async (
           project: string,
           options: FlowInspectionOptions,

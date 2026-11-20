@@ -15,10 +15,14 @@ import { type CapturedFlowMember, captureOpenedFlowSource } from '../project/flo
 import { captureGrantSource } from '../project/grant-source.js'
 import { resolveInvocationSlots } from '../project/invocation-slots.js'
 import { captureProjectJigRequirement } from '../project/jig-version.js'
-import { inspectPackageProject, type PackageProjectInspection } from '../project/package-project.js'
+import {
+  type InjectedBindingDeclaration,
+  inspectPackageProject,
+  type PackageProjectInspection,
+} from '../project/package-project.js'
 import { flowSelector, npmPackageName } from '../project/package-selector.js'
 import { isProtectedProjectPath } from '../project/paths.js'
-import { openPrivateProjectRoot } from '../project/root.js'
+import { openPrivateProjectRoot, type PrivateProjectRoot } from '../project/root.js'
 import type { BehaviorReport } from './flow-behavior/model.js'
 import { findFlowImportBoundary } from './flow-import-boundary.js'
 import {
@@ -150,6 +154,134 @@ async function captureWorkingFlow<T>(
   ) => T | Promise<T>,
   signal?: AbortSignal,
 ): Promise<T> {
+  return captureWorkingProject(
+    project,
+    evaluator,
+    async ({ linked, members, dependencies, revision }) => {
+      const flowByPath = new Map(linked.flows.map((flow) => [flow.provenance.projectPath, flow]))
+      if (options.packagePath !== undefined && !flowByPath.has(options.packagePath))
+        invalid(
+          'INSPECTION_PACKAGE_MISSING',
+          'Flow package is absent from the working-tree configuration.',
+        )
+      const requests = [
+        ...linked.flows
+          .filter((flow) => flow.directRun)
+          .map((flow) => ({
+            target: { kind: 'flow' as const, path: flow.provenance.projectPath },
+            packagePath: flow.provenance.projectPath,
+            settings: {},
+            slots: resolveInvocationSlots(flow.uses, flow.slots ?? {}),
+            attachments: flow.invocation.attachments ?? {},
+            artifactResults: flow.invocation.artifactResults ?? [],
+          })),
+        ...linked.bindings.map((binding) => {
+          const flow = flowByPath.get(binding.packagePath)!
+          return {
+            target: { kind: 'binding' as const, id: binding.id },
+            packagePath: binding.packagePath,
+            settings: binding.settings,
+            slots: resolveInvocationSlots(flow.uses, binding.slots),
+            attachments: flow.invocation.attachments ?? {},
+            artifactResults: flow.invocation.artifactResults ?? [],
+          }
+        }),
+      ]
+      if (
+        options.target !== undefined &&
+        !requests.some((r) => selector(r.target) === options.target)
+      ) {
+        const packagePath = [...flowByPath.keys()].find(
+          (path) => flowSelector(path) === options.target,
+        )
+        if (packagePath !== undefined)
+          invalid(
+            'INSPECTION_PACKAGE_SCOPE_REQUIRED',
+            'This package has no direct target in the captured configuration.',
+            packagePath,
+          )
+        invalid('INSPECTION_TARGET_MISSING', 'target is absent from the working-tree configuration')
+      }
+      const targets: ({ target: string; package: string } & Record<string, JsonValue>)[] = []
+      const memberByPath = new Map(members.map((member) => [member.provenance.projectPath, member]))
+      const dependencyByPath = new Map(
+        dependencies.map((member) => [member.provenance.projectPath, member]),
+      )
+      for (const request of requests) {
+        const dependency = dependencyByPath.get(request.packagePath)
+        targets.push({
+          target: selector(request.target),
+          package: request.packagePath,
+          state: 'unreviewed',
+          flow: {
+            digest: memberByPath.get(request.packagePath)!.captured.digest,
+            ...(dependency
+              ? {
+                  installedDependency: {
+                    version: dependency.installedVersion,
+                    agreement: 'unchecked',
+                  },
+                }
+              : {}),
+            settings: request.settings,
+            routes: Object.entries(request.slots).map(([slot, route]) =>
+              route.kind === 'flow'
+                ? { slot, target: selector(route.target) }
+                : { slot, resource: route.native },
+            ),
+          },
+        })
+      }
+      const topology: JsonValue = {
+        basis: 'working-tree',
+        state: 'unreviewed',
+        revision,
+        ...(linked.entrypoint === undefined ? {} : { entrypoint: linked.entrypoint }),
+        targets,
+      }
+      const { pathOperand, ...requested } = options
+      let scope = requested
+      if (pathOperand !== undefined) {
+        const binding = linked.bindings.find(
+          ({ declarationPath }) => declarationPath === pathOperand,
+        )
+        scope = binding
+          ? { target: 'binding:' + binding.id }
+          : await resolveFlowInspectionPath(
+              pathOperand,
+              targets,
+              (path) => memberByPath.has(path),
+              (path, file) =>
+                memberByPath.get(path)!.captured.files.some((entry) => entry.path === file),
+              'working-tree configuration',
+            )
+      }
+      return await projectResult(topology, scope, linked, members)
+    },
+    signal,
+  )
+}
+
+type CapturedBinding = InjectedBindingDeclaration & { readonly definition: BindingDefinition }
+
+type WorkingProjectCapture = {
+  readonly root: PrivateProjectRoot
+  readonly authoring: Awaited<ReturnType<typeof captureProjectAuthoring>>
+  readonly bindings: readonly CapturedBinding[]
+  readonly linked: PackageProjectInspection
+  readonly link: (bindings: readonly InjectedBindingDeclaration[]) => PackageProjectInspection
+  readonly members: readonly CapturedFlowMember[]
+  readonly dependencies: readonly (CapturedFlowMember & { installedVersion: string | null })[]
+  readonly revision: string
+}
+
+/** Capture the working configuration and link proposed Binding values against those same facts. */
+export async function captureWorkingProject<T>(
+  project: string,
+  evaluator: PrivateAuthorEvaluatorOptions,
+  projectResult: (facts: WorkingProjectCapture) => T | Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
   const root = await openPrivateProjectRoot(project)
   let authoring: Awaited<ReturnType<typeof captureProjectAuthoring>> | undefined
   let metadata: Awaited<ReturnType<typeof captureOpenedPackageDirectory>> | undefined
@@ -169,7 +301,7 @@ async function captureWorkingFlow<T>(
         selectors.add(value)
       }
     }
-    const bindings = []
+    const bindings: CapturedBinding[] = []
     for (const [index, member] of bindingSource.members.entries()) {
       const definition = (evaluations[index + 1] as EvaluatedAuthorDeclaration<BindingDefinition>)
         .value
@@ -215,130 +347,44 @@ async function captureWorkingFlow<T>(
       dependencies.push(await captureInstalledFlow(root.requestedPath, selector, declarations))
     }
     const members = [...flows.members, ...dependencies]
-    const linked = inspectPackageProject({
-      flows: members,
-      bindings,
-      grants: grants.grants,
-      ...(declaration.value.entrypoint === undefined
-        ? {}
-        : { entrypoint: declaration.value.entrypoint }),
-      ...(declaration.value.defaultProviders === undefined
-        ? {}
-        : { defaultProviders: declaration.value.defaultProviders }),
-    })
-    const flowByPath = new Map(linked.flows.map((flow) => [flow.provenance.projectPath, flow]))
-    if (options.packagePath !== undefined && !flowByPath.has(options.packagePath))
-      invalid(
-        'INSPECTION_PACKAGE_MISSING',
-        'Flow package is absent from the working-tree configuration.',
-      )
-    const requests = [
-      ...linked.flows
-        .filter((flow) => flow.directRun)
-        .map((flow) => ({
-          target: { kind: 'flow' as const, path: flow.provenance.projectPath },
-          packagePath: flow.provenance.projectPath,
-          settings: {},
-          slots: resolveInvocationSlots(flow.uses, flow.slots ?? {}),
-          attachments: flow.invocation.attachments ?? {},
-          artifactResults: flow.invocation.artifactResults ?? [],
-        })),
-      ...linked.bindings.map((binding) => {
-        const flow = flowByPath.get(binding.packagePath)!
-        return {
-          target: { kind: 'binding' as const, id: binding.id },
-          packagePath: binding.packagePath,
-          settings: binding.settings,
-          slots: resolveInvocationSlots(flow.uses, binding.slots),
-          attachments: flow.invocation.attachments ?? {},
-          artifactResults: flow.invocation.artifactResults ?? [],
-        }
-      }),
-    ]
-    if (
-      options.target !== undefined &&
-      !requests.some((r) => selector(r.target) === options.target)
-    ) {
-      const packagePath = [...flowByPath.keys()].find(
-        (path) => flowSelector(path) === options.target,
-      )
-      if (packagePath !== undefined)
-        invalid(
-          'INSPECTION_PACKAGE_SCOPE_REQUIRED',
-          'This package has no direct target in the captured configuration.',
-          packagePath,
-        )
-      invalid('INSPECTION_TARGET_MISSING', 'target is absent from the working-tree configuration')
-    }
-    const targets: ({ target: string; package: string } & Record<string, JsonValue>)[] = []
-    const memberByPath = new Map(members.map((member) => [member.provenance.projectPath, member]))
-    const dependencyByPath = new Map(
-      dependencies.map((member) => [member.provenance.projectPath, member]),
-    )
-    for (const request of requests) {
-      const dependency = dependencyByPath.get(request.packagePath)
-      targets.push({
-        target: selector(request.target),
-        package: request.packagePath,
-        state: 'unreviewed',
-        flow: {
-          digest: memberByPath.get(request.packagePath)!.captured.digest,
-          ...(dependency
-            ? {
-                installedDependency: {
-                  version: dependency.installedVersion,
-                  agreement: 'unchecked',
-                },
-              }
-            : {}),
-          settings: request.settings,
-          routes: Object.entries(request.slots).map(([slot, route]) =>
-            route.kind === 'flow'
-              ? { slot, target: selector(route.target) }
-              : { slot, resource: route.native },
-          ),
-        },
+    const link = (selected: readonly InjectedBindingDeclaration[]) =>
+      inspectPackageProject({
+        flows: members,
+        bindings: selected,
+        grants: grants.grants,
+        ...(declaration.value.entrypoint === undefined
+          ? {}
+          : { entrypoint: declaration.value.entrypoint }),
+        ...(declaration.value.defaultProviders === undefined
+          ? {}
+          : { defaultProviders: declaration.value.defaultProviders }),
       })
-    }
+    const linked = link(bindings)
     await bindingSource.verify()
     await grants.verify()
     await jigRequirement.verify()
     await root.verify()
     signal?.throwIfAborted()
-    const topology: JsonValue = {
-      basis: 'working-tree',
-      state: 'unreviewed',
-      revision: privateDomainDigest('JIG-Working-Flow-Inspection/1', {
-        declarations: closure.closureDigest,
-        evaluations: evaluations.map((value) => value.outputDigest),
-        packages: members.map((value) => ({
-          path: value.provenance.projectPath,
-          digest: value.captured.digest,
-        })),
-        grants: grants.grants as unknown as JsonValue,
-        dependencyDeclarations: metadata?.digest ?? null,
-      }),
-      ...(declaration.value.entrypoint === undefined
-        ? {}
-        : { entrypoint: declaration.value.entrypoint }),
-      targets,
-    }
-    const { pathOperand, ...requested } = options
-    let scope = requested
-    if (pathOperand !== undefined) {
-      const binding = linked.bindings.find(({ declarationPath }) => declarationPath === pathOperand)
-      scope = binding
-        ? { target: 'binding:' + binding.id }
-        : await resolveFlowInspectionPath(
-            pathOperand,
-            targets,
-            (path) => memberByPath.has(path),
-            (path, file) =>
-              memberByPath.get(path)!.captured.files.some((entry) => entry.path === file),
-            'working-tree configuration',
-          )
-    }
-    return await projectResult(topology, scope, linked, members)
+    const revision = privateDomainDigest('JIG-Working-Flow-Inspection/1', {
+      declarations: closure.closureDigest,
+      evaluations: evaluations.map((value) => value.outputDigest),
+      packages: members.map((value) => ({
+        path: value.provenance.projectPath,
+        digest: value.captured.digest,
+      })),
+      grants: grants.grants as unknown as JsonValue,
+      dependencyDeclarations: metadata?.digest ?? null,
+    })
+    return await projectResult({
+      root,
+      authoring,
+      bindings,
+      linked,
+      link,
+      members,
+      dependencies,
+      revision,
+    })
   } catch (error) {
     operationFailure = error
     throw error
@@ -358,7 +404,7 @@ async function captureWorkingFlow<T>(
       // biome-ignore lint/correctness/noUnsafeFinally: Cleanup failure prevents success and preserves the original operation error.
       throw new AggregateError(
         operationFailure === undefined ? failures : [operationFailure, ...failures],
-        'working-tree inspection cleanup could not finish',
+        'working-tree capture cleanup could not finish',
       )
   }
 }

@@ -13,36 +13,61 @@ import {
   qualifyFoundationHost,
   requireFoundationOptIn,
 } from '../fixtures/host-foundation/materialize.js'
+import { checkInstalledBindingSplit } from '../fixtures/installed-binding-split.js'
 import { checkInstalledDisplay, installedRuntime } from '../fixtures/installed-display.js'
 import { checkInstalledFlowBehavior } from '../fixtures/installed-flow-behavior.js'
 
 requireFoundationOptIn()
 const qualification = await qualifyFoundationHost()
 
+async function installFixtureCli(root: string, command: ReturnType<typeof foundationCommands>) {
+  const archives = await freezeFoundationArchives(root, command)
+  const tooling = join(root, 'tooling')
+  await mkdir(tooling)
+  await writeFile(
+    join(tooling, 'package.json'),
+    JSON.stringify({
+      private: true,
+      dependencies: {
+        '@jigging/jig': `file:${archives.jig}`,
+        '@jigging/flow': `file:${archives.flow}`,
+      },
+    }),
+  )
+  await command(
+    [process.execPath, 'install', '--ignore-scripts', '--no-progress', '--backend', 'copyfile'],
+    tooling,
+    120_000,
+  )
+  const cli = join(tooling, 'node_modules/.bin/jig')
+  return { cli, tooling }
+}
+
+test('installed CLI: Binding authoring changes only offer samples', async () => {
+  const root = realpathSync(await mkdtemp(join(tmpdir(), 'jig-installed-binding-split-')))
+  let passed = false
+  try {
+    const command = foundationCommands(join(root, 'commands'))
+    const { cli, tooling } = await installFixtureCli(root, command)
+    const flowVersion = JSON.parse(
+      await readFile(join(tooling, 'node_modules/@jigging/flow/package.json'), 'utf8'),
+    ).version
+    const before = await foundationResidue(qualification, command, root)
+    await checkInstalledBindingSplit(cli, join(root, 'binding-split'), command, flowVersion)
+    expect(await foundationResidue(qualification, command, root)).toEqual(before)
+    passed = true
+  } finally {
+    if (passed) await rm(root, { recursive: true, force: true })
+    else console.error(`Installed Binding authoring evidence retained at ${root}`)
+  }
+}, 600_000)
+
 test('installed CLI: pristine initialized greeting, exact output, real saved inspectors and native residue', async () => {
   const root = realpathSync(await mkdtemp(join(tmpdir(), 'jig-installed-cli-lifecycle-')))
   let passed = false
   try {
     const command = foundationCommands(join(root, 'commands'))
-    const archives = await freezeFoundationArchives(root, command)
-    const tooling = join(root, 'tooling')
-    await mkdir(tooling)
-    await writeFile(
-      join(tooling, 'package.json'),
-      JSON.stringify({
-        private: true,
-        dependencies: {
-          '@jigging/jig': `file:${archives.jig}`,
-          '@jigging/flow': `file:${archives.flow}`,
-        },
-      }),
-    )
-    await command(
-      [process.execPath, 'install', '--ignore-scripts', '--no-progress', '--backend', 'copyfile'],
-      tooling,
-      120_000,
-    )
-    const cli = join(tooling, 'node_modules/.bin/jig')
+    const { cli, tooling } = await installFixtureCli(root, command)
     const project = join(root, 'greeting')
     const before = await foundationResidue(qualification, command, root)
     await command([cli, 'init', project], root)

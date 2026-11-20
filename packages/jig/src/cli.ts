@@ -49,6 +49,7 @@ import {
   inspectPrivateApprovedProject,
   type PrivateInspectionEnvironmentCheck,
 } from './internal/activation-admission-store.js'
+import type { BindingSplit, splitWorkingBinding } from './internal/binding-split.js'
 import { PrivateCliOutput } from './internal/cli-output.js'
 import { importContract } from './internal/contract-import.js'
 import {
@@ -94,7 +95,7 @@ import {
   PRIVATE_WORKSPACE_SOURCE_ROOT_PATH_BYTES,
 } from './internal/workspace-source-roots.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
-import type { RunTargetRef } from './project/author.js'
+import { bindingRef, parseRunTargetSelector, type RunTargetRef } from './project/author.js'
 import { resolveProjectEntrypoint } from './project/entrypoint.js'
 import { EVALUATOR_HINTS, evaluatorInspectionHint } from './project/evaluator-diagnostics.js'
 import type { NativeAcpClient } from './project/grants.js'
@@ -124,6 +125,7 @@ const HELP = `Jig runs reusable methods with powers you approve.
 Usage:
   jig init <directory>       Create a project with a small greeting Flow
   jig new <name>             Add an editable Flow to the current project
+  jig split-binding <caller> Give one caller slot its own child Binding
   jig review [project]       Review changes and approve an exact revision
   jig run [target]           Choose or run a reviewed Flow or Binding
   jig explore [target]       Explore reviewed workflows and run with new input
@@ -239,6 +241,17 @@ Fish:
 
 The scripts use \`jig completion targets [prefix]\` to read approved selectors.
 Lookup never evaluates source, checks providers, prepares dependencies or approves work.`,
+  'split-binding': `Usage: jig split-binding binding:<caller> --slot <slot> --as <name> --select <child-slot>=<target>
+
+Copy the Binding explicitly selected by the caller slot. Change one child
+selection in the copy, then point the caller slot to it. The target accepts
+flow:<path>, npm:<package>, or binding:<id> from the current configuration.
+
+  jig split-binding binding:offer --slot sample --as offer-sample --select review=binding:editor
+
+Run from the project root. Both declarations must be discovered, standalone
+defineBinding calls with literal values. Inspect the reported source paths
+and review separately before running the new configuration.`,
   'import-contract': `Usage: jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>
        jig import-contract --list
 
@@ -416,6 +429,11 @@ const textDecoder = new TextDecoder()
 /** Private injection seam until the installed host owns project acquisition. */
 export interface PrivateCliCommandHost {
   readonly prepareRun?: typeof preparePrivateCliRun
+  readonly splitBinding?: (
+    project: string,
+    request: BindingSplit,
+    signal?: AbortSignal,
+  ) => ReturnType<typeof splitWorkingBinding>
   readonly inspectFlow?: (
     project: string,
     options: FlowInspectionOptions,
@@ -566,6 +584,7 @@ async function executeCommand(
     if (arguments_[0] === 'import-contract') return await executeImportContract(arguments_, runtime)
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
     if (arguments_[0] === 'new') return await executeNew(arguments_, runtime)
+    if (arguments_[0] === 'split-binding') return await executeSplitBinding(arguments_, runtime)
     if (arguments_[0] === 'completion') return await executeCompletion(arguments_, runtime)
     if (arguments_[0] === 'attempt') return await executeAttempt(arguments_, options, runtime)
     if (arguments_[0] === 'review') return await executeReview(arguments_, runtime)
@@ -844,12 +863,106 @@ async function executeNew(arguments_: readonly string[], runtime: CliRuntime): P
   }
 }
 
+function parseSplitBinding(arguments_: readonly string[]): BindingSplit {
+  const options = new Map<string, string>()
+  const command = 'split-binding'
+  for (let i = 2; i < arguments_.length; i += 2) {
+    const flag = arguments_[i]!
+    const value = arguments_[i + 1]
+    if (
+      !['--slot', '--as', '--select'].includes(flag) ||
+      options.has(flag) ||
+      value === undefined ||
+      value.startsWith('-')
+    )
+      usage(command, 'Supply one --slot, --as, and --select child-slot=target.')
+    options.set(flag, value)
+  }
+  const caller = arguments_[1]
+  const selection = options.get('--select') ?? ''
+  const separator = selection.indexOf('=')
+  if (!caller?.startsWith('binding:') || separator < 1 || options.size !== 3)
+    usage(
+      command,
+      'Supply an exact binding:<caller>, --slot, --as, and --select child-slot=target.',
+    )
+  try {
+    const localName = (value: string) => {
+      if (value.trim() !== value) throw new Error('invalid name')
+      return bindingRef(value).id
+    }
+    const target = parseRunTargetSelector(selection.slice(separator + 1), 'new slot target')
+    return {
+      caller: localName(caller.slice(8)),
+      slot: localName(options.get('--slot')!),
+      name: localName(options.get('--as')!),
+      childSlot: localName(selection.slice(0, separator)),
+      target:
+        target.kind === 'binding' ? 'binding:' + localName(target.id) : flowSelector(target.path),
+    }
+  } catch {
+    usage(
+      command,
+      'Use LocalNames and an exact flow:<path>, npm:<package>, or binding:<id> selection.',
+    )
+  }
+}
+
+async function executeSplitBinding(
+  arguments_: readonly string[],
+  runtime: CliRuntime,
+): Promise<number> {
+  const request = parseSplitBinding(arguments_)
+  if (runtime.host.splitBinding === undefined)
+    throw new CliDiagnostic(
+      'JIG_BINDING_SPLIT_UNAVAILABLE',
+      'Run the installed Jig command on a host that supports working-tree inspection.',
+      2,
+    )
+  try {
+    const edit = await runtime.host.splitBinding(runtime.currentDirectory, request, runtime.signal)
+    const name = 'binding:' + request.name
+    runtime.writeOutput(
+      [
+        `Updated ${asciiJsonString(edit.callerPath)} slot ${request.slot}: ${edit.childSelector} → ${name}`,
+        `Created ${asciiJsonString(edit.newPath)} from ${asciiJsonString(edit.childPath)}`,
+        `  Slot ${request.childSlot}: ${asciiJsonString(edit.previous)} → ${asciiJsonString(request.target)}`,
+        '',
+        `Inspect the new configuration with jig inspect --flow ${name}.`,
+        'Review changed source with jig review before running it.',
+        '',
+      ].join('\n'),
+    )
+    return 0
+  } catch (error) {
+    if (
+      error instanceof CheckError &&
+      !['PROJECT_JIG_VERSION_MISMATCH', 'PROJECT_JIG_REQUIREMENT_INVALID'].includes(error.code)
+    ) {
+      const where =
+        error.path === undefined ? '' : ` At ${asciiJsonString(error.path)}${error.pointer ?? ''}.`
+      throw new CliDiagnostic(
+        error.code.startsWith('BINDING_SPLIT_') ? 'JIG_' + error.code : 'JIG_BINDING_SPLIT_REFUSED',
+        error.code.startsWith('BINDING_SPLIT_')
+          ? error.message + where
+          : `${error.code}.${where} ${asciiJsonString(error.message.slice(0, 1024))} Inspect the working configuration and correct the reported source issue.`,
+        error.kind === 'invalid' ? 1 : 2,
+      )
+    }
+    throw error
+  }
+}
+
 /** Whether the installed command needs to acquire the private execution host. */
 export function privateCliRequiresHost(arguments_: readonly string[]): boolean {
   if (isHelpRequest(arguments_)) return false
   if (arguments_[0] === 'attempt')
     return ['submit', 'reconcile'].includes(privateCliAttemptOperation(arguments_) ?? '')
   try {
+    if (arguments_[0] === 'split-binding') {
+      parseSplitBinding(arguments_)
+      return true
+    }
     if (arguments_[0] === 'inspect') {
       const parsed = parseInspect(arguments_)
       return parsed.flow && !parsed.approved

@@ -15,6 +15,9 @@ It checks that a project without an entrypoint opens the navigation index and ca
 
 Check shared callers against the exact selected target and link to the captured Binding paths.
 The installed check includes the independent Run selector for a shared target and resolves an exact Binding declaration path.
+The Binding split scenario exercises the installed command, including refused edits and exact source changes.
+Native Runs verify the new reviewer for offer samples and the original reviewer for fresh books, resumed books, and standalone samples.
+The fixture checks preserved attachment routes, settings, and the earlier approval.
 
 It also inspects a consumer before and after a callee edit, then verifies the unchanged caller through a native Run.
 It checks that an eager sibling import identifies its configured handoff, fails
