@@ -748,16 +748,28 @@ function nextSteps(after: readonly BehaviorStep[], linkSource = false): string {
   )
 }
 
-function renderFirstWrites(report: BehaviorReport, scope: Scope, callers: CallDetails): string[] {
+function renderFirstWrites(
+  report: BehaviorReport,
+  scope: Scope,
+  callers: CallDetails,
+  target: BehaviorTarget | undefined,
+): string[] {
   type WritePath = {
     write: Extract<BehaviorStep, { kind: 'effect' }>
     checks: readonly BehaviorGuard[]
     after: readonly BehaviorStep[]
     entry: string
+    input: string
+    writerExit?: string
   }
   const sites = new Map<string, Map<string, WritePath>>()
   let limited = false
-  function add(route: Route, key: string, entry: string, after?: readonly BehaviorStep[]) {
+  function add(
+    route: Route,
+    key: string,
+    entry: string,
+    caller?: { readonly input: string; readonly after: Route },
+  ) {
     const index = route.findIndex((step) => writesFile(step) && step.owner === scope.target)
     const write = route[index]
     if (write?.kind !== 'effect') return
@@ -776,7 +788,7 @@ function renderFirstWrites(report: BehaviorReport, scope: Scope, callers: CallDe
       return
     }
     const tail =
-      after ??
+      caller?.after ??
       route.slice(index + 1).filter((step) => step.kind === 'condition' || step.kind === 'end')
     const previous = paths.get(key)?.after.at(-1)
     const terminal = tail.at(-1)
@@ -788,11 +800,14 @@ function renderFirstWrites(report: BehaviorReport, scope: Scope, callers: CallDe
     )
       return
     const checks = route.slice(0, index).filter((step) => step.kind === 'condition')
+    const end = route.at(-1)
     paths.set(key, {
       write,
       checks: [...checks, ...(write.guards ?? [])].slice(-2),
       after: tail,
       entry,
+      input: caller?.input ?? 'Own Flow input',
+      ...(caller && end?.kind === 'end' ? { writerExit: label(end) } : {}),
     })
   }
   for (const route of scope.routes)
@@ -811,7 +826,7 @@ function renderFirstWrites(report: BehaviorReport, scope: Scope, callers: CallDe
         child.steps,
         anchor + ':' + call.completion,
         text(call.caller + ' via ' + call.slot + qualifier) + ' (' + sourceLink(call.site) + ')',
-        after,
+        { input: child.input, after },
       )
     }
   }
@@ -822,6 +837,32 @@ function renderFirstWrites(report: BehaviorReport, scope: Scope, callers: CallDe
     'These examples link the first modeled write attempt in this Flow to how it was entered.',
     '',
   ]
+  const fields = report.inputFields
+  if (fields?.paths.length || fields?.truncated)
+    lines.push(
+      [
+        '**Declared writer input fields**',
+        fields.paths.map(text).join(', '),
+        fields.truncated ? 'Additional paths omitted.' : '',
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      '',
+    )
+  if (target) lines.push('**Writer result contract** · ' + resultContract(target), '')
+  const earlyStops = new Set<string>()
+  for (const route of scope.routes) {
+    const end = route.at(-1)
+    if (end?.kind === 'end' && end.completion === 'throw' && !route.some(writesFile))
+      earlyStops.add(nextSteps([end], true))
+  }
+  if (earlyStops.size)
+    lines.push(
+      '**Modeled rejections before writing**',
+      '',
+      ...[...earlyStops].slice(0, 2).map((stop) => '- ' + stop),
+      '',
+    )
   for (const paths of sites.values()) {
     const origin = paths.values().next().value!.write.site
     lines.push(
@@ -834,14 +875,15 @@ function renderFirstWrites(report: BehaviorReport, scope: Scope, callers: CallDe
             '',
           ]
         : []),
-      '| Entry | Checks before the write | Destination | Later checks or actions |',
-      '| --- | --- | --- | --- |',
+      '| Entry | Writer input and result in this case | Checks before the write | Destination | Later checks or actions |',
+      '| --- | --- | --- | --- | --- |',
     )
-    for (const { entry, checks, write, after } of paths.values())
+    for (const { entry, input, writerExit, checks, write, after } of paths.values())
       lines.push(
         '| ' +
           [
             entry,
+            text(input) + (writerExit ? '<br>' + text(writerExit) : ''),
             checks.map(linkedCheck).join(' → ') || '—',
             text(write.detail),
             nextSteps(after, true) || 'Unresolved',
@@ -1857,7 +1899,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
       focus,
     )
     lines.push(
-      ...renderFirstWrites(report, selected, callers.shown),
+      ...renderFirstWrites(report, selected, callers.shown, target),
       ...renderCallContinuations(callers.shown, targets, true, callers.omitted),
       ...renderNestedContinuations(report, focus, targets),
       ...renderCallContinuations(details.shown, targets, false),

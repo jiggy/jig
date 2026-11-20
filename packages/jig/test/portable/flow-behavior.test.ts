@@ -7,7 +7,10 @@ import {
   flowBehaviorSnapshot,
 } from '../../src/internal/flow-behavior/comparison.js'
 import { analyzeFlowBehavior } from '../../src/internal/flow-behavior/compose.js'
-import { inputFromContract } from '../../src/internal/flow-behavior/input-contract.js'
+import {
+  declaredInputPaths,
+  inputFromContract,
+} from '../../src/internal/flow-behavior/input-contract.js'
 import {
   BEHAVIOR_LIMITS,
   type BehaviorInput,
@@ -2773,18 +2776,36 @@ test('shared setting checks pair each Binding with its own analyzed continuation
 })
 
 test('direct entry navigation retains the selected Binding and marks a shared write site', () => {
-  const writer = method(`
+  const writer = method(
+    `
     import { handle } from '@jigging/flow'
     import { writeFile } from 'node:fs/promises'
-    await handle(async () => {
+    await handle(async (run) => {
+      if (run.input.mode === 'blocked') throw new Error('Input unavailable')
       await writeFile('preview.json', 'sample')
-      return {outcome: 'done', output: {status: 'ready'}}
+      return {outcome: 'done', output: {status: run.input.mode}}
     })
-  `)
+  `,
+    {
+      contractPath: 'flows/convert/FLOW.contract.json',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          mode: { type: 'string' },
+          contacts: {
+            type: 'array',
+            items: { type: 'object', properties: { address: { type: 'string' } } },
+          },
+        },
+      },
+    },
+  )
   const input = snapshot(
     writer,
     method(
-      handlerSource(`return await run.call({slot:'converter', operationId:'write', input:{}})`),
+      handlerSource(
+        `return await run.call({slot:'converter', operationId:'write', input:{mode:'ready'}})`,
+      ),
     ),
   )
   const [root, direct] = input.targets
@@ -2810,6 +2831,10 @@ test('direct entry navigation retains the selected Binding and marks a shared wr
   expect(write).toContain('**Shared write site**')
   expect(write).toContain('Direct invocation of flow:flows/convert')
   expect(write).toContain('binding:code via converter')
+  expect(write).toContain('**Declared writer input fields** · mode, contacts\\[\\].address')
+  expect(write).toContain('**Writer result contract** · [flows/convert/FLOW.contract.json]')
+  expect(write).toContain('**Modeled rejections before writing**\n\n- Throws: Input unavailable')
+  expect(write).toMatch(/binding:code via converter[^\n]+mode = "ready"[^\n]+status = "ready"/)
   expect(write).not.toContain('binding:audit via converter')
   const aliasCaller = renderFlowBehavior(
     analyzeFlowBehavior({
@@ -2830,4 +2855,25 @@ test('direct entry navigation retains the selected Binding and marks a shared wr
     }),
   )
   expect(directOnly).not.toContain('**Shared write site**')
+})
+
+test('declared input paths quote literal keys and disclose projection bounds', () => {
+  const schema = {
+    properties: {
+      'a.b': { items: { properties: { leaf: { type: 'string' } } } },
+      optional: { properties: { x: true } },
+    },
+  }
+  expect(declaredInputPaths(schema)).toEqual({
+    paths: ['["a.b"][].leaf', 'optional.x'],
+    truncated: false,
+  })
+  const wide = {
+    properties: Object.fromEntries(
+      Array.from({ length: 13 }, (_, index) => [`field${index}`, true]),
+    ),
+  }
+  const projection = declaredInputPaths(wide)
+  expect(projection.paths).toHaveLength(12)
+  expect(projection.truncated).toBe(true)
 })

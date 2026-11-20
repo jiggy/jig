@@ -43,6 +43,43 @@ function record(schema: JsonValue | undefined): schema is JsonObject {
   return schema !== null && typeof schema === 'object' && !Array.isArray(schema)
 }
 
+/** List authored paths for navigation without projecting runtime guarantees. */
+export function declaredInputPaths(schema: JsonValue | undefined) {
+  const paths: string[] = []
+  let truncated = false
+  let remaining = 64
+  function visit(node: JsonValue, path: string, depth: number) {
+    if (remaining-- <= 0 || paths.length >= 12 || path.length > 128) {
+      truncated = true
+      return
+    }
+    if (record(node)) {
+      const properties = record(node.properties) ? Object.entries(node.properties) : []
+      const items = record(node.items) ? node.items : undefined
+      if ((properties.length || items) && depth >= 6) truncated = true
+      else if (properties.length) {
+        for (const [name, child] of properties) {
+          if (remaining <= 0 || paths.length >= 12) {
+            truncated = true
+            break
+          }
+          const member = /^[A-Za-z_$][\w$]*$/.test(name)
+            ? (path ? '.' : '') + name
+            : '[' + JSON.stringify(name) + ']'
+          visit(child, path + member, depth + 1)
+        }
+        return
+      } else if (items) {
+        visit(items, path + '[]', depth + 1)
+        return
+      }
+    }
+    if (path) paths.push(path)
+  }
+  if (schema !== undefined) visit(schema, '', 0)
+  return { paths, truncated }
+}
+
 function integerRange(schema: JsonValue | undefined) {
   if (!record(schema) || schema.type !== 'integer') return undefined
   const { minimum, maximum } = schema

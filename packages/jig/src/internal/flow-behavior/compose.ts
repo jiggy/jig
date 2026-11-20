@@ -5,6 +5,7 @@ import {
   Interpreter,
   type State,
 } from './analyze.js'
+import { declaredInputPaths } from './input-contract.js'
 import {
   type AuthoredContinuation,
   type AuthoredFileWrite,
@@ -124,6 +125,9 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
   const application = focus === undefined && packagePath === undefined
   const directHandoffs = []
   const focused = focus === undefined ? undefined : targets.get(focus)
+  const inputFields = focused
+    ? declaredInputPaths(input.packages.get(focused.implementation)?.inputSchema)
+    : undefined
   if (focused?.slots.size) {
     const directByPackage = new Map(
       input.targets.flatMap(({ id, implementation }) =>
@@ -237,6 +241,7 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
     focus,
     ...(packagePath === undefined ? {} : { packagePath }),
     ...(entrypoint === undefined ? {} : { entrypoint }),
+    ...(inputFields?.paths.length || inputFields?.truncated ? { inputFields } : {}),
     ...(directHandoffs.length ? { directHandoffs } : {}),
     inventory,
     scopes,

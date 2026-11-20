@@ -1087,6 +1087,10 @@ A focused view can show the first modeled write attempt in the selected Flow for
 It links direct invocation and configured callers to the same source write when their retained paths reach it.
 The examples retain checks before the write and subsequent checks or actions. Conditional child results keep their labels.
 
+The write view can show declared input paths and the writer's result contract.
+Modeled caller inputs and writer exits remain tied to their represented write cases.
+It can also show modeled rejections before a write.
+
 If the same write has both kinds of entries, the view identifies a common place for validation before that write.
 A focused view also identifies direct inputs separately from its configured call slots.
 For a configured handoff, it can show an independently callable entry that uses the same Flow implementation.

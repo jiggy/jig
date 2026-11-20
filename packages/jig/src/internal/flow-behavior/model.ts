@@ -24,6 +24,7 @@ export interface BehaviorPackage {
   readonly reportingFiles?: ReadonlySet<string>
   readonly unavailable?: string
   readonly contractPath?: string
+  readonly inputSchema?: JsonValue
   readonly acceptedInput?: Value
   readonly checkResult?: (result: JsonValue) => boolean
 }
@@ -274,6 +275,7 @@ export interface BehaviorReport {
   readonly packagePath?: string
   readonly entrypoint?: string
   readonly inventory: readonly BehaviorTarget[]
+  readonly inputFields?: { readonly paths: readonly string[]; readonly truncated: boolean }
   readonly directHandoffs?: readonly {
     readonly slot: string
     readonly selected: string

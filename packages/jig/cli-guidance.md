@@ -340,6 +340,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
 
   Identify a common validation site when direct and caller entries reach the same modeled write.
   Keep independently callable inputs distinct from the selected target of each slot.
+  Show declared input paths beside write evidence without claiming an input case used every declared field.
+  Keep the writer's result contract beside its represented exits.
 
   Name the passing and rejecting branches of a direct validation guard.
   Show source locations and whether the displayed routes resolve each predicate.
