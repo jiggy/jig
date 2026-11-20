@@ -39,7 +39,8 @@ cd hello-jig
 
 `init` creates ordinary editable source, including `jig.ts`, a greeting Flow, and an empty Bindings directory.
 Its root [`AGENTS.md`](../for-agents.md#find-where-to-change-a-workflow) tells coding agents how to find a workflow decision and its other callers.
-It installs nothing, makes no network requests, and approves nothing.
+The greeting has its own `flows/hello/AGENTS.md` for [Flow-specific notes](../for-agents.md#keep-notes-with-each-flow).
+Initialization installs nothing, makes no network requests, and approves nothing.
 
 Open `flows/hello/FLOW.ts`:
 

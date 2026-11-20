@@ -54,6 +54,7 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
       'README.md',
       'jig.ts',
       'package.json',
+      'flows/hello/AGENTS.md',
       'flows/hello/package.json',
       'flows/hello/FLOW.meta.json',
       'flows/hello/FLOW.ts',

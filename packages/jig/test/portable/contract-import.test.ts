@@ -176,6 +176,7 @@ test('new wires selected complete contract closures as ordinary source without e
   ).toBe(0)
   expect(output).toContain('Created Flow')
   const flow = join(project, 'flows/workshop')
+  expect(await readFile(join(flow, 'AGENTS.md'), 'utf8')).toContain('# workshop Flow\n')
   expect(JSON.parse(await readFile(join(flow, 'FLOW.meta.json'), 'utf8')).uses).toEqual({
     draft: { contract: './contracts/draft/FLOW.contract.json' },
     review: { contract: './contracts/review/FLOW.contract.json' },

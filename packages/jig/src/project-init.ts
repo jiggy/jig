@@ -16,6 +16,7 @@ import { privateJigVersion } from './installation-version.js'
 import { importContract } from './internal/contract-import.js'
 import { openPrivateChild } from './internal/descriptor-files.js'
 import { privatePublishDirectory } from './internal/file-input.js'
+import { doxFramework } from './project-dox.js'
 
 /** @internal Not exported from the package. */
 export interface ProjectInitFileSystem {
@@ -187,6 +188,7 @@ export async function createFlow(
       declarations[slot] = { contract: `./contracts/${slot}/${basename(imported.descriptor)}` }
     }
     const files: Record<string, string> = {
+      'AGENTS.md': flowAgentGuidance(name),
       'FLOW.meta.json': `${JSON.stringify({ name, description: 'Describe what this method does.', ...(uses.length === 0 ? {} : { uses: declarations }) }, null, 2)}\n`,
       'package.json': `${JSON.stringify({ name: `${projectName || 'jig'}-${name}-flow`, private: true, type: 'module', dependencies: { '@jigging/flow': sdk } }, null, 2)}\n`,
       'FLOW.ts':
@@ -298,7 +300,11 @@ export async function createProject(
           'Flow source file, pass its project-relative path to the same command.',
           '',
           'For a wording change or another edit within one Flow, use its source and tests directly.',
+          'Keep notes about that Flow in the `AGENTS.md` beside its entrypoint.',
           '',
+          '---',
+          '',
+          doxFramework,
         ].join('\n'),
       ],
       ['jig.ts', renderJigModule(agent)],
@@ -428,8 +434,32 @@ function renderProjectManifest(dependencies?: Readonly<Record<string, string>>):
   )
 }
 
+function flowAgentGuidance(name: string): string {
+  return [
+    `# ${name} Flow`,
+    '',
+    '## Purpose',
+    '',
+    'See the method description in [FLOW.meta.json](./FLOW.meta.json).',
+    '',
+    '## Ownership',
+    '',
+    '[FLOW.ts](./FLOW.ts) is the entrypoint for this method.',
+    '',
+    '## Local Contracts',
+    '',
+    '## Work Guidance',
+    '',
+    '## Verification',
+    '',
+    '## Child DOX Index',
+    '',
+  ].join('\n')
+}
+
 function greetingFiles(): readonly (readonly [string, string])[] {
   return [
+    ['flows/hello/AGENTS.md', flowAgentGuidance('hello')],
     [
       'flows/hello/FLOW.meta.json',
       '{"name":"hello","description":"Greet the supplied string, or world for other input values."}\n',

@@ -592,6 +592,7 @@ an existing path. It does not evaluate `jig.ts`, install dependencies, modify
 membership, or approve the new Flow. The SDK dependency follows the project's
 explicit package manifest declaration when present, otherwise the tested SDK.
 Explicit membership arrays must be edited by the author before review.
+The new package includes its own `AGENTS.md` for method-specific guidance. The project author maintains the links in the parent DOX index.
 
 Optional `--use` declarations select at most 16 distinct contract slots. Each
 source is a `jig:` standard invocation agreement, a project-relative descriptor path or an exact installed `npm:` package

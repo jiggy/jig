@@ -4,6 +4,15 @@ THIRD-PARTY MATERIAL USED BY JIG
 This file records third-party material included by the current Jig build. It
 does not replace any third-party license or cure an unmet distribution term.
 
+DOX FRAMEWORK
+-------------
+
+Jig bundles Agent Zero's DOX instructions in its project scaffold.
+The generated root AGENTS.md includes the full MIT notice for that section.
+Copyright (c) 2026 Agent Zero.
+
+https://github.com/agent0ai/dox/tree/765ae4ac02cc884eefcd41a3d0f71941721adb89
+
 BUNDLED CONTRACT AUTHORING
 --------------------------
 
