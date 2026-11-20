@@ -270,6 +270,9 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Its opening handoffs and the focused target's callers use the same configured orientation as topology.
   Focused Binding inspection links its captured declaration and compares its settings and slot selections with other uses.
 
+  Link local Flow entry files from the same capture as the configured targets.
+  Show the entry source with focused targets, their displayed incoming callers and alternative slot targets, and once per Flow in an application map.
+
   Pair supported direct setting checks with the selected value and declaration.
   Compare the same authored check across uses when captured setting values differ.
   Distinguish a setting edit in the selected Binding from editing the shared check.

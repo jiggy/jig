@@ -2126,6 +2126,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
         .map((target) => target.id),
     )
     lines.push(
+      ...entrySourceFacts(report, uses.values().next().value),
       ...renderFlowPackageUses(
         report.packagePath,
         inventory,
@@ -2154,6 +2155,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   lines.push(
     '## ' + text(focus),
     '',
+    ...entrySourceFacts(report, focus),
     ...configuredOrientation(report, focus),
     ...directInvocations(target, report.directHandoffs, report.inputFields, routes),
     ...requiredSlotFacts(target),
@@ -2257,11 +2259,17 @@ export function renderFlowBehavior(report: BehaviorReport): string {
   return lines.join('\n') + '\n'
 }
 
+function entrySourceFacts(report: BehaviorReport, target: string | undefined): string[] {
+  const path = target === undefined ? undefined : report.entrySources?.get(target)
+  return path === undefined ? [] : ['**Captured entry source** · ' + sourcePathLink(path), '']
+}
+
 function incomingCallDecisions(
-  { scopes, incomingCallerUses }: BehaviorReport,
+  report: BehaviorReport,
   targets: ReadonlyMap<string, BehaviorTarget>,
   focus: string,
 ): string[] {
+  const { scopes, incomingCallerUses, entrySources } = report
   const authored = new Map(
     scopes.flatMap((scope) =>
       scope.target !== focus && scope.callSelections ? [[scope.target, scope] as const] : [],
@@ -2282,7 +2290,7 @@ function incomingCallDecisions(
     }
   const lines = ['### Incoming caller decisions', '']
   for (const caller of shown) {
-    lines.push(`#### ${text(caller)}`, '')
+    lines.push(`#### ${text(caller)}`, '', ...entrySourceFacts(report, caller))
     const paths = upstream.get(caller)!
     if (paths.length) {
       lines.push('**Configured callers of ' + text(caller) + '**', '')
@@ -2315,11 +2323,15 @@ function incomingCallDecisions(
     for (const peer of peers.slice(0, BEHAVIOR_LIMITS.focusedRelatedCalls)) {
       const selections = slots.map((slot) => {
         const selected = peer.slots.get(slot)
-        return selected === undefined ? `${slot} has no selection` : `${slot} → ${selected}`
+        if (selected === undefined) return text(`${slot} has no selection`)
+        const path = entrySources?.get(selected)
+        return text(`${slot} → ${selected}`) + (path ? ' · entry ' + sourcePathLink(path) : '')
       })
       lines.push(
         '- ' +
-          text(peer.id + ' · ' + selections.join(' · ')) +
+          text(peer.id) +
+          ' · ' +
+          selections.join(' · ') +
           (peer.declarationPath ? ' (' + sourcePathLink(peer.declarationPath) + ')' : ''),
       )
     }
@@ -2706,6 +2718,7 @@ function applicationMap(report: BehaviorReport): string[] {
       '<a id="' + idFor('flow', implementation) + '"></a>',
       '## Flow ' + text(implementation),
       '',
+      ...entrySourceFacts(report, configurations[0]?.id),
     )
     const views = configurations.map((target) => {
       const scope = scopes.get(target.id)

@@ -906,11 +906,21 @@ test('focused callee shows authored requests through the exact incoming Binding 
   }
   const report = analyzeFlowBehavior(focusedInput)
   expect(report.inventory.some(({ id }) => id === audit.id || id === preview.id)).toBe(false)
-  const rendered = renderFlowBehavior(report)
+  const entrySources = new Map([
+    [target, 'flows/convert/FLOW.ts'],
+    [code.id, 'flows/import/FLOW.ts'],
+    ['flow:flows/export', 'flows/export/FLOW.ts'],
+  ])
+  const rendered = renderFlowBehavior({ ...report, entrySources })
+  expect(rendered).toContain(
+    '## flow:flows/convert\n\n**Captured entry source** · [flows/convert/FLOW.ts](./flows/convert/FLOW.ts)',
+  )
   const decisions = rendered
     .split('### Incoming caller decisions\n')[1]
     ?.split('### Consequences')[0]
-  expect(decisions).toContain('#### binding:code')
+  expect(decisions).toContain(
+    '#### binding:code\n\n**Captured entry source** · [flows/import/FLOW.ts](./flows/import/FLOW.ts)',
+  )
   expect(decisions).toContain('**converter → flow:flows/convert**')
   expect(decisions).toContain('**Configured callers of binding:code**')
   expect(decisions).toContain(
@@ -931,15 +941,19 @@ test('focused callee shows authored requests through the exact incoming Binding 
   )
   expect(decisions).toContain("**Other configured uses of this caller's code** · flows/import")
   expect(decisions).toContain(
-    'binding:audit · converter → flow:flows/export ([bindings/audit.ts](./bindings/audit.ts))',
+    'binding:audit · converter → flow:flows/export · entry [flows/export/FLOW.ts](./flows/export/FLOW.ts) ([bindings/audit.ts](./bindings/audit.ts))',
   )
   expect(decisions).toContain('flow:flows/import · converter has no selection')
   expect(decisions).not.toContain('#### binding:audit')
   expect(decisions).not.toContain("scope = 'unrelated'")
   expect(decisions).not.toContain('**exporter →')
 
-  const opaque = renderFlowBehavior(analyzeFlowBehavior({ ...focusedInput, packages: new Map() }))
+  const opaque = renderFlowBehavior({
+    ...analyzeFlowBehavior({ ...focusedInput, packages: new Map() }),
+    entrySources,
+  })
   expect(opaque).toContain('**Selected here** · converter → flow:flows/convert')
+  expect(opaque).toContain('**Captured entry source** · [flows/import/FLOW.ts]')
   expect(opaque).toContain('binding:audit · converter → flow:flows/export')
   expect(opaque).toContain('flow:flows/import · converter has no selection')
   expect(opaque).not.toContain('Argument 1 slot → request field slot.')
@@ -1084,8 +1098,12 @@ test('package inspection joins source sites to exact configured caller slots', (
     packagePath: 'flows/convert',
     visible: ['binding:code', 'flow:flows/convert'],
   })
-  const output = renderFlowBehavior(report)
+  const output = renderFlowBehavior({
+    ...report,
+    entrySources: new Map([['flow:flows/convert', 'flows/convert/FLOW.ts']]),
+  })
   expect(output).toStartWith('# Flow package uses')
+  expect(output).toContain('**Captured entry source** · [flows/convert/FLOW.ts]')
   expect(output).toContain('### flow:flows/convert')
   expect(output).toContain('    jig inspect --flow flow:flows/convert\n')
   expect(output).toContain('- binding:code · converter · flows/import/FLOW.ts:2')
