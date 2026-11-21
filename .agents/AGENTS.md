@@ -100,8 +100,8 @@ and project-maintained skills for external libraries.
 - [use-cases/AGENTS.md](use-cases/AGENTS.md) — Product intent and use cases for editing connected workflows.
 - [doctrine/AGENTS.md](doctrine/AGENTS.md) — Product purpose, FLOW and Jig
   reasoning, and cross-product judgment. The compass remains the entrypoint.
-- [coordination/AGENTS.md](coordination/AGENTS.md) — Project roadmap and
-  untriaged postponed-task inbox.
+- [coordination/AGENTS.md](coordination/AGENTS.md) — Project roadmap, postponed
+  work, and child-agent session cleanup.
 - [field-notes/AGENTS.md](field-notes/AGENTS.md) — Optional non-normative
   engineering retrospectives and historical causal evidence.
 - [marketing/AGENTS.md](marketing/AGENTS.md) — Promotional materials,

@@ -27,6 +27,11 @@ gate.
 
 - Update an existing task rather than creating competing descriptions.
 - Keep investigation history and private operational details out of task files.
+- Release finished child-agent sessions promptly once their changes and
+  evidence are saved and no follow-up is planned. Use the orchestrator's
+  guarded release operation and verify its result. Keep sessions open when
+  the user requests it. Reclaim disposable worktrees through the normal
+  cleanup workflow once their remaining files are no longer needed.
 
 ## Verification
 
