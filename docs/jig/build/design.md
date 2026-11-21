@@ -230,6 +230,8 @@ Assert the selected configured instance and the meaning of its result, rather th
 Exercise the changed condition and relevant preserved alternatives, including explicit choices, automatic selection, and affected failure or cancellation paths.
 Report which alternatives were executed, which were inspected in source, and which remain unknown.
 
+For a runnable example, [test a scoped route](./compose.md#test-a-scoped-route) with two approved Bindings in your regular test runner.
+
 
 ### Give one caller its own Binding
 

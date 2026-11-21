@@ -12,6 +12,9 @@ conversations, progress, project design, collaboration, and result interpretatio
 `design.md` owns source-grounded route-change guidance, including decision ownership, preserved alternatives, and affected evidence consumers.
 `design.md` also teaches the scoped Binding split, literal membership, and source review.
 Authored behavioral maps remain distinct from host-computed configured topology.
+`compose.md` teaches an optional application-owned route test through ordinary
+installed Runs. Keep explicit project review, separate execution and domain
+assertions, and forwarded child evidence in the runnable example.
 
 `results.md` explains live application maps alongside observed calls, without implying sequence, branch evaluation, or saved invocation history.
 It also owns configured-topology inspection of current source or retained approval.
