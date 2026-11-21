@@ -244,7 +244,9 @@ jig inspect --flow binding:audit-import
 
 Jig copies the selected import Binding beside its original and changes its `validate` slot.
 It updates the audit caller's `import` slot to use that copy.
+If `jig.ts` lists Bindings in a literal array, Jig adds the new path to that array.
+
 Open the reported declaration paths to review the edit.
 Run `jig review` separately before running the new configuration.
-Use ordinary source edits for explicit membership, computed declarations, or conditional call sites.
+Use ordinary source edits for computed or shared declarations and conditional call sites.
 See the [CLI contract](../spec/cli-experience.md#give-one-caller-its-own-binding) for supported declaration shapes and interruption behavior.

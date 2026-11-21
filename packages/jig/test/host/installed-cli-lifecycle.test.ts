@@ -53,7 +53,14 @@ test('installed CLI: Binding authoring changes only offer samples', async () => 
       await readFile(join(tooling, 'node_modules/@jigging/flow/package.json'), 'utf8'),
     ).version
     const before = await foundationResidue(qualification, command, root)
-    await checkInstalledBindingSplit(cli, join(root, 'binding-split'), command, flowVersion)
+    for (const membership of ['discovered', 'exact'] as const)
+      await checkInstalledBindingSplit(
+        cli,
+        join(root, 'binding-split-' + membership),
+        command,
+        flowVersion,
+        membership,
+      )
     expect(await foundationResidue(qualification, command, root)).toEqual(before)
     passed = true
   } finally {

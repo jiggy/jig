@@ -61,6 +61,7 @@ tests use genuine host capture through their own fixture entry.
   The Agent guide owns matching limits and launch-copy cleanup.
 
 - Binding split publication uses held declaration directories and the captured authoring closure.
+  The child must exist before explicit membership selects it, and the caller changes last.
   The [authoring guide](../../authoring-guidance.md#src-project-author) owns its source edit contract.
 
 - Source capture and freshness walks reject mount transitions through the shared native source open operation.

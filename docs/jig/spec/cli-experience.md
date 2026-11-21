@@ -608,7 +608,7 @@ can leave an unpublished `.jig-new-*` directory in the project root.
 ## Give one caller its own Binding
 
 `jig split-binding binding:<caller> --slot <slot> --as <name> --select <child-slot>=<target>`
-edits a discovered caller Binding and creates a Binding beside its current child.
+edits a caller Binding and creates a Binding beside its current child.
 Run from the project root. Use a new LocalName for `--as`.
 
 The caller slot must explicitly select a Binding.
@@ -618,20 +618,31 @@ Use an exact `flow:`, `npm:`, or `binding:` selector.
 
 Both declarations must use a standalone `export default defineBinding({...})`
 with a direct `@jigging/jig` import and literal values.
-The command changes only the two selected target strings.
+With discovery, Jig discovers the copy under the same root as the original child.
+With explicit membership, Jig appends the copy's path to the literal `bindings` array in `jig.ts`.
+That file must directly import `defineJig` from `@jigging/jig` and export a single `defineJig({...})` call as its default.
+Jig accepts literal project fields and direct `discover(...)` calls for `flows` or `grants`.
+For computed or shared declarations, make the scoped edit in source.
+
+The command changes the two selected target strings and adds the explicit member when needed.
 It preserves attachment maps, settings, comments, and other selections.
 The original child stays available to its existing callers and as a direct Run target.
 The command validates the proposed configuration and reports the source paths and route changes.
 It leaves grant files, approval, and the project lock untouched.
 
-An existing name, unsupported declaration, or invalid proposal fails before publication.
+A name or destination collision, unsupported declaration, or invalid proposal refuses the edit.
 A repeat with the same new name refuses and preserves the earlier edit.
-The command stages both files and publishes the new Binding without replacement.
-It checks the caller again before replacing it. If replacement fails, it removes the new Binding when its published bytes still match.
 
-Abrupt process loss can leave an unreferenced new Binding and the `.jig-split-binding-stage` directory.
+Jig stages the source edits and publishes the new Binding without replacement.
+It adds explicit membership before replacing the caller.
+The caller continues to select the original Binding until Jig replaces its declaration.
+If publication fails before the caller changes, Jig rolls back confirmed edits in reverse order.
+If Jig cannot confirm safe rollback, it reports the source paths to inspect.
+
+Abrupt process loss can leave the new Binding on disk, with or without explicit membership.
+The `.jig-split-binding-stage` directory can also remain.
 Confirm that the edit process has ended before removing its staging directory.
-Inspect both declarations before retrying an interrupted edit.
+Inspect `jig.ts` and both Binding declarations before retrying an interrupted edit.
 
 ## Diagnostic evidence and interruption
 

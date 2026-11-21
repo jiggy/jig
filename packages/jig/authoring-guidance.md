@@ -35,8 +35,12 @@ remain supported and are not rewritten by a review default.
 
 - `src/internal/binding-split.ts` owns the scoped Binding source edit.
   It uses captured declaration bytes and ordinary working-tree linking to validate the proposed routes.
-  Stage both files before publishing the new child and replacing the verified caller.
-  Preserve authored bytes outside the two target literals. Keep approval and grant files out of this operation.
+  Validate the selected child before rewiring the caller.
+  Stage all source edits before publishing the child, adding explicit membership, and replacing the verified caller.
+  Roll back in reverse order when current source still matches the expected state.
+
+  Preserve authored bytes outside the two target literals and the membership insertion.
+  Keep approval and grant files out of this operation.
 
 - `project/captured-authoring.ts` owns the shared captured declaration evaluation used by review and working-tree inspection.
   It preserves bootstrap/complete-closure consistency and owns no approval or dependency preparation.
@@ -100,6 +104,10 @@ remain supported and are not rewritten by a review default.
   client locations. Selection context also requires the trusted ordinary import
   and a complete single-argument default call. Unsupported, ambiguous or
   bounded-out input uses an unlocated file/slot fallback.
+
+  The Binding split uses the same bounded recognizer for standalone literal declarations.
+  Explicit membership must match captured selection in a direct `defineJig` call.
+  Only direct SDK discovery calls may supplement otherwise literal project fields.
 
   Never evaluate or reread source, or add an AST, editor or compiler dependency
   to obtain these facts.
