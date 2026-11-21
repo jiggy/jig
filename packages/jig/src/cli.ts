@@ -26,6 +26,7 @@ import {
 } from './attempt-contract.js'
 import { preparePrivateCliRun, privateAttemptFailureMessage } from './cli-attempt-execution.js'
 import { PrivateAttemptInput } from './cli-attempt-io.js'
+import { compareConfiguredRouting, parseCheck, renderCheck } from './cli-check.js'
 import { approvedTargets, completionScript, invocationGuide } from './cli-discovery.js'
 import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-archive.js'
 import { parsePrivateExploreArguments, privateExecuteExplore } from './cli-explore.js'
@@ -73,7 +74,11 @@ import {
   encodeFlowBehaviorSnapshot,
   flowBehaviorSnapshot,
 } from './internal/flow-behavior/comparison.js'
-import type { FlowContextOptions, FlowInspectionOptions } from './internal/flow-inspection-scope.js'
+import {
+  type FlowContextOptions,
+  type FlowInspectionOptions,
+  record,
+} from './internal/flow-inspection-scope.js'
 import { PrivateInputInspectionCapture } from './internal/input-inspection.js'
 import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
 import { PrivateAttemptError } from './internal/prepared-attempt-store.js'
@@ -126,6 +131,7 @@ Usage:
   jig init <directory>       Create a project with a small greeting Flow
   jig new <name>             Add an editable Flow to the current project
   jig split-binding <caller> Give one caller slot its own child Binding
+  jig check [--diff]         Check the working project's composition before review
   jig review [project]       Review changes and approve an exact revision
   jig run [target]           Choose or run a reviewed Flow or Binding
   jig explore [target]       Explore reviewed workflows and run with new input
@@ -149,6 +155,17 @@ Command options and examples:
 Guide: https://jig.md/start/`
 
 const COMMAND_HELP = {
+  check: `Usage: jig check [--diff] [--json]
+
+Capture the working project, evaluate its declarations in containment, and link its
+configured targets. Success establishes linked configuration only.
+No dependency installation, recipe preparation, approval or method execution.
+
+  --diff  Show configured changes since the last local approval. Requires approval.
+  --json  Emit one JSON result on success. Diagnostics go to stderr.
+
+The diff compares target packages, caller slot selections, settings and the
+entrypoint target. Source behavior and execution authority remain unchecked.`,
   explore: `Usage: jig explore [target] [--timeout DURATION] [--verification MODE]
 
 Open the reviewed application map before starting a Run. Select a workflow,
@@ -586,6 +603,7 @@ async function executeCommand(
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
     if (arguments_[0] === 'new') return await executeNew(arguments_, runtime)
     if (arguments_[0] === 'split-binding') return await executeSplitBinding(arguments_, runtime)
+    if (arguments_[0] === 'check') return await executeCheck(arguments_, runtime)
     if (arguments_[0] === 'completion') return await executeCompletion(arguments_, runtime)
     if (arguments_[0] === 'attempt') return await executeAttempt(arguments_, options, runtime)
     if (arguments_[0] === 'review') return await executeReview(arguments_, runtime)
@@ -959,12 +977,88 @@ async function executeSplitBinding(
   }
 }
 
-/** Whether the installed command needs to acquire the private execution host. */
+async function executeCheck(arguments_: readonly string[], runtime: CliRuntime): Promise<0> {
+  const { diff, json } = parseCheck(arguments_)
+  if (runtime.host.inspectFlow === undefined)
+    throw new CliDiagnostic(
+      'JIG_CHECK_UNAVAILABLE',
+      'Checking working configuration requires the installed Jig declaration evaluator on a supported host.',
+      2,
+    )
+
+  let working: JsonValue
+  try {
+    working = (
+      await runtime.host.inspectFlow(runtime.currentDirectory, { all: true }, runtime.signal)
+    ).topology
+  } catch (error) {
+    if (error instanceof CheckError) {
+      if (['PROJECT_JIG_VERSION_MISMATCH', 'PROJECT_JIG_REQUIREMENT_INVALID'].includes(error.code))
+        throw error
+      const hint = evaluatorInspectionHint(error.code)
+      const where =
+        error.path === undefined
+          ? ''
+          : ` at ${asciiJsonString((error.path + (error.pointer ?? '')).slice(0, 1024))}`
+      throw new CliDiagnostic(
+        'JIG_CHECK_FAILED',
+        hint === undefined
+          ? `Working configuration check failed (${error.code})${where}. ${asciiJsonString(error.message.slice(0, 1024))} Check the declarations and installed dependencies.`
+          : `Working configuration evaluation failed (${error.code}). ${hint}`,
+        error.kind === 'invalid' ? 1 : 2,
+      )
+    }
+    throw new CliDiagnostic(
+      'JIG_CHECK_UNAVAILABLE',
+      'Working configuration could not be checked safely. Check installed dependencies and supported host setup.',
+      2,
+    )
+  }
+  runtime.signal?.throwIfAborted()
+
+  let routingDiff: ReturnType<typeof compareConfiguredRouting> | undefined
+  if (diff) {
+    let approved: JsonValue
+    try {
+      approved = await inspectPrivateApprovedProject(
+        runtime.currentDirectory,
+        undefined,
+        undefined,
+        false,
+        undefined,
+        undefined,
+        { all: true },
+      )
+    } catch {
+      throw new CliDiagnostic(
+        'JIG_INSPECTION_UNAVAILABLE',
+        'Working configuration linked. The retained approval could not be read safely. If a review is in progress, wait and retry.',
+        2,
+      )
+    }
+    if (record(approved).state === 'unreviewed')
+      throw new CliDiagnostic(
+        'JIG_CHECK_NO_APPROVAL',
+        'Working configuration linked. There is no retained approval to compare. Use jig check for a check without a baseline.',
+        1,
+      )
+    routingDiff = compareConfiguredRouting(approved, working)
+  }
+  runtime.signal?.throwIfAborted()
+  await runtime.writeRecord(renderCheck(json, routingDiff))
+  return 0
+}
+
+/** Whether the installed command needs the private host environment. */
 export function privateCliRequiresHost(arguments_: readonly string[]): boolean {
   if (isHelpRequest(arguments_)) return false
   if (arguments_[0] === 'attempt')
     return ['submit', 'reconcile'].includes(privateCliAttemptOperation(arguments_) ?? '')
   try {
+    if (arguments_[0] === 'check') {
+      parseCheck(arguments_)
+      return true
+    }
     if (arguments_[0] === 'split-binding') {
       parseSplitBinding(arguments_)
       return true

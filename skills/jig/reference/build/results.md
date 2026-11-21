@@ -260,6 +260,21 @@ For an unconfirmed publication, follow [receipt recovery](../reference/troublesh
 Generation-checked removal and reset require explicit current conditions.
 The [archive contract](https://jig.md/spec/display-archive.md) defines capacity, evidence and recovery limits.
 
+## Check working composition
+
+Run `jig check` from the project root before requesting review.
+Jig uses installed dependencies to evaluate project declarations in containment and link the complete working configuration.
+This check works before the first approval.
+
+Run `jig check --diff` to compare the working configuration with the last local approval.
+Look for the changed caller slots and any added or removed targets.
+Add `--json` to read exact change records in a script.
+Without a retained approval, use `jig check` to confirm that the working configuration links.
+
+The comparison covers configured selectors, slots, settings, and the entrypoint target.
+Review still establishes authority for the changed project. Use source inspection and application tests to check behavior.
+The [CLI contract](https://jig.md/spec/cli-experience.md#composition-check) defines the JSON fields and exit status.
+
 ## Inspect configured topology
 
 Use `jig inspect --flow --topology` to see the current composition graph without prior approval.

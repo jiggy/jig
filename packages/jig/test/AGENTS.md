@@ -12,6 +12,8 @@ Package-path diagnostics supply a copyable command without treating source paths
 `host/installed-shared-binding-wiring.test.ts` runs the standalone publishing consumer on its frozen Jig archive.
 The consumer reviews a shared producer, isolates the offer edit, and checks book and direct routes.
 The wrong-scope case must fail the preserved book assertion after an otherwise successful Run.
+The composition check scenario uses the packed CLI before approval and after linked, split, unwired, and incompatible edits.
+It compares the lock and approval hashes before and after those checks.
 The host suite requires native prerequisites and compares owner residue.
 
 `host/project-author-evaluator.test.ts` checks current Bindings, invalid declarations, and absent project-state writes through contained evaluation.

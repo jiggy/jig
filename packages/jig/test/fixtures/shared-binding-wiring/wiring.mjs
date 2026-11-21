@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -45,7 +45,7 @@ async function scenario(label, run) {
   }
 }
 
-async function command(root, cwd, label, executable, args) {
+async function command(root, cwd, label, executable, args, diagnostic) {
   const result = spawnSync(executable, args, {
     cwd,
     env,
@@ -61,7 +61,15 @@ async function command(root, cwd, label, executable, args) {
     stderr: result.stderr,
   })
   if (result.error) throw result.error
-  assert.equal(result.status, 0, `${label}: ${result.stderr}\n${result.stdout}`)
+  assert.equal(
+    result.status,
+    diagnostic === undefined ? 0 : 1,
+    `${label}: ${result.stderr}\n${result.stdout}`,
+  )
+  if (diagnostic !== undefined) {
+    assert.equal(result.stdout, '')
+    assert.match(result.stderr, diagnostic)
+  }
   return result.stdout
 }
 
@@ -275,6 +283,82 @@ async function verifyStage(context, stage, admission, offerReviewer) {
   verifyReviews(await run(context, admission, stage, direct, 'resumed'), 'resumed', 'standard')
   verifyReviews(await run(context, admission, stage, shared, 'fresh'), 'fresh', 'standard')
 }
+
+test('checks the working composition and compares a split without changing approval', async () => {
+  await scenario('composition-check', async (context) => {
+    const { root, cwd, client } = context
+    const check = (label, args, diagnostic) =>
+      command(root, cwd, label, jig, ['check', ...args], diagnostic)
+    const linked = { basis: 'working-tree', status: 'linked' }
+    const initialFiles = (await readdir(cwd)).sort()
+    assert.deepEqual(JSON.parse(await check('before-approval', ['--json'])), linked)
+    await check('missing-baseline', ['--diff', '--json'], /JIG_CHECK_NO_APPROVAL/)
+    assert.deepEqual((await readdir(cwd)).sort(), initialFiles)
+
+    const { approval } = await review(context, 'baseline', shared, standard)
+    const sha256 = async (name) =>
+      createHash('sha256')
+        .update(await readFile(join(cwd, name)))
+        .digest('hex')
+    const hashes = async () => ({
+      approval: (await client.inspect()).approval,
+      state: await sha256('.jig/jig.sqlite3'),
+      jigLock: await sha256('jig.lock'),
+      bunLock: await sha256('bun.lock'),
+    })
+    const before = await hashes()
+    assert.equal(before.approval, approval)
+    await save(root, 'before-checks-hashes', before)
+
+    await change(join(cwd, 'flows/producer/FLOW.ts'), "'Chapter One'", "'Opening Chapter'")
+    assert.deepEqual(JSON.parse(await check('body-only', ['--diff', '--json'])), {
+      ...linked,
+      diff: { basis: 'approved', targets: [], slots: [], settingsChanged: [] },
+    })
+    await command(root, cwd, 'split', jig, [
+      'split-binding',
+      'binding:offer',
+      '--slot',
+      'producer',
+      '--as',
+      'offer-producer',
+      '--select',
+      'post-edit=binding:specialist',
+    ])
+    assert.equal(await check('split-check', []), 'Working configuration linked.\n')
+    const plain = await check('split-diff-plain', ['--diff'])
+    assert.match(
+      plain,
+      /Slot "binding:offer" \/ "producer": "binding:shared-producer" -> "binding:offer-producer"/,
+    )
+    assert.deepEqual(JSON.parse(await check('split-diff', ['--diff', '--json'])), {
+      ...linked,
+      diff: {
+        basis: 'approved',
+        targets: [{ target: dedicated, before: null, after: 'flows/producer' }],
+        slots: [
+          {
+            caller: 'binding:offer',
+            slot: 'producer',
+            before: { target: shared },
+            after: { target: dedicated },
+          },
+          { caller: dedicated, slot: 'post-edit', before: null, after: { target: specialist } },
+          { caller: dedicated, slot: 'review', before: null, after: { target: standard } },
+        ],
+        settingsChanged: [],
+      },
+    })
+    await change(join(cwd, 'bindings/offer.ts'), dedicated, 'binding:missing-producer')
+    await check('unwired-check', ['--json'], /PROJECT_BINDING_SLOT_MISSING/)
+    await check('unwired-diff', ['--diff', '--json'], /PROJECT_BINDING_SLOT_MISSING/)
+    await change(join(cwd, 'bindings/offer.ts'), 'binding:missing-producer', standard)
+    await check('incompatible-check', ['--json'], /PROJECT_CHILD_ATTACHMENT_MAPPING_INVALID/)
+    const after = await hashes()
+    await save(root, 'after-checks-hashes', after)
+    assert.deepEqual(after, before)
+  })
+})
 
 test('only offer adopts a dedicated post-edit reviewer', async () => {
   await scenario('scoped-edit', async (context) => {

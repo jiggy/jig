@@ -135,14 +135,18 @@ async function runPrivateInstalledCli(
     return run()
   try {
     return await withPrivateInstallationVerification(operatorEnvironment, run, {
-      readOnly: arguments_[0] === 'inspect' || arguments_[0] === 'split-binding',
+      readOnly: ['check', 'inspect', 'split-binding'].includes(arguments_[0] ?? ''),
     })
   } catch (error) {
     if (!(error instanceof PrivateInstallationVerificationConfigurationError)) throw error
     process.stderr.write(
       privateCliStderrDiagnostic(
         'JIG_VERIFICATION_INVALID',
-        'Choose --verification cached (default), strict, or fast, or set JIG_VERIFICATION to one of those values. Fast reuses installation identities without checking file freshness.\nNo Flow was started.\nNext step: https://jig.md/reference/configuration#startup-verification',
+        `${
+          arguments_[0] === 'check'
+            ? 'Set JIG_VERIFICATION to cached (default), strict, or fast.'
+            : 'Choose --verification cached (default), strict, or fast, or set JIG_VERIFICATION to one of those values.'
+        } Fast reuses installation identities without checking file freshness.\nNo Flow was started.\nNext step: https://jig.md/reference/configuration#startup-verification`,
       ),
     )
     return exit(2)
@@ -260,7 +264,8 @@ async function runWithEnvironment(
   }
 
   try {
-    const recovery = privateFileRecovery()
+    const checkOnly = arguments_[0] === 'check'
+    const recovery = checkOnly ? undefined : privateFileRecovery()
     const commandLifetimeMs = privateCliCommandLifetimeMs(
       arguments_,
       process.stdin.isTTY === true &&
@@ -287,9 +292,9 @@ async function runWithEnvironment(
       if (delegation.kind === 'private-rootless-linux-reexecuted/1') return delegation
     }
 
-    privateProfileActivate()
+    if (!checkOnly) privateProfileActivate()
 
-    const delivery = await privateConnectFileOwner()
+    const delivery = checkOnly ? undefined : await privateConnectFileOwner()
     try {
       const location = Object.freeze({
         releaseRoot: await realpath(releaseRoot),

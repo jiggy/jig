@@ -236,10 +236,11 @@ Report which alternatives were executed, which were inspected in source, and whi
 When several callers share a Binding, use `jig split-binding` to give one caller a different child selection.
 Identify the caller Binding, its slot, and the child slot with `jig inspect --flow`.
 For example, an audit import can use a stricter validator while standard imports keep the original.
+This example starts with a retained approval.
 
 ```sh
 jig split-binding binding:audit --slot import --as audit-import --select validate=binding:strict-validator
-jig inspect --flow binding:audit-import
+jig check --diff
 ```
 
 Jig copies the selected import Binding beside its original and changes its `validate` slot.
@@ -247,6 +248,11 @@ It updates the audit caller's `import` slot to use that copy.
 If `jig.ts` lists Bindings in a literal array, Jig adds the new path to that array.
 
 Open the reported declaration paths to review the edit.
+Use [`jig check --diff`](results.md#check-working-composition) when the project has a retained approval.
+Check that the caller's `import` slot selects the new Binding.
+Confirm that the diff omits every other existing caller slot.
+Use `jig check` before the first approval.
+
 Run `jig review` separately before running the new configuration.
 Use ordinary source edits for computed or shared declarations and conditional call sites.
 See the [CLI contract](https://jig.md/spec/cli-experience.md#give-one-caller-its-own-binding) for supported declaration shapes and interruption behavior.
