@@ -12,8 +12,18 @@ export interface SourceSite {
 export type ReportingCall = SourceSite & { readonly code: string }
 export type ProgressFieldSource = ReportingCall & { readonly field: 'completed' | 'total' }
 
+export interface ReportingWrapperSource {
+  readonly callback: SourceSite
+  readonly callbackArgument?: true
+  readonly call?: SourceSite
+  readonly handler?: SourceSite
+}
+
 export function withoutReportingLocations(key: string, value: unknown): unknown {
-  return key === 'reportingCall' || key === 'progressFields' || key === 'authoredProgressFields'
+  return key === 'reportingCall' ||
+    key === 'progressFields' ||
+    key === 'authoredProgressFields' ||
+    key === 'reportingWrapperSource'
     ? undefined
     : value
 }
@@ -106,7 +116,12 @@ export type BehaviorStep =
       readonly progressFields?: readonly ProgressFieldSource[]
       readonly authoredProgressFields?: readonly ProgressFieldSource[]
     }
-  | { readonly kind: 'gap'; readonly site: SourceSite; readonly detail: string }
+  | {
+      readonly kind: 'gap'
+      readonly site: SourceSite
+      readonly detail: string
+      readonly reportingWrapperSource?: ReportingWrapperSource
+    }
   | {
       readonly kind: 'repeat'
       readonly site: SourceSite
@@ -121,6 +136,7 @@ export type BehaviorStep =
       readonly returned?: BehaviorReturn
       readonly contractPath?: string
       readonly forwardedCall?: number
+      readonly reportingWrapperSource?: ReportingWrapperSource
     }
 
 export function forwardedResult(route: readonly BehaviorStep[]) {
@@ -328,7 +344,10 @@ export interface BehaviorReport {
     readonly target: string
     readonly routes: readonly (readonly BehaviorStep[])[]
     readonly alternatives: readonly (readonly BehaviorStep[])[]
-    readonly gaps: readonly (SourceSite & { readonly reason: string })[]
+    readonly gaps: readonly (SourceSite & {
+      readonly reason: string
+      readonly reportingWrapperSource?: ReportingWrapperSource
+    })[]
     readonly authoredHandoffs?: readonly AuthoredHandoff[]
     readonly authoredHandoffsOmitted?: number
     readonly authoredPriorExitsOmitted?: number

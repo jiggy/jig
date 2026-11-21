@@ -470,6 +470,9 @@ export function analyzeFlowBehavior(input: BehaviorInput, signal?: AbortSignal):
             evidence.set(JSON.stringify([step.site, step.detail]), {
               ...step.site,
               reason: step.detail,
+              ...(step.reportingWrapperSource
+                ? { reportingWrapperSource: step.reportingWrapperSource }
+                : {}),
             })
         const pkg = input.packages.get(target.implementation)
         const refusal =
@@ -975,7 +978,14 @@ function callerEvidence(steps: Route): { prefix: BehaviorStep[]; guards: Behavio
     }
     if (step.kind === 'gap') prefix.push(step)
     if (step.kind === 'end' && step.completion === 'unknown')
-      prefix.push({ kind: 'gap', site: step.site, detail: step.detail })
+      prefix.push({
+        kind: 'gap',
+        site: step.site,
+        detail: step.detail,
+        ...(step.reportingWrapperSource
+          ? { reportingWrapperSource: step.reportingWrapperSource }
+          : {}),
+      })
   }
   return { prefix, guards: guards.slice(0, 4) }
 }

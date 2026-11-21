@@ -69,6 +69,9 @@ The [workflow editing use cases](../../../../../.agents/use-cases/JOB-001-locate
   An overwrite replaces a field location, and a joined payload retains only locations shared by its alternatives.
   For an opaque view payload, locate a single authored progress block through bounded local helper references.
   Those source locations guide inspection while the displayed value and returned block remain unresolved.
+- At an opaque Reporting wrapper, link the callback and any lexically resolved direct handler.
+  Use the callback argument or direct call site when its definition is unresolved.
+  Keep these source references outside route identity. Reachability remains unresolved.
 - Analyze the application within a shared work allowance while preserving each configured use.
 - Apply the same known-return contract checks at standalone and child boundaries.
 - Bound proven data-only reporting work within the enclosing analysis allowance.

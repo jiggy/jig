@@ -15,6 +15,7 @@ import {
   type BehaviorStep,
   type BehaviorTarget,
   type ReportingCall,
+  type ReportingWrapperSource,
   type SourceSite,
 } from './model.js'
 import { ReportingTrace } from './reporting.js'
@@ -218,11 +219,25 @@ export class Interpreter {
     return false
   }
 
-  private stop(state: State, node: ts.Node, detail: string): State {
+  private stop(
+    state: State,
+    node: ts.Node,
+    detail: string,
+    reportingWrapperSource?: ReportingWrapperSource,
+  ): State {
     const site = this.source.site(node)
     return {
       ...state,
-      steps: [...state.steps, { kind: 'end', site, completion: 'unknown', detail }],
+      steps: [
+        ...state.steps,
+        {
+          kind: 'end',
+          site,
+          completion: 'unknown',
+          detail,
+          ...(reportingWrapperSource ? { reportingWrapperSource } : {}),
+        },
+      ],
       site,
       mode: 'unknown',
       value: unknown,
@@ -1268,8 +1283,15 @@ export class Interpreter {
         !ts.isStringLiteralLike(channel) ||
         handler === undefined ||
         e.arguments.length !== 3
-      )
-        return [this.stop(state, e, 'Reporting wrapper or installed implementation is opaque.')]
+      ) {
+        const source =
+          body && !e.arguments.some(ts.isSpreadElement)
+            ? this.source.callbackSource(body)
+            : undefined
+        return [
+          this.stop(state, e, 'Reporting wrapper or installed implementation is opaque.', source),
+        ]
+      }
       if (returned === 'with-finalizer') return [this.returnedWithFinalizer(state, e)]
       return this.invoke(handler, [{ kind: 'reporter' }], state, depth + 1, {
         consumesReturn: true,

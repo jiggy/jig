@@ -13,12 +13,14 @@ import type {
   AuthoredRepeat,
   BehaviorPackage,
   CallReference,
+  ReportingWrapperSource,
   SourceSite,
 } from './model.js'
 import { describeRepeat, enclosingLoop } from './repetition.js'
 import { resultExitChecks } from './result-checks.js'
 import { slotSelection } from './slot-selection.js'
 import {
+  constInitializer,
   isLocalFunction,
   type LocalFunction,
   lexicalGuards,
@@ -57,6 +59,26 @@ function member(expression: ts.Expression) {
     return { name: node.argumentExpression.text, object: node.expression }
 }
 
+function directCallbackCall(body: ts.ConciseBody): ts.CallExpression | undefined {
+  while (ts.isBlock(body)) {
+    const [statement] = body.statements
+    if (!statement || body.statements.length !== 1) return undefined
+    if (ts.isTryStatement(statement)) {
+      body = statement.tryBlock
+      continue
+    }
+    if (
+      !(ts.isReturnStatement(statement) || ts.isExpressionStatement(statement)) ||
+      !statement.expression
+    )
+      return undefined
+    body = statement.expression
+  }
+  const expression = unwrap(body)
+  const call = ts.isAwaitExpression(expression) ? unwrap(expression.expression) : expression
+  return ts.isCallExpression(call) ? call : undefined
+}
+
 export class SourceIndex {
   readonly #files: ReadonlyMap<string, string>
   readonly #program: ts.Program
@@ -66,6 +88,7 @@ export class SourceIndex {
   readonly #indexedCalls = new Set<ts.SourceFile>()
   readonly #continuations = new Map<LocalFunction, ContinuationSites>()
   readonly #repeats = new WeakMap<ts.IterationStatement, AuthoredRepeat>()
+  #functionWrites?: ReadonlySet<ts.Declaration> | null
   readonly entry: ts.SourceFile | undefined
 
   constructor(
@@ -138,6 +161,56 @@ export class SourceIndex {
 
   reportingEnabled(node: ts.Node): boolean {
     return this.#reporting.has(node.getSourceFile().fileName.slice(root.length))
+  }
+
+  /** Point to authored code without interpreting the callback or its wrapper. */
+  callbackSource(argument: ts.Expression): ReportingWrapperSource {
+    const callback = this.callableSource(argument)
+    if (!callback?.body) return { callback: this.site(argument), callbackArgument: true }
+    const callbackSite = this.site(callback)
+    const call = directCallbackCall(callback.body)
+    if (!call) return { callback: callbackSite }
+    const handler = call.questionDotToken ? undefined : this.callableSource(call.expression)
+    return handler?.body
+      ? { callback: callbackSite, handler: this.site(handler) }
+      : { callback: callbackSite, call: this.site(call) }
+  }
+
+  private callableSource(expression: ts.Expression): LocalFunction | undefined {
+    const value = unwrap(expression)
+    if (isLocalFunction(value)) return value
+    if (!ts.isIdentifier(value)) return undefined
+    const declaration = this.declaration(value)
+    if (!declaration || !this.valid(declaration.getSourceFile())) return undefined
+    const fn = ts.isFunctionDeclaration(declaration)
+      ? this.functionMayBeReassigned(declaration)
+        ? undefined
+        : declaration
+      : constInitializer(declaration)
+    return fn && isLocalFunction(fn) ? fn : undefined
+  }
+
+  private functionMayBeReassigned(fn: ts.FunctionDeclaration): boolean {
+    if (this.#functionWrites === undefined) {
+      const writes = new Set<ts.Declaration>()
+      for (const file of this.#program.getSourceFiles()) {
+        for (const node of sourceNodes(file)) {
+          if (ts.isCallExpression(node)) {
+            const callee = unwrap(node.expression)
+            if (ts.isIdentifier(callee) && callee.text === 'eval') {
+              this.#functionWrites = null
+              return true
+            }
+          }
+          const target = assignmentTarget(node)
+          if (target)
+            for (const declaration of writtenBindings(this, target))
+              if (ts.isFunctionDeclaration(declaration)) writes.add(declaration)
+        }
+      }
+      this.#functionWrites = writes
+    }
+    return this.#functionWrites === null || this.#functionWrites.has(fn)
   }
 
   private builtinError(expression: ts.Expression): ErrorBase | undefined {
