@@ -25,9 +25,11 @@ for (const key of [
   if (process.env[key] !== undefined) env[key] = process.env[key]
 }
 
-async function scenario(label, run) {
+async function scenario(label, run, parent) {
   const keep = process.env.JIG_WIRING_EVIDENCE_DIRECTORY
-  const root = await mkdtemp(join(await realpath(keep ?? tmpdir()), `jig-wiring-${label}-`))
+  const root = await mkdtemp(
+    join(await realpath(parent ?? keep ?? tmpdir()), `jig-wiring-${label}-`),
+  )
   const cwd = join(root, 'project')
   let passed = false
   try {
@@ -45,7 +47,7 @@ async function scenario(label, run) {
   }
 }
 
-async function command(root, cwd, label, executable, args, diagnostic) {
+async function captureCommand(root, cwd, label, executable, args) {
   const result = spawnSync(executable, args, {
     cwd,
     env,
@@ -61,6 +63,12 @@ async function command(root, cwd, label, executable, args, diagnostic) {
     stderr: result.stderr,
   })
   if (result.error) throw result.error
+  assert.equal(result.signal, null)
+  return result
+}
+
+async function command(root, cwd, label, executable, args, diagnostic) {
+  const result = await captureCommand(root, cwd, label, executable, args)
   assert.equal(
     result.status,
     diagnostic === undefined ? 0 : 1,
@@ -358,6 +366,100 @@ test('checks the working composition and compares a specialized slot without cha
     await save(root, 'after-checks-hashes', after)
     assert.deepEqual(after, before)
   })
+})
+
+test('type-checks a scoped Binding edit with the installed Jig declaration', async () => {
+  await scenario(
+    'binding-types',
+    async ({ root, cwd }) => {
+      const types = (label, diagnostic) =>
+        command(root, cwd, label, jig, ['types', '--project'], diagnostic)
+      const initialFiles = (await readdir(cwd)).sort()
+      const declaration = await types('project-types-before-edit')
+      assert.deepEqual((await readdir(cwd)).sort(), initialFiles)
+      await writeFile(join(cwd, 'jig.types.d.ts'), declaration)
+
+      const bookPath = join(cwd, 'bindings/book.ts')
+      const sharedPath = join(cwd, 'bindings/shared-producer.ts')
+      const book = await readFile(bookPath, 'utf8')
+      const sharedSource = await readFile(sharedPath, 'utf8')
+      await command(root, cwd, 'typed-specialize', jig, [
+        'specialize-slot',
+        'binding:offer',
+        '--slot',
+        'producer',
+        '--as',
+        'offer-producer',
+        '--select',
+        'post-edit=binding:specialist',
+      ])
+      const typedPaths = ['offer', 'offer-producer', 'specialist'].map((id) => `bindings/${id}.ts`)
+      for (const path of typedPaths) {
+        const source = join(cwd, path)
+        const text = await readFile(source, 'utf8')
+        await writeFile(
+          source,
+          `import type { BindingInput } from '../jig.types.js'\n${replaceOnce(text, '\n})', '\n} satisfies BindingInput)')}`,
+        )
+      }
+      assert.equal(await readFile(bookPath, 'utf8'), book)
+      assert.equal(await readFile(sharedPath, 'utf8'), sharedSource)
+      assert.match(await readFile(join(cwd, typedPaths[0]), 'utf8'), /'binding:offer-producer'/)
+      assert.match(
+        await readFile(join(cwd, typedPaths[1]), 'utf8'),
+        /'post-edit': 'binding:specialist'/,
+      )
+      assert.equal(await types('project-types-after-edit'), declaration)
+      await command(root, cwd, 'typed-check', jig, ['check'])
+      assert.ok(!(await readdir(cwd)).includes('.jig'))
+      assert.ok(!(await readdir(cwd)).includes('jig.lock'))
+
+      const tsc = fileURLToPath(new URL('node_modules/typescript/bin/tsc', import.meta.url))
+      const args = [
+        tsc,
+        '--strict',
+        '--noEmit',
+        '--pretty',
+        'false',
+        '--module',
+        'NodeNext',
+        ...typedPaths,
+      ]
+      await command(root, cwd, 'typed-tsc-valid', process.execPath, args)
+      for (const [label, path, before, after, pattern] of [
+        [
+          'unknown-slot',
+          typedPaths[1],
+          "'post-edit'",
+          "'post-edti'",
+          /'post-edti'.*does not exist/,
+        ],
+        [
+          'wrong-settings',
+          typedPaths[2],
+          'minimumWords: 2',
+          "minimumWords: 'two'",
+          /minimumWords[^\n]*incompatible\.\s+Type 'string' is not assignable to type 'number'/,
+        ],
+      ]) {
+        const source = join(cwd, path)
+        const valid = await readFile(source, 'utf8')
+        const invalid = replaceOnce(valid, before, after)
+        await writeFile(source, invalid)
+        const result = await captureCommand(root, cwd, `typed-tsc-${label}`, process.execPath, args)
+        assert.notEqual(result.status, 0)
+        assert.equal(result.stderr, '')
+        const errors = result.stdout.split('\n').filter((text) => text.includes('error TS'))
+        assert.equal(errors.length, 1, result.stdout)
+        assert.ok(errors[0].startsWith(`${path}(`), result.stdout)
+        assert.match(result.stdout, pattern)
+        if (label === 'wrong-settings')
+          await types('project-types-invalid-link', /PROJECT_BINDING_SETTINGS_INVALID/)
+        await writeFile(source, valid)
+      }
+    },
+    import.meta.dirname,
+  )
 })
 
 test('only offer adopts a dedicated post-edit reviewer', async () => {

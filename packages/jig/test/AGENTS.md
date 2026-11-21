@@ -18,6 +18,9 @@ The composition check scenario uses the packed CLI before approval and after lin
 It compares the lock and approval hashes before and after those checks.
 The host suite requires native prerequisites and compares owner residue.
 
+The project types scenario uses installed `jig types --project` and ordinary `tsc` with a specialized Binding.
+It checks diagnostics for unknown slots and wrong settings in the edited Bindings, then checks actual linking separately.
+
 `host/project-author-evaluator.test.ts` checks current Bindings, invalid declarations, and absent project-state writes through contained evaluation.
 It also checks exact Jig requirements before evaluating working-tree declarations.
 The installed lifecycle case verifies relative Flow selectors in current and approved inspection.

@@ -78,6 +78,7 @@ Select the following references according to the task before implementing their 
 | Resource authority or named policy reuse | [Grants](reference/spec/grants.md) |
 | Managed contract generation | [Contract authoring](reference/build/contracts.md) and its [exact contract](reference/spec/contract-authoring.md) |
 | Type-check method settings and declared child calls | [Flow type declarations](reference/build/contracts.md#type-check-child-calls) |
+| Type-check project Bindings | [Binding type declarations](reference/build/contracts.md#type-check-binding-declarations) |
 | Live progress, semantic views, or channel composition | [Progress](reference/build/channels.md), [Channels](reference/spec/channels.md), and [Reporting](reference/spec/reporting.md) |
 | Multi-turn Agent work | [Conversations](reference/build/conversations.md), [control](reference/build/conversation-control.md), and [Finite ACP](reference/spec/finite-acp.md) |
 | Context transfer or retained native conversations | [Handoff](reference/build/conversation-handoff.md) or [restoration](reference/build/conversation-restoration.md) |

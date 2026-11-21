@@ -14,7 +14,7 @@ makes usable control an observable requirement;
 | --- | --- |
 | Import an agreement | [Contract import](#contract-import) |
 | Declare a collaborator in an existing Flow | [Collaborator declaration](#collaborator-declaration) |
-| Type-check settings reads and child calls | [Flow type declarations](#flow-type-declarations) |
+| Type-check Flow contexts and Binding declarations | [Flow type declarations](#flow-type-declarations) and [Binding type declarations](#binding-type-declarations) |
 | Select a display | [Display selection](#display-selection), [browser activation](#browser-activation) |
 | Explore before execution | [Project exploration](#project-exploration) |
 | Check a working workflow edit | [Composition check](#composition-check) |
@@ -157,6 +157,29 @@ Settings retain the broad SDK type without projected fields.
 Other Run context members retain their SDK types.
 Uncontracted declared slots retain the broad SDK payloads.
 The [authoring guide](../build/contracts.md#type-check-child-calls) owns the projection limits and operator workflow.
+
+### Binding type declarations
+
+`jig types --project` uses the installed, contained declaration evaluator and the working-tree linker used by `jig check`.
+It captures `jig.ts`, selected Binding declarations and their local imports, and selected grant definitions.
+It reads configured local packages and selected npm Flow dependencies from the existing installation.
+It requires a linkable working configuration on a host that supports declaration evaluation.
+It requires no prior approval.
+
+Jig emits one deterministic `.d.ts` module to stdout, limited to 256 KiB.
+The module exports `BindingInput` for ordinary `defineBinding` inputs, keyed by canonical `package` values.
+Local package paths omit `./`, and dependency selections use `npm:<package>`.
+Each branch uses the linked package's slot names and projects fields from its validated settings schema.
+The slot map is optional, and each listed slot has the SDK selection type.
+
+Settings are optional unless the schema root lists required property names.
+Settings with no projected fields retain the SDK's broad object type.
+
+Only project declaration code runs, under the existing evaluator's containment.
+Jig uses no resolution network access, installs no dependencies, and starts no Flows.
+It reads no approval and writes no project files, locks, or approvals.
+A failed capture, evaluation, link, or size check emits no declaration.
+See the [Binding authoring workflow](../build/contracts.md#type-check-binding-declarations) for compiler requirements and limits.
 
 ### Progress and observation
 

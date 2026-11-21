@@ -79,11 +79,14 @@ All selected domain requirements still apply.
   It takes no evaluator or execution host. Its success output sends the author
   to the caller, the target configuration, and ordinary check and review.
 
-- `src/cli-call-types.ts` owns the declaration emitted by `jig types`.
+- `src/cli-call-types.ts` owns declarations emitted by `jig types`.
   Reuse exact member capture, inspected `uses` contracts, and the validated package settings schema.
   Infer the selected slot for payload diagnostics and preserve the slot and input pairing in union requests.
   Emit only public SDK types, and keep review and the runtime responsible for validation.
-  Declaration generation takes no evaluator, provider, or execution host.
+  Flow-local declarations take no evaluator and use the caller's contracts.
+
+  Project Binding declarations reuse the contained evaluator, working-tree linker, and the same captured schemas.
+  They project canonical package selections and declared slots without copying active targets or Binding settings values.
 
 ### Command grammar and review
 
