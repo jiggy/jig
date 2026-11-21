@@ -14,7 +14,7 @@ makes usable control an observable requirement;
 | --- | --- |
 | Import an agreement | [Contract import](#contract-import) |
 | Declare a collaborator in an existing Flow | [Collaborator declaration](#collaborator-declaration) |
-| Type-check settings reads and child calls | [Flow type declarations](#flow-type-declarations) |
+| Type-check Flow contexts and Binding declarations | [Flow type declarations](#flow-type-declarations) and [Binding type declarations](#binding-type-declarations) |
 | Select a display | [Display selection](#display-selection), [browser activation](#browser-activation) |
 | Explore before execution | [Project exploration](#project-exploration) |
 | Check a working workflow edit | [Composition check](#composition-check) |
@@ -120,6 +120,17 @@ It reports additions, removals, and changed selections, including slots of added
 Settings compare as structural JSON for targets present on both sides. Only changed settings selectors appear.
 The entrypoint comparison uses its normalized target selector and excludes invocation arguments.
 
+The plain diff adds context when a caller keeps its package and redirects an existing slot to a new Binding.
+The original Binding must remain configured, and both Bindings must select the original Flow package.
+It shows the changed caller and slot, other caller slots that still select the original Binding, and the original selector.
+It includes the direct Flow selector when both configurations expose it for that package.
+Ordinary review and `--details` show the same context from their retained and proposed configurations.
+
+Both commands show context for at most eight changed slots in selector and slot order.
+Each original Binding shows at most eight retained caller slots in that order.
+The summary counts omitted context, and review still shows every changed policy record.
+These rows establish configured selections only. Approval covers the complete exact proposal.
+
 Both projections expose native resource kinds. Grant policy, client identity, and attachment maps remain outside this comparison.
 Source equality, method behavior, launch readiness, and preserved authority require separate evidence.
 
@@ -157,6 +168,29 @@ Settings retain the broad SDK type without projected fields.
 Other Run context members retain their SDK types.
 Uncontracted declared slots retain the broad SDK payloads.
 The [authoring guide](../build/contracts.md#type-check-child-calls) owns the projection limits and operator workflow.
+
+### Binding type declarations
+
+`jig types --project` uses the installed, contained declaration evaluator and the working-tree linker used by `jig check`.
+It captures `jig.ts`, selected Binding declarations and their local imports, and selected grant definitions.
+It reads configured local packages and selected npm Flow dependencies from the existing installation.
+It requires a linkable working configuration on a host that supports declaration evaluation.
+It requires no prior approval.
+
+Jig emits one deterministic `.d.ts` module to stdout, limited to 256 KiB.
+The module exports `BindingInput` for ordinary `defineBinding` inputs, keyed by canonical `package` values.
+Local package paths omit `./`, and dependency selections use `npm:<package>`.
+Each branch uses the linked package's slot names and projects fields from its validated settings schema.
+The slot map is optional, and each listed slot has the SDK selection type.
+
+Settings are optional unless the schema root lists required property names.
+Settings with no projected fields retain the SDK's broad object type.
+
+Only project declaration code runs, under the existing evaluator's containment.
+Jig uses no resolution network access, installs no dependencies, and starts no Flows.
+It reads no approval and writes no project files, locks, or approvals.
+A failed capture, evaluation, link, or size check emits no declaration.
+See the [Binding authoring workflow](../build/contracts.md#type-check-binding-declarations) for compiler requirements and limits.
 
 ### Progress and observation
 
@@ -711,6 +745,9 @@ Use an exact `flow:`, `npm:`, or `binding:` selector.
 
 Both declarations must use a standalone `export default defineBinding({...})`
 with a direct `@jigging/jig` import and literal values.
+The literal may use `satisfies BindingInput` with a separate `import type { BindingInput }` from a relative `.js` specifier.
+Jig preserves the type-only import and clause in both the edited caller and the copied child, when present.
+
 With discovery, Jig discovers the copy under the same root as the original child.
 With explicit membership, Jig appends the copy's path to the literal `bindings` array in `jig.ts`.
 That file must directly import `defineJig` from `@jigging/jig` and export a single `defineJig({...})` call as its default.

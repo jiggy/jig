@@ -195,41 +195,88 @@ function authorCall(source: Source, helper: 'defineBinding' | 'defineJig') {
   const argumentEnd = closes.get(start)
   if (end === undefined || argumentEnd === undefined) return undefined
 
-  // Even context must originate in a call to the ordinary trusted import. A local
-  // lookalike can ignore this argument, so uncertain module prefixes stay unlocated.
-  const prefix = tokens.slice(0, declaration)
-  const importSemicolon = punctuation(prefix.at(-1), ';')
-  if (importSemicolon) prefix.pop()
-  const importSource = prefix.at(-1)
-  const imports = elements(source, 2, prefix.length - 3)
-  const names = imports?.map(({ start, end }) => (start === end ? tokens[start]?.value : undefined))
-  const importsDiscover =
-    helper === 'defineJig' && names?.length === 2 && names.includes('discover')
-  const imported =
-    word(prefix[0], 'import') &&
-    punctuation(prefix[1], '{') &&
-    closes.get(1) === prefix.length - 3 &&
-    imports?.every(({ start }) => tokens[start]?.kind === 'word') &&
-    names?.includes(helper) &&
-    (names.length === 1 || importsDiscover) &&
-    word(prefix.at(-2), 'from') &&
-    importSource?.kind === 'string' &&
-    importSource.value === '@jigging/jig' &&
-    (importSemicolon ||
-      /[\r\n\u2028\u2029]/.test(
-        source.text.slice(
-          importSource.offset + importSource.value.length + 2,
-          tokens[declaration]!.offset,
-        ),
-      ))
-  if (!imported) return undefined
+  const typed =
+    helper === 'defineBinding' &&
+    word(tokens[argumentEnd + 1], 'satisfies') &&
+    word(tokens[argumentEnd + 2], 'BindingInput')
+  const argumentTail = typed ? argumentEnd + 2 : argumentEnd
   const singleArgument =
-    argumentEnd + 1 === end ||
-    (argumentEnd + 2 === end && punctuation(tokens[argumentEnd + 1], ','))
+    argumentTail + 1 === end ||
+    (argumentTail + 2 === end && punctuation(tokens[argumentTail + 1], ','))
   const complete =
     end + 1 === tokens.length || (end + 2 === tokens.length && punctuation(tokens[end + 1], ';'))
   if (!singleArgument || !complete) return undefined
+
+  // Even context must originate in a call to the ordinary trusted import. A local
+  // lookalike can ignore this argument, so uncertain module prefixes stay unlocated.
+  const typeFirst = typed ? bindingTypeImportEnd(source, 0) : undefined
+  const runtimeImport = typeFirst ?? 0
+  const opening = runtimeImport + 1
+  const closing = closes.get(opening)
+  if (
+    !word(tokens[runtimeImport], 'import') ||
+    !punctuation(tokens[opening], '{') ||
+    closing === undefined ||
+    !word(tokens[closing + 1], 'from') ||
+    tokens[closing + 2]?.kind !== 'string' ||
+    tokens[closing + 2]?.value !== '@jigging/jig'
+  )
+    return undefined
+  const imports = elements(source, opening + 1, closing)
+  const names = imports?.map(({ start, end }) => (start === end ? tokens[start]?.value : undefined))
+  const importsDiscover =
+    helper === 'defineJig' && names?.length === 2 && names.includes('discover')
+  if (
+    !imports?.every(({ start }) => tokens[start]?.kind === 'word') ||
+    !names?.includes(helper) ||
+    !(names.length === 1 || importsDiscover)
+  )
+    return undefined
+  const afterRuntime = importEnd(source, closing + 2)
+  if (afterRuntime === undefined) return undefined
+  const prefixEnd =
+    typed && typeFirst === undefined ? bindingTypeImportEnd(source, afterRuntime) : afterRuntime
+  if (prefixEnd !== declaration) return undefined
   return { start, end: argumentEnd, importsDiscover }
+}
+
+/** Recognize the documented type-only import without extending the runtime module prefix. */
+function bindingTypeImportEnd(source: Source, start: number): number | undefined {
+  const { tokens, closes } = source
+  const closing = closes.get(start + 2)
+  if (
+    !word(tokens[start], 'import') ||
+    !word(tokens[start + 1], 'type') ||
+    !punctuation(tokens[start + 2], '{') ||
+    !word(tokens[start + 3], 'BindingInput') ||
+    !(closing === start + 4 || (closing === start + 5 && punctuation(tokens[start + 4], ','))) ||
+    !word(tokens[closing + 1], 'from')
+  )
+    return undefined
+  const specifier = tokens[closing + 2]
+  const path = specifier?.value
+  if (
+    specifier?.kind !== 'string' ||
+    path === undefined ||
+    !(path.startsWith('./') || path.startsWith('../')) ||
+    !path.endsWith('.js')
+  )
+    return undefined
+  return importEnd(source, closing + 2)
+}
+
+function importEnd(source: Source, specifier: number): number | undefined {
+  const token = source.tokens[specifier]!
+  const next = source.tokens[specifier + 1]
+  if (punctuation(next, ';')) return specifier + 2
+  if (
+    next &&
+    /[\r\n\u2028\u2029]/.test(
+      source.text.slice(token.offset + token.value!.length + 2, next.offset),
+    )
+  )
+    return specifier + 1
+  return undefined
 }
 
 /** Locate a named policy's client in captured valid JSON, rejecting duplicate keys. */

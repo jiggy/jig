@@ -168,6 +168,48 @@ The projection covers these shapes for settings fields and single-operation cont
 
 The command refuses declarations over 256 KiB. You can always use the ordinary FLOW SDK context.
 
+## Type-check Binding declarations
+
+From the project root, generate a declaration from the current working configuration.
+
+```sh
+jig types --project > jig.types.d.ts
+```
+
+Jig evaluates project declarations in the same containment used by `jig check`.
+Start with a configuration that `jig check` can link.
+Jig reads the configured packages and selected, already installed npm Flow dependencies.
+It needs no approval and starts no Flows.
+Keep the generated file outside Flow packages, and regenerate it after changing package selections, slot declarations, or settings schemas.
+
+Use TypeScript 4.9 or newer with `NodeNext` module resolution.
+In a Binding under `bindings/`, import `BindingInput` as a type and apply `satisfies` to the object passed to `defineBinding`.
+For example, this project's worker declares `review` and uses the required `route` setting above.
+
+```typescript
+import { defineBinding } from '@jigging/jig'
+import type { BindingInput } from '../jig.types.js'
+
+export default defineBinding({
+  package: 'flows/worker',
+  slots: { review: 'binding:editor' },
+  settings: { route: 'summary' },
+} satisfies BindingInput)
+```
+
+Run your usual `tsc --noEmit` check with the Binding file included.
+Use the package path without a `./` prefix or the exact `npm:<package>` selection.
+TypeScript checks object literals for unknown slot names and settings shape errors covered by the projection.
+Settings use the same structural schema projection described above.
+Use ordinary `defineBinding` by itself for declarations that do not opt in.
+
+[`jig specialize-slot`](design.md#give-one-caller-slot-its-own-child-binding) preserves this type check in literal Binding declarations.
+
+`jig check` still applies the exact schema and link rules, including required routes, compatible targets, and attachment mappings.
+TypeScript's structural checks can accept extra fields on values supplied through variables.
+The declaration contains no Binding settings values or active slot targets.
+Flow-local call types continue to come from the caller's declared contracts.
+
 ## Named methods with progress
 
 Declare identity and ports explicitly; the compiler does not infer semantics:

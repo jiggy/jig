@@ -8,7 +8,7 @@ import {
   privateCliRequiresHost,
   privateCliVerification,
 } from '../../src/cli.js'
-import { compareConfiguredRouting } from '../../src/cli-check.js'
+import { compareConfiguredRouting, renderCheck } from '../../src/cli-check.js'
 import {
   approvedTargets,
   cliShellWord,
@@ -98,14 +98,68 @@ test('composition diff compares exact selectors, caller slots, settings, and ent
     ],
     settingsChanged: ['binding:adjusted'],
   }
-  expect(compareConfiguredRouting(approved, working)).toEqual(expected)
+  expect(compareConfiguredRouting(approved, working).diff).toEqual(expected)
   expect(
-    compareConfiguredRouting(approved, { ...working, entrypoint: 'binding:adjusted' }),
+    compareConfiguredRouting(approved, { ...working, entrypoint: 'binding:adjusted' }).diff,
   ).toEqual({
     ...expected,
     entrypoint: { before: `flow:${packageName}`, after: 'binding:adjusted' },
   })
 })
+
+test('composition diff bounds split context and escapes captured identifiers', () => {
+  const packagePath = 'flows/producer\n\u202e`'
+  const direct = `flow:${packagePath}`
+  const original = 'binding:shared-producer'
+  const added = 'binding:offer-producer'
+  const row = (target: string, packageName: string, slot = '', selected?: string) => ({
+    target,
+    package: packageName,
+    flow: { routes: selected === undefined ? [] : [{ slot, target: selected }] },
+  })
+  const callers = Array.from({ length: 10 }, (_, index) => `binding:offer-${index}`)
+  const retained = Array.from({ length: 10 }, (_, index) =>
+    row(`binding:book-${index}`, 'flows/book', 'production', original),
+  )
+  const unchanged = [row(original, packagePath), ...retained, row(direct, packagePath)]
+  const approved = {
+    targets: [
+      ...callers.map((caller) => row(caller, 'flows/offer', 'sample', original)),
+      ...unchanged,
+    ],
+  }
+  const working = {
+    targets: [
+      row(added, packagePath),
+      ...callers.map((caller) => row(caller, 'flows/offer', 'sample', added)),
+      ...unchanged,
+    ].reverse(),
+  }
+  const comparison = compareConfiguredRouting(approved, working)
+  const output = renderCheck(false, comparison)
+  expect(output).toContain('Context omitted for additional Binding split slots: 2.')
+  expect(output).toContain('More retained caller slots omitted: 2.')
+  expect(output).toContain(
+    'Direct Flow selector still configured: "flow:flows/producer\\u000a\\u202e`"',
+  )
+  expect(output).not.toContain('\u202e')
+  expect(output).not.toContain('"binding:book-8"')
+  expect(output).toContain('Slot "binding:offer-9" / "sample"')
+  expect(JSON.parse(renderCheck(true, comparison))).toEqual({
+    basis: 'working-tree',
+    status: 'linked',
+    diff: comparison.diff,
+  })
+  const directRemoved = { targets: working.targets.filter((target) => target.target !== direct) }
+  expect(renderCheck(false, compareConfiguredRouting(approved, directRemoved))).not.toContain(
+    'Direct Flow selector still configured',
+  )
+  const existing = { targets: [...approved.targets, row(added, packagePath)] }
+  expect(renderCheck(false, compareConfiguredRouting(existing, working))).not.toContain(
+    'Original selector still configured',
+  )
+})
+
 test('selection without an approved entrypoint never guesses and validates options before asking', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-empty-choice-'))
   try {

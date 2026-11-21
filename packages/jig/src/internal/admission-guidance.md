@@ -171,6 +171,9 @@ Version metadata is checked before evaluation and reverified before capture comp
   Keep exact child attachment port/folder maps visible, and mark mapped parents
   affected when their selected child revision or availability changes.
 
+  `configured-binding-splits.ts` shares bounded caller and selector context between check and review.
+  The review context supplements the signed policy diff and establishes configured selections only.
+
 - Installed Bun authentication, rootless acquisition, delegation, containment,
   supervision, and execution. Missing or invalid installed release files produce
   closed repair evidence. Supported-host failures remain distinct.

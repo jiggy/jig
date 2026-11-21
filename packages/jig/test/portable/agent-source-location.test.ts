@@ -4,6 +4,7 @@ import {
   type PrivateAgentSourceLocation,
   privateAgentGrantSourceLocation,
   privateAgentSourceLocations,
+  replaceBindingSlotLiteral,
 } from '../../src/project/agent-source-location.js'
 
 const encoder = new TextEncoder()
@@ -256,5 +257,48 @@ describe('captured literal Binding membership', () => {
     ])
       expect(add(source)).toBeUndefined()
     expect(add(projectImport + call, ['bindings/other.ts'])).toBeUndefined()
+  })
+})
+
+describe('captured typed Binding slots', () => {
+  const typeImport = "import type { BindingInput } from '../jig.types.js'\n"
+  const declaration =
+    "export default defineBinding({ slots: { edit: { target: 'binding:old', attachments: {} } } } /* keep */ satisfies BindingInput,)"
+  const edit = (source: string) =>
+    replaceBindingSlotLiteral(
+      encoder.encode(source),
+      'edit',
+      (value) => value === 'binding:old',
+      'binding:new',
+    )
+
+  test('preserves the type-only import, satisfaction clause and other source bytes', () => {
+    for (const source of [
+      ordinaryImport + typeImport + declaration,
+      (
+        typeImport.replace('BindingInput }', 'BindingInput, }') +
+        ordinaryImport +
+        declaration
+      ).replaceAll('\n', '\r\n'),
+    ]) {
+      expect(edit(source)).toBe(source.replace("'binding:old'", "'binding:new'"))
+    }
+  })
+
+  test('refuses alternate type expressions, runtime imports and computed values', () => {
+    const source = ordinaryImport + typeImport + declaration
+    for (const candidate of [
+      ordinaryImport + declaration,
+      source.replace('satisfies BindingInput', 'as BindingInput'),
+      source.replace('satisfies BindingInput', 'satisfies BindingInput & Other'),
+      source.replace('import type', 'import'),
+      source.replace("'../jig.types.js'\n", "'../jig.types.js' "),
+      source.replace('@jigging/jig', './lookalike.ts'),
+      source.replace('export default', "import './effect.ts'\nexport default"),
+      source.replace('{ slots:', '{ settings: evaluate(), slots:'),
+      source.replace("'binding:old'", "'binding:other'"),
+    ]) {
+      expect(edit(candidate)).toBeUndefined()
+    }
   })
 })

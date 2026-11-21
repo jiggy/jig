@@ -35,6 +35,14 @@
         "jobs": {
           "arm64": [133935793498]
         }
+      },
+      {
+        "run": 44909952686,
+        "attempt": 2,
+        "source": "d2e960d44205e7499195dd9979b5aa960c755ccd",
+        "jobs": {
+          "arm64": [136883517696]
+        }
       }
     ]
   },
@@ -137,7 +145,7 @@
       "packages/jig/test/host/http-request-lifecycle.test.ts": 83,
       "packages/jig/test/host/installed-attachments.test.ts": 12,
       "packages/jig/test/host/installed-attempt-export.test.ts": 31,
-      "packages/jig/test/host/installed-cli-lifecycle.test.ts": 55,
+      "packages/jig/test/host/installed-cli-lifecycle.test.ts": 294,
       "packages/jig/test/host/installed-contact-import.test.ts": 80,
       "packages/jig/test/host/installed-host-foundation.test.ts": 167,
       "packages/jig/test/host/installed-incident-brief-budget.test.ts": 25,
