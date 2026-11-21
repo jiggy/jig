@@ -1,5 +1,5 @@
-import { callObservationSpans, displayDuration } from '@jigging/display-model'
 import type { DisplaySnapshot } from '@jigging/display-model'
+import { callObservationSpans, displayDuration } from '@jigging/display-model'
 import type { PrivateBrowserClient } from './client.js'
 
 /** Routine revision replacement never becomes a transient warning banner. */
@@ -28,4 +28,9 @@ export function privateBrowserCallSpans(calls: DisplaySnapshot['calls']): {
 
 export function privateBrowserDuration(milliseconds: number): string {
   return displayDuration(milliseconds)
+}
+
+export function privateBrowserObservationTime(time: number): string {
+  const date = new Date(time)
+  return Number.isFinite(date.getTime()) ? date.toISOString() : 'Observation time unavailable'
 }

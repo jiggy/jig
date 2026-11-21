@@ -23,6 +23,7 @@ import {
 } from './composition.js'
 import { CompositionPage } from './composition-view.js'
 import { startPrivateExplorer } from './explorer-app.js'
+import { InvestigationBrief } from './investigation-brief.js'
 import {
   PrivateBrowserClock,
   type PrivateBrowserLocal,
@@ -46,6 +47,7 @@ import {
   privateBrowserCallSpans,
   privateBrowserDuration,
   privateBrowserObservationStatus,
+  privateBrowserObservationTime,
 } from './observations.js'
 
 let capability = privateBrowserCapability(location.hash)
@@ -141,12 +143,6 @@ const teaser = (text: string, count = 180): string => {
   }
   return result
 }
-const observationTime = (time: number): string => {
-  const date = new Date(time)
-  return Number.isFinite(time) && Number.isFinite(date.getTime())
-    ? date.toISOString()
-    : 'Observation time unavailable'
-}
 const currentLocal = (): PrivateBrowserLocal => {
   if (!local.has(destinationKey)) local.set(destinationKey, privateBrowserLocal())
   return local.get(destinationKey)!
@@ -181,6 +177,7 @@ const provenance = (value: DisplayAttribution): string =>
 
 function redraw(): void {
   const focused = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+  let missingCallDetail = false
   let missingFileDetail = false
   // A publisher update can replace the search field when a section becomes a comparison.
   const focusedCollection =
@@ -298,7 +295,17 @@ function redraw(): void {
     const previousSelectedCall = selectedCall
     if (selectedCall)
       selectedCall = privateBrowserSurvivingSelection(previousCallKeys, selectedCall, callKeys)
-    if (selectedCall !== previousSelectedCall) compositionOrigin = undefined
+    if (selectedCall !== previousSelectedCall) {
+      compositionOrigin = undefined
+      const execution = local.get('overview')
+      if (snapshot.mode === 'live-run' && execution?.detailOpen) {
+        execution.detailOpen = false
+        if (destinationKey === 'overview' && !panel) {
+          missingCallDetail = true
+          feedback = 'The selected invocation is no longer retained.'
+        }
+      }
+    }
     previousCallKeys = callKeys
     if (
       destinationKey === 'files' &&
@@ -369,7 +376,8 @@ function redraw(): void {
   client?.setPreview(intent)
   render(h(App, {}), root)
   restoreCompositionViewport()
-  if (missingFileDetail && focused && !focused.isConnected) {
+  if (missingCallDetail && focused && !focused.isConnected) focusSelectedEntry()
+  else if (missingFileDetail && focused && !focused.isConnected) {
     const selector = navigationMedia.matches
       ? '.mobile-view-picker select'
       : '[role=tab][tabindex="0"]'
@@ -2200,6 +2208,15 @@ function Overview(): ComponentChildren {
             selected.outcome === undefined
               ? null
               : h('p', {}, 'Outcome: ', h('code', {}, literal(selected.outcome))),
+            snapshot.mode === 'live-run' && childViews
+              ? h(InvestigationBrief, {
+                  key: JSON.stringify([snapshot.rootSourceId, selected.id]),
+                  snapshot,
+                  call: selected,
+                  childViews,
+                  enabled: !!client?.referencesEnabled && !closing,
+                })
+              : null,
             h(
               'dl',
               { class: 'fields' },
@@ -2207,13 +2224,13 @@ function Overview(): ComponentChildren {
                 'div',
                 { class: 'field' },
                 h('dt', {}, 'First observed'),
-                h('dd', {}, observationTime(selected.firstObservedAt)),
+                h('dd', {}, privateBrowserObservationTime(selected.firstObservedAt)),
               ),
               h(
                 'div',
                 { class: 'field' },
                 h('dt', {}, 'Latest observation'),
-                h('dd', {}, observationTime(selected.observedAt)),
+                h('dd', {}, privateBrowserObservationTime(selected.observedAt)),
               ),
             ),
             selected.cause

@@ -342,6 +342,17 @@ The link opens the exact view and preserves a return to the invocation and selec
 Missing child identity remains explicitly unavailable.
 Stale or incomplete observations disable these links.
 
+The selected live invocation offers an explicit **Copy investigation brief** action.
+The plain text identifies the observed caller, slot, caller-local operation, and observed state.
+It presents any admitted application outcome separately from lifecycle state.
+It uses admitted configuration labels only for exact matches and counts reported views by exact child attribution.
+Missing or conflicting correspondence and relevant omissions remain explicit.
+
+The brief gives an inventory inspection command. It does not derive a selector from a label or opaque identity.
+It excludes view bodies, raw payloads, journals, captured file paths, and access capabilities.
+Clipboard writes require current observations and explicit activation.
+Feedback belongs to the selected invocation and observation revision. Losing the selection closes its details.
+
 The Run map supplies no editing, test submission, replay, or execution controls.
 Project exploration places explicit input and launch controls beside its approved map.
 Saved result packets and retained application views contain no admitted composition.
