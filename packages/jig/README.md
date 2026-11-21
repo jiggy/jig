@@ -209,6 +209,8 @@ Source behavior and execution readiness require separate checks.
 `jig inspect --result ./result-packet --display tui` reopens saved result,
 file and diagnostic evidence without starting work or requiring a project.
 Use `--display web` for browser inspection instead.
+Run with `--record-calls --out DIR` to retain child-call evidence.
+Use `jig inspect --result DIR --calls` to read it.
 These are recorded local claims, not a new execution verdict. File previews use
 captured bytes checked against the packet manifest. See [results](https://jig.md/build/results).
 

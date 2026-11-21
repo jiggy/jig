@@ -150,7 +150,7 @@ export function completionScript(shell: string): string | undefined {
     'init new add-use types specialize-slot check review run explore inspect views completion import-contract'
   const contracts = JIG_STANDARD_CONTRACTS.map((entry) => `jig:${entry.name}`).join(' ')
   const runOptions =
-    '--help --input --attach --select --out --receive --updates --timeout --verification --json --display --display-bundle'
+    '--help --input --attach --select --out --receive --updates --timeout --verification --json --display --display-bundle --record-calls'
   if (shell === 'bash')
     return `_jig() {
   local cur="\${COMP_WORDS[COMP_CWORD]}" command="\${COMP_WORDS[1]}" prev="\${COMP_WORDS[COMP_CWORD-1]}"
@@ -181,7 +181,7 @@ export function completionScript(shell: string): string | undefined {
       run) opts='${runOptions}';;
       explore) opts='--help --timeout --verification';;
       review) opts='--help --allow-resolution-network --source-root --allow-authority-changes --generate-contracts --yes --details --verification --agent';;
-      inspect) opts='--help --json --verification --result --display --flow --approved --all --package --topology --snapshot --compare';;
+      inspect) opts='--help --json --verification --result --calls --display --flow --approved --all --package --topology --snapshot --compare';;
       views) opts='list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision';;
       init) opts='--help --bare --agent';;
       specialize-slot) opts='--help --slot --as --select';;
@@ -227,7 +227,7 @@ _jig() {
       run) choices=(${runOptions});;
       explore) choices=(--help --timeout --verification);;
       review) choices=(--help --allow-resolution-network --source-root --allow-authority-changes --generate-contracts --yes --details --verification --agent);;
-      inspect) choices=(--help --json --verification --result --display --flow --approved --all --package --topology --snapshot --compare);;
+      inspect) choices=(--help --json --verification --result --calls --display --flow --approved --all --package --topology --snapshot --compare);;
       views) choices=(list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision);;
       init) choices=(--help --bare --agent);;
       specialize-slot) choices=(--help --slot --as --select);;
@@ -258,10 +258,11 @@ complete -c jig -n '__fish_seen_subcommand_from run inspect explore' -a '(jig co
 complete -c jig -n '__fish_seen_subcommand_from run review inspect explore' -l verification -r -a 'cached strict fast'
 complete -c jig -n '__fish_seen_subcommand_from explore' -l timeout -r
 complete -c jig -n '__fish_seen_subcommand_from run inspect' -l json
-${['flow', 'approved'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from inspect' -l ${flag}`).join('\n')}
+${['flow', 'approved', 'calls'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from inspect' -l ${flag}`).join('\n')}
 complete -c jig -n '__fish_seen_subcommand_from inspect' -l result -r
 complete -c jig -n '__fish_seen_subcommand_from inspect' -l display -r -a 'plain tui web'
 complete -c jig -n '__fish_seen_subcommand_from run' -l display -r -a 'auto plain tui web'
+complete -c jig -n '__fish_seen_subcommand_from run' -l record-calls
 complete -c jig -n '__fish_seen_subcommand_from run' -l updates -r -a off
 complete -c jig -n '__fish_seen_subcommand_from init' -l bare
 complete -c jig -n '__fish_seen_subcommand_from init' -l agent -r -a 'codex claude'

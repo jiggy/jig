@@ -457,9 +457,8 @@ actual ancestors of matching calls. Call details may include retained reports
 associated by accepted-source or host-observed correspondence, never by matching
 names or diagnostic path strings.
 
-Saved packets contain no retained portable views or invocation history. Render
-only fixed recorded fields, captured files and recorded diagnostics, without
-reconstructing domain views or a graph from prose or familiar keys.
+The saved browser inspector renders fixed recorded fields, captured files and recorded diagnostics.
+Use [saved child calls](cli-experience.md#saved-child-calls) for opt-in call evidence in a packet.
 The separately selected application archive retains explicit display bundles under its own contract.
 Manifest consistency is not authentication of the report.
 
