@@ -16,7 +16,7 @@ Authored behavioral maps remain distinct from host-computed configured topology.
 It also owns configured-topology inspection of current source or retained approval.
 Source behavior inspection owns the linked application map and its coverage limits.
 Focused topology preserves callers, other configured routes and shared package uses, with explicit boundary omissions.
-It owns the pre-run explorer guide, explicit input and launch steps, supported interfaces, and separate Close meanings.
+It owns the pre-run explorer guide, including loading a local JSON draft, explicit launch, supported interfaces, and separate Close meanings.
 `../reference/troubleshooting.md` owns operational diagnosis and recovery procedures.
 
 ## Local Contracts

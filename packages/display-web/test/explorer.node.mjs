@@ -76,6 +76,7 @@ const props = () => ({
   input: '',
   inputOpen: false,
   inputTouched: false,
+  inputFileStatus: '',
   draftNotice: '',
   detailOpen: false,
   scale: 1,
@@ -85,6 +86,7 @@ const props = () => ({
   onRefresh() {},
   onRefreshRun() {},
   onInput() {},
+  onInputFile() {},
   onInputTouched() {},
   onInputOpen() {},
   onInputClose() {},
@@ -140,6 +142,10 @@ test('explorer selects approved workflows before execution and leaves input blan
     'page',
   )
   assert.equal(nodes.find((node) => node.type === 'textarea').props.value, '')
+  const picker = nodes.find((node) => node.props.type === 'file')
+  assert.equal(picker.props.accept, '.json,application/json')
+  assert.equal(picker.props.multiple, undefined)
+  assert.match(text(page), /Load input JSON file/)
   assert.equal(
     nodes.find((node) => node.type === 'button' && node.props.type === 'submit').props.disabled,
     true,
@@ -160,7 +166,10 @@ test('unbound read attachments can be selected and required channels still gate 
   }
   const page = ExplorerPage(inputs)
   assert.match(text(page), /Choose files for source/)
-  assert.equal(walk(page).find((node) => node.props.type === 'file').props.multiple, true)
+  assert.equal(
+    walk(page).filter((node) => node.props.type === 'file' && node.props.multiple).length,
+    1,
+  )
 
   data.selected.receives = [{ name: 'events', required: true }]
   data.selected.launch = {

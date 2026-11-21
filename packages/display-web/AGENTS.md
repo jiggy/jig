@@ -49,6 +49,9 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   Keep schema and unavailable launch reasons beside the input editor.
   Retain at most sixteen drafts within sixteen MiB, evicting older drafts with visible feedback.
   Preserve an oversized current edit until selection changes, without clipping it.
+- Read one browser-selected UTF-8 JSON input file into the current editable draft within its existing byte limit.
+  Keep the draft on file refusal. Cancel pending reads on edits, selection, project refresh, panel exit, or explorer closure.
+  Send the draft only through explicit submission.
 - File selections use browser File values shared by attachment name within one approval.
   File bytes travel only on explicit launch. Keep comparison evidence for two settled Runs in tab memory.
 - Retain one snapshot task, bounded SSE reader/retry owner and active preview.

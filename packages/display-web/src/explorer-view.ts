@@ -30,6 +30,7 @@ export type PrivateExplorerViewProps = {
   previousInput?: string | undefined
   inputOpen: boolean
   inputTouched: boolean
+  inputFileStatus: string
   draftNotice: string
   selectedNodeId?: string | undefined
   detailOpen: boolean
@@ -40,6 +41,7 @@ export type PrivateExplorerViewProps = {
   onRefresh: () => void
   onRefreshRun: () => void
   onInput: (value: string) => void
+  onInputFile: (file: File) => void
   onFiles?: (port: string, files: readonly File[]) => void
   onInputTouched: () => void
   onInputOpen: () => void
@@ -169,6 +171,27 @@ function RunComparison(
   )
 }
 
+function FilePicker(
+  label: ComponentChildren,
+  onChoose: (files: FileList) => void,
+  options: { disabled: boolean; multiple?: boolean; accept?: string },
+): ComponentChildren {
+  return h(
+    'label',
+    { class: 'explorer-file-picker-label' },
+    label,
+    h('input', {
+      type: 'file',
+      ...options,
+      onChange: (event: Event) => {
+        const input = event.currentTarget as HTMLInputElement
+        if (input.files?.length) onChoose(input.files)
+        input.value = ''
+      },
+    }),
+  )
+}
+
 function AttachmentFields(
   props: PrivateExplorerViewProps,
   item: NonNullable<DisplayProjectSnapshot['selected']>['attachments'][number],
@@ -183,25 +206,15 @@ function AttachmentFields(
   return h(
     'div',
     { class: 'explorer-file-picker' },
-    h(
-      'label',
-      { class: 'explorer-file-picker-label' },
+    FilePicker(
       h(
         'span',
         {},
         selected.length ? 'Replace files for ' : 'Choose files for ',
         literal(item.name),
       ),
-      h('input', {
-        type: 'file',
-        multiple: true,
-        disabled: props.sending,
-        onChange: (event: Event) => {
-          const input = event.currentTarget as HTMLInputElement
-          if (input.files?.length) props.onFiles?.(item.name, [...input.files])
-          input.value = ''
-        },
-      }),
+      (files) => props.onFiles?.(item.name, [...files]),
+      { multiple: true, disabled: props.sending },
     ),
     selected.length
       ? h(
@@ -376,6 +389,17 @@ function InputPanel(props: PrivateExplorerViewProps): ComponentChildren {
         'div',
         { class: 'explorer-input-toolbar' },
         h('label', { htmlFor: 'explorer-input' }, 'Input JSON'),
+        FilePicker(
+          'Load input JSON file',
+          (files) => {
+            const file = files.item(0)
+            if (file) props.onInputFile(file)
+          },
+          {
+            accept: '.json,application/json',
+            disabled: props.sending || props.closing || props.connection !== 'current',
+          },
+        ),
         props.previousInput === undefined || props.previousInput === props.input
           ? null
           : button('Reuse last JSON', () => props.onInput(props.previousInput!), {
@@ -410,6 +434,11 @@ function InputPanel(props: PrivateExplorerViewProps): ComponentChildren {
           : props.inputTouched
             ? parsed.reason
             : 'Input stays in this tab until you choose Run.',
+      ),
+      h(
+        'div',
+        { role: 'status' },
+        props.inputFileStatus ? h('p', { class: 'secondary' }, props.inputFileStatus) : null,
       ),
       props.draftNotice ? h('p', { class: 'secondary' }, props.draftNotice) : null,
       schema
