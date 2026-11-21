@@ -132,7 +132,7 @@ const HELP = `Jig runs reusable methods with powers you approve.
 Usage:
   jig init <directory>       Create a project with a small greeting Flow
   jig new <name>             Add an editable Flow to the current project
-  jig types <package-path>   Print TypeScript types for a Flow's declared child calls
+  jig types <package-path>   Print TypeScript types for a Flow's settings and child calls
   jig add-use <package-path> <slot>=<source>  Declare a collaborator in an existing Flow
   jig split-binding <caller> Give one caller slot its own child Binding
   jig check [--diff]         Check the working project's composition before review
@@ -262,7 +262,7 @@ and jig review.`,
   types: `Usage: jig types <package-path>
 
 Select one project-relative package directory containing FLOW.ts. Print a
-TypeScript declaration based on its FLOW.meta.json uses and local contracts.
+TypeScript declaration from its settings.schema.json and declared child calls.
 Jig reads source as data and writes the declaration to stdout.
 
 Example:

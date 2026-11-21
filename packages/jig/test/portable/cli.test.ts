@@ -371,7 +371,7 @@ test('installed inspection is read-only and returns exact machine JSON', async (
   passed++
 })
 
-test('installed child call declarations check caller edits with TypeScript', async () => {
+test('installed Flow declarations check settings and child calls with TypeScript', async () => {
   const project = join(root, 'type-consumer')
   const caller = join(project, 'flows/worker')
   await mkdir(join(caller, 'contracts'), { recursive: true })
@@ -382,6 +382,18 @@ test('installed child call declarations check caller edits with TypeScript', asy
     '{"uses":{"mapping-review":{"contract":"./contracts/reviewer.json"},"reader":{}}}\n',
   )
   const contractPath = join(caller, 'contracts/reviewer.json')
+  const settingsPath = join(caller, 'settings.schema.json')
+  const dialect = 'https://flow.jig.md/schemas/schema-0.json'
+  await writeFile(
+    settingsPath,
+    JSON.stringify({
+      $schema: dialect,
+      type: 'object',
+      properties: { route: { enum: ['review', 'raw'] }, reason: { type: 'string' } },
+      required: ['route'],
+      additionalProperties: false,
+    }),
+  )
   const contract = {
     $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
     id: 'https://example.org/contracts/reviewer',
@@ -406,20 +418,22 @@ import type { RunContext } from './FLOW.calls.js'
 
 await handle(async (context) => {
   const run = context as RunContext
+  const route: 'review' | 'raw' = run.settings.route
+  const reason = run.settings.reason?.trim() ?? 'Ambiguous'
   const result = await run.call({
     operationId: 'review',
     slot: 'mapping-review',
-    input: { headers: ['Name'], reason: 'Ambiguous' },
+    input: { headers: ['Name'], reason },
   }, { signal: run.signal })
-  const slot: 'mapping-review' | 'reader' = run.settings.review === true ? 'mapping-review' : 'reader'
+  const slot = route === 'review' ? 'mapping-review' : 'reader'
   if (run.input === 'raw' && slot === 'reader') {
     const raw = await run.call({ operationId: 'raw', slot, input: [true, 7] })
     return { outcome: 'done', output: raw.output satisfies JsonValue }
   }
   if (run.input === 'choose') {
     const request = slot === 'reader'
-      ? { operationId: 'choose', slot, input: [true, 7] }
-      : { operationId: 'choose', slot, input: { headers: ['Name'], reason: 'Ambiguous' } }
+      ? { operationId: 'choose', slot, input: [true, 7] } as const
+      : { operationId: 'choose', slot, input: { headers: ['Name'], reason: 'Ambiguous' } } as const
     const child = await run.call(request)
     return { outcome: 'done', output: child.output }
   }
@@ -442,7 +456,12 @@ await handle(async (context) => {
   const declaration = await generate()
   expect(await generate()).toBe(declaration)
   expect((await readdir(project)).sort()).toEqual(['flows', 'jig.ts', 'package.json'])
-  expect((await readdir(caller)).sort()).toEqual(['FLOW.meta.json', 'FLOW.ts', 'contracts'])
+  expect((await readdir(caller)).sort()).toEqual([
+    'FLOW.meta.json',
+    'FLOW.ts',
+    'contracts',
+    'settings.schema.json',
+  ])
   await writeFile(join(caller, 'FLOW.calls.d.ts'), declaration)
 
   const node = process.env.FLOW_NODE ?? Bun.which('node')
@@ -459,6 +478,7 @@ await handle(async (context) => {
           node,
           compiler,
           '--strict',
+          '--exactOptionalPropertyTypes',
           '--noEmit',
           '--pretty',
           'false',
@@ -485,7 +505,16 @@ await handle(async (context) => {
     }
     return result.stdout
   }
-  await compile(source)
+  for (const compiler of [tsc59, tsc]) {
+    await compile(source, undefined, compiler)
+    const wrongRoute = source.replace(
+      '  const reason',
+      '  const wrongRoute: number = run.settings.route\n  const reason',
+    )
+    const diagnostic = await compile(wrongRoute, 'wrongRoute: number', compiler)
+    expect(diagnostic).toMatch(/not assignable to type 'number'/)
+  }
+  await compile(source.replace('reason?.trim()', 'reason.trim()'), 'reason.trim()')
   const call = (slot: string, input: string) => `import type { RunContext } from './FLOW.calls.js'
 
 declare const run: RunContext
@@ -530,6 +559,39 @@ await run.call({
   expect(invalid).toMatchObject({ code: 1, stdout: '' })
   expect(invalid.stderr).toContain('SCHEMA_INVALID')
   expect(invalid.stderr).toContain('flows/worker/contracts/reviewer.json')
+
+  await writeFile(join(caller, 'FLOW.meta.json'), '{}\n')
+  await writeFile(join(caller, 'FLOW.calls.d.ts'), await generate())
+  const settingsOnly = `import { handle } from '@jigging/flow'
+import type { RunContext } from './FLOW.calls.js'
+await handle(async (context) => {
+  const run = context as RunContext
+  const route: 'review' | 'raw' = run.settings.route
+  return run.call({ operationId: 'read', slot: 'any', input: route })
+})\n`
+  await compile(settingsOnly)
+  await rm(settingsPath)
+  const broad = await generate()
+  await writeFile(join(caller, 'FLOW.calls.d.ts'), broad)
+  await compile(`import type { RunContext as SDKContext } from '@jigging/flow'
+import type { RunContext } from './FLOW.calls.js'
+declare const sdk: SDKContext
+export const run: RunContext = sdk
+`)
+  await writeFile(
+    settingsPath,
+    JSON.stringify({
+      $schema: dialect,
+      $ref: '#/$defs/Settings',
+      $defs: { Settings: { type: 'object' } },
+    }),
+  )
+  expect(await generate()).toBe(broad)
+  await writeFile(settingsPath, '{"type":"object"}\n')
+  const invalidSettings = await invoke(['types', 'flows/worker'], project)
+  expect(invalidSettings).toMatchObject({ code: 1, stdout: '' })
+  expect(invalidSettings.stderr).toContain('SCHEMA_INVALID')
+  expect(invalidSettings.stderr).toContain('flows/worker/settings.schema.json')
   passed++
 }, 60_000)
 

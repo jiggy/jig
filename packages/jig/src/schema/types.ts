@@ -71,6 +71,7 @@ export class SchemaDiagnostic extends Error implements SchemaDiagnosticShape {
 export interface CompiledSchema {
   readonly path: string
   readonly schemaPointer: string
+  readonly schema: SchemaValue
 
   /** Validate one bounded FLOW JSON/0 value without changing it. */
   validate(instance: unknown, code: string): void

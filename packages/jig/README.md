@@ -249,7 +249,7 @@ CLI review before new approval; no Flow starts.
 - [Delegated HTTP access](https://jig.md/build/http)
 - [Dependencies](https://jig.md/build/dependencies)
 - [Author contracts once](https://jig.md/build/contracts)
-- [Type-check declared child calls](https://jig.md/build/contracts#type-check-child-calls)
+- [Type-check method settings and child calls](https://jig.md/build/contracts#type-check-child-calls)
 - [Workflow design](https://jig.md/understand/workflows)
 - [Project authoring](https://jig.md/spec/project-sdk)
 - [Execution policy](https://jig.md/spec/project-policy)

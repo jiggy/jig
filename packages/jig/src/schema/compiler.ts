@@ -526,6 +526,13 @@ class CompiledSchemaImpl implements CompiledSchema {
     this.path = graph.path
   }
 
+  get schema(): SchemaValue {
+    const node = this.graph.nodes.get(this.schemaPointer)
+    if (node === undefined)
+      throw new Error(`internal Schema/0 node missing at ${this.schemaPointer}`)
+    return node.schema
+  }
+
   validate(instance: unknown, code: string): void {
     try {
       validateJson1(instance)

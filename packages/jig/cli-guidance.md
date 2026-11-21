@@ -80,7 +80,7 @@ All selected domain requirements still apply.
   to the caller, the target configuration, and ordinary check and review.
 
 - `src/cli-call-types.ts` owns the declaration emitted by `jig types`.
-  Reuse exact member capture and inspected `uses` contracts.
+  Reuse exact member capture, inspected `uses` contracts, and the validated package settings schema.
   Infer the selected slot for payload diagnostics and preserve the slot and input pairing in union requests.
   Emit only public SDK types, and keep review and the runtime responsible for validation.
   Declaration generation takes no evaluator, provider, or execution host.
