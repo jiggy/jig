@@ -1962,6 +1962,91 @@ test('negative numeric literals preserve the source branch after a lookup sentin
   expect(routes?.[0]?.at(-1)).toMatchObject({ detail: 'outcome "done", status = "missing"' })
 })
 
+test('opaque Reporting points from a protected callback to a captured handler', () => {
+  const entry = [
+    "import { handle } from '@jigging/flow'",
+    "import { withReporting } from '@jigging/reporting'",
+    "import { runMethod } from './method.ts'",
+    'await handle(run =>',
+    "  withReporting(run, 'progress', async updates => {",
+    '    try { return await runMethod(run, updates) }',
+    "    catch (error) { updates.notice('failed'); throw error }",
+    "    finally { updates.clear('import') }",
+    '  }),',
+    ')',
+  ].join('\n')
+  const report = analyzeFlowBehavior(
+    snapshot(
+      method(''),
+      method(entry, {
+        sources: new Map([
+          ['FLOW.ts', entry],
+          ['method.ts', "\nexport async function runMethod() { return { outcome: 'done' } }"],
+        ]),
+      }),
+    ),
+  )
+  const scope = report.scopes[0]
+  expect(scope?.routes.map((route) => route.map((step) => step.kind))).toEqual([['end']])
+  expect(scope?.routes[0]?.at(-1)).toMatchObject({ completion: 'unknown' })
+  expect(renderFlowBehavior(report)).toContain(
+    '- Reporting wrapper or installed implementation is opaque. (flows/import/FLOW.ts:5) ' +
+      'Callback source [flows/import/FLOW.ts:5](./flows/import/FLOW.ts#L5) · ' +
+      'Handler source [flows/import/method.ts:2](./flows/import/method.ts#L2)',
+  )
+})
+
+test('opaque Reporting follows lexical aliases and falls back at an unresolved call', () => {
+  const entry = (callback: string, wrapper = 'report') =>
+    [
+      "import { handle as serve } from '@jigging/flow'",
+      "import { withReporting as report } from '@jigging/reporting'",
+      "import { build as handler } from './jobs/build.ts'",
+      'await serve(run => {',
+      '  const callback = ' + callback,
+      '  return ' + wrapper + "(run, 'progress', callback)",
+      '})',
+    ].join('\n')
+  const inspect = (code: string, handler = "export const build = () => ({ outcome: 'done' })") =>
+    renderFlowBehavior(
+      analyzeFlowBehavior(
+        snapshot(
+          method(''),
+          method(code, {
+            sources: new Map([
+              ['FLOW.ts', code],
+              ['jobs/build.ts', handler],
+            ]),
+          }),
+        ),
+      ),
+    )
+  const resolved = inspect(entry('updates => (handler)(run, updates)'))
+  expect(resolved).toContain(
+    'Callback source [flows/import/FLOW.ts:5](./flows/import/FLOW.ts#L5) · ' +
+      'Handler source [flows/import/jobs/build.ts:1](./flows/import/jobs/build.ts#L1)',
+  )
+  const shadowed = inspect(entry('async handler => {\n    return await handler(run)\n  }'))
+  expect(shadowed).toContain(
+    'Callback source [flows/import/FLOW.ts:5](./flows/import/FLOW.ts#L5) · ' +
+      'Call site [flows/import/FLOW.ts:6](./flows/import/FLOW.ts#L6)',
+  )
+  expect(shadowed).not.toContain('Handler source')
+  const reassigned = inspect(
+    entry('updates => handler(run, updates)'),
+    `export function build() { return { outcome: 'done' } }
+     export function replace() { build = () => ({ outcome: 'blocked' }) }`,
+  )
+  expect(reassigned).toContain('Call site [flows/import/FLOW.ts:5](./flows/import/FLOW.ts#L5)')
+  expect(reassigned).not.toContain('Handler source')
+  expect(inspect(entry('undefined'))).toContain(
+    'Callback argument [flows/import/FLOW.ts:6](./flows/import/FLOW.ts#L6)',
+  )
+  const unknownWrapper = inspect(entry('updates => handler(run, updates)', 'other'))
+  expect(unknownWrapper).toContain('Opaque call may affect later behavior.')
+  expect(unknownWrapper).not.toContain('Callback source')
+})
+
 test('conditional publication follows closure state and the computed view payload', () => {
   const body = `
     import { handle } from '@jigging/flow'

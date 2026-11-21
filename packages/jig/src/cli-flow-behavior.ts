@@ -240,6 +240,19 @@ function sourceLink(location: SourceSite): string {
   return sourcePathLink(location.path, location.line)
 }
 
+function coverageGap(gap: Scope['gaps'][number]): string {
+  const reason = '- ' + text(gap.reason) + ' (' + text(site(gap)) + ')'
+  const source = gap.reportingWrapperSource
+  if (!source) return reason
+  const callback = source.callbackArgument ? 'Callback argument' : 'Callback source'
+  const next = source.handler
+    ? ' · Handler source ' + sourceLink(source.handler)
+    : source.call
+      ? ' · Call site ' + sourceLink(source.call)
+      : ''
+  return reason + ' ' + callback + ' ' + sourceLink(source.callback) + next
+}
+
 function sourcePathLink(path: string, line?: number, label?: string): string {
   const location = label ?? (line === undefined ? path : site({ path, line }))
   return flowSourceLink(path, text(location), line)
@@ -2383,8 +2396,7 @@ export function renderFlowBehavior(report: BehaviorReport): string {
     )
     if (selected.gaps.length) {
       lines.push('### Coverage gaps', '')
-      for (const gap of selected.gaps)
-        lines.push('- ' + text(gap.reason) + ' (' + text(site(gap)) + ')')
+      lines.push(...selected.gaps.map(coverageGap))
       lines.push('')
     }
     lines.push(...evidence(routes))
@@ -3019,8 +3031,7 @@ function applicationMap(report: BehaviorReport): string[] {
       )
       if (scope.gaps.length) {
         lines.push('#### Coverage gaps', '')
-        for (const gap of scope.gaps)
-          lines.push('- ' + text(gap.reason) + ' (' + text(site(gap)) + ')')
+        lines.push(...scope.gaps.map(coverageGap))
         lines.push('')
       }
       lines.push(...evidence(routes))
