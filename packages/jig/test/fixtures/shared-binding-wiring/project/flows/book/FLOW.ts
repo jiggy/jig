@@ -3,7 +3,7 @@ import { handle } from '@jigging/flow'
 await handle(async (run) => {
   const result = await run.call({
     operationId: 'book-manuscript',
-    slot: 'producer',
+    slot: 'production',
     input: run.input,
     attachments: { review: { create: true } },
   })

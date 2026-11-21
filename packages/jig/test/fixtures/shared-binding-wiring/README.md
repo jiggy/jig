@@ -22,6 +22,7 @@ node --test wiring.mjs
 The type-check scenario generates a project declaration and specializes the offer's typed producer from a typed caller.
 It checks the edited Bindings with standard `tsc` and Jig's contained evaluator.
 It also checks that `tsc` identifies an unknown slot and a mistyped setting in their Binding declarations.
+The diff and review preview show the scoped edit and the preserved book, shared producer, and direct Flow selectors.
 
 The test installs a Flow dependency lock in each temporary project before review.
 It needs registry access for installation and no provider credentials.

@@ -8,8 +8,8 @@ Exercise a publishing application's shared producer and an offer-only configurat
 
 - `project/` owns the baseline Flow packages, Binding declarations, and reviewer contract.
 - `wiring.mjs` owns the isolated scenario, ordinary review, and public Run assertions.
-- It also checks the working-tree composition and compares a specialized slot against a retained approval.
-- The type-check scenario generates a project declaration, checks a scoped edit, and preserves the two field diagnostics.
+- It also checks the working-tree composition and previews the `develop-offer` sample split alongside the retained `coordinate-book` production slot and independent producer selectors.
+- The type-check scenario generates project types, checks the specialized source and field diagnostics, and compares the same split with a retained approval.
 - The [host suite](../../host/installed-shared-binding-wiring.test.ts) selects the Jig archive and checks native prerequisites and residue.
 
 ## Local Contracts

@@ -120,6 +120,17 @@ It reports additions, removals, and changed selections, including slots of added
 Settings compare as structural JSON for targets present on both sides. Only changed settings selectors appear.
 The entrypoint comparison uses its normalized target selector and excludes invocation arguments.
 
+The plain diff adds context when a caller keeps its package and redirects an existing slot to a new Binding.
+The original Binding must remain configured, and both Bindings must select the original Flow package.
+It shows the changed caller and slot, other caller slots that still select the original Binding, and the original selector.
+It includes the direct Flow selector when both configurations expose it for that package.
+Ordinary review and `--details` show the same context from their retained and proposed configurations.
+
+Both commands show context for at most eight changed slots in selector and slot order.
+Each original Binding shows at most eight retained caller slots in that order.
+The summary counts omitted context, and review still shows every changed policy record.
+These rows establish configured selections only. Approval covers the complete exact proposal.
+
 Both projections expose native resource kinds. Grant policy, client identity, and attachment maps remain outside this comparison.
 Source equality, method behavior, launch readiness, and preserved authority require separate evidence.
 

@@ -55,6 +55,7 @@ execution evidence.
 - The CLI collaborator declaration contract owns source selection, publication order, and interrupted-edit recovery.
 - The slot specialization contract owns editable declaration and membership shapes, publication order, and interrupted source recovery.
 - The CLI composition check contract owns the read-only check, the comparable topology fields, and the diff output.
+  Plain check and review share the bounded Binding split context. Its retained rows establish configured selections only.
 - The CLI type declaration contract owns package and project source selection, output, and evaluation permissions.
 - Mac admission requires native ARM macOS 15+ mechanisms, with observed OS builds
   retained as identity rather than an allowlist. Release evidence covers complete
