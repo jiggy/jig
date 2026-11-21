@@ -13,9 +13,9 @@ import {
   qualifyFoundationHost,
   requireFoundationOptIn,
 } from '../fixtures/host-foundation/materialize.js'
-import { checkInstalledBindingSplit } from '../fixtures/installed-binding-split.js'
 import { checkInstalledDisplay, installedRuntime } from '../fixtures/installed-display.js'
 import { checkInstalledFlowBehavior } from '../fixtures/installed-flow-behavior.js'
+import { checkInstalledSlotSpecialization } from '../fixtures/installed-specialize-slot.js'
 
 requireFoundationOptIn()
 const qualification = await qualifyFoundationHost()
@@ -44,7 +44,7 @@ async function installFixtureCli(root: string, command: ReturnType<typeof founda
 }
 
 test('installed CLI: Binding authoring changes only offer samples', async () => {
-  const root = realpathSync(await mkdtemp(join(tmpdir(), 'jig-installed-binding-split-')))
+  const root = realpathSync(await mkdtemp(join(tmpdir(), 'jig-installed-specialize-slot-')))
   let passed = false
   try {
     const command = foundationCommands(join(root, 'commands'))
@@ -54,9 +54,9 @@ test('installed CLI: Binding authoring changes only offer samples', async () => 
     ).version
     const before = await foundationResidue(qualification, command, root)
     for (const membership of ['discovered', 'exact'] as const)
-      await checkInstalledBindingSplit(
+      await checkInstalledSlotSpecialization(
         cli,
-        join(root, 'binding-split-' + membership),
+        join(root, 'specialize-slot-' + membership),
         command,
         flowVersion,
         membership,

@@ -14,7 +14,6 @@ import {
 import { executePrivateCliAttempt } from './cli-attempt-execution.js'
 import { privateExploreHandoff, privateInstalledExploreLaunch } from './cli-explore-launch.js'
 import { privateCliStderrDiagnostic } from './cli-presentation.js'
-import { type BindingSplit, splitWorkingBinding } from './internal/binding-split.js'
 import { PrivateCliOutput } from './internal/cli-output.js'
 import {
   privateConnectFileOwner,
@@ -49,6 +48,7 @@ import {
   recoverPrivateCheckpointRun,
 } from './internal/project-session-controller.js'
 import { privatePresentationDeadline } from './internal/root-run-timeout-policy.js'
+import { type SlotSpecialization, specializeWorkingSlot } from './internal/specialize-slot.js'
 import { inspectWorkingFlow, inspectWorkingFlowReport } from './internal/working-flow-inspection.js'
 import { canonicalJson } from './json.js'
 
@@ -135,7 +135,7 @@ async function runPrivateInstalledCli(
     return run()
   try {
     return await withPrivateInstallationVerification(operatorEnvironment, run, {
-      readOnly: ['check', 'inspect', 'split-binding'].includes(arguments_[0] ?? ''),
+      readOnly: ['check', 'inspect', 'specialize-slot'].includes(arguments_[0] ?? ''),
     })
   } catch (error) {
     if (!(error instanceof PrivateInstallationVerificationConfigurationError)) throw error
@@ -312,8 +312,12 @@ async function runWithEnvironment(
         return exit(0)
       }
       const host: PrivateCliCommandHost = Object.freeze({
-        splitBinding: async (project: string, request: BindingSplit, signal?: AbortSignal) =>
-          splitWorkingBinding(
+        specializeSlot: async (
+          project: string,
+          request: SlotSpecialization,
+          signal?: AbortSignal,
+        ) =>
+          specializeWorkingSlot(
             project,
             await openPrivateInstalledDeclarationEvaluator(location, project),
             request,

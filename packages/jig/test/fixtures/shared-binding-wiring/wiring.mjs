@@ -284,7 +284,7 @@ async function verifyStage(context, stage, admission, offerReviewer) {
   verifyReviews(await run(context, admission, stage, shared, 'fresh'), 'fresh', 'standard')
 }
 
-test('checks the working composition and compares a split without changing approval', async () => {
+test('checks the working composition and compares a specialized slot without changing approval', async () => {
   await scenario('composition-check', async (context) => {
     const { root, cwd, client } = context
     const check = (label, args, diagnostic) =>
@@ -315,8 +315,8 @@ test('checks the working composition and compares a split without changing appro
       ...linked,
       diff: { basis: 'approved', targets: [], slots: [], settingsChanged: [] },
     })
-    await command(root, cwd, 'split', jig, [
-      'split-binding',
+    await command(root, cwd, 'specialize', jig, [
+      'specialize-slot',
       'binding:offer',
       '--slot',
       'producer',
@@ -325,13 +325,13 @@ test('checks the working composition and compares a split without changing appro
       '--select',
       'post-edit=binding:specialist',
     ])
-    assert.equal(await check('split-check', []), 'Working configuration linked.\n')
-    const plain = await check('split-diff-plain', ['--diff'])
+    assert.equal(await check('specialized-check', []), 'Working configuration linked.\n')
+    const plain = await check('specialized-diff-plain', ['--diff'])
     assert.match(
       plain,
       /Slot "binding:offer" \/ "producer": "binding:shared-producer" -> "binding:offer-producer"/,
     )
-    assert.deepEqual(JSON.parse(await check('split-diff', ['--diff', '--json'])), {
+    assert.deepEqual(JSON.parse(await check('specialized-diff', ['--diff', '--json'])), {
       ...linked,
       diff: {
         basis: 'approved',

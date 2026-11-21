@@ -65,7 +65,7 @@ tests use genuine host capture through their own fixture entry.
   the checked sidecar. On uncertain cleanup, preserve recoverable state and
   identify the affected files.
 
-- Binding split publication uses held declaration directories and the captured authoring closure.
+- Slot specialization uses held declaration directories and the captured authoring closure.
   The child must exist before explicit membership selects it, and the caller changes last.
   The [authoring guide](../../authoring-guidance.md#src-project-author) owns its source edit contract.
 

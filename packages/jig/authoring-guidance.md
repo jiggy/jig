@@ -33,7 +33,7 @@ remain supported and are not rewritten by a review default.
 
 ### src project author
 
-- `src/internal/binding-split.ts` owns the scoped Binding source edit.
+- `src/internal/specialize-slot.ts` owns the scoped Binding source edit.
   It uses captured declaration bytes and ordinary working-tree linking to validate the proposed routes.
   Validate the selected child before rewiring the caller.
   Stage all source edits before publishing the child, adding explicit membership, and replacing the verified caller.
@@ -105,7 +105,7 @@ remain supported and are not rewritten by a review default.
   and a complete single-argument default call. Unsupported, ambiguous or
   bounded-out input uses an unlocated file/slot fallback.
 
-  The Binding split uses the same bounded recognizer for standalone literal declarations.
+  Slot specialization uses the same bounded recognizer for standalone literal declarations.
   Explicit membership must match captured selection in a direct `defineJig` call.
   Only direct SDK discovery calls may supplement otherwise literal project fields.
 

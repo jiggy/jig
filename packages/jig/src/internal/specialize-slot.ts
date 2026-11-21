@@ -35,7 +35,7 @@ import {
 import { privatePublishDirectory } from './file-input.js'
 import { captureWorkingProject } from './working-flow-inspection.js'
 
-export interface BindingSplit {
+export interface SlotSpecialization {
   readonly caller: string
   readonly slot: string
   readonly name: string
@@ -43,14 +43,14 @@ export interface BindingSplit {
   readonly target: string
 }
 
-const STAGE = '.jig-split-binding-stage'
+const STAGE = '.jig-specialize-slot-stage'
 const PROJECT_ENTRY = 'jig.ts'
 
 /** Scope a Binding selection using one captured configuration and the ordinary linker. */
-export async function splitWorkingBinding(
+export async function specializeWorkingSlot(
   project: string,
   evaluator: PrivateAuthorEvaluatorOptions,
-  request: BindingSplit,
+  request: SlotSpecialization,
   signal?: AbortSignal,
 ) {
   return captureWorkingProject(
@@ -63,14 +63,14 @@ export async function splitWorkingBinding(
       const existing = members.get(name)
       if (existing)
         invalid(
-          'BINDING_SPLIT_EXISTS',
+          'SPECIALIZE_SLOT_EXISTS',
           'The new Binding name already exists. Choose an unused name.',
           existing.projectPath,
         )
       const callerMember = members.get(caller)
       if (!callerMember)
         invalid(
-          'BINDING_SPLIT_CALLER',
+          'SPECIALIZE_SLOT_CALLER',
           'The caller Binding is absent. Find its exact name with jig inspect --flow.',
         )
       const callerDefinition = bindings.find(
@@ -82,7 +82,7 @@ export async function splitWorkingBinding(
         : undefined
       if (childSelector === undefined || childMember === undefined)
         invalid(
-          'BINDING_SPLIT_CHILD',
+          'SPECIALIZE_SLOT_CHILD',
           'The caller slot must explicitly select a Binding.',
           callerMember.projectPath,
           '/slots/' + slot,
@@ -93,14 +93,14 @@ export async function splitWorkingBinding(
       const previous = authoredSelection(childDefinition, childSlot)
       if (previous === undefined || previous.startsWith('grant:'))
         invalid(
-          'BINDING_SPLIT_SELECTION',
+          'SPECIALIZE_SLOT_SELECTION',
           'The child slot must explicitly select a Flow or Binding.',
           childMember.projectPath,
           '/slots/' + childSlot,
         )
       if (previous === target)
         invalid(
-          'BINDING_SPLIT_SELECTION',
+          'SPECIALIZE_SLOT_SELECTION',
           'Choose a different target for the child slot.',
           childMember.projectPath,
           '/slots/' + childSlot,
@@ -119,7 +119,7 @@ export async function splitWorkingBinding(
         )
       } catch {
         invalid(
-          'BINDING_SPLIT_EXISTS',
+          'SPECIALIZE_SLOT_EXISTS',
           'The new path is invalid or collides with an author module. Choose another name.',
           newPath,
         )
@@ -133,7 +133,7 @@ export async function splitWorkingBinding(
         )
         if (shared)
           invalid(
-            'BINDING_SPLIT_SHAPE',
+            'SPECIALIZE_SLOT_SHAPE',
             'Another author module imports this declaration. Make the scoped edit in source.',
             shared.projectPath,
           )
@@ -193,7 +193,7 @@ export async function splitWorkingBinding(
         )
       )
         invalid(
-          'BINDING_SPLIT_SCOPE',
+          'SPECIALIZE_SLOT_SCOPE',
           'The new Binding would change another configured route. Make the scoped edit in source.',
           newPath,
         )
@@ -238,7 +238,7 @@ export async function splitWorkingBinding(
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code === 'EEXIST')
             invalid(
-              'BINDING_SPLIT_EXISTS',
+              'SPECIALIZE_SLOT_EXISTS',
               'The destination already exists. Choose an unused name.',
               newPath,
             )
@@ -286,7 +286,7 @@ export async function splitWorkingBinding(
             await unlinkPrivateFile(destination)
           } catch {
             unavailable(
-              'BINDING_SPLIT_CLEANUP',
+              'SPECIALIZE_SLOT_CLEANUP',
               'The edit could not roll back. Inspect jig.ts, the caller, and the new Binding before retrying.',
               newPath,
             )
@@ -297,12 +297,12 @@ export async function splitWorkingBinding(
         if (error instanceof CheckError) throw error
         if (!ownsStage && (error as NodeJS.ErrnoException).code === 'EEXIST')
           unavailable(
-            'BINDING_SPLIT_BUSY',
+            'SPECIALIZE_SLOT_BUSY',
             'Another edit is active or its staging directory remains. Check the directory before retrying.',
             STAGE,
           )
         unavailable(
-          'BINDING_SPLIT_IO',
+          'SPECIALIZE_SLOT_IO',
           'The source edit could not finish. Check permissions on the affected source directories.',
           callerPath,
         )
@@ -320,7 +320,7 @@ export async function splitWorkingBinding(
         } catch {
           // biome-ignore lint/correctness/noUnsafeFinally: A staging cleanup failure needs explicit operator recovery.
           unavailable(
-            'BINDING_SPLIT_CLEANUP',
+            'SPECIALIZE_SLOT_CLEANUP',
             committed
               ? 'The source edits were published. Check the staging directory before another edit.'
               : 'The edit did not complete. Inspect jig.ts, the declarations, and the staging directory before retrying.',
@@ -354,7 +354,7 @@ function explicitMembershipEdit(
   const after = appendBindingMemberLiteral(before, bindings.paths, path)
   if (after === undefined)
     invalid(
-      'BINDING_SPLIT_SHAPE',
+      'SPECIALIZE_SLOT_SHAPE',
       'Make the scoped edit in source and add the new Binding path to the bindings array in jig.ts.',
       PROJECT_ENTRY,
       '/bindings',
@@ -365,7 +365,11 @@ function explicitMembershipEdit(
       bindings: { ...bindings, paths: [...bindings.paths, path] },
     })
   } catch {
-    invalid('BINDING_SPLIT_SCOPE', 'The added path would exceed project declaration limits.', path)
+    invalid(
+      'SPECIALIZE_SLOT_SCOPE',
+      'The added path would exceed project declaration limits.',
+      path,
+    )
   }
   return { before, after }
 }
@@ -436,7 +440,7 @@ function editLiteral(
   )
   if (edited === undefined)
     invalid(
-      'BINDING_SPLIT_SHAPE',
+      'SPECIALIZE_SLOT_SHAPE',
       'Use a standalone defineBinding declaration with literal values, or make the scoped edit in source.',
       path,
       '/slots/' + slot,
