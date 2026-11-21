@@ -14,7 +14,7 @@ makes usable control an observable requirement;
 | --- | --- |
 | Import an agreement | [Contract import](#contract-import) |
 | Declare a collaborator in an existing Flow | [Collaborator declaration](#collaborator-declaration) |
-| Type-check child calls | [Child call declarations](#child-call-declarations) |
+| Type-check settings reads and child calls | [Flow type declarations](#flow-type-declarations) |
 | Select a display | [Display selection](#display-selection), [browser activation](#browser-activation) |
 | Explore before execution | [Project exploration](#project-exploration) |
 | Check a working workflow edit | [Composition check](#composition-check) |
@@ -140,16 +140,20 @@ An absent baseline reports `JIG_CHECK_NO_APPROVAL`.
 Exit 2 means invalid usage, an unavailable check or baseline, or interruption.
 Failures emit a bounded diagnostic on stderr and no success record.
 
-### Child call declarations
+### Flow type declarations
 
 `jig types <package-path>` selects one exact project-relative package directory containing a `FLOW.ts` entrypoint.
 Jig captures and validates that package through the ordinary source boundary.
 It uses portable `FLOW.meta.json` slot declarations and their referenced package-local contract bundles.
+It also uses the package's validated `settings.schema.json` when present.
+
 It emits one deterministic TypeScript declaration to stdout for unchanged inputs.
 It acquires no execution host, evaluates no source, installs no dependencies, and writes no project files or approval.
 Validation failures report a diagnostic without emitting a declaration.
 
-The declaration uses the public FLOW SDK types, with declared slot names and a bounded schema projection on `call`.
+The declaration uses the public FLOW SDK types with declared slot names and a bounded schema projection on `call` and `settings`.
+Settings project direct property declarations and required names at the schema root.
+Settings retain the broad SDK type without projected fields.
 Other Run context members retain their SDK types.
 Uncontracted declared slots retain the broad SDK payloads.
 The [authoring guide](../build/contracts.md#type-check-child-calls) owns the projection limits and operator workflow.

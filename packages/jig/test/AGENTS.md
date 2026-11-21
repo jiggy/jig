@@ -87,7 +87,7 @@ Protected Jig state stays absent under ordinary or broad package selections, inc
 Explicit protected file or patch requests and protected bytes in supplied target snapshots remain refused.
 
 `portable/cli.test.ts` exercises actual packaged review refusal and authoring recovery without source evaluation or host acquisition.
-Its child call declaration case compiles source edits against packed Jig output and the public FLOW SDK.
+Its Flow declaration case compiles settings reads and child calls against packed Jig output and the public FLOW SDK.
 It checks selected-slot payload diagnostics on both pinned TypeScript versions.
 It also checks slot and input pairing, unknown slots, outcome exhaustiveness, and regeneration without executing the Flow.
 
