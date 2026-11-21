@@ -33,22 +33,43 @@ export async function generateCallTypes(
       header.trimEnd(),
       "import type { CallOptions, CallResult, FlowCall, JsonObject, JsonValue, RunContext as FlowRunContext } from '@jigging/flow'",
       '',
-      "export interface RunContext extends Omit<FlowRunContext, 'call'> {",
+      'interface ChildCalls {',
     ]
-    let length = lines.join('\n').length + 3 // final closing brace and newlines
+    // Infer the slot directly, then check that the slot and input belong to the same request.
+    const footer = [
+      '}',
+      '',
+      'type ChildCallRequest<Slot extends keyof ChildCalls> = {',
+      "  [Name in Slot]: { readonly slot: Name; readonly input: ChildCalls[Name]['input'] }",
+      '}[Slot]',
+      '',
+      "export interface RunContext extends Omit<FlowRunContext, 'call'> {",
+      '  call<Slot extends keyof ChildCalls>(',
+      '    request: FlowCall & { readonly slot: Slot } & ChildCallRequest<Slot>,',
+      '    options?: CallOptions,',
+      "  ): Promise<ChildCalls[Slot]['result']>",
+      '}',
+      '',
+    ].join('\n')
+    let length = lines.join('\n').length + 1 + footer.length
     for (const slot of slots) {
       signal?.throwIfAborted()
       const operation = contracts.get(slot)?.invocation
       const input =
-        operation?.input === undefined ? '' : `; readonly input: ${projectSchema(operation.input)}`
+        operation?.input === undefined ? "FlowCall['input']" : projectSchema(operation.input)
       const result = operation === undefined ? 'CallResult' : projectCallResult(operation)
-      const line = `  call(request: FlowCall & { readonly slot: ${asciiJsonString(slot)}${input} }, options?: CallOptions): Promise<${result}>`
-      length += line.length + 1
+      const entry = [
+        `  ${asciiJsonString(slot)}: {`,
+        `    input: ${input}`,
+        `    result: ${result}`,
+        '  }',
+      ].join('\n')
+      length += entry.length + 1
       if (length > MAX_DECLARATION_LENGTH)
         invalid('TYPES_LIMIT', 'The declaration exceeds 256 KiB. Use the FLOW SDK RunContext', path)
-      lines.push(line)
+      lines.push(entry)
     }
-    return [...lines, '}', ''].join('\n')
+    return [...lines, footer].join('\n')
   } finally {
     await source.dispose()
   }
