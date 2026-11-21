@@ -85,6 +85,10 @@ All selected domain requirements still apply.
   Emit only public SDK types, and keep review and the runtime responsible for validation.
   Declaration generation takes no evaluator, provider, or execution host.
 
+- `src/cli-call-evidence.ts` retains opted-in call observations for the exact Run.
+  Reuse live attribution and retain only closed route and result fields.
+  `inspect --result --calls` checks the saved record without loading the project.
+
 ### Command grammar and review
 
 - Child composition refusals identify the caller slot and preserve a closed diagnostic.

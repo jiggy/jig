@@ -32,10 +32,10 @@ export type PrivateRunDiagnosticSource = Readonly<{
 export interface PrivateRunChannelOutput {
   readonly receive: readonly string[]
   /** Trusted root admission crossed the execution boundary; not a Flow claim. */
-  dispatched?(): void
+  dispatched?(runId: string): void
   /** Complete selected-root composition from the Run-pinned admitted candidate. */
-  composition?(value: PrivateRunComposition, candidate: string): void
-  call?(event: PrivateCallEvent): void
+  composition?(value: PrivateRunComposition, candidate: string, runId: string): void
+  call?(event: PrivateCallEvent, runId: string): void
   readonly updates?: {
     open(port: string): PrivateReportingSource
     ambiguous(ports: readonly string[]): void

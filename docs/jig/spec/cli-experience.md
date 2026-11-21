@@ -1387,22 +1387,63 @@ When the baseline lacks such a path in either direction, baseline order remains 
 Use `--compare BASELINE --all` to show every changed path with its ordered checks, effects, and source references.
 The comparison is a source inspection. A matching projection establishes agreement for the captured facts.
 
-`jig inspect --result <directory> [--display plain|tui|web] [--json]` reads a
+`jig inspect --result <directory> [--display plain|tui|web | --calls] [--json]` reads a
 saved packet without loading a project, verifying an execution installation,
 reading operator configuration or credentials, acquiring execution authority,
-or contacting a provider. It rejects target and verification arguments. Plain
-is the default; JSON or redirected stdout takes precedence over either inspector.
+or contacting a provider. It rejects target and verification arguments.
+Plain is the default. JSON or redirected stdout takes precedence over either inspector.
+
 Saved inspection displays fixed Recorded result, Files and Diagnostics views.
 Recorded result separates bounded selectable fields, including ordinary output
 members, from their expanded literal values. No application field name receives
-special summary or outcome meaning. Scalar values shown completely in the list
-have no redundant expansion; multiline, shortened and nested values retain bounded
-evidence and explicit excerpt limits. Exact JSON inspection retains the full report.
-Every saved value is a recorded local claim, including host-shaped fields;
-matching file digests establish manifest consistency, not authenticated provenance.
-Current packets retain no portable views or invocation history, so inspection
-MUST NOT reconstruct either. Only the selected packet directory supplies files;
-recorded destinations or attachment names cannot select another path.
+special summary or outcome meaning. Complete scalar values need no expansion.
+Multiline, shortened and nested values retain bounded evidence and explicit excerpt limits.
+Exact JSON inspection retains the full report.
+
+Every saved value is a recorded local claim, including host-shaped fields.
+Matching file digests establish consistency with the manifest.
+Only the selected packet directory supplies files.
+Recorded destinations and attachment names do not select other paths.
+
+#### Saved child calls
+
+`jig run --record-calls --out DIRECTORY` requests bounded observations in the packet's `callEvidence` field.
+The operator supplies this flag on the Run command once.
+An entrypoint may supply the selected output directory.
+The field binds its `runId` to the root record and gives the root selector and the admitted candidate digest as `revision`.
+
+An unavailable observation omits `revision`.
+It has an empty call list and zero omitted events.
+The file owner acknowledges only the evidence included in the written packet.
+
+The record gives `provenance: "recorded-claim"`, `coverage`, `omittedEvents` and `calls`.
+It covers up to 256 calls and 128 KiB of encoded evidence.
+Each call gives a packet-local positive integer `id`, its `slot` and latest observed `state`.
+It gives `parent` when its invoking call is known.
+
+An exact admitted match supplies both `caller` and `target` as selectors.
+A native target uses `resource:<kind>`.
+An observed return gives its validated `outcome`.
+The row number identifies a call within one record. It does not establish execution order.
+Call bodies, diagnostic text, original operation names, timestamps and publisher identities stay outside this record.
+
+Coverage is `complete` for a successful settled Run with matching retained calls and no known observation gaps.
+A complete empty list records zero calls.
+Coverage is `incomplete` when a Run failed, a match is missing, or observation has a gap.
+The `omittedEvents` count covers events lost at capture limits.
+
+Coverage is `unavailable` when the host cannot produce the bounded observation.
+Evidence that exceeds packet or transport capacity may be absent.
+Publication preserves the ordinary execution and delivery record.
+
+Use `jig inspect --result DIRECTORY --calls` for a plain list.
+Redirect stdout or add `--json` for the exact saved call record.
+Exit 0 requires complete observation and consistent file capture.
+Exit 1 includes incomplete, unavailable, mismatched and absent call evidence.
+
+Incomplete or unavailable records that pass validation remain visible.
+Standard saved inspection retains its existing exit behavior.
+The recorded call view does not infer a configuration graph or branch conditions.
 
 Capture holds a descriptor-confined packet root and opens `files/` as its child.
 Public relative file paths retain their own path profile before that prefix is
