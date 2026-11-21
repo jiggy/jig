@@ -126,7 +126,7 @@ Unavailable identity and stale observations remain explicit rather than selectin
 
 From an invocation opened through **Application map** or **Execution**, select **Copy investigation brief**.
 Paste the plain text into a coding-agent request and add your own question.
-The brief includes the caller, slot, original operation, observed state, and any available application outcome.
+The brief includes the Run root, caller, slot, original operation, observed state, and any available application outcome.
 It includes the configured target only when Jig matches the invocation to the admitted configuration.
 It states when correspondence is unavailable or the Run omitted observations.
 
