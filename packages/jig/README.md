@@ -46,6 +46,7 @@ Project commands:
 ```text
 jig init [--bare] <directory> [--agent [codex|claude]]
 jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
+jig add-use <package-path> <slot>=<source>
 jig types <package-path>
 jig check [--diff] [--json]
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
@@ -107,6 +108,10 @@ offline. For example, `jig new worker --use agent=jig:agent-run` copies the comp
 Agent agreement and declares the collaborator slot. Importing preserves exact
 descriptors and licenses as local snapshots; implementations and grants remain
 separately selected and reviewed. Channel agreements belong under `channels`.
+Use `jig add-use flows/worker review=./flows/editor/FLOW.contract.json` to copy
+an agreement and declare a collaborator in an existing code Flow.
+Edit the caller, configure its target, and use ordinary check and review.
+
 Interactive `jig run` can offer an explicit choice of ready approved targets;
 scripts must name a target when no entrypoint is declared. An unavailable
 Agent disables only targets that depend on it; unrelated code methods can

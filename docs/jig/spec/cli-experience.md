@@ -13,6 +13,7 @@ makes usable control an observable requirement;
 | Task | Required sections |
 | --- | --- |
 | Import an agreement | [Contract import](#contract-import) |
+| Declare a collaborator in an existing Flow | [Collaborator declaration](#collaborator-declaration) |
 | Type-check child calls | [Child call declarations](#child-call-declarations) |
 | Select a display | [Display selection](#display-selection), [browser activation](#browser-activation) |
 | Explore before execution | [Project exploration](#project-exploration) |
@@ -67,6 +68,37 @@ referenced agreements and license. Unsupported names fail without a fallback.
 The installed catalog checks each exact supported digest. A copied standard
 agreement is a project-owned snapshot, never a runtime resolver, implementation
 selection or authority grant. Reporting retains its MPL-2.0 license.
+
+### Collaborator declaration
+
+`jig add-use <package-path> <slot>=<source>` declares one expected collaborator in an existing Flow.
+Run it from the Jig project root with an exact project-relative code package directory.
+The package must have one code entrypoint and a regular, standalone `FLOW.meta.json`.
+Jig refuses protected, ambiguous, linked, and nested-project destinations.
+
+Use a new LocalName and an identified single-operation invocation agreement.
+Sources follow [contract import](#contract-import). Read descriptor paths relative to the project root.
+Jig searches from the target slot directory's parent for the nearest installed `npm:` source.
+Jig refuses agreements in protected Jig state and bundles with protected package paths.
+
+Jig inserts one `uses.<slot>` entry with the package-local descriptor reference.
+It preserves the other metadata values and their original text.
+An existing slot or contract destination causes refusal.
+The complete bundle is published without replacement under `contracts/<slot>` before Jig replaces the sidecar.
+The command evaluates no project code, installs no dependencies, and changes no Bindings, locks, or approvals.
+
+Edit the caller and configure the target separately. Use `jig check` to check the working composition.
+Existing provider selection rules apply. Check diagnostics identify unresolved slots.
+Use ordinary `jig review` to consider the proposed revision for approval.
+
+Interruption before publication removes staged files when possible.
+If the bundle is published and the sidecar edit fails, Jig leaves the bundle and staging information for recovery.
+Process loss can leave `.jig-add-use-stage` in the project root.
+Once the edit has stopped, use its `intent.json`, if present, to inspect the affected sidecar and bundle.
+
+Keep the bundle if the sidecar refers to it.
+If publication stopped before the sidecar edit, finish the declaration in source or remove the abandoned bundle.
+Remove the staging directory after resolving the edit.
 
 ### Composition check
 

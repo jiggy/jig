@@ -52,6 +52,7 @@ execution evidence.
 - A descriptor-byte change must reconcile its documented digest, host allowlist,
   fixtures, lock constants, and published exact bytes.
 - Current exclusions must match the implementation and guide claims.
+- The CLI collaborator declaration contract owns source selection, publication order, and interrupted-edit recovery.
 - The CLI split contract owns editable membership shapes, publication order, and interrupted source recovery.
 - The CLI composition check contract owns the read-only check, the comparable topology fields, and the diff output.
 - Mac admission requires native ARM macOS 15+ mechanisms, with observed OS builds

@@ -75,6 +75,10 @@ All selected domain requirements still apply.
   Stage complete source outside ordinary Flow discovery before non-replacing
   publication.
 
+- `jig add-use` adds one named collaborator to an exact code Flow sidecar.
+  It takes no evaluator or execution host. Its success output sends the author
+  to the caller, the target configuration, and ordinary check and review.
+
 - `src/cli-call-types.ts` owns the declaration emitted by `jig types`.
   Reuse exact member capture and inspected `uses` contracts.
   Emit only public SDK types, and keep review and the runtime responsible for validation.

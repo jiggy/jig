@@ -3,15 +3,25 @@ import { constants } from 'node:fs'
 import { type FileHandle, lstat, open, realpath } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { CHANNEL_CONTRACT_SCHEMA, parseChannelContract } from '../channel-contract.js'
+import {
+  CHANNEL_CONTRACT_SCHEMA,
+  type ParsedChannelContract,
+  parseChannelContract,
+} from '../channel-contract.js'
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
-import { invocationContractChannelPaths, parseInvocationContract } from '../invocation-contract.js'
+import {
+  invocationContractChannelPaths,
+  type ParsedInvocationContract,
+  parseInvocationContract,
+} from '../invocation-contract.js'
 import { decodeJson1, type JsonObject } from '../json.js'
 import { type CapturedPackage, captureOpenedPackageDirectory } from '../package/capture.js'
 import { npmPackageName } from '../project/package-selector.js'
+import { isProtectedProjectPath } from '../project/paths.js'
 import {
   mkdirPrivateFile,
   openPrivateFile,
+  openPrivateSourceChild,
   type PrivateChildLocation,
   privateChildLocation,
   privateDirectoryEntries,
@@ -22,7 +32,7 @@ import {
 import { privateFilePath } from './file-input.js'
 import { standardContract } from './standard-contracts.js'
 
-async function installedDescriptor(selector: string, destination: string): Promise<string> {
+async function installedDescriptor(selector: string, consumerDirectory: string): Promise<string> {
   let name: string
   try {
     name = npmPackageName(selector)
@@ -33,7 +43,7 @@ async function installedDescriptor(selector: string, destination: string): Promi
       selector,
     )
   }
-  let directory = dirname(resolve(destination))
+  let directory = resolve(consumerDirectory)
   for (;;) {
     const packagePath = resolve(directory, 'node_modules', name)
     try {
@@ -53,18 +63,24 @@ async function installedDescriptor(selector: string, destination: string): Promi
   )
 }
 
-/** Explicit inert authoring: copy one validated offline closure, never package code. */
-export async function importContract(
+interface CapturedContractBundle {
+  readonly descriptor: string
+  readonly documents: ReadonlyMap<string, Uint8Array>
+  readonly agreement:
+    | { readonly kind: 'channel'; readonly contract: ParsedChannelContract }
+    | { readonly kind: 'invocation'; readonly contract: ParsedInvocationContract }
+}
+
+/** Resolve and validate only the inert files in the selected agreement. */
+export async function captureContractBundle(
   source: string,
-  destination: string,
+  consumerDirectory: string,
   signal?: AbortSignal,
   standardDirectory?: string,
-): Promise<{ descriptor: string; files: number; digest: string; kind: 'channel' | 'invocation' }> {
+  options?: { readonly excludeProtectedState: boolean },
+): Promise<CapturedContractBundle> {
   let root: FileHandle | undefined
-  let parent: FileHandle | undefined
-  let staged: PrivateChildLocation | undefined
   let captured: CapturedPackage | undefined
-  let phase: 'source' | 'destination' = 'source'
   try {
     signal?.throwIfAborted()
     const standard = source.startsWith('jig:') ? standardContract(source) : undefined
@@ -81,12 +97,19 @@ export async function importContract(
           standard.file,
         )
       : source.startsWith('npm:')
-        ? await installedDescriptor(source, destination)
+        ? await installedDescriptor(source, consumerDirectory)
         : source
     const name = basename(selected)
     // The operator chooses the source root; descendants are captured without links.
+    const selectedPath = resolve(selected)
+    const sourceDirectory = await realpath(dirname(selectedPath))
+    if (
+      options?.excludeProtectedState &&
+      [...selectedPath.split('/'), ...sourceDirectory.split('/')].some(isProtectedProjectPath)
+    )
+      invalid('CONTRACT_IMPORT_SOURCE', 'Select an agreement outside protected Jig state.', source)
     root = await open(
-      await realpath(dirname(resolve(selected))),
+      sourceDirectory,
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
     )
     const capture = (paths: readonly string[]) =>
@@ -114,12 +137,15 @@ export async function importContract(
         'CONTRACT_IMPORT_CHANGED',
         'The source descriptor changed during capture. Retry with stable files.',
       )
-    const documents = new Map<string, Uint8Array>()
+    const documents = new Map([[name, descriptor]])
     for (const path of references) documents.set(path, await captured.read(path, 262_144))
-    const contract = standalone
-      ? parseChannelContract(descriptor, name)
-      : parseInvocationContract(descriptor, name, documents)
-    if (standard && contract.digest !== standard.digest)
+    const agreement = standalone
+      ? { kind: 'channel' as const, contract: parseChannelContract(descriptor, name) }
+      : {
+          kind: 'invocation' as const,
+          contract: parseInvocationContract(descriptor, name, documents),
+        }
+    if (standard && agreement.contract.digest !== standard.digest)
       invalid(
         'CONTRACT_IMPORT_SOURCE',
         'The installed standard agreement differs from this Jig version. Reinstall Jig.',
@@ -127,8 +153,39 @@ export async function importContract(
       )
     if (standard) documents.set('LICENSE', await captured.read('LICENSE', 262_144))
     signal?.throwIfAborted()
+    return { descriptor: name, documents, agreement }
+  } catch (error) {
+    if (signal?.aborted || error instanceof CheckError) throw error
+    return unavailable(
+      'CONTRACT_IMPORT_UNAVAILABLE',
+      'The source bundle could not be read. Choose an installed package with FLOW.contract.json or an existing descriptor file with readable regular channel files.',
+      source,
+    )
+  } finally {
+    try {
+      await captured?.dispose()
+    } finally {
+      await root?.close()
+    }
+  }
+}
 
-    phase = 'destination'
+/** Explicit inert authoring: copy one validated offline closure, never package code. */
+export async function importContract(
+  source: string,
+  destination: string,
+  signal?: AbortSignal,
+  standardDirectory?: string,
+): Promise<{ descriptor: string; files: number; digest: string; kind: 'channel' | 'invocation' }> {
+  const bundle = await captureContractBundle(
+    source,
+    dirname(resolve(destination)),
+    signal,
+    standardDirectory,
+  )
+  let parent: FileHandle | undefined
+  let staged: PrivateChildLocation | undefined
+  try {
     const target = resolve(destination)
     const leaf = privateFilePath(basename(target))
     parent = await open(
@@ -146,10 +203,7 @@ export async function importContract(
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
     )
     try {
-      for (const path of paths) {
-        signal?.throwIfAborted()
-        await writeCaptured(stage, path, path === name ? descriptor : documents.get(path)!)
-      }
+      await writeContractBundle(stage, bundle, signal)
       signal?.throwIfAborted()
       // No replacement, including empty directories and symlinks. Until this point
       // the destination is absent. This is publication, not Run admission.
@@ -159,10 +213,10 @@ export async function importContract(
       await stage.close()
     }
     return {
-      descriptor: `${target}/${name}`,
-      files: paths.length,
-      digest: contract.digest,
-      kind: standalone ? 'channel' : 'invocation',
+      descriptor: `${target}/${bundle.descriptor}`,
+      files: bundle.documents.size,
+      digest: bundle.agreement.contract.digest,
+      kind: bundle.agreement.kind,
     }
   } catch (error) {
     if (signal?.aborted) throw error
@@ -174,19 +228,26 @@ export async function importContract(
     if (error instanceof CheckError) throw error
     return unavailable(
       'CONTRACT_IMPORT_UNAVAILABLE',
-      phase === 'source'
-        ? 'The source bundle could not be read. Choose an installed package with FLOW.contract.json or an existing descriptor file with readable regular channel files.'
-        : 'The destination could not be written. Choose a new directory beneath an existing writable parent.',
-      phase === 'source' ? source : destination,
+      'The destination could not be written. Choose a new directory beneath an existing writable parent.',
+      destination,
     )
   } finally {
     try {
-      if (staged !== undefined) await removeStage(staged)
+      if (staged !== undefined) await removeContractStage(staged)
     } finally {
-      await captured?.dispose()
       await parent?.close()
-      await root?.close()
     }
+  }
+}
+
+export async function writeContractBundle(
+  stage: FileHandle,
+  bundle: CapturedContractBundle,
+  signal?: AbortSignal,
+): Promise<void> {
+  for (const [path, bytes] of bundle.documents) {
+    signal?.throwIfAborted()
+    await writeCaptured(stage, path, bytes)
   }
 }
 
@@ -200,8 +261,9 @@ async function writeCaptured(root: FileHandle, path: string, bytes: Uint8Array):
       await mkdirPrivateFile(directory).catch((error) => {
         if (error.code !== 'EEXIST') throw error
       })
-      parent = await openPrivateFile(
-        directory,
+      parent = await openPrivateSourceChild(
+        directory.parent,
+        directory.name,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
       )
       handles.push(parent)
@@ -222,12 +284,13 @@ async function writeCaptured(root: FileHandle, path: string, bytes: Uint8Array):
 }
 
 /** Remove only the exact unexposed staging tree, never a decoded absolute path. */
-async function removeStage(location: PrivateChildLocation): Promise<void> {
+export async function removeContractStage(location: PrivateChildLocation): Promise<void> {
   let entries = 0
   const visit = async (current: PrivateChildLocation, depth: number): Promise<void> => {
     if (depth > 512) throw new Error('contract staging cleanup exceeds its depth bound')
-    const directory = await openPrivateFile(
-      current,
+    const directory = await openPrivateSourceChild(
+      current.parent,
+      current.name,
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
     )
     try {
