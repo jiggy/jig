@@ -12,6 +12,8 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
 - `src/explorer-client.ts` owns bounded project reads, Run status and explicit submission through a separately authorized explorer session.
   `src/explorer-app.ts` and `src/explorer-view.ts` own workflow selection, input drafts and the explorer shell.
 - `src/observations.ts` owns quiet synchronization and actual observation spans.
+- `src/investigation-brief.ts` owns the live invocation's plain-text clipboard
+  handoff and local write feedback.
 - `src/composition.ts` owns pure map layout and exact Run/component selection.
   `src/composition-view.ts` renders approved calls, with matching observations only when a Run snapshot is supplied.
   Both views show the selected component's possible source paths when available.
@@ -77,6 +79,13 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   Exclude root and host views. Never infer correspondence from names, subjects or operation labels.
   Open the exact tagged destination without subject redirection, and preserve the invocation's return context.
   Missing identity remains unavailable. Stale or incomplete observations disable these links.
+- Copy investigation brief uses the same exact composition and child-publisher
+  matches as the invocation inspector. Copy only on explicit activation.
+  Disclose omissions and unavailable correspondence. Use a fixed source
+  inventory command with visible labels and slot. Keep opaque IDs, view bodies,
+  journal entries and authority values out of the brief.
+- Scope clipboard feedback to the selected invocation and current observation revision.
+  If the invocation is no longer retained, close its details and restore list focus.
 - Empty retained snapshots show an explicit empty state without synthetic destinations.
   Diagnostics, Help and Close remain available. Only an existing selected tab labels a tabpanel.
 - Render author/file/diagnostic data as inert text. Only typed scoped references

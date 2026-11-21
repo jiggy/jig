@@ -124,6 +124,17 @@ An invocation's **Reported views** opens material published by that exact child,
 Read the complete view, then return to the invocation and selected component.
 Unavailable identity and stale observations remain explicit rather than selecting a similarly named view.
 
+From an invocation opened through **Application map** or **Execution**, select **Copy investigation brief**.
+Paste the plain text into a coding-agent request and add your own question.
+The brief includes the caller, slot, original operation, observed state, and any available application outcome.
+It includes the configured target only when Jig matches the invocation to the admitted configuration.
+It states when correspondence is unavailable or the Run omitted observations.
+
+The brief gives you `jig inspect --flow --topology --all` as a source lookup starting point.
+Use the caller and slot to locate the configuration, then confirm it against your current project.
+The brief does not derive a target selector from a label or opaque identity.
+Copy requires a current observation and clipboard access in your browser.
+
 Counts cover retained observations only.
 A component without observed calls may still have executed when observations are incomplete.
 Missing ancestry and conflicting identities remain unmatched rather than being assigned by name.

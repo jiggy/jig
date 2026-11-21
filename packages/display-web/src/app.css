@@ -1212,6 +1212,13 @@
 .composition-return {
   margin-left: auto;
 }
+.call-brief {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
 .call-views {
   margin-top: 20px;
   padding-top: 16px;
@@ -1341,10 +1348,11 @@ button {
   padding: 6px 10px;
   cursor: pointer;
 }
-button:hover:not(:disabled) {
+button:hover:not(:disabled, [aria-disabled="true"]) {
   border-color: var(--accent);
 }
-button:disabled {
+button:disabled,
+.call-brief button[aria-disabled="true"] {
   opacity: 0.65;
   cursor: default;
 }

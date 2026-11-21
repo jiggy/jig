@@ -713,6 +713,155 @@ test('child-view return is fenced by incomplete observations and by loss of its 
   })
 })
 
+for (const width of [1440, 390]) {
+  test(`investigation brief copies the exact invocation at ${width}px`, async () => {
+    const fixture = compositionFixture()
+    const calls = fixture.snapshot.calls
+    calls.find((call) => call.id === 'prepare-two').outcome = 'needs-review'
+    calls.find((call) => call.id === 'prepare-three').cause = 'The child Flow call failed.'
+    calls.find((call) => call.id === 'approve-one').childSourceId = 'worker-one'
+    await withPage(fixture, { viewport: { width, height: 900 } }, async (page, host) => {
+      await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], {
+        origin: host.origin,
+      })
+      const detail = page.getByRole('complementary', { name: 'Selected call' })
+      const copy = detail.getByRole('button', { name: 'Copy investigation brief' })
+      const copied = detail.getByRole('status').getByText('Investigation brief copied.')
+      const clipboard = () => page.evaluate(() => navigator.clipboard.readText())
+      await page.evaluate(() => navigator.clipboard.writeText('unchanged'))
+      assert.equal(await copy.count(), 0)
+      await openTab(page, 'Application map')
+      await page.locator('[data-component="worker"]').click()
+      await page.locator('[data-composition-call="prepare-two"]').click()
+      assert.equal(await clipboard(), 'unchanged')
+      if (width === 390) {
+        await page.keyboard.press('Tab')
+        assert(await copy.evaluate((node) => node === document.activeElement))
+        await page.keyboard.press('Enter')
+      } else await copy.press('Enter')
+      await copied.waitFor()
+      assert(await copy.evaluate((node) => node === document.activeElement))
+      const returned = await clipboard()
+      assert.match(returned, /Configured caller: "Review" \(binding\)/)
+      assert.match(returned, /Slot: "prepare"\nConfigured target: "Worker" \(binding\)/)
+      assert.match(returned, /Operation: "prepare-two" \(caller-local\)/)
+      assert.match(returned, /Observed state: returned\nApplication outcome: "needs-review"/)
+      assert.match(returned, /Reported views retained: 1/)
+      assert.match(returned, /Omitted call observations: 4/)
+      assert.match(returned, /jig inspect --flow --topology --all/)
+      assert.doesNotMatch(
+        returned,
+        /prepare-one|worker-two-notes|binding:review|bearer|#cap=|These notes/i,
+      )
+      await noPageOverflow(page)
+
+      await page.keyboard.press('Escape')
+      await page.locator('[data-call="prepare-three"]').press('Enter')
+      assert.equal(await copied.count(), 0)
+      await copy.press('Space')
+      await copied.waitFor()
+      const failed = await clipboard()
+      assert.match(failed, /Operation: "prepare-three" \(caller-local\)/)
+      assert.match(failed, /Observed state: failed\nObserved cause: "The child Flow call failed\."/)
+      assert.doesNotMatch(failed, /Application outcome|prepare-two/)
+      await noPageOverflow(page)
+
+      await page.keyboard.press('Escape')
+      await page.locator('[data-call="unplaced-caller"]').press('Enter')
+      await copy.press('Enter')
+      await copied.waitFor()
+      const unplaced = await clipboard()
+      assert.match(unplaced, /Observed caller: "Worker"\nSlot: "fetch"/)
+      assert.match(unplaced, /The caller has no exact correspondence to the configuration/)
+      assert.doesNotMatch(unplaced, /Configured (caller|target)/)
+
+      await page.keyboard.press('Escape')
+      await page.locator('[data-call="approve-one"]').press('Enter')
+      await copy.press('Enter')
+      await copied.waitFor()
+      const conflicting = await clipboard()
+      assert.match(conflicting, /Conflicting identities prevent a configuration match/)
+      assert.match(conflicting, /The child publisher cannot be linked to one invocation/)
+      assert.doesNotMatch(conflicting, /Configured (caller|target)|Reported views retained/)
+    })
+  })
+}
+
+test('investigation brief scopes clipboard feedback to the current selection and observation', async () => {
+  const fixture = compositionFixture()
+  const original = structuredClone(fixture.snapshot)
+  await withPage(fixture, {}, async (page, host) => {
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: () =>
+            new Promise((resolve, reject) => {
+              window.finishClipboardWrite = (ok) =>
+                ok ? resolve() : reject(new Error('Clipboard denied'))
+            }),
+        },
+      })
+    })
+    await openTab(page, 'Execution')
+    const detail = page.getByRole('complementary', { name: 'Selected call' })
+    const copy = detail.getByRole('button', { name: 'Copy investigation brief' })
+    const status = detail.getByRole('status')
+    await page.locator('[data-call="prepare-two"]').click()
+    await copy.click()
+    await status.getByText('Copying…').waitFor()
+    await page.locator('[data-call="prepare-three"]').click()
+    await copy.click()
+    await status.getByText('Clipboard is busy. Try again.').waitFor()
+    await page.evaluate(() => window.finishClipboardWrite(true))
+    assert.equal(await status.getByText('Investigation brief copied.').count(), 0)
+
+    await copy.click()
+    await page.evaluate(() => window.finishClipboardWrite(false))
+    await status.getByText('Could not copy the investigation brief.').waitFor()
+    assert(await copy.evaluate((node) => node === document.activeElement))
+    await copy.click()
+    await status.getByText('Copying…').waitFor()
+    host.update({
+      kind: 'incomplete',
+      revision: 2,
+      lastCompleteRevision: 1,
+      mode: original.mode,
+      rootSourceId: original.rootSourceId,
+      reason: 'The current observation could not be projected.',
+      workspace: original.workspace,
+      context: '',
+      omissions: original.omissions,
+      attention: [],
+      diagnostics: [],
+    })
+    await detail.getByText('Copy requires a current observation.').waitFor()
+    assert(!(await copy.isEnabled()))
+    assert(await copy.evaluate((node) => node === document.activeElement))
+    await page.evaluate(() => window.finishClipboardWrite(true))
+    host.update({ ...original, revision: 3 })
+    await page.getByText('Connected', { exact: true }).waitFor()
+    assert.equal(await status.textContent(), '')
+    assert(await copy.isEnabled())
+
+    host.update({
+      ...original,
+      revision: 4,
+      calls: original.calls.filter((call) => call.id !== 'prepare-three'),
+    })
+    await page
+      .getByRole('status')
+      .getByText('The selected invocation is no longer retained.')
+      .waitFor()
+    assert.equal(await copy.count(), 0)
+    assert(
+      await page
+        .locator('[data-call="prepare-two"]')
+        .evaluate((node) => node === document.activeElement),
+    )
+  })
+})
+
 test('Execution and delivered files reveal and dismiss details only on request', async () => {
   await withPage(hostFixture(), {}, async (page, host) => {
     await openTab(page, 'Execution')
