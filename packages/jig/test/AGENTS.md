@@ -88,7 +88,9 @@ Explicit protected file or patch requests and protected bytes in supplied target
 
 `portable/cli.test.ts` exercises actual packaged review refusal and authoring recovery without source evaluation or host acquisition.
 Its child call declaration case compiles source edits against packed Jig output and the public FLOW SDK.
-It checks slot and payload errors, outcome exhaustiveness, and regeneration without executing the Flow.
+It checks selected-slot payload diagnostics on both pinned TypeScript versions.
+It also checks slot and input pairing, unknown slots, outcome exhaustiveness, and regeneration without executing the Flow.
+
 `portable/jig-development-build.test.ts` exercises the genuine launcher against matching, changed and incomplete contributor builds.
 It rejects changed checker source without executing that source.
 These checks grant no native execution or cleanup evidence.

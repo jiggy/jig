@@ -114,6 +114,7 @@ jig types flows/worker > flows/worker/FLOW.calls.d.ts
 
 Save the declaration separately from `FLOW.contract.d.ts`, which describes the implementation's own interface.
 The command emits only to stdout and reads the selected package as data.
+Use TypeScript 4.7 or newer to check the declaration with `NodeNext` module resolution.
 Import its `RunContext` as a type and apply it once inside the ordinary FLOW SDK handler.
 This assertion relies on the generated declaration matching the caller's current contracts.
 
@@ -139,6 +140,10 @@ This example assumes the `review` contract defines a `done` result with `summary
 Regenerate after changes to `uses` or its contract bundles.
 If you need to preserve the previous declaration, redirect to a temporary file and move it after successful generation.
 TypeScript checks the code that uses the declaration. Review still checks implementation selection, and the runtime validates input and results.
+
+For dynamic slot selection, narrow the slot before calling or build a union of complete requests.
+Each request must pair its slot with valid input for that slot.
+The result type covers the slots in that union.
 
 An explicit `never` check can flag an added outcome after regeneration.
 A catch-all can continue to handle that outcome when it uses fields common to the results it handles.

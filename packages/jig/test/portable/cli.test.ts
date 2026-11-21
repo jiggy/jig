@@ -379,7 +379,7 @@ test('installed child call declarations check caller edits with TypeScript', asy
   await writeFile(join(project, 'jig.ts'), 'throw new Error("jig types evaluated project code")\n')
   await writeFile(
     join(caller, 'FLOW.meta.json'),
-    '{"uses":{"review":{"contract":"./contracts/reviewer.json"},"raw":{}}}\n',
+    '{"uses":{"mapping-review":{"contract":"./contracts/reviewer.json"},"reader":{}}}\n',
   )
   const contractPath = join(caller, 'contracts/reviewer.json')
   const contract = {
@@ -388,8 +388,11 @@ test('installed child call declarations check caller edits with TypeScript', asy
     version: '0.1.0',
     input: {
       type: 'object',
-      properties: { text: { type: 'string', minLength: 1 } },
-      required: ['text'],
+      properties: {
+        headers: { type: 'array', items: { type: 'string' } },
+        reason: { type: 'string' },
+      },
+      required: ['headers', 'reason'],
       additionalProperties: false,
     },
     outcomes: { 'needs-evidence': 'Supply more evidence.' },
@@ -403,10 +406,22 @@ import type { RunContext } from './FLOW.calls.js'
 
 await handle(async (context) => {
   const run = context as RunContext
-  const result = await run.call({ operationId: 'review', slot: 'review', input: { text: 'Draft' } }, { signal: run.signal })
-  if (run.input === 'raw') {
-    const raw = await run.call({ operationId: 'raw', slot: 'raw', input: [true, 7] })
+  const result = await run.call({
+    operationId: 'review',
+    slot: 'mapping-review',
+    input: { headers: ['Name'], reason: 'Ambiguous' },
+  }, { signal: run.signal })
+  const slot: 'mapping-review' | 'reader' = run.settings.review === true ? 'mapping-review' : 'reader'
+  if (run.input === 'raw' && slot === 'reader') {
+    const raw = await run.call({ operationId: 'raw', slot, input: [true, 7] })
     return { outcome: 'done', output: raw.output satisfies JsonValue }
+  }
+  if (run.input === 'choose') {
+    const request = slot === 'reader'
+      ? { operationId: 'choose', slot, input: [true, 7] }
+      : { operationId: 'choose', slot, input: { headers: ['Name'], reason: 'Ambiguous' } }
+    const child = await run.call(request)
+    return { outcome: 'done', output: child.output }
   }
   switch (result.outcome) {
     case 'done': return { outcome: 'done', output: result.output.summary.toUpperCase() }
@@ -433,13 +448,16 @@ await handle(async (context) => {
   const node = process.env.FLOW_NODE ?? Bun.which('node')
   if (node === undefined || node === null) throw new Error('TypeScript requires Node')
   const tsc = fileURLToPath(new URL('./bin/tsc', import.meta.resolve('typescript/package.json')))
-  const compile = async (current: string, errorAt?: string) => {
+  const tsc59 = fileURLToPath(
+    new URL('./bin/tsc', import.meta.resolve('typescript-parser/package.json')),
+  )
+  const compile = async (current: string, errorAt?: string, compiler = tsc) => {
     await writeFile(join(caller, 'FLOW.ts'), current)
     const result = await settleTestCommand(
       Bun.spawn(
         [
           node,
-          tsc,
+          compiler,
           '--strict',
           '--noEmit',
           '--pretty',
@@ -459,16 +477,33 @@ await handle(async (context) => {
     } else {
       const line = current.split('\n').findIndex((text) => text.includes(errorAt)) + 1
       expect(line).toBeGreaterThan(0)
-      expect(result.code, result.stdout).toBe(1)
+      expect(result.code, result.stdout).toBeGreaterThan(0)
       expect(result.stdout.split('\n').filter((text) => text.includes('error TS'))).toHaveLength(1)
       expect(result.stdout).toMatch(
         new RegExp(`^flows/worker/FLOW\\.ts\\(${line},\\d+\\): error TS`),
       )
     }
+    return result.stdout
   }
   await compile(source)
-  await compile(source.replace("slot: 'review'", "slot: 'reivew'"), "slot: 'reivew'")
-  await compile(source.replace("text: 'Draft'", 'text: 42'), 'text: 42')
+  const call = (slot: string, input: string) => `import type { RunContext } from './FLOW.calls.js'
+
+declare const run: RunContext
+await run.call({
+  operationId: 'review',
+  slot: '${slot}',
+  input: ${input},
+})\n`
+  await compile(call('unknown', 'null'), "slot: 'unknown'")
+  const wrongHeaders = call('mapping-review', "{ headers: 42, reason: 'Ambiguous' }")
+  for (const compiler of [tsc59, tsc]) {
+    const diagnostic = await compile(wrongHeaders, 'headers: 42', compiler)
+    expect(diagnostic).toMatch(/\bnumber\b.*\bstring\b/)
+  }
+  await compile(
+    source.replace("run.input === 'raw' && slot === 'reader'", "run.input === 'raw'"),
+    'input: [true, 7]',
+  )
 
   await writeFile(
     contractPath,
