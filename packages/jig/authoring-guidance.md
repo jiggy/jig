@@ -106,6 +106,8 @@ remain supported and are not rewritten by a review default.
   bounded-out input uses an unlocated file/slot fallback.
 
   Slot specialization uses the same bounded recognizer for standalone literal declarations.
+  Recognize `satisfies BindingInput` only with the separate type-only import used by the project type guide.
+  Preserve that syntax and all source bytes outside the selected literals.
   Explicit membership must match captured selection in a direct `defineJig` call.
   Only direct SDK discovery calls may supplement otherwise literal project fields.
 

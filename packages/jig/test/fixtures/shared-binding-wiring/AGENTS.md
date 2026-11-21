@@ -17,6 +17,7 @@ Exercise a publishing application's shared producer and an offer-only configurat
 - Flow packages use the published FLOW SDK and perform deterministic review work.
 - The test uses the installed Jig CLI, public attempt client, and ordinary Node libraries.
 - The type-check scenario uses installed TypeScript with NodeNext resolution and the contained Jig declaration evaluator.
+- Specialize a typed caller and child. Preserve the type syntax and every source byte outside the selected literals.
 - Keep approvals, prepared tickets, and result packets in private temporary directories.
 - Assert the wrong-scope edit against the same preserved book expectation as the correct edit.
 - Compare lock and approval hashes across linked, body-only, specialized, and unwired checks.

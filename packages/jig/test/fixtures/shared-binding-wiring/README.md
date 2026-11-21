@@ -19,7 +19,7 @@ bun add --dev --ignore-scripts /absolute/path/to/jig.tgz
 node --test wiring.mjs
 ```
 
-The type-check scenario generates a project declaration and specializes the offer's producer.
+The type-check scenario generates a project declaration and specializes the offer's typed producer from a typed caller.
 It checks the edited Bindings with standard `tsc` and Jig's contained evaluator.
 It also checks that `tsc` identifies an unknown slot and a mistyped setting in their Binding declarations.
 

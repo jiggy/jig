@@ -380,9 +380,25 @@ test('type-checks a scoped Binding edit with the installed Jig declaration', asy
       await writeFile(join(cwd, 'jig.types.d.ts'), declaration)
 
       const bookPath = join(cwd, 'bindings/book.ts')
-      const sharedPath = join(cwd, 'bindings/shared-producer.ts')
+      const caller = 'bindings/offer.ts'
+      const child = 'bindings/shared-producer.ts'
+      const clone = 'bindings/offer-producer.ts'
+      const reviewer = 'bindings/specialist.ts'
       const book = await readFile(bookPath, 'utf8')
-      const sharedSource = await readFile(sharedPath, 'utf8')
+      const typed = new Map()
+      for (const path of [caller, child, reviewer]) {
+        const source = join(cwd, path)
+        const text = await readFile(source, 'utf8')
+        const withImport = replaceOnce(
+          text,
+          '\n\nexport default',
+          "\nimport type { BindingInput } from '../jig.types.js'\n\nexport default",
+        )
+        const annotated = replaceOnce(withImport, '\n})', '\n} satisfies BindingInput)')
+        await writeFile(source, annotated)
+        typed.set(path, annotated)
+      }
+
       await command(root, cwd, 'typed-specialize', jig, [
         'specialize-slot',
         'binding:offer',
@@ -393,26 +409,17 @@ test('type-checks a scoped Binding edit with the installed Jig declaration', asy
         '--select',
         'post-edit=binding:specialist',
       ])
-      const typedPaths = ['offer', 'offer-producer', 'specialist'].map((id) => `bindings/${id}.ts`)
-      for (const path of typedPaths) {
-        const source = join(cwd, path)
-        const text = await readFile(source, 'utf8')
-        await writeFile(
-          source,
-          `import type { BindingInput } from '../jig.types.js'\n${replaceOnce(text, '\n})', '\n} satisfies BindingInput)')}`,
-        )
-      }
       assert.equal(await readFile(bookPath, 'utf8'), book)
-      assert.equal(await readFile(sharedPath, 'utf8'), sharedSource)
-      assert.match(await readFile(join(cwd, typedPaths[0]), 'utf8'), /'binding:offer-producer'/)
-      assert.match(
-        await readFile(join(cwd, typedPaths[1]), 'utf8'),
-        /'post-edit': 'binding:specialist'/,
+      assert.equal(await readFile(join(cwd, child), 'utf8'), typed.get(child))
+      assert.equal(
+        await readFile(join(cwd, caller), 'utf8'),
+        replaceOnce(typed.get(caller), shared, dedicated),
+      )
+      assert.equal(
+        await readFile(join(cwd, clone), 'utf8'),
+        replaceOnce(typed.get(child), `'post-edit': '${standard}'`, `'post-edit': '${specialist}'`),
       )
       assert.equal(await types('project-types-after-edit'), declaration)
-      await command(root, cwd, 'typed-check', jig, ['check'])
-      assert.ok(!(await readdir(cwd)).includes('.jig'))
-      assert.ok(!(await readdir(cwd)).includes('jig.lock'))
 
       const tsc = fileURLToPath(new URL('node_modules/typescript/bin/tsc', import.meta.url))
       const args = [
@@ -423,20 +430,17 @@ test('type-checks a scoped Binding edit with the installed Jig declaration', asy
         'false',
         '--module',
         'NodeNext',
-        ...typedPaths,
+        caller,
+        child,
+        clone,
+        reviewer,
       ]
       await command(root, cwd, 'typed-tsc-valid', process.execPath, args)
       for (const [label, path, before, after, pattern] of [
-        [
-          'unknown-slot',
-          typedPaths[1],
-          "'post-edit'",
-          "'post-edti'",
-          /'post-edti'.*does not exist/,
-        ],
+        ['unknown-slot', clone, "'post-edit'", "'post-edti'", /'post-edti'.*does not exist/],
         [
           'wrong-settings',
-          typedPaths[2],
+          reviewer,
           'minimumWords: 2',
           "minimumWords: 'two'",
           /minimumWords[^\n]*incompatible\.\s+Type 'string' is not assignable to type 'number'/,
@@ -457,6 +461,9 @@ test('type-checks a scoped Binding edit with the installed Jig declaration', asy
           await types('project-types-invalid-link', /PROJECT_BINDING_SETTINGS_INVALID/)
         await writeFile(source, valid)
       }
+      await command(root, cwd, 'typed-check', jig, ['check'])
+      assert.ok(!(await readdir(cwd)).includes('.jig'))
+      assert.ok(!(await readdir(cwd)).includes('jig.lock'))
     },
     import.meta.dirname,
   )

@@ -734,6 +734,9 @@ Use an exact `flow:`, `npm:`, or `binding:` selector.
 
 Both declarations must use a standalone `export default defineBinding({...})`
 with a direct `@jigging/jig` import and literal values.
+The literal may use `satisfies BindingInput` with a separate `import type { BindingInput }` from a relative `.js` specifier.
+Jig preserves the type-only import and clause in both the edited caller and the copied child, when present.
+
 With discovery, Jig discovers the copy under the same root as the original child.
 With explicit membership, Jig appends the copy's path to the literal `bindings` array in `jig.ts`.
 That file must directly import `defineJig` from `@jigging/jig` and export a single `defineJig({...})` call as its default.

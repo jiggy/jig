@@ -202,7 +202,8 @@ Use the package path without a `./` prefix or the exact `npm:<package>` selectio
 TypeScript checks object literals for unknown slot names and settings shape errors covered by the projection.
 Settings use the same structural schema projection described above.
 Use ordinary `defineBinding` by itself for declarations that do not opt in.
-Make scoped edits in source when the Binding uses the `satisfies` clause.
+
+[`jig specialize-slot`](design.md#give-one-caller-slot-its-own-child-binding) preserves this type check in literal Binding declarations.
 
 `jig check` still applies the exact schema and link rules, including required routes, compatible targets, and attachment mappings.
 TypeScript's structural checks can accept extra fields on values supplied through variables.
