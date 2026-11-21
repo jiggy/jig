@@ -697,9 +697,10 @@ Creation with contracts stages the complete source outside `flows` discovery,
 then publishes to an absent destination. Failure or cancellation before publication
 removes unpublished source; completed publication is not undone. Process loss
 can leave an unpublished `.jig-new-*` directory in the project root.
-## Give one caller its own Binding
 
-`jig split-binding binding:<caller> --slot <slot> --as <name> --select <child-slot>=<target>`
+## Give one caller slot its own child Binding
+
+`jig specialize-slot binding:<caller> --slot <slot> --as <name> --select <child-slot>=<target>`
 edits a caller Binding and creates a Binding beside its current child.
 Run from the project root. Use a new LocalName for `--as`.
 
@@ -732,7 +733,7 @@ If publication fails before the caller changes, Jig rolls back confirmed edits i
 If Jig cannot confirm safe rollback, it reports the source paths to inspect.
 
 Abrupt process loss can leave the new Binding on disk, with or without explicit membership.
-The `.jig-split-binding-stage` directory can also remain.
+The `.jig-specialize-slot-stage` directory can also remain.
 Confirm that the edit process has ended before removing its staging directory.
 Inspect `jig.ts` and both Binding declarations before retrying an interrupted edit.
 

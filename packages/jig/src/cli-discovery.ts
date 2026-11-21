@@ -147,7 +147,7 @@ export function invocationGuide(snapshot: JsonValue): string {
 /** Small native shell adapters; dynamic lookup reads approval, never project code. */
 export function completionScript(shell: string): string | undefined {
   const commands =
-    'init new add-use types split-binding check review run explore inspect views completion import-contract'
+    'init new add-use types specialize-slot check review run explore inspect views completion import-contract'
   const contracts = JIG_STANDARD_CONTRACTS.map((entry) => `jig:${entry.name}`).join(' ')
   const runOptions =
     '--help --input --attach --select --out --receive --updates --timeout --verification --json --display --display-bundle'
@@ -184,7 +184,7 @@ export function completionScript(shell: string): string | undefined {
       inspect) opts='--help --json --verification --result --display --flow --approved --all --package --topology --snapshot --compare';;
       views) opts='list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision';;
       init) opts='--help --bare --agent';;
-      split-binding) opts='--help --slot --as --select';;
+      specialize-slot) opts='--help --slot --as --select';;
       check) opts='--help --diff --json';;
       import-contract) opts='--help --list';;
     esac
@@ -230,7 +230,7 @@ _jig() {
       inspect) choices=(--help --json --verification --result --display --flow --approved --all --package --topology --snapshot --compare);;
       views) choices=(list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision);;
       init) choices=(--help --bare --agent);;
-      split-binding) choices=(--help --slot --as --select);;
+      specialize-slot) choices=(--help --slot --as --select);;
       check) choices=(--help --diff --json);;
       import-contract) choices=(--help --list);;
       *) choices=(--help);;
@@ -250,7 +250,7 @@ compdef _jig jig
     return `complete -c jig -n '__fish_use_subcommand' -a '${commands}'
 complete -c jig -l help
 complete -c jig -l version -n '__fish_use_subcommand'
-complete -c jig -n '__fish_seen_subcommand_from split-binding' -l slot -l as -l select
+complete -c jig -n '__fish_seen_subcommand_from specialize-slot' -l slot -l as -l select
 complete -c jig -n '__fish_seen_subcommand_from check' -l diff -l json
 complete -c jig -n '__fish_seen_subcommand_from import-contract' -l list
 complete -c jig -n '__fish_seen_subcommand_from import-contract' -a '${contracts}'

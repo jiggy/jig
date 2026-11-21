@@ -48,6 +48,7 @@ jig init [--bare] <directory> [--agent [codex|claude]]
 jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
 jig add-use <package-path> <slot>=<source>
 jig types <package-path>
+jig specialize-slot binding:<caller> --slot <slot> --as <name> --select <child-slot>=<target>
 jig check [--diff] [--json]
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run [flow:path|npm:package|binding:id] [options]
@@ -196,10 +197,10 @@ Add `--topology` for a configured connection map.
 Focus on a target to see its caller continuations and other uses of the same implementation.
 The [source behavior guide](https://jig.md/build/results#inspect-source-behavior) explains partial coverage and how to verify a route.
 
-Use `jig split-binding` when one caller needs its own configuration of a shared child.
+Use `jig specialize-slot` when one caller needs its own configuration of a shared child.
 Supply the exact caller Binding and slot, a new Binding name, and the child slot and target.
 The command supports discovery and literal Binding membership in `jig.ts`.
-See [Binding authoring](https://jig.md/build/design#give-one-caller-its-own-binding).
+See [Binding authoring](https://jig.md/build/design#give-one-caller-slot-its-own-child-binding).
 
 Use `jig check` to link the complete working configuration before review.
 Use `--diff` to show configured changes since the last local approval.

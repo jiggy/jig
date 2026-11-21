@@ -14,7 +14,7 @@ Package-path diagnostics supply a copyable command without treating source paths
 `host/installed-shared-binding-wiring.test.ts` runs the standalone publishing consumer on its frozen Jig archive.
 The consumer reviews a shared producer, isolates the offer edit, and checks book and direct routes.
 The wrong-scope case must fail the preserved book assertion after an otherwise successful Run.
-The composition check scenario uses the packed CLI before approval and after linked, split, unwired, and incompatible edits.
+The composition check scenario uses the packed CLI before approval and after linked, specialized, unwired, and incompatible edits.
 It compares the lock and approval hashes before and after those checks.
 The host suite requires native prerequisites and compares owner residue.
 
@@ -25,7 +25,7 @@ It checks that a project without an entrypoint opens the navigation index and ca
 
 Check shared callers against the exact selected target and link to the captured Binding paths.
 The installed check includes the independent Run selector for a shared target and resolves an exact Binding declaration path.
-The Binding split scenario exercises discovery and literal membership through the installed command.
+The slot specialization scenario exercises discovery and literal membership through the installed command.
 It checks unselected files, both intermediate states for explicit membership, collision refusal, and rollback.
 Native Runs verify the new reviewer for offer samples and the original reviewer for fresh books, resumed books, and standalone samples.
 The fixture checks preserved attachment routes, settings, and the earlier approval.

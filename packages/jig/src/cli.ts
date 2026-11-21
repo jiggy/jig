@@ -52,7 +52,6 @@ import {
   type PrivateInspectionEnvironmentCheck,
 } from './internal/activation-admission-store.js'
 import { addFlowUse } from './internal/add-use.js'
-import type { BindingSplit, splitWorkingBinding } from './internal/binding-split.js'
 import { PrivateCliOutput } from './internal/cli-output.js'
 import { importContract } from './internal/contract-import.js'
 import {
@@ -95,6 +94,7 @@ import {
 import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
 import { PrivateSavedResultError, privateCaptureSavedResult } from './internal/saved-result.js'
+import type { SlotSpecialization, specializeWorkingSlot } from './internal/specialize-slot.js'
 import { JIG_STANDARD_CONTRACTS } from './internal/standard-contracts.js'
 import type { inspectWorkingFlow, WorkingFlowReport } from './internal/working-flow-inspection.js'
 import {
@@ -134,7 +134,7 @@ Usage:
   jig new <name>             Add an editable Flow to the current project
   jig types <package-path>   Print TypeScript types for a Flow's settings and child calls
   jig add-use <package-path> <slot>=<source>  Declare a collaborator in an existing Flow
-  jig split-binding <caller> Give one caller slot its own child Binding
+  jig specialize-slot <caller>  Give one caller slot its own child Binding
   jig check [--diff]         Check the working project's composition before review
   jig review [project]       Review changes and approve an exact revision
   jig run [target]           Choose or run a reviewed Flow or Binding
@@ -281,13 +281,13 @@ Fish:
 
 The scripts use \`jig completion targets [prefix]\` to read approved selectors.
 Lookup never evaluates source, checks providers, prepares dependencies or approves work.`,
-  'split-binding': `Usage: jig split-binding binding:<caller> --slot <slot> --as <name> --select <child-slot>=<target>
+  'specialize-slot': `Usage: jig specialize-slot binding:<caller> --slot <slot> --as <name> --select <child-slot>=<target>
 
 Copy the Binding explicitly selected by the caller slot. Change one child
 selection in the copy, then point the caller slot to it. The target accepts
 flow:<path>, npm:<package>, or binding:<id> from the current configuration.
 
-  jig split-binding binding:offer --slot sample --as offer-sample --select review=binding:editor
+  jig specialize-slot binding:offer --slot sample --as offer-sample --select review=binding:editor
 
 Run from the project root. Both Bindings must be standalone defineBinding
 calls with literal values. Jig adds the copy to a literal bindings array
@@ -470,11 +470,11 @@ const textDecoder = new TextDecoder()
 /** Private injection seam until the installed host owns project acquisition. */
 export interface PrivateCliCommandHost {
   readonly prepareRun?: typeof preparePrivateCliRun
-  readonly splitBinding?: (
+  readonly specializeSlot?: (
     project: string,
-    request: BindingSplit,
+    request: SlotSpecialization,
     signal?: AbortSignal,
-  ) => ReturnType<typeof splitWorkingBinding>
+  ) => ReturnType<typeof specializeWorkingSlot>
   readonly inspectFlow?: (
     project: string,
     options: FlowInspectionOptions,
@@ -627,7 +627,7 @@ async function executeCommand(
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
     if (arguments_[0] === 'new') return await executeNew(arguments_, runtime)
     if (arguments_[0] === 'types') return await executeTypes(arguments_, runtime)
-    if (arguments_[0] === 'split-binding') return await executeSplitBinding(arguments_, runtime)
+    if (arguments_[0] === 'specialize-slot') return await executeSpecializeSlot(arguments_, runtime)
     if (arguments_[0] === 'check') return await executeCheck(arguments_, runtime)
     if (arguments_[0] === 'completion') return await executeCompletion(arguments_, runtime)
     if (arguments_[0] === 'attempt') return await executeAttempt(arguments_, options, runtime)
@@ -980,9 +980,9 @@ async function executeTypes(arguments_: readonly string[], runtime: CliRuntime):
   }
 }
 
-function parseSplitBinding(arguments_: readonly string[]): BindingSplit {
+function parseSpecializeSlot(arguments_: readonly string[]): SlotSpecialization {
   const options = new Map<string, string>()
-  const command = 'split-binding'
+  const command = 'specialize-slot'
   for (let i = 2; i < arguments_.length; i += 2) {
     const flag = arguments_[i]!
     const value = arguments_[i + 1]
@@ -1025,19 +1025,23 @@ function parseSplitBinding(arguments_: readonly string[]): BindingSplit {
   }
 }
 
-async function executeSplitBinding(
+async function executeSpecializeSlot(
   arguments_: readonly string[],
   runtime: CliRuntime,
 ): Promise<number> {
-  const request = parseSplitBinding(arguments_)
-  if (runtime.host.splitBinding === undefined)
+  const request = parseSpecializeSlot(arguments_)
+  if (runtime.host.specializeSlot === undefined)
     throw new CliDiagnostic(
-      'JIG_BINDING_SPLIT_UNAVAILABLE',
+      'JIG_SPECIALIZE_SLOT_UNAVAILABLE',
       'Run the installed Jig command on a host that supports working-tree inspection.',
       2,
     )
   try {
-    const edit = await runtime.host.splitBinding(runtime.currentDirectory, request, runtime.signal)
+    const edit = await runtime.host.specializeSlot(
+      runtime.currentDirectory,
+      request,
+      runtime.signal,
+    )
     const name = 'binding:' + request.name
     runtime.writeOutput(
       [
@@ -1064,8 +1068,10 @@ async function executeSplitBinding(
       const where =
         error.path === undefined ? '' : ` At ${asciiJsonString(error.path)}${error.pointer ?? ''}.`
       throw new CliDiagnostic(
-        error.code.startsWith('BINDING_SPLIT_') ? 'JIG_' + error.code : 'JIG_BINDING_SPLIT_REFUSED',
-        error.code.startsWith('BINDING_SPLIT_')
+        error.code.startsWith('SPECIALIZE_SLOT_')
+          ? 'JIG_' + error.code
+          : 'JIG_SPECIALIZE_SLOT_REFUSED',
+        error.code.startsWith('SPECIALIZE_SLOT_')
           ? error.message + where
           : `${error.code}.${where} ${asciiJsonString(error.message.slice(0, 1024))} Inspect the working configuration and correct the reported source issue.`,
         error.kind === 'invalid' ? 1 : 2,
@@ -1157,8 +1163,8 @@ export function privateCliRequiresHost(arguments_: readonly string[]): boolean {
       parseCheck(arguments_)
       return true
     }
-    if (arguments_[0] === 'split-binding') {
-      parseSplitBinding(arguments_)
+    if (arguments_[0] === 'specialize-slot') {
+      parseSpecializeSlot(arguments_)
       return true
     }
     if (arguments_[0] === 'inspect') {

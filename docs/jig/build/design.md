@@ -236,15 +236,15 @@ Report which alternatives were executed, which were inspected in source, and whi
 For a runnable example, [test a scoped route](./compose.md#test-a-scoped-route) with two approved Bindings in your regular test runner.
 
 
-### Give one caller its own Binding
+### Give one caller slot its own child Binding
 
-When several callers share a Binding, use `jig split-binding` to give one caller a different child selection.
+When several callers share a Binding, use `jig specialize-slot` to give one caller a different child selection.
 Identify the caller Binding, its slot, and the child slot with `jig inspect --flow`.
 For example, an audit import can use a stricter validator while standard imports keep the original.
 This example starts with a retained approval.
 
 ```sh
-jig split-binding binding:audit --slot import --as audit-import --select validate=binding:strict-validator
+jig specialize-slot binding:audit --slot import --as audit-import --select validate=binding:strict-validator
 jig check --diff
 ```
 
@@ -260,4 +260,4 @@ Use `jig check` before the first approval.
 
 Run `jig review` separately before running the new configuration.
 Use ordinary source edits for computed or shared declarations and conditional call sites.
-See the [CLI contract](../spec/cli-experience.md#give-one-caller-its-own-binding) for supported declaration shapes and interruption behavior.
+See the [CLI contract](../spec/cli-experience.md#give-one-caller-slot-its-own-child-binding) for supported declaration shapes and interruption behavior.

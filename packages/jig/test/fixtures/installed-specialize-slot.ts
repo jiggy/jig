@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 
 type Command = (argv: string[], cwd: string) => Promise<{ stdout: string; stderr: string }>
 
-export async function checkInstalledBindingSplit(
+export async function checkInstalledSlotSpecialization(
   cli: string,
   project: string,
   command: Command,
@@ -135,9 +135,19 @@ return await run.call({ slot: 'review', operationId: 'post-edit', input: run.set
   const originalResumed = await readFile(join(project, 'wiring/resumed-book.ts'), 'utf8')
   const newPath = join(project, 'specialists/offer-sample.ts')
   const specialized = shared.replace('binding:specialist', 'binding:offer-editor')
-  const split = (select: string, name = 'offer-sample') =>
+  const specialize = (select: string, name = 'offer-sample') =>
     command(
-      [cli, 'split-binding', 'binding:offer', '--slot', 'sample', '--as', name, '--select', select],
+      [
+        cli,
+        'specialize-slot',
+        'binding:offer',
+        '--slot',
+        'sample',
+        '--as',
+        name,
+        '--select',
+        select,
+      ],
       project,
     )
   await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
@@ -150,12 +160,12 @@ return await run.call({ slot: 'review', operationId: 'post-edit', input: run.set
     expect(await readFile(lockPath, 'utf8')).toBe(originalLock)
     expect(await readFile(join(project, 'jig.ts'), 'utf8')).toBe(config)
     expect(existsSync(newPath)).toBe(false)
-    expect(existsSync(join(project, '.jig-split-binding-stage'))).toBe(false)
+    expect(existsSync(join(project, '.jig-specialize-slot-stage'))).toBe(false)
   }
-  await expect(split('review=binding:missing')).rejects.toThrow('JIG_BINDING_SPLIT_REFUSED')
+  await expect(specialize('review=binding:missing')).rejects.toThrow('JIG_SPECIALIZE_SLOT_REFUSED')
   await assertOriginal()
-  await expect(split('review=binding:offer-editor', 'fresh-book')).rejects.toThrow(
-    'JIG_BINDING_SPLIT_EXISTS',
+  await expect(specialize('review=binding:offer-editor', 'fresh-book')).rejects.toThrow(
+    'JIG_SPECIALIZE_SLOT_EXISTS',
   )
   await assertOriginal()
   // Keep the unsupported declaration valid in ordinary evaluation.
@@ -163,7 +173,9 @@ return await run.call({ slot: 'review', operationId: 'post-edit', input: run.set
     'wiring/offer.ts',
     "const selected = 'binding:sample'\n" + originalOffer.replace("'binding:sample'", 'selected'),
   )
-  await expect(split('review=binding:offer-editor')).rejects.toThrow('JIG_BINDING_SPLIT_SHAPE')
+  await expect(specialize('review=binding:offer-editor')).rejects.toThrow(
+    'JIG_SPECIALIZE_SLOT_SHAPE',
+  )
   await put('wiring/offer.ts', originalOffer)
   await assertOriginal()
 
@@ -172,14 +184,18 @@ return await run.call({ slot: 'review', operationId: 'post-edit', input: run.set
       .replace('export default', "const members = ['./wiring/offer.ts']\r\nexport default")
       .replace("'./wiring/offer.ts',", '...members,')
     await put('jig.ts', computed)
-    await expect(split('review=binding:offer-editor')).rejects.toThrow('JIG_BINDING_SPLIT_SHAPE')
+    await expect(specialize('review=binding:offer-editor')).rejects.toThrow(
+      'JIG_SPECIALIZE_SLOT_SHAPE',
+    )
     expect(await readFile(join(project, 'jig.ts'), 'utf8')).toBe(computed)
     await put('jig.ts', config)
     await assertOriginal()
 
     // An unselected declaration can occupy the destination. No edit may replace it.
     await put('specialists/offer-sample.ts', inactiveBytes)
-    await expect(split('review=binding:offer-editor')).rejects.toThrow('JIG_BINDING_SPLIT_EXISTS')
+    await expect(specialize('review=binding:offer-editor')).rejects.toThrow(
+      'JIG_SPECIALIZE_SLOT_EXISTS',
+    )
     expect(await readFile(newPath, 'utf8')).toBe(inactiveBytes)
 
     // Inspect the two states that can remain after an interrupted publication.
@@ -208,7 +224,9 @@ return await run.call({ slot: 'review', operationId: 'post-edit', input: run.set
   const callerMode = (await stat(callerDirectory)).mode & 0o777
   await chmod(callerDirectory, callerMode & ~0o222)
   try {
-    await expect(split('review=binding:offer-editor')).rejects.toThrow('JIG_BINDING_SPLIT_IO')
+    await expect(specialize('review=binding:offer-editor')).rejects.toThrow(
+      'JIG_SPECIALIZE_SLOT_IO',
+    )
     await assertOriginal()
     expect((await inspect('--approved', '--topology', '--all', '--json')).stdout).toBe(
       approved.stdout,
@@ -217,7 +235,7 @@ return await run.call({ slot: 'review', operationId: 'post-edit', input: run.set
     await chmod(callerDirectory, callerMode)
   }
 
-  const edit = await split('review=binding:offer-editor')
+  const edit = await specialize('review=binding:offer-editor')
   expect(edit.stdout).toContain('binding:sample → binding:offer-sample')
   expect(edit.stdout).toContain('specialists/offer-sample.ts')
   if (membership === 'exact') expect(edit.stdout).toContain('to bindings in "jig.ts"')
@@ -233,7 +251,9 @@ return await run.call({ slot: 'review', operationId: 'post-edit', input: run.set
   expect((await inspect('--approved', '--topology', '--all', '--json')).stdout).toBe(
     approved.stdout,
   )
-  await expect(split('review=binding:offer-editor')).rejects.toThrow('JIG_BINDING_SPLIT_EXISTS')
+  await expect(specialize('review=binding:offer-editor')).rejects.toThrow(
+    'JIG_SPECIALIZE_SLOT_EXISTS',
+  )
   expect(await readFile(newPath, 'utf8')).toBe(specialized)
   expect((await readdir(project)).sort()).toEqual([
     '.jig',
