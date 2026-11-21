@@ -1,7 +1,7 @@
 import { compositionObservations, type DisplaySnapshot } from '@jigging/display-model'
 import { h } from 'preact'
 import { useRef, useState } from 'preact/hooks'
-import { privateBrowserInvocationViews, privateBrowserLiteral } from './navigation.js'
+import { type privateBrowserInvocationViews, privateBrowserLiteral } from './navigation.js'
 import { privateBrowserObservationTime } from './observations.js'
 
 type Call = DisplaySnapshot['calls'][number]
@@ -39,6 +39,7 @@ function investigationBrief(snapshot: DisplaySnapshot, call: Call, childViews: C
 
   return [
     'Investigate this observed Jig invocation.',
+    `Run root: ${quote(snapshot.workspace.target)}`,
     caller ? `Configured caller: ${quote(caller.label)} (${caller.kind})` : undefined,
     `Observed caller: ${quote(call.sourceLabel)}`,
     `Slot: ${quote(call.slot)}`,
@@ -55,7 +56,7 @@ function investigationBrief(snapshot: DisplaySnapshot, call: Call, childViews: C
       : undefined,
     `Coverage: Retained Run observations only.${coverage.length ? ` ${coverage.join(' ')}` : ''}`,
     'The exact target selector is unavailable here. Run `jig inspect --flow --topology --all` in the project.',
-    'Use the caller and slot to locate the corresponding source. Confirm that the current wiring matches the observed Run.',
+    'Use the Run root, caller, and slot to locate the corresponding source. Confirm that the current wiring matches the observed Run.',
   ]
     .filter((line) => line !== undefined)
     .join('\n')

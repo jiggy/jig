@@ -742,6 +742,7 @@ for (const width of [1440, 390]) {
       await copied.waitFor()
       assert(await copy.evaluate((node) => node === document.activeElement))
       const returned = await clipboard()
+      assert.match(returned, /^Run root: "binding:review"$/m)
       assert.match(returned, /Configured caller: "Review" \(binding\)/)
       assert.match(returned, /Slot: "prepare"\nConfigured target: "Worker" \(binding\)/)
       assert.match(returned, /Operation: "prepare-two" \(caller-local\)/)
@@ -749,10 +750,7 @@ for (const width of [1440, 390]) {
       assert.match(returned, /Reported views retained: 1/)
       assert.match(returned, /Omitted call observations: 4/)
       assert.match(returned, /jig inspect --flow --topology --all/)
-      assert.doesNotMatch(
-        returned,
-        /prepare-one|worker-two-notes|binding:review|bearer|#cap=|These notes/i,
-      )
+      assert.doesNotMatch(returned, /prepare-one|worker-two-notes|bearer|#cap=|These notes/i)
       await noPageOverflow(page)
 
       await page.keyboard.press('Escape')
