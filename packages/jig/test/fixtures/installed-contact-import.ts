@@ -139,7 +139,7 @@ await handle(async run => {
   let lock = await hash(join(project, 'jig.lock'))
   const packet = join(directory, 'packet')
   // No target, input, attachments or timeout override: exercise authored defaults.
-  const invoked = await command([cli, 'run', '--out', packet, '--json'], project)
+  const invoked = await command([cli, 'run', '--record-calls', '--out', packet, '--json'], project)
   assert.deepEqual(await readFile(join(project, 'jig.ts')), await readFile(join(example, 'jig.ts')))
   const result = JSON.parse(invoked.stdout)
   assert.equal(result.status, 'succeeded')
@@ -193,6 +193,57 @@ defaultProviders:{'https://jig.md/contracts/agent-run':'binding:model'}})
   )
   await command([cli, 'review', '--yes', '--allow-authority-changes'], project)
   lock = await hash(join(project, 'jig.lock'))
+  // Reopen the original packet outside the project after a different revision was approved.
+  const saved = JSON.parse(
+    (await command([cli, 'inspect', '--result', packet, '--calls', '--json'], directory)).stdout,
+  )
+  assert.deepEqual(JSON.parse(await readFile(join(packet, 'result.json'), 'utf8')), result)
+  assert.deepEqual(saved, result.callEvidence)
+  assert.equal(saved.provenance, 'recorded-claim')
+  assert.equal(saved.runId, result.runId)
+  assert.equal(saved.root, 'binding:code')
+  assert.match(saved.revision, /^sha256:[0-9a-f]{64}$/)
+  assert.equal(saved.coverage, 'complete')
+  assert.equal(saved.omittedEvents, 0)
+  assert.deepEqual(
+    saved.calls.map(({ caller, slot, target, state, outcome }) => [
+      caller,
+      slot,
+      target,
+      state,
+      outcome,
+    ]),
+    [
+      ['binding:code', 'reader', 'flow:flows/read-contacts', 'returned', 'done'],
+      ['binding:code', 'mapper', 'flow:flows/map-code', 'returned', 'done'],
+      ['binding:code', 'converter', 'flow:flows/convert', 'returned', 'done'],
+      ['binding:code', 'exporter', 'flow:flows/export-preview', 'returned', 'done'],
+    ],
+  )
+  assert.doesNotMatch(JSON.stringify(saved), /Ada Lovelace|Read and validate|operationId/)
+  const directPacket = join(directory, 'direct-mapper')
+  await command(
+    [
+      cli,
+      'run',
+      'flow:flows/map-code',
+      '--input',
+      '{"headers":["Name","Email","Organization"]}',
+      '--record-calls',
+      '--out',
+      directPacket,
+      '--json',
+    ],
+    project,
+  )
+  const direct = JSON.parse(
+    (await command([cli, 'inspect', '--result', directPacket, '--calls', '--json'], directory))
+      .stdout,
+  )
+  assert.equal(direct.root, 'flow:flows/map-code')
+  assert.equal(direct.coverage, 'complete')
+  assert.deepEqual(direct.calls, [])
+  assert.notEqual(direct.revision, saved.revision)
   for (const method of ['map-agent', 'map-mixed'])
     for (const [headers, mapping] of [
       [['Organisation', 'Courriel', 'Nom complet'], { name: 2, email: 1, organization: 0 }],

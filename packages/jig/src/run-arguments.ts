@@ -28,6 +28,7 @@ export function parseRun(
   readonly inputFile?: string
   readonly attachments: readonly { name: string; directory: string; select: readonly string[] }[]
   readonly output?: string
+  readonly recordCalls: boolean
   readonly displayBundle?: Readonly<{ attachment: string; path: string }>
   readonly timeoutMs: number
   readonly receive: readonly string[]
@@ -46,6 +47,7 @@ export function parseRun(
     selectors = new Map<string, string[]>()
   let timeoutMs = PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS
   let json = false
+  let recordCalls = false
   let updates: 'auto' | 'off' = 'auto'
   let sawUpdates = false
   let display: 'auto' | 'plain' | 'tui' | 'web' = 'auto'
@@ -56,6 +58,12 @@ export function parseRun(
   const receive: string[] = []
   for (let index = 2; index < arguments_.length; index += 2) {
     const option = arguments_[index]
+    if (option === '--record-calls') {
+      if (recordCalls) usage('run', '--record-calls may only be supplied once.')
+      recordCalls = true
+      index -= 1
+      continue
+    }
     if (option === '--json') {
       if (json) usage('run', '--json may only be supplied once.')
       json = true
@@ -191,8 +199,11 @@ export function parseRun(
       '--select requires a matching --attach name',
       1,
     )
+  if (recordCalls && output === undefined && !allowUnboundSelect)
+    usage('run', '--record-calls requires a result directory selected with --out.')
   return {
     target,
+    recordCalls,
     input,
     timeoutMs,
     receive,
