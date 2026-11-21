@@ -143,6 +143,141 @@ A shared interface allows replacement but does not guarantee equal behavior.
 An Agent-backed greeting could use the same calling boundary with different powers, costs, and answer quality.
 The operator must configure and review those differences.
 
+## Test a scoped route
+
+Use a brief greeting for one configured group and preserve the standard greeting for the other.
+This optional test runs both Bindings through the installed Jig on a [supported Linux host](../start/index.md#supported-host).
+Use Node.js 22 or newer to run the test and Bun 1.4.4 to prepare the locks.
+Start with the group project above and set the standard greeting to `Welcome, ${name}!`.
+
+Install the same Jig release locally as in the [application tutorial](../start/application.md#before-you-start).
+For a packed candidate, pass its absolute `.tgz` path to `npm install --save-exact`.
+Use that local executable for both review and the test.
+
+```sh
+./node_modules/.bin/jig new brief-hello
+```
+
+Set the `description` in `flows/brief-hello/FLOW.meta.json` to `Greet one person briefly.`
+Replace `flows/brief-hello/FLOW.ts`:
+
+```ts
+import { handle } from '@jigging/flow'
+
+await handle(run => ({ outcome: 'done', output: { message: `Hi, ${run.input}.` } }))
+```
+
+Save this invocation contract as `FLOW.contract.json` in both `flows/hello` and `flows/brief-hello`:
+
+```json
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
+  "input": { "type": "string" },
+  "result": {
+    "type": "object",
+    "properties": {
+      "outcome": { "const": "done" },
+      "output": {
+        "type": "object",
+        "properties": { "message": { "type": "string" } },
+        "required": ["message"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["outcome", "output"],
+    "additionalProperties": false
+  }
+}
+```
+
+Create `bindings/brief-welcome-group.ts`:
+
+```ts
+import { defineBinding } from '@jigging/jig'
+
+export default defineBinding({
+  package: 'flows/welcome-group',
+  slots: { greeting: 'flow:flows/brief-hello' },
+})
+```
+
+Discovery includes the new Flow and Binding.
+If you use explicit membership, add both paths to `jig.ts`.
+Save `fixtures/group.json` with this input for both calls:
+
+```json
+["Ada", "Grace"]
+```
+
+Generate and keep the Flow dependency locks:
+
+```sh
+bun install --lockfile-only --cwd flows/hello
+bun install --lockfile-only --cwd flows/brief-hello
+bun install --lockfile-only --cwd flows/welcome-group
+```
+
+Create `test/wiring.test.mjs`:
+
+```js
+import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import test from 'node:test'
+import { fileURLToPath } from 'node:url'
+
+const project = new URL('../', import.meta.url)
+const jig = fileURLToPath(new URL('node_modules/.bin/jig', project))
+
+test('only the brief group uses the brief greeting', async t => {
+  const cases = [
+    { target: 'binding:brief-welcome-group', messages: ['Hi, Ada.', 'Hi, Grace.'] },
+    { target: 'binding:welcome-group', messages: ['Welcome, Ada!', 'Welcome, Grace!'] },
+  ]
+  for (const { target, messages } of cases) {
+    await t.test(target, () => {
+      const args = ['run', target, '--input', '@fixtures/group.json', '--timeout', '30s', '--json']
+      const stdout = execFileSync(jig, args, {
+        cwd: project,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'inherit'],
+      })
+      const result = JSON.parse(stdout)
+      assert.equal(result.status, 'succeeded')
+      assert.equal(result.outcome, 'done')
+      assert.deepEqual(result.output?.messages, messages)
+    })
+  }
+})
+```
+
+From the project root, review the new source and both selections:
+
+```sh
+./node_modules/.bin/jig review
+```
+
+Approve the exact revision after inspection.
+Before testing further source or Binding edits, complete review and approve the changed revision.
+Jig can still use the earlier approval after an edit or a declined review.
+The test uses existing approval and leaves review to the project operator.
+
+```sh
+node --test test/wiring.test.mjs
+```
+
+Expect both Binding subtests to pass.
+The test checks execution status, method outcome, and the exact messages separately.
+Each greeter produces a distinct message, and the coordinator forwards it from the child result.
+Those messages witness the selected implementation for this input.
+The test leaves other inputs, cancellation, and any other invocations unobserved.
+
+To see the regression, copy the source and dependency locks into a disposable sibling directory.
+Run `npm ci` in that copy.
+Select `flow:flows/brief-hello` in its `bindings/welcome-group.ts` too.
+Review and approve that copy after inspecting the changed selection.
+Run the same test command there.
+The brief route still passes, and the standard route fails on its message assertion despite a successful Run with outcome `done`.
+
 ## Watch invalid input stop
 
 ```sh
