@@ -15,6 +15,7 @@ makes usable control an observable requirement;
 | Import an agreement | [Contract import](#contract-import) |
 | Select a display | [Display selection](#display-selection), [browser activation](#browser-activation) |
 | Explore before execution | [Project exploration](#project-exploration) |
+| Check a working workflow edit | [Composition check](#composition-check) |
 | Present live work | [Progress and observation](#progress-and-observation), [workspace navigation](#workspace-navigation), [automatic output](#automatic-output) |
 | Present a result | [Experience acceptance](#experience-acceptance), [diagnostics and interruption](#diagnostic-evidence-and-interruption) |
 | Change review output | [Implementation and review ownership](#implementation-and-review-ownership), [review client selection](#review-client-selection) |
@@ -65,6 +66,46 @@ referenced agreements and license. Unsupported names fail without a fallback.
 The installed catalog checks each exact supported digest. A copied standard
 agreement is a project-owned snapshot, never a runtime resolver, implementation
 selection or authority grant. Reporting retains its MPL-2.0 license.
+
+### Composition check
+
+`jig check [--diff] [--json]` checks the working project's complete configuration, including disconnected targets.
+It uses the same contained declaration evaluator and linker as working-tree topology inspection.
+Declared npm Flows must already be installed. Manifest and lock agreement remains unchecked.
+Plain `jig check` works without a local approval.
+
+The command does not resolve or install dependencies, generate contracts, prepare recipes, or invoke a method or provider.
+It does not start review, write project state, or update a lock or approval.
+Success establishes linked working configuration only.
+
+`--diff` compares that capture to the last locally approved topology through the read-only approved reader.
+Jig reads each basis independently.
+An absent approval prevents comparison, even when a project lock exists.
+
+The comparison identifies changed targets by selector and slots by caller selector and slot name.
+It reports additions, removals, and changed selections, including slots of added and removed targets.
+Settings compare as structural JSON for targets present on both sides. Only changed settings selectors appear.
+The entrypoint comparison uses its normalized target selector and excludes invocation arguments.
+
+Both projections expose native resource kinds. Grant policy, client identity, and attachment maps remain outside this comparison.
+Source equality, method behavior, launch readiness, and preserved authority require separate evidence.
+
+On success, `--json` emits one object with `basis: "working-tree"` and `status: "linked"`.
+With `--diff`, the object also contains `diff` with the following fields. Arrays contain only changes.
+
+| Field | Value |
+| --- | --- |
+| `basis` | `"approved"`, the baseline for all `before` values |
+| `targets` | Records with `target`, `before`, and `after`. Values are package selectors or `null` for absence. |
+| `slots` | Records with `caller`, `slot`, `before`, and `after`. Values are `{ "target": "…" }`, `{ "resource": "…" }`, or `null` for absence. |
+| `settingsChanged` | Target selectors whose settings differ |
+| `entrypoint` | When its target changes, `before` and `after` contain a target selector or `null` for absence. |
+
+Exit 0 means the requested check or comparison completed, including a comparison that found changes.
+Exit 1 means invalid configuration or an absent baseline for `--diff`.
+An absent baseline reports `JIG_CHECK_NO_APPROVAL`.
+Exit 2 means invalid usage, an unavailable check or baseline, or interruption.
+Failures emit a bounded diagnostic on stderr and no success record.
 
 ### Progress and observation
 

@@ -8,6 +8,7 @@ import {
   privateCliRequiresHost,
   privateCliVerification,
 } from '../../src/cli.js'
+import { compareConfiguredRouting } from '../../src/cli-check.js'
 import {
   approvedTargets,
   cliShellWord,
@@ -28,6 +29,7 @@ test('usage mistakes show one correction, not the entire manual', async () => {
     [['rn'], 'Did you mean run?'],
     [['run', 'flow:flows/hello', '--timeot', '2m'], 'Did you mean --timeout?'],
     [['review', '--oops'], 'Unknown or repeated review option'],
+    [['check', '--diff', '--diff'], 'Use only --diff and --json'],
   ] as const) {
     let text = ''
     expect(
@@ -44,6 +46,65 @@ test('usage mistakes show one correction, not the entire manual', async () => {
     expect(text.split('\n').length).toBeLessThan(13)
     expect(privateCliRequiresHost(args)).toBe(false)
   }
+})
+
+test('composition diff compares exact selectors, caller slots, settings, and entrypoint targets', () => {
+  const packageName = 'flows/worker'
+  const row = (target: string, settings: JsonValue, routes: JsonValue[]) => ({
+    target,
+    package: packageName,
+    flow: { settings, routes },
+  })
+  const approved = {
+    entrypoint: `flow:${packageName} --input '1'`,
+    targets: [
+      row('binding:old', {}, []),
+      row('binding:adjusted', { a: 1 }, []),
+      row(`flow:${packageName}`, { a: 1, b: { x: [2, 3], z: 4 } }, [
+        { slot: 'provider', resource: 'finite-acp' },
+        { slot: 'optional', target: 'binding:old' },
+      ]),
+    ],
+  }
+  const working = {
+    entrypoint: "flow:./flows/worker --input '2'",
+    targets: [
+      row(`flow:${packageName}`, { b: { z: 4, x: [2, 3] }, a: 1 }, [
+        { slot: 'provider', resource: 'finite-acp' },
+        { slot: 'extra', target: 'binding:adjusted' },
+      ]),
+      { ...row('binding:adjusted', { a: 2 }, []), package: 'flows/replacement' },
+    ],
+  }
+  const expected = {
+    basis: 'approved',
+    targets: [
+      { target: 'binding:adjusted', before: packageName, after: 'flows/replacement' },
+      { target: 'binding:old', before: packageName, after: null },
+    ],
+    slots: [
+      {
+        caller: `flow:${packageName}`,
+        slot: 'extra',
+        before: null,
+        after: { target: 'binding:adjusted' },
+      },
+      {
+        caller: `flow:${packageName}`,
+        slot: 'optional',
+        before: { target: 'binding:old' },
+        after: null,
+      },
+    ],
+    settingsChanged: ['binding:adjusted'],
+  }
+  expect(compareConfiguredRouting(approved, working)).toEqual(expected)
+  expect(
+    compareConfiguredRouting(approved, { ...working, entrypoint: 'binding:adjusted' }),
+  ).toEqual({
+    ...expected,
+    entrypoint: { before: `flow:${packageName}`, after: 'binding:adjusted' },
+  })
 })
 test('selection without an approved entrypoint never guesses and validates options before asking', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-empty-choice-'))

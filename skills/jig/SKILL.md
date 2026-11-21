@@ -16,6 +16,9 @@ Look for the caller and slot that select the next step. If several callers selec
 If one caller needs a different child in an existing slot, point that caller to a Binding with the desired slot selection.
 Follow the relevant declaration or focused command to the source. Use the [inspection guide](reference/build/results.md#inspect-source-behavior) for deeper route questions.
 
+After editing, run `jig check --diff` to compare configured changes with the last local approval.
+Use `jig check` before the first approval. Read the [composition check guide](reference/build/results.md#check-working-composition) for its scope.
+
 ## 1. Establish the task and available support
 
 Inspect the project's instructions, source, dependencies, and existing configuration before changing them.

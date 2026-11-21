@@ -42,7 +42,7 @@ remain supported and are not rewritten by a review default.
   Preserve authored bytes outside the two target literals and the membership insertion.
   Keep approval and grant files out of this operation.
 
-- `project/captured-authoring.ts` owns the shared captured declaration evaluation used by review and working-tree inspection.
+- `project/captured-authoring.ts` owns the shared captured declaration evaluation used by review, check, and working-tree inspection.
   It preserves bootstrap/complete-closure consistency and owns no approval or dependency preparation.
   `inspectPackageProject` applies ordinary linking rules directly to captured packages and declared Binding routes.
   It produces no retained package references and leaves native Agent selection to review.

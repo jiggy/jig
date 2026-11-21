@@ -32,15 +32,17 @@ export async function resolveFlowInspectionPath(
   invalid('INSPECTION_PACKAGE_MISSING', `No Flow package or captured file matches in the ${basis}.`)
 }
 
+export function configuredEntrypoint(snapshot: Record<string, JsonValue>): string | undefined {
+  if (typeof snapshot.entrypoint !== 'string') return undefined
+  const entry = parseProjectEntrypoint(snapshot.entrypoint).target
+  return entry.kind === 'binding' ? `binding:${entry.id}` : flowSelector(entry.path)
+}
+
 export function selectFlowContext(value: JsonValue, options: FlowContextOptions) {
   const snapshot = record(value)
   const targets = list(snapshot.targets).map(record)
   const byTarget = new Map(targets.map((item) => [String(item.target), item]))
-  let entrypoint: string | undefined
-  if (typeof snapshot.entrypoint === 'string') {
-    const entry = parseProjectEntrypoint(snapshot.entrypoint).target
-    entrypoint = entry.kind === 'binding' ? `binding:${entry.id}` : flowSelector(entry.path)
-  }
+  const entrypoint = configuredEntrypoint(snapshot)
   const { all, target, packagePath } = options
   if (Number(all === true) + Number(target !== undefined) + Number(packagePath !== undefined) > 1)
     throw new Error('Select only one inspection scope')

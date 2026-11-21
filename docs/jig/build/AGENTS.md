@@ -15,6 +15,8 @@ Authored behavioral maps remain distinct from host-computed configured topology.
 
 `results.md` explains live application maps alongside observed calls, without implying sequence, branch evaluation, or saved invocation history.
 It also owns configured-topology inspection of current source or retained approval.
+It explains checking working composition and comparing it to retained approval before review.
+
 Source behavior inspection owns the linked application map and its coverage limits.
 Focused topology preserves callers, other configured routes and shared package uses, with explicit boundary omissions.
 It owns the pre-run explorer guide, including loading a local JSON draft, explicit launch, supported interfaces, and separate Close meanings.

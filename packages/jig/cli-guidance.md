@@ -210,6 +210,11 @@ All selected domain requirements still apply.
 
 ### Current and approved inspection
 
+- `jig check` uses the whole working-tree topology capture and linker.
+  `src/cli-check.ts` compares its shared topology fields with the inert approved reader's projection when `--diff` is selected.
+  Report only changed selector, slot, settings, and entrypoint records. Keep resource kinds distinct from grant identity.
+  Check and diff acquire no execution session and use read-only installation verification.
+
 Coding agents need connected behavioral context when changing workflow routes.
 Evaluate relationship features through these tasks:
 

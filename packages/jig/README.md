@@ -46,6 +46,7 @@ Project commands:
 ```text
 jig init [--bare] <directory> [--agent [codex|claude]]
 jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
+jig check [--diff] [--json]
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run [flow:path|npm:package|binding:id] [options]
 jig inspect [flow:path|npm:package|binding:id] [--json]
@@ -193,6 +194,10 @@ Use `jig split-binding` when one caller needs its own configuration of a shared 
 Supply the exact caller Binding and slot, a new Binding name, and the child slot and target.
 The command supports discovery and literal Binding membership in `jig.ts`.
 See [Binding authoring](https://jig.md/build/design#give-one-caller-its-own-binding).
+
+Use `jig check` to link the complete working configuration before review.
+Use `--diff` to show configured changes since the last local approval.
+Source behavior and execution readiness require separate checks.
 
 `jig inspect --result ./result-packet --display tui` reopens saved result,
 file and diagnostic evidence without starting work or requiring a project.
