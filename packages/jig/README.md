@@ -191,6 +191,7 @@ The [source behavior guide](https://jig.md/build/results#inspect-source-behavior
 
 Use `jig split-binding` when one caller needs its own configuration of a shared child.
 Supply the exact caller Binding and slot, a new Binding name, and the child slot and target.
+The command supports discovery and literal Binding membership in `jig.ts`.
 See [Binding authoring](https://jig.md/build/design#give-one-caller-its-own-binding).
 
 `jig inspect --result ./result-packet --display tui` reopens saved result,

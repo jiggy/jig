@@ -249,9 +249,10 @@ flow:<path>, npm:<package>, or binding:<id> from the current configuration.
 
   jig split-binding binding:offer --slot sample --as offer-sample --select review=binding:editor
 
-Run from the project root. Both declarations must be discovered, standalone
-defineBinding calls with literal values. Inspect the reported source paths
-and review separately before running the new configuration.`,
+Run from the project root. Both Bindings must be standalone defineBinding
+calls with literal values. Jig adds the copy to a literal bindings array
+in a standalone defineJig declaration, or leaves discovery in place.
+Inspect the reported paths and review before running the new configuration.`,
   'import-contract': `Usage: jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>
        jig import-contract --list
 
@@ -927,6 +928,11 @@ async function executeSplitBinding(
         `Updated ${asciiJsonString(edit.callerPath)} slot ${request.slot}: ${edit.childSelector} → ${name}`,
         `Created ${asciiJsonString(edit.newPath)} from ${asciiJsonString(edit.childPath)}`,
         `  Slot ${request.childSlot}: ${asciiJsonString(edit.previous)} → ${asciiJsonString(request.target)}`,
+        ...(edit.membershipPath === undefined
+          ? []
+          : [
+              `Added ${asciiJsonString(edit.newPath)} to bindings in ${asciiJsonString(edit.membershipPath)}`,
+            ]),
         '',
         `Inspect the new configuration with jig inspect --flow ${name}.`,
         'Review changed source with jig review before running it.',

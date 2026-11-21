@@ -52,6 +52,7 @@ execution evidence.
 - A descriptor-byte change must reconcile its documented digest, host allowlist,
   fixtures, lock constants, and published exact bytes.
 - Current exclusions must match the implementation and guide claims.
+- The CLI split contract owns editable membership shapes, publication order, and interrupted source recovery.
 - Mac admission requires native ARM macOS 15+ mechanisms, with observed OS builds
   retained as identity rather than an allowlist. Release evidence covers complete
   native and installed suites on macOS 15 and 26, including genuine Codex session

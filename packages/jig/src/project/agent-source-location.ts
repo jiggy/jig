@@ -1,3 +1,5 @@
+import { normalizeProjectPath } from './paths.js'
+
 export interface PrivateAgentSourceLocation {
   readonly path: string
   readonly line?: number
@@ -78,15 +80,106 @@ export function replaceBindingSlotLiteral(
   const value = stringValue(source, target)
   if (value === undefined || !current(value)) return undefined
   const { offset } = source.tokens[target.start]!
-  const quote = source.text[offset]
-  const literal =
-    quote === "'" && !/['\\\p{Cc}\u2028\u2029]/u.test(replacement)
-      ? "'" + replacement + "'"
-      : JSON.stringify(replacement)
-  return source.text.slice(0, offset) + literal + source.text.slice(offset + value.length + 2)
+  return (
+    source.text.slice(0, offset) +
+    quoted(replacement, source.text[offset]) +
+    source.text.slice(offset + value.length + 2)
+  )
+}
+
+/** Append to the project's own literal bindings array without rewriting existing text. */
+export function appendBindingMemberLiteral(
+  bytes: Uint8Array,
+  expectedPaths: readonly string[],
+  path: string,
+): string | undefined {
+  const source = scan(bytes, false)
+  if (source === undefined) return undefined
+  const declaration = authorCall(source, 'defineJig')
+  if (declaration === undefined) return undefined
+  const { text, tokens, closes } = source
+  const project = properties(source, declaration.start, declaration.end)
+  const bindings = project?.get('bindings')
+  if (bindings === undefined || project === undefined) return undefined
+  for (const [key, { start, end }] of project) {
+    if (literal(source, start, end)) continue
+    if (
+      (key !== 'flows' && key !== 'grants') ||
+      !declaration.importsDiscover ||
+      !word(tokens[start], 'discover') ||
+      !punctuation(tokens[start + 1], '(') ||
+      closes.get(start + 1) !== end
+    )
+      return undefined
+    const args = elements(source, start + 2, end)
+    if (args?.length !== 1 || !literal(source, args[0]!.start, args[0]!.end)) return undefined
+  }
+
+  const { start, end } = bindings
+  if (!punctuation(tokens[start], '[') || closes.get(start) !== end) return undefined
+  const members = elements(source, start + 1, end)
+  const expected = new Set(expectedPaths)
+  if (!members?.length || members.length !== expected.size) return undefined
+  for (const member of members) {
+    const value = stringValue(source, member)
+    if (value === undefined || !expected.delete(normalizeProjectPath(value, 'Binding member')))
+      return undefined
+  }
+  const last = tokens[members.at(-1)!.start]!
+  const lastEnd = last.offset + last.value!.length + 2
+  const close = tokens[end]!.offset
+  const trailingComma = punctuation(tokens[end - 1], ',')
+  const added = quoted(last.value!.startsWith('./') ? './' + path : path, text[last.offset])
+  const closingLine = /(\r\n|[\r\n\u2028\u2029])([ \t]*)$/.exec(text.slice(lastEnd, close))
+  const separator = trailingComma ? '' : ','
+  const suffix = trailingComma ? ',' : ''
+  if (closingLine) {
+    const memberIndent = /(?:^|[\r\n\u2028\u2029])([ \t]*)$/.exec(text.slice(0, last.offset))?.[1]
+    const closingIndent = closingLine[2]!
+    const insertion = close - closingIndent.length
+    const indent = memberIndent ?? closingIndent + '  '
+    return (
+      text.slice(0, lastEnd) +
+      separator +
+      text.slice(lastEnd, insertion) +
+      indent +
+      added +
+      suffix +
+      closingLine[1] +
+      text.slice(insertion)
+    )
+  }
+  let insertion = close
+  while (text[insertion - 1] === ' ' || text[insertion - 1] === '\t') insertion -= 1
+  return (
+    text.slice(0, lastEnd) +
+    separator +
+    text.slice(lastEnd, insertion) +
+    ' ' +
+    added +
+    suffix +
+    text.slice(insertion)
+  )
 }
 
 function bindingSlots(source: Source) {
+  const declaration = authorCall(source, 'defineBinding')
+  if (declaration === undefined) return undefined
+  const { start, end } = declaration
+  const slotsProperty = properties(source, start, end)?.get('slots')
+  if (slotsProperty === undefined) return undefined
+  const slots = properties(source, slotsProperty.start, slotsProperty.end)
+  if (slots === undefined) return undefined
+  return { slots, proven: literal(source, start, end) }
+}
+
+function quoted(value: string, quote: string | undefined): string {
+  return quote === "'" && !/['\\\p{Cc}\u2028\u2029]/u.test(value)
+    ? "'" + value + "'"
+    : JSON.stringify(value)
+}
+
+function authorCall(source: Source, helper: 'defineBinding' | 'defineJig') {
   const { tokens, closes } = source
   const defaults: number[] = []
   for (let index = 0; index < tokens.length; index += 1) {
@@ -96,46 +189,47 @@ function bindingSlots(source: Source) {
   if (defaults.length !== 1) return undefined
   const declaration = defaults[0]!
   const call = declaration + 3
-  if (!word(tokens[declaration + 2], 'defineBinding') || !punctuation(tokens[call], '('))
-    return undefined
+  if (!word(tokens[declaration + 2], helper) || !punctuation(tokens[call], '(')) return undefined
   const end = closes.get(call)
-  const bindingStart = call + 1
-  const bindingEnd = closes.get(bindingStart)
-  if (end === undefined || bindingEnd === undefined) return undefined
-  const binding = properties(source, bindingStart, bindingEnd)
-  const slotsProperty = binding?.get('slots')
-  if (slotsProperty === undefined) return undefined
-  const slots = properties(source, slotsProperty.start, slotsProperty.end)
-  if (slots === undefined) return undefined
+  const start = call + 1
+  const argumentEnd = closes.get(start)
+  if (end === undefined || argumentEnd === undefined) return undefined
 
   // Even context must originate in a call to the ordinary trusted import. A local
   // lookalike can ignore this argument, so uncertain module prefixes stay unlocated.
   const prefix = tokens.slice(0, declaration)
   const importSemicolon = punctuation(prefix.at(-1), ';')
   if (importSemicolon) prefix.pop()
+  const importSource = prefix.at(-1)
+  const imports = elements(source, 2, prefix.length - 3)
+  const names = imports?.map(({ start, end }) => (start === end ? tokens[start]?.value : undefined))
+  const importsDiscover =
+    helper === 'defineJig' && names?.length === 2 && names.includes('discover')
   const imported =
-    prefix.length === 6 &&
     word(prefix[0], 'import') &&
     punctuation(prefix[1], '{') &&
-    word(prefix[2], 'defineBinding') &&
-    punctuation(prefix[3], '}') &&
-    word(prefix[4], 'from') &&
-    prefix[5]?.kind === 'string' &&
-    prefix[5].value === '@jigging/jig' &&
+    closes.get(1) === prefix.length - 3 &&
+    imports?.every(({ start }) => tokens[start]?.kind === 'word') &&
+    names?.includes(helper) &&
+    (names.length === 1 || importsDiscover) &&
+    word(prefix.at(-2), 'from') &&
+    importSource?.kind === 'string' &&
+    importSource.value === '@jigging/jig' &&
     (importSemicolon ||
       /[\r\n\u2028\u2029]/.test(
         source.text.slice(
-          prefix[5].offset + prefix[5].value.length + 2,
+          importSource.offset + importSource.value.length + 2,
           tokens[declaration]!.offset,
         ),
       ))
   if (!imported) return undefined
   const singleArgument =
-    bindingEnd + 1 === end || (bindingEnd + 2 === end && punctuation(tokens[bindingEnd + 1], ','))
+    argumentEnd + 1 === end ||
+    (argumentEnd + 2 === end && punctuation(tokens[argumentEnd + 1], ','))
   const complete =
     end + 1 === tokens.length || (end + 2 === tokens.length && punctuation(tokens[end + 1], ';'))
   if (!singleArgument || !complete) return undefined
-  return { slots, proven: literal(source, bindingStart, bindingEnd) }
+  return { start, end: argumentEnd, importsDiscover }
 }
 
 /** Locate a named policy's client in captured valid JSON, rejecting duplicate keys. */

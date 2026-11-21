@@ -9,4 +9,5 @@ Keep repository maintenance instructions in this file, outside generated referen
 Lead the Jig skill description with the coding agent's job of locating a route change and its shared uses.
 Make the read-only lookup usable from an owner request or a Flow source path.
 Point agents to the scoped Binding split after they locate the exact caller slot.
+Keep literal membership and source review guidance with the generated design guide.
 Keep authored behavioral context distinct from computed configuration and actual execution evidence.

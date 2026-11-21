@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  appendBindingMemberLiteral,
   type PrivateAgentSourceLocation,
   privateAgentGrantSourceLocation,
   privateAgentSourceLocations,
@@ -64,7 +65,9 @@ describe('captured Agent source locations', () => {
       "/* export default defineBinding({ slots: { native: { kind: 'acp', client: 'claude' } } }) */\n" +
         binding('slots: {}'),
       binding('settings: { note: "slots: { native: { client: \'pi\' } }" }, slots: {}'),
-      binding("settings: { client: 'claude' }, slots: { other: { kind: 'acp', client: 'claude' } }"),
+      binding(
+        "settings: { client: 'claude' }, slots: { other: { kind: 'acp', client: 'claude' } }",
+      ),
     ])
       expect(locate(source)).toEqual({ path, kind: 'unlocated' })
     const source = binding("slots: { native: { kind: 'acp', client: 'codex' } }")
@@ -101,7 +104,8 @@ describe('captured Agent source locations', () => {
         "'@jigging/jig' ",
       ),
       "import { shared } from './shared.ts'\n" + binding('slots: { native: shared }'),
-      "const selected = 'claude'\n" + binding("slots: { native: { kind: 'acp', client: 'claude' } }"),
+      "const selected = 'claude'\n" +
+        binding("slots: { native: { kind: 'acp', client: 'claude' } }"),
       binding("slots: { native: { kind: 'acp', client: 'claude' } }") + ' as const',
       binding("slots: { native: { kind: 'acp', client: 'claude' } }") + '; mutate() ',
       binding("slots: { native: { kind: 'acp', client: 'claude' } }").replace(' })', ' }, other)'),
@@ -221,5 +225,36 @@ describe('captured named ACP policy locations', () => {
       path: grantPath,
       kind: 'unlocated',
     })
+  })
+})
+
+describe('captured literal Binding membership', () => {
+  const projectImport = "import { discover, defineJig } from '@jigging/jig';\n"
+  const add = (source: string, selections = ['bindings/one.ts']) =>
+    appendBindingMemberLiteral(encoder.encode(source), selections, 'bindings/two.ts')
+
+  test('appends to an inline array while preserving comments and comma style', () => {
+    const prefix = projectImport + "export default defineJig({ flows: discover('flows'), bindings: "
+    for (const [before, after] of [
+      ["['bindings/one.ts']", "['bindings/one.ts', 'bindings/two.ts']"],
+      [
+        '["./bindings/one.ts", /* note */ ]',
+        '["./bindings/one.ts", /* note */ "./bindings/two.ts", ]',
+      ],
+    ]) {
+      expect(add(prefix + before + ' })')).toBe(prefix + after + ' })')
+    }
+  })
+
+  test('refuses unproven helper calls, duplicate properties, computed members and selection mismatch', () => {
+    const call = "export default defineJig({ bindings: ['bindings/one.ts'] })"
+    for (const source of [
+      projectImport.replace('@jigging/jig', './lookalike.ts') + call,
+      projectImport + call + ' ? left : right',
+      projectImport + call.replace('bindings:', "bindings: ['bindings/different.ts'], bindings:"),
+      projectImport + call.replace("'bindings/one.ts'", '...shared'),
+    ])
+      expect(add(source)).toBeUndefined()
+    expect(add(projectImport + call, ['bindings/other.ts'])).toBeUndefined()
   })
 })

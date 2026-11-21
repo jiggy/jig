@@ -53,7 +53,7 @@ interface OpenDirectory {
   readonly information: BigIntStats
 }
 
-/** Reopen a discovery root through the ordinary mount-safe declaration walk. */
+/** Reopen a declaration's parent through the ordinary mount-safe walk. */
 export async function openDeclarationDirectory(
   project: PrivateProjectRoot,
   root: string,
