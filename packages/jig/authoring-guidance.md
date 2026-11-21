@@ -189,6 +189,9 @@ remain supported and are not rewritten by a review default.
   The requirement never adds the host to runtime dependency selection.
   This requirement grants no execution authority or registry access.
 
+- `add-use` reuses offline contract capture and copies one identified invocation agreement.
+  It inserts one metadata member and keeps every other value and spelling intact.
+
 - `import-contract` copies a validated local invocation/channel bundle into a
   new directory, preserving bytes and relative paths. A direct descriptor path
   or exact `npm:` package name selects the source. `jig:` names select the

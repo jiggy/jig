@@ -2,6 +2,8 @@
 
 ## Ownership
 
+`portable/contract-import.test.ts` checks offline collaborator declarations, exact bundle and metadata preservation, collision refusal, concurrent edits, and recoverable source publication failure.
+
 `portable/cli-discovery.test.ts` covers configured-topology grammar, readable collision-safe identities, contextual focus, complete inventories including disconnected targets, shared package uses, cycles, explicit boundary omissions, and graph bounds.
 Package scope preserves independent uses, distinct caller slots, and settings differences without expanding the caller's callers.
 Package-path diagnostics supply a copyable command without treating source paths as shell code.

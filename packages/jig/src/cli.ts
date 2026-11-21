@@ -51,6 +51,7 @@ import {
   inspectPrivateApprovedProject,
   type PrivateInspectionEnvironmentCheck,
 } from './internal/activation-admission-store.js'
+import { addFlowUse } from './internal/add-use.js'
 import type { BindingSplit, splitWorkingBinding } from './internal/binding-split.js'
 import { PrivateCliOutput } from './internal/cli-output.js'
 import { importContract } from './internal/contract-import.js'
@@ -132,6 +133,7 @@ Usage:
   jig init <directory>       Create a project with a small greeting Flow
   jig new <name>             Add an editable Flow to the current project
   jig types <package-path>   Print TypeScript types for a Flow's declared child calls
+  jig add-use <package-path> <slot>=<source>  Declare a collaborator in an existing Flow
   jig split-binding <caller> Give one caller slot its own child Binding
   jig check [--diff]         Check the working project's composition before review
   jig review [project]       Review changes and approve an exact revision
@@ -246,6 +248,17 @@ relative to this project; jig: names select the installed standard library.
 Browse it with jig import-contract --list. npm sources must already be installed in its tree
 or an ancestor. Edit FLOW.ts to call the slots; providers and grants stay separate.
 Review project membership in jig.ts if you use explicit arrays rather than discover().`,
+  'add-use': `Usage: jig add-use <package-path> <slot>=<source>
+
+Copy a named invocation agreement into contracts/<slot> and declare it in
+the existing FLOW.meta.json. Run from the project root with an exact local
+code package path. Sources are jig:name, a descriptor file, or npm:package
+from an existing installation.
+
+  $ jig add-use flows/worker review=./flows/editor/FLOW.contract.json
+
+Edit the caller and configure the slot in the project, then run jig check
+and jig review.`,
   types: `Usage: jig types <package-path>
 
 Select one project-relative package directory containing FLOW.ts. Print a
@@ -610,6 +623,7 @@ async function executeCommand(
     if (runtime.expectedAdmissionDigest === undefined && prepared.admissionDigest !== undefined)
       runtime.expectedAdmissionDigest = prepared.admissionDigest
     if (arguments_[0] === 'import-contract') return await executeImportContract(arguments_, runtime)
+    if (arguments_[0] === 'add-use') return await executeAddUse(arguments_, runtime)
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
     if (arguments_[0] === 'new') return await executeNew(arguments_, runtime)
     if (arguments_[0] === 'types') return await executeTypes(arguments_, runtime)
@@ -887,6 +901,50 @@ async function executeNew(arguments_: readonly string[], runtime: CliRuntime): P
     }
     if (runtime.signal?.aborted) {
       runtime.writeError('Flow creation cancelled. Unpublished files were removed.\n')
+      return 2
+    }
+    throw error
+  }
+}
+
+async function executeAddUse(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
+  const [, path, declaration] = arguments_
+  const separator = declaration?.indexOf('=') ?? -1
+  if (
+    arguments_.length !== 3 ||
+    path === undefined ||
+    path.startsWith('-') ||
+    declaration === undefined ||
+    declaration.startsWith('-') ||
+    separator <= 0 ||
+    separator === declaration.length - 1
+  )
+    usage('add-use', 'Specify one exact local Flow package path and one slot=source.')
+  const slot = declaration.slice(0, separator)
+  try {
+    const descriptor = await addFlowUse(
+      runtime.currentDirectory,
+      path,
+      slot,
+      declaration.slice(separator + 1),
+      runtime.signal,
+      runtime.standardContractDirectory,
+    )
+    runtime.writeOutput(
+      `Declared ${asciiJsonString(slot)} in ${asciiJsonString(`${path}/FLOW.meta.json`)} using ${asciiJsonString(descriptor)}.\nEdit the caller to use the slot. Configure its target, then run jig check and jig review.\n`,
+    )
+    return 0
+  } catch (error) {
+    if (error instanceof CheckError) {
+      const location =
+        error.path === undefined ? '' : `\nLocation: ${asciiJsonString(error.path.slice(0, 1024))}`
+      runtime.writeError(
+        renderDiagnostic(error.code, asciiJsonString(error.message.slice(0, 2048)) + location),
+      )
+      return error.kind === 'invalid' ? 1 : 2
+    }
+    if (runtime.signal?.aborted) {
+      runtime.writeError('Collaborator declaration cancelled before publication.\n')
       return 2
     }
     throw error

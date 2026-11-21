@@ -205,6 +205,23 @@ agreements, preserving bytes and relative paths. The copy is a project-owned
 snapshot; upgrading the dependency does not silently change it. Import does
 not fetch dependencies, run code, overwrite a destination or approve work.
 
+## Declare a collaborator in an existing Flow
+
+Run this from the project root to add a named invocation agreement to an existing code Flow:
+
+```sh
+jig add-use flows/worker review=./flows/editor/FLOW.contract.json
+```
+
+Jig copies the complete agreement into `flows/worker/contracts/review`.
+It adds `uses.review` to the existing `FLOW.meta.json`.
+You can also select a standard `jig:` agreement or an installed `npm:` package.
+
+Edit the caller to call `review` for the intended conditions.
+Set its target in the caller's Binding.
+Run `jig check`, then use `jig review` to decide whether to approve the changed project.
+See the [command specification](../spec/cli-experience.md#collaborator-declaration) for its limits and interrupted-edit recovery.
+
 ## Name optional behavior
 
 If implementations of a named contract can differ in optional behavior, put

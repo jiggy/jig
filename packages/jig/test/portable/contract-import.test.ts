@@ -1,7 +1,7 @@
 const suiteTestUrl = new URL('../' + import.meta.url.split('/').at(-1), import.meta.url).href
 
 import { afterEach, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { REPORTING_CONTRACT } from '@jigging/reporting'
@@ -464,3 +464,158 @@ test('CLI import errors show escaped locations without acquiring a host', async 
   expect(diagnostics).toContain('existing descriptor file')
   expect(diagnostics).not.toContain('\u001b')
 })
+
+test('add-use copies a closure and inserts one slot while preserving the existing source', async () => {
+  const root = await fixture()
+  const project = join(root, 'project')
+  await createProject(project, undefined, true)
+  await writeFile(join(project, 'jig.ts'), 'throw new Error("must not evaluate")')
+  await createFlow(project, 'caller', [{ slot: 'draft', source: '../source/FLOW.contract.json' }])
+  const caller = join(project, 'flows/caller')
+  const sidecar = join(caller, 'FLOW.meta.json')
+  const metadata =
+    '{"name":"caller","x-extra":{"signed":-0},"\\u0075ses":{"draft":{"contract":"./contracts/draft/FLOW.contract.json","optional":true}}}\n'
+  await writeFile(sidecar, metadata)
+  const originalCode = await readFile(join(caller, 'FLOW.ts'))
+  const args = ['add-use', './flows/caller', 'review=../source/FLOW.contract.json']
+  expect(privateCliRequiresHost(args)).toBe(false)
+  let output = ''
+  expect(
+    await main(args, {
+      currentDirectory: project,
+      writeOutput: (text) => {
+        output += text
+      },
+    }),
+  ).toBe(0)
+  expect(output).toContain('Declared "review"')
+  const edited = metadata.replace(
+    '"optional":true}}',
+    '"optional":true}, "review": {"contract":"./contracts/review/FLOW.contract.json"}}',
+  )
+  expect(await readFile(sidecar, 'utf8')).toBe(edited)
+  expect(await readFile(join(caller, 'FLOW.ts'))).toEqual(originalCode)
+  expect(await readFile(join(caller, 'contracts/review/FLOW.contract.json'), 'utf8')).toBe(
+    descriptor,
+  )
+  expect(await readFile(join(caller, 'contracts/review/contracts/events.json'), 'utf8')).toBe(
+    agreement,
+  )
+  expect((await checkPackageDirectory(caller)).usedContracts.map(({ slot }) => slot)).toEqual([
+    'draft',
+    'review',
+  ])
+  expect(await readdir(project)).not.toContain('.jig-add-use-stage')
+
+  await mkdir(join(caller, 'contracts/occupied'))
+  await writeFile(
+    join(root, 'anonymous.json'),
+    JSON.stringify({
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+    }),
+  )
+  await writeFile(join(root, 'invalid.json'), '{}')
+  await symlink('caller', join(project, 'flows/alias'))
+  await mkdir(join(caller, 'contracts/Ambiguous'))
+  for (const [path, declaration, diagnostic] of [
+    ['flows/caller', 'review=../source/FLOW.contract.json', 'ADD_USE_EXISTS'],
+    ['flows/caller', 'occupied=../source/FLOW.contract.json', 'ADD_USE_EXISTS'],
+    ['flows/caller', 'fresh=../anonymous.json', 'ADD_USE_CONTRACT'],
+    ['flows/caller', 'fresh=../invalid.json', 'CONTRACT_FIELD'],
+    ['flows/caller', 'fresh=../source/contracts/events.json', 'ADD_USE_CONTRACT'],
+    ['flows/caller', 'ambiguous=../source/FLOW.contract.json', 'ADD_USE_PATH'],
+    ['.JIG/hidden', 'fresh=../source/FLOW.contract.json', 'ADD_USE_PATH'],
+    ['flows/alias', 'fresh=../source/FLOW.contract.json', 'ADD_USE_IO'],
+  ] as const) {
+    let error = ''
+    expect(
+      await main(['add-use', path, declaration], {
+        currentDirectory: project,
+        writeError: (text) => {
+          error += text
+        },
+      }),
+    ).not.toBe(0)
+    expect(error).toContain(diagnostic)
+    expect(await readFile(sidecar, 'utf8')).toBe(edited)
+    expect(await readdir(join(caller, 'contracts/occupied'))).toEqual([])
+    expect(await readdir(project)).not.toContain('.jig-add-use-stage')
+  }
+  expect((await readdir(join(caller, 'contracts'))).sort()).toEqual([
+    'Ambiguous',
+    'draft',
+    'occupied',
+    'review',
+  ])
+  expect(await readFile(join(root, 'source/FLOW.contract.json'), 'utf8')).toBe(descriptor)
+})
+
+test('add-use serializes edits and refuses to replace a stage left by an interruption', async () => {
+  const root = await fixture()
+  const project = join(root, 'project')
+  await createProject(project, undefined, true)
+  await createFlow(project, 'caller')
+  const caller = join(project, 'flows/caller')
+  const run = (slot: string) =>
+    main(['add-use', 'flows/caller', `${slot}=../source/FLOW.contract.json`], {
+      currentDirectory: project,
+      writeOutput() {},
+      writeError() {},
+    })
+  const stage = join(project, '.jig-add-use-stage')
+  await mkdir(stage)
+  await writeFile(join(stage, 'intent.json'), 'Do not replace this edit.')
+  expect(await run('first')).toBe(2)
+  expect(await readFile(join(stage, 'intent.json'), 'utf8')).toBe('Do not replace this edit.')
+  expect(await readdir(caller)).not.toContain('contracts')
+  await rm(stage, { recursive: true })
+
+  const results = await Promise.all([run('first'), run('second')])
+  expect(results).toContain(0)
+  const inspected = await checkPackageDirectory(caller)
+  const selected = inspected.usedContracts.map(({ slot }) => slot)
+  expect([...selected].sort()).toEqual(
+    ['first', 'second'].filter((_, index) => results[index] === 0),
+  )
+  expect((await readdir(join(caller, 'contracts'))).sort()).toEqual([...selected].sort())
+  expect(await readdir(project)).not.toContain('.jig-add-use-stage')
+})
+
+test.skipIf(process.getuid?.() === 0)(
+  'add-use leaves a recoverable bundle if the sidecar replacement fails',
+  async () => {
+    const root = await fixture()
+    const project = join(root, 'project')
+    await createProject(project, undefined, true)
+    await createFlow(project, 'caller')
+    const caller = join(project, 'flows/caller')
+    const sidecar = join(caller, 'FLOW.meta.json')
+    const original = await readFile(sidecar)
+    await mkdir(join(caller, 'contracts'))
+    await chmod(caller, 0o500)
+    try {
+      let diagnostic = ''
+      const exit = await main(['add-use', 'flows/caller', 'review=../source/FLOW.contract.json'], {
+        currentDirectory: project,
+        writeError: (text) => {
+          diagnostic += text
+        },
+      })
+      expect(exit).toBe(2)
+      expect(diagnostic).toContain('ADD_USE_RECOVERY')
+      expect(await readFile(sidecar)).toEqual(original)
+      expect(await readFile(join(caller, 'contracts/review/FLOW.contract.json'), 'utf8')).toBe(
+        descriptor,
+      )
+      const intent = JSON.parse(
+        await readFile(join(project, '.jig-add-use-stage/intent.json'), 'utf8'),
+      )
+      expect(intent).toEqual({
+        metadata: 'flows/caller/FLOW.meta.json',
+        bundle: 'flows/caller/contracts/review',
+      })
+    } finally {
+      await chmod(caller, 0o700)
+    }
+  },
+)

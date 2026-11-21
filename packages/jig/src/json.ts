@@ -27,8 +27,17 @@ export class Json1Error extends Error {
 class Parser {
   private position = 0
   private nodes = 0
+  private topLevelKey?: string
+  private insertion?: { readonly offset: number; readonly hasMembers: boolean }
 
-  constructor(private readonly source: string) {}
+  constructor(
+    private readonly source: string,
+    private readonly appendTo?: 'root' | { readonly member: string },
+  ) {}
+
+  objectEnd(): { readonly offset: number; readonly hasMembers: boolean } | undefined {
+    return this.insertion
+  }
 
   parse(): JsonValue {
     this.skipWhitespace()
@@ -57,11 +66,19 @@ class Parser {
   }
 
   private parseObject(depth: number): JsonObject {
-    this.position += 1
+    const opening = this.position++
+    const target =
+      (depth === 1 && this.appendTo === 'root') ||
+      (depth === 2 &&
+        typeof this.appendTo === 'object' &&
+        this.topLevelKey === this.appendTo.member)
     const result: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>
     const keys = new Set<string>()
     this.skipWhitespace()
-    if (this.consume('}')) return result
+    if (this.consume('}')) {
+      if (target) this.insertion = { offset: opening + 1, hasMembers: false }
+      return result
+    }
 
     let members = 0
     while (true) {
@@ -76,9 +93,14 @@ class Parser {
       this.skipWhitespace()
       if (!this.consume(':')) this.fail("expected ':' after member name")
       this.skipWhitespace()
+      if (depth === 1) this.topLevelKey = key
       result[key] = this.parseValue(depth + 1)
+      const offset = this.position
       this.skipWhitespace()
-      if (this.consume('}')) return result
+      if (this.consume('}')) {
+        if (target) this.insertion = { offset, hasMembers: true }
+        return result
+      }
       if (!this.consume(',')) this.fail("expected ',' or '}'")
       this.skipWhitespace()
     }
@@ -141,13 +163,13 @@ class Parser {
   }
 
   private parseEscape(): string {
-    const escape = this.source[this.position]
+    const escaped = this.source[this.position]
     this.position += 1
-    switch (escape) {
+    switch (escaped) {
       case '"':
       case '\\':
       case '/':
-        return escape
+        return escaped
       case 'b':
         return '\b'
       case 'f':
@@ -269,6 +291,30 @@ export function decodeJson1(bytes: Uint8Array): JsonValue {
     throw new Json1Error('invalid UTF-8')
   }
   return new Parser(text).parse()
+}
+
+/** Insert a field without reserializing any existing values or changing their spelling. */
+export function appendJson1ObjectEntry(
+  source: string,
+  parent: 'root' | { readonly member: string },
+  key: string,
+  value: JsonValue,
+): string {
+  const parser = new Parser(source, parent)
+  parser.parse()
+  const end = parser.objectEnd()
+  if (end === undefined) throw new Json1Error('expected a JSON object to edit')
+  const entry = `${JSON.stringify(key)}: ${JSON.stringify(value)}`
+  const leading = end.hasMembers ? ',' : ''
+  const tail = source.slice(end.offset)
+  const [, lineEnding, closingIndent] = /^[\t ]*(\r?\n)([ \t]*)}/.exec(tail) ?? []
+  const indent = /(?:^|\n)([ \t]+)"/.exec(source)?.[1] ?? '  '
+  const separator = lineEnding
+    ? `${lineEnding}${closingIndent ?? ''}${indent}`
+    : end.hasMembers
+      ? ' '
+      : ''
+  return source.slice(0, end.offset) + leading + separator + entry + source.slice(end.offset)
 }
 
 export function validateJson1(value: unknown): asserts value is JsonValue {

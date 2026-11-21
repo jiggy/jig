@@ -220,6 +220,9 @@ Verify unresolved conditions, effects, and continuations in the source.
 Use source directly when the view cannot describe the relevant behavior.
 See [source behavior inspection](results.md#inspect-source-behavior) for the command and its coverage.
 
+When the caller needs a new slot, use [`jig add-use`](contracts.md#declare-a-collaborator-in-an-existing-flow) to copy the agreement and declare it.
+Write the new conditional call and configure its target in source.
+
 Follow the selected route into its evidence consumers: result records, saved reports, live views, and application guidance.
 A correct dispatch change can leave these consumers describing the previous behavior.
 Distinguish an application policy choice from an actual child's returned decision.

@@ -372,7 +372,7 @@ function requireLocalName(value: JsonValue | undefined, field: string, path: str
   return value
 }
 
-function isLocalName(value: string): boolean {
+export function isLocalName(value: string): boolean {
   return value.length >= 1 && value.length <= 64 && LOCAL_NAME.test(value)
 }
 
