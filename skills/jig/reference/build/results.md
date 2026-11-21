@@ -152,7 +152,8 @@ Choose a workflow to see its configured calls and declared input schema.
 The map shows approved configuration, with no observed calls until a Run starts.
 Use this view to inspect dependencies and decide which component or workflow to exercise.
 
-Enter JSON input, then select **Run workflow**.
+Enter JSON input or select **Load input JSON file** to reuse a local fixture.
+Review or edit the draft, then select **Run workflow**.
 Jig validates the input and rechecks the approved revision before starting the ordinary Run.
 Runs use the workflow's approved powers and can produce its normal effects.
 Select **Open run** to inspect live behavior, application views, calls, and delivered evidence in another tab.
@@ -160,8 +161,9 @@ The explorer keeps your draft for the next explicit invocation.
 
 This tab retains up to 16 input drafts within 16 MiB.
 Larger drafts stay visible but may be cleared when you choose another workflow.
+The file picker accepts one UTF-8 file up to 16 MiB and keeps the current draft if it cannot load the file.
 
-If input is invalid, correct the displayed problem and submit again.
+If input is invalid, correct the displayed problem before submitting.
 If approval changes, refresh the explorer before choosing the workflow again.
 The explorer never repeats a submission automatically after a lost connection.
 An uncertain Run requires inspecting its terminal result and effects before further work.

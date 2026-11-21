@@ -1,6 +1,10 @@
 import { DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT } from '@jigging/display-model'
 import { h, render } from 'preact'
-import { PrivateExplorerClient, privateExplorerInput } from './explorer-client.js'
+import {
+  PRIVATE_EXPLORER_INPUT_BYTES,
+  PrivateExplorerClient,
+  privateExplorerInput,
+} from './explorer-client.js'
 import { ExplorerPage } from './explorer-view.js'
 
 type Draft = {
@@ -22,6 +26,8 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
   let activeKey = ''
   let filter = ''
   let inputOpen = false
+  let inputFileRead: FileReader | undefined
+  let inputFileStatus = ''
   let fileRevision: string | undefined
   let previousInput: string | undefined
   let comparisonOpen = false
@@ -164,11 +170,68 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
       ?.focus({ preventScroll: true })
   }
 
+  function clearInputFile(): void {
+    inputFileRead?.abort()
+    inputFileRead = undefined
+    inputFileStatus = ''
+  }
+
+  function writeInput(draft: Draft, value: string): void {
+    draft.input = value
+    draft.bytes = new TextEncoder().encode(value).byteLength
+  }
+
+  function loadInputFile(draft: Draft, file: File): void {
+    clearInputFile()
+    if (file.size > PRIVATE_EXPLORER_INPUT_BYTES) {
+      inputFileStatus = 'Input file exceeds 16 MiB. Choose a smaller file.'
+      redraw()
+      return
+    }
+    const reader = new FileReader()
+    inputFileRead = reader
+    inputFileStatus = 'Reading input file…'
+    reader.onload = () => {
+      if (inputFileRead !== reader) return
+      inputFileRead = undefined
+      let value: string
+      try {
+        value = new TextDecoder('utf-8', { fatal: true }).decode(reader.result as ArrayBuffer)
+      } catch {
+        inputFileStatus = 'Input file must use UTF-8 text.'
+        redraw()
+        return
+      }
+      writeInput(draft, value)
+      draft.touched = true
+      inputFileStatus = 'Input file loaded.'
+      redraw()
+    }
+    reader.onerror = () => {
+      if (inputFileRead !== reader) return
+      inputFileRead = undefined
+      inputFileStatus = 'Could not read the input file. Choose it again.'
+      redraw()
+    }
+    reader.readAsArrayBuffer(file)
+    redraw()
+  }
+
+  function closeInput(): void {
+    clearInputFile()
+    inputOpen = false
+    redraw()
+    document
+      .querySelector<HTMLButtonElement>('.explorer-workflow-heading .explorer-primary')
+      ?.focus()
+  }
+
   function selectComponent(id: string): void {
     rememberViewport()
     const draft = selectedDraft()
     draft.nodeId = id
     draft.detailOpen = true
+    clearInputFile()
     inputOpen = false
     redraw()
     if (matchMedia('(max-width: 1120px)').matches)
@@ -205,7 +268,8 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
         requestError: client?.requestError ?? '',
         sending: client?.sending ?? false,
         unresolved: !!client?.unresolvedRequest,
-        canLaunch: !!client?.canLaunch && readPorts.every((port) => files.has(port.name)),
+        canLaunch:
+          !inputFileRead && !!client?.canLaunch && readPorts.every((port) => files.has(port.name)),
         closing: client?.closing ?? false,
         filter,
         input: draft.input,
@@ -213,7 +277,12 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
         files,
         inputOpen,
         inputTouched: draft.touched,
-        draftNotice,
+        inputFileStatus,
+        draftNotice:
+          draftNotice ||
+          (draft.bytes > PRIVATE_EXPLORER_INPUT_BYTES
+            ? 'This draft exceeds 16 MiB. It stays visible here but may be cleared when you choose another workflow.'
+            : ''),
         selectedNodeId: draft.nodeId,
         detailOpen: draft.detailOpen,
         scale: draft.scale,
@@ -224,10 +293,12 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
         },
         onTarget(id: string) {
           if (!id || id === client?.project?.selected?.targetId) return
+          clearInputFile()
           rememberViewport()
           void client?.refreshProject(id)
         },
         onRefresh() {
+          clearInputFile()
           void client?.refreshProject(client.projectError ? null : undefined)
           void client?.refreshRun()
         },
@@ -235,12 +306,12 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
           void client?.refreshRun()
         },
         onInput(value: string) {
-          draft.input = value
-          draft.bytes = new TextEncoder().encode(value).byteLength
-          if (draft.bytes > DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT)
-            draftNotice =
-              'This draft exceeds 16 MiB. It stays visible here but may be cleared when you choose another workflow.'
+          clearInputFile()
+          writeInput(draft, value)
           redraw()
+        },
+        onInputFile(file: File) {
+          loadInputFile(draft, file)
         },
         onInputTouched() {
           draft.touched = true
@@ -277,14 +348,9 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
           redraw()
           document.getElementById('explorer-input')?.focus()
         },
-        onInputClose() {
-          inputOpen = false
-          redraw()
-          document
-            .querySelector<HTMLButtonElement>('.explorer-workflow-heading .explorer-primary')
-            ?.focus()
-        },
+        onInputClose: closeInput,
         onRun() {
+          if (inputFileRead) return
           draft.touched = true
           if (privateExplorerInput(draft.input).state !== 'valid') {
             redraw()
@@ -301,6 +367,7 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
           void client?.launch(draft.input, crypto.randomUUID(), submitted)
         },
         async onClose() {
+          clearInputFile()
           if (await client?.close()) {
             drafts.clear()
             files.clear()
@@ -400,11 +467,7 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
     const draft = selectedDraft()
     if (inputOpen) {
       event.preventDefault()
-      inputOpen = false
-      redraw()
-      document
-        .querySelector<HTMLButtonElement>('.explorer-workflow-heading .explorer-primary')
-        ?.focus()
+      closeInput()
     } else if (draft.detailOpen) {
       event.preventDefault()
       draft.detailOpen = false
@@ -420,7 +483,10 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
   root.addEventListener('focusin', focusChanged)
   if (capability) {
     client = new PrivateExplorerClient(capability, () => {
-      if (client?.connection === 'closed' || client?.connection === 'unauthorized') drafts.clear()
+      if (client?.connection === 'closed' || client?.connection === 'unauthorized') {
+        clearInputFile()
+        drafts.clear()
+      }
       redraw()
     })
     client.start()
@@ -430,6 +496,7 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
     'pagehide',
     () => {
       disposed = true
+      clearInputFile()
       client?.stop()
       drafts.clear()
       releaseViewport()

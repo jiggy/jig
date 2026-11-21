@@ -101,6 +101,13 @@ Other projection overflow refuses that projection without dropping workflow or i
 
 The operator supplies explicit JSON input, including valid scalar values.
 The editor must not invent required values or silently remove duplicate object members.
+
+The operator can load one local UTF-8 file of up to 16 MiB into the editable JSON draft.
+An unreadable, non-UTF-8, or oversized file leaves the current draft intact.
+The existing editor validates loaded text and allows correction before submission.
+A pending read ends on a new file choice, draft edit, workflow change, project refresh, panel exit, or explorer closure.
+The browser sends the JSON draft only on explicit Run and keeps the input filename and path local.
+
 One launch envelope, including its selection, request identity, and supplied files, allows 16 MiB.
 Ordinary JSON and invocation-schema validation still apply before execution.
 Required channels make browser launch unavailable, with an explanation and the ordinary invocation path.

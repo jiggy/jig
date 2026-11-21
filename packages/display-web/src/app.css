@@ -240,11 +240,15 @@
 }
 .explorer-input-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 8px;
   font-weight: 600;
   font-size: 12px;
+}
+.explorer-input-toolbar label[for="explorer-input"] {
+  margin-inline-end: auto;
 }
 .explorer-input-panel textarea {
   display: block;
@@ -305,14 +309,19 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.explorer-file-picker .explorer-file-picker-label {
-  display: inline-block;
+.explorer-file-picker-label {
+  display: inline-flex;
+  align-items: center;
   position: relative;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 6px;
   cursor: pointer;
   width: fit-content;
+}
+.explorer-file-picker-label:has(input:disabled) {
+  cursor: default;
+  opacity: 0.6;
 }
 .explorer-file-picker-label:focus-within {
   outline: 2px solid var(--accent);
@@ -322,6 +331,7 @@
   position: absolute;
   width: 1px;
   height: 1px;
+  min-height: 0;
   opacity: 0;
 }
 .explorer-comparison {
@@ -530,7 +540,8 @@
 @media (pointer: coarse) {
   .explorer button,
   .explorer select,
-  .explorer-open-run {
+  .explorer-open-run,
+  .explorer-file-picker-label {
     min-height: 44px;
   }
   .explorer .appearance-option {
