@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "@jigging/jig": "0.1.0-alpha.51"
+    "@jigging/jig": "0.1.0-alpha.58"
   }
 }

@@ -1,69 +1,73 @@
 {
   "schemaVersion": 1,
-  "baseRevision": "55c0ac0d81cf9d52c4289d24830f5f3ab1823ef3",
-  "sourceDigest": "b21174fe458b3f0965c0ce9bbf35aeb75c2d448cbe69a5e63fd7faa4bd49b048",
+  "baseRevision": "391162046e46b4ec119c68cc1667196b79959941",
+  "sourceDigest": "c53f24c5a8a8ca0410bead7b4765f0c50128528327c0dede85de27872293b5f0",
   "changesets": [
     {
-      "id": "admitted-behavior-map",
-      "sha256": "f938c2a74db937894c0a69296f3690e62d0b35d76260498b62813d2bd5ef21f2"
+      "id": "check-working-composition",
+      "sha256": "62866ad79731bc373b5d0d1d1712ac04b9f9460b4ffd7510f64d2e0eed9e929b"
     },
     {
-      "id": "contract-aware-source-checks",
-      "sha256": "4da3a4f3b5dfdd8609dd2ce211b45936e85a1f3a1425101f30cbcc3ef1f60f08"
+      "id": "copy-investigation-brief",
+      "sha256": "a0b4933daacd567273ce92fdbdc24f6718211382bf1c9ee78598881aa9efaf3d"
     },
     {
-      "id": "default-flow-behavior",
-      "sha256": "1864b6432f6f7eb58d6dd96fa3fb990aa23044f952810944e376425be021bc13"
+      "id": "declare-flow-collaborator",
+      "sha256": "70d2fc9a394f268024abb37911c5b42634ea25d3f2d033db66293f8364840029"
     },
     {
-      "id": "explorer-file-runs",
-      "sha256": "96a7b4ec58785f0d713840732bfa8e91379be4a53389dd2a442f9272601d6c9a"
+      "id": "discover-workflow-edits",
+      "sha256": "84fe47c5908e33120d0d4e3bd853575914928a7faabb771fb56427f66a0ed0c6"
     },
     {
-      "id": "flow-navigation-index",
-      "sha256": "ca1713de4a7a41a295eddcd5fff8698654a643d065ea5ed9be3fa3285aeb3689"
+      "id": "explorer-json-input-files",
+      "sha256": "534f5a838d13745c32c8acb539cbb34e477b866f13905f64d7cfdb7d83bab7ed"
     },
     {
-      "id": "flow-package-boundary",
-      "sha256": "df5ce1cb6031f48a7539112119a924bc2f085c8b693be52640d7e8f2d641ea2c"
+      "id": "faster-author-declaration-workers",
+      "sha256": "aeed25b38d4e0e58db02acb8744e522f5d879bda607df1c2bd9ed048e9365a78"
     },
     {
-      "id": "flow-package-navigation",
-      "sha256": "f2581793c2616cc717a352f52be33bb83091c3961d16c0fdddf24c426a915d32"
+      "id": "group-caller-decisions-by-slot",
+      "sha256": "1265f0cf5df5dc3b37fb706e51494b4c3690b41f87f6bb826e2ba0e2d736db0e"
     },
     {
-      "id": "focused-caller-decisions",
-      "sha256": "22a6fc526ab272d26b6123170f02d206aecd8eb483ffd9768b9339c638badc5b"
+      "id": "inspect-binding-declarations",
+      "sha256": "c50574142aef6671d01c39d37325cc7751e3a626ee16ae890cc3a95431782cdf"
     },
     {
-      "id": "mac-collector-api-retry",
-      "sha256": "4a7d1087a6f412a703c8cb0e187966b55346fadf452d6d60f3c4fdaa52e5aa37"
+      "id": "inspect-flow-source-files",
+      "sha256": "a0bca0de760ca38bd7f910cef894fa652162d34a8074dab860089e44c41ba53e"
+    },
+    {
+      "id": "shorter-scaffold-workflow-guidance",
+      "sha256": "322ac4e0769b90878b6821665a0f9b6ab274d23683e7db4d7e4c5406af1cc781"
+    },
+    {
+      "id": "specialize-slot",
+      "sha256": "c4e95e820f1113865974a6f0c052f99915a30f9b9bed8d09ad9d617c1f2b9fd9"
+    },
+    {
+      "id": "trace-flow-caller-continuations",
+      "sha256": "d473ed3636835d643529856b508081f41d620de867109eaf12a13264aff49ad2"
+    },
+    {
+      "id": "typecheck-declared-child-calls",
+      "sha256": "2e9eb74111ca97b3129df7e4b820ab70f8f6cf200407198683ab725536f77038"
     }
   ],
   "releases": [
     {
-      "name": "@jigging/display-model",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.9",
-      "newVersion": "0.1.0-alpha.10"
-    },
-    {
-      "name": "@jigging/display-tui",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.9",
-      "newVersion": "0.1.0-alpha.10"
-    },
-    {
       "name": "@jigging/display-web",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.10",
-      "newVersion": "0.1.0-alpha.11"
+      "type": "minor",
+      "oldVersion": "0.1.0-alpha.11",
+      "newVersion": "0.1.0-alpha.12"
     },
     {
       "name": "@jigging/jig",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.56",
-      "newVersion": "0.1.0-alpha.57"
+      "type": "minor",
+      "oldVersion": "0.1.0-alpha.57",
+      "newVersion": "0.1.0-alpha.58"
     }
   ]
 }
