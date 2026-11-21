@@ -46,6 +46,7 @@ Project commands:
 ```text
 jig init [--bare] <directory> [--agent [codex|claude]]
 jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
+jig types <package-path>
 jig check [--diff] [--json]
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run [flow:path|npm:package|binding:id] [options]
@@ -243,6 +244,7 @@ CLI review before new approval; no Flow starts.
 - [Delegated HTTP access](https://jig.md/build/http)
 - [Dependencies](https://jig.md/build/dependencies)
 - [Author contracts once](https://jig.md/build/contracts)
+- [Type-check declared child calls](https://jig.md/build/contracts#type-check-child-calls)
 - [Workflow design](https://jig.md/understand/workflows)
 - [Project authoring](https://jig.md/spec/project-sdk)
 - [Execution policy](https://jig.md/spec/project-policy)

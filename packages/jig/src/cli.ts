@@ -26,6 +26,7 @@ import {
 } from './attempt-contract.js'
 import { preparePrivateCliRun, privateAttemptFailureMessage } from './cli-attempt-execution.js'
 import { PrivateAttemptInput } from './cli-attempt-io.js'
+import { generateCallTypes } from './cli-call-types.js'
 import { compareConfiguredRouting, parseCheck, renderCheck } from './cli-check.js'
 import { approvedTargets, completionScript, invocationGuide } from './cli-discovery.js'
 import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-archive.js'
@@ -130,6 +131,7 @@ const HELP = `Jig runs reusable methods with powers you approve.
 Usage:
   jig init <directory>       Create a project with a small greeting Flow
   jig new <name>             Add an editable Flow to the current project
+  jig types <package-path>   Print TypeScript types for a Flow's declared child calls
   jig split-binding <caller> Give one caller slot its own child Binding
   jig check [--diff]         Check the working project's composition before review
   jig review [project]       Review changes and approve an exact revision
@@ -244,6 +246,14 @@ relative to this project; jig: names select the installed standard library.
 Browse it with jig import-contract --list. npm sources must already be installed in its tree
 or an ancestor. Edit FLOW.ts to call the slots; providers and grants stay separate.
 Review project membership in jig.ts if you use explicit arrays rather than discover().`,
+  types: `Usage: jig types <package-path>
+
+Select one project-relative package directory containing FLOW.ts. Print a
+TypeScript declaration based on its FLOW.meta.json uses and local contracts.
+Jig reads source as data and writes the declaration to stdout.
+
+Example:
+  $ jig types flows/worker > flows/worker/FLOW.calls.d.ts`,
   completion: `Usage: jig completion <bash|zsh|fish>
 
 Print a completion script; Jig does not modify your shell configuration.
@@ -602,6 +612,7 @@ async function executeCommand(
     if (arguments_[0] === 'import-contract') return await executeImportContract(arguments_, runtime)
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
     if (arguments_[0] === 'new') return await executeNew(arguments_, runtime)
+    if (arguments_[0] === 'types') return await executeTypes(arguments_, runtime)
     if (arguments_[0] === 'split-binding') return await executeSplitBinding(arguments_, runtime)
     if (arguments_[0] === 'check') return await executeCheck(arguments_, runtime)
     if (arguments_[0] === 'completion') return await executeCompletion(arguments_, runtime)
@@ -879,6 +890,35 @@ async function executeNew(arguments_: readonly string[], runtime: CliRuntime): P
       return 2
     }
     throw error
+  }
+}
+
+async function executeTypes(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
+  const path = arguments_[1]
+  if (arguments_.length !== 2 || path === undefined || path.startsWith('-'))
+    usage('types', 'Specify one project-relative Flow package directory.')
+  try {
+    const declaration = await generateCallTypes(runtime.currentDirectory, path, runtime.signal)
+    runtime.signal?.throwIfAborted()
+    await runtime.writeRecord(declaration)
+    return 0
+  } catch (error) {
+    if (!(error instanceof CheckError)) throw error
+    const invalidSource = error.kind === 'invalid'
+    const location =
+      error.path === undefined || error.path.startsWith('/')
+        ? ''
+        : ` at ${asciiJsonString(error.path.slice(0, 1024))}`
+    const pointer =
+      error.pointer === undefined ? '' : ` ${asciiJsonString(error.pointer.slice(0, 1024))}`
+    const cause = invalidSource
+      ? asciiJsonString(error.message.slice(0, 1024))
+      : 'Could not capture the package safely. Check its location and readability.'
+    throw new CliDiagnostic(
+      error.code,
+      `Could not generate child call types${location}${pointer}. ${cause}\nNext step: https://jig.md/build/contracts#type-check-child-calls`,
+      invalidSource ? 1 : 2,
+    )
   }
 }
 
