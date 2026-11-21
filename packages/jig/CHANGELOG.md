@@ -1,5 +1,69 @@
 # @jigging/jig
 
+## 0.1.0-alpha.58
+
+### Minor Changes
+
+- 08ad6b5: Load a local JSON file into Explorer's input editor. Inspect or edit the draft before choosing **Run workflow**.
+
+### Patch Changes
+
+- 4725ddb: Add `jig check` to link working project configuration before review. Use
+  `--diff` to compare changed targets and configured selections with the last
+  local approval, and `--json` for structured output.
+- 8a4f345: Copy an investigation brief from a live Run invocation. It identifies the caller, slot, observed state and any application outcome. It includes exact configuration matches and a source inventory command.
+- e912cf0: Declare a collaborator in an existing code Flow with `jig add-use`. Jig copies the validated invocation agreement and adds one slot to the existing metadata. The author chooses when to call the slot and configures its target before check and review.
+- d834191: Generate a project-owned AGENTS.md that helps coding agents locate workflow edits. The inspection index shows shared caller slots beside the selected target's outgoing slots and links to the Binding declarations.
+- 762c2d9: Reduce repeated compilation and normalization setup when Jig evaluates project declarations. This speeds up working-tree inspection and review, especially in projects with many Bindings.
+- fdff6b3: Group authored caller decisions by slot in Flow inspection. Compare differing literal inputs and conditional fields at their source locations, with possible overrides and omitted sites shown beside the corresponding slot.
+  
+  The report links to additional call sites when a slot exceeds the detailed view.
+- 902dfcc: Open working-tree Bindings from declaration paths in `jig inspect --flow`.
+  Show each shared Binding's caller slots beside its independent Run selector,
+  and guide coding agents to give one caller its own Binding when a child
+  selection needs to differ.
+- a1e04f4: Inspect a Flow by its project-relative file path. Jig opens the sole configured use or lists the uses of the owning package. Unknown inspection selectors now point to complete topology for the current or approved configuration.
+- 17baa1a: Keep generated workflow-edit guidance focused on finding the relevant route
+  with `jig inspect --flow`. Focused Binding inspection gives caller-specific
+  configuration advice when several slots select the same Binding.
+- 277e193: Add `jig specialize-slot` to give an exact caller slot its own Binding of a
+  shared Flow. Use discovery or a literal bindings array. Select a different
+  child in the copy and preserve the original Binding, its callers, and prior approval.
+  
+  Link opaque Reporting wrappers to the callback and any resolved local handler
+  in `jig inspect --flow`, while keeping route coverage unresolved.
+- 932c951: Show the link from a Flow's returned value to the caller's check and next handoff in focused inspection. The same relationships are available from the caller, with links to the call expansion and source.
+  
+  See other configured uses of an incoming caller's code grouped by the target they select for the same slot. The report links each displayed use and the selected Binding declaration.
+  
+  Put a direct Flow's required input and modeled returns beside its selector. Follow a caller's next handoff through its known result to the caller's return when the same path establishes both.
+  
+  Link the captured executable file from local Flow and Binding views, including alternative targets shown at incoming slots.
+  
+  Show differing input fields across slots that target the same Flow and give their wiring links once per configured use.
+  
+  Show different modeled inputs and results at the same write site. Combine entries that share the same displayed case.
+  
+  Link configured caller slots to their Binding declarations and explain how to vary configuration when callers share a Binding.
+  
+  Show the selected Flow implementation and its configured child slots beside caller decisions.
+  
+  Put focused caller decisions beside shared Binding wiring and show both sides of an authored slot choice together. Link application-map decisions to their configured destination sections.
+  
+  Link peer Binding declarations and the package settings schema in focused inspection. Show where to configure behavior specific to one use when Bindings share a Flow.
+  
+  Show earlier returns and any independent entry alongside a caller's modeled next call.
+  
+  Show the exact Run selector beside focused source links. Identify packages whose captured invocation targets all use Bindings.
+  
+  Show related Bindings and their exact alternative slot targets when inspection opens at the default entrypoint.
+  
+  Show the settings schema path beside shared Binding choices, including when finding a decision through one of its callees.
+  
+  Link independently callable local Flows beside the caller's next handoffs. Identify each selected Binding that uses the same Flow.
+- 5d7773c: Generate TypeScript declarations with `jig types` from a Flow's declared
+  slots, package-local invocation contracts, and validated settings schema.
+
 ## 0.1.0-alpha.57
 
 ### Patch Changes

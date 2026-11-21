@@ -1,5 +1,15 @@
 # @jigging/display-web
 
+## 0.1.0-alpha.12
+
+### Minor Changes
+
+- 08ad6b5: Load a local JSON file into Explorer's input editor. Inspect or edit the draft before choosing **Run workflow**.
+
+### Patch Changes
+
+- 8a4f345: Copy an investigation brief from a live Run invocation. It identifies the caller, slot, observed state and any application outcome. It includes exact configuration matches and a source inventory command.
+
 ## 0.1.0-alpha.11
 
 ### Patch Changes
