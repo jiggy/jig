@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { ATTEMPT_REQUEST_BYTES } from '../../src/attempt-contract.js'
 import { settleTestCommand } from '../fixtures/bounded-command.js'
 import {
@@ -25,7 +26,10 @@ beforeAll(async () => {
     join(root, 'package.json'),
     JSON.stringify({
       private: true,
-      dependencies: { '@jigging/jig': `file:${archives.jig}` },
+      dependencies: {
+        '@jigging/jig': `file:${archives.jig}`,
+        '@jigging/flow': `file:${archives.flow}`,
+      },
     }),
   )
   await setup(
@@ -367,6 +371,150 @@ test('installed inspection is read-only and returns exact machine JSON', async (
   passed++
 })
 
+test('installed child call declarations check caller edits with TypeScript', async () => {
+  const project = join(root, 'type-consumer')
+  const caller = join(project, 'flows/worker')
+  await mkdir(join(caller, 'contracts'), { recursive: true })
+  await writeFile(join(project, 'package.json'), '{"type":"module"}\n')
+  await writeFile(join(project, 'jig.ts'), 'throw new Error("jig types evaluated project code")\n')
+  await writeFile(
+    join(caller, 'FLOW.meta.json'),
+    '{"uses":{"review":{"contract":"./contracts/reviewer.json"},"raw":{}}}\n',
+  )
+  const contractPath = join(caller, 'contracts/reviewer.json')
+  const contract = {
+    $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+    id: 'https://example.org/contracts/reviewer',
+    version: '0.1.0',
+    input: {
+      type: 'object',
+      properties: { text: { type: 'string', minLength: 1 } },
+      required: ['text'],
+      additionalProperties: false,
+    },
+    outcomes: { 'needs-evidence': 'Supply more evidence.' },
+    result: {
+      oneOf: [reviewOutcome('done', 'summary'), reviewOutcome('needs-evidence', 'request')],
+    },
+  }
+  await writeFile(contractPath, JSON.stringify(contract))
+  const source = `import { handle, type JsonValue } from '@jigging/flow'
+import type { RunContext } from './FLOW.calls.js'
+
+await handle(async (context) => {
+  const run = context as RunContext
+  const result = await run.call({ operationId: 'review', slot: 'review', input: { text: 'Draft' } }, { signal: run.signal })
+  if (run.input === 'raw') {
+    const raw = await run.call({ operationId: 'raw', slot: 'raw', input: [true, 7] })
+    return { outcome: 'done', output: raw.output satisfies JsonValue }
+  }
+  switch (result.outcome) {
+    case 'done': return { outcome: 'done', output: result.output.summary.toUpperCase() }
+    case 'needs-evidence': return { outcome: 'done', output: result.output.request.toLowerCase() }
+    default: {
+      const missing: never = result
+      return missing
+    }
+  }
+})\n`
+  await writeFile(join(caller, 'FLOW.ts'), source)
+  const generate = async () => {
+    const result = await invoke(['types', 'flows/worker'], project)
+    expect(result.code, result.stderr).toBe(0)
+    expect(result.stderr).toBe('')
+    return result.stdout
+  }
+  const declaration = await generate()
+  expect(await generate()).toBe(declaration)
+  expect((await readdir(project)).sort()).toEqual(['flows', 'jig.ts', 'package.json'])
+  expect((await readdir(caller)).sort()).toEqual(['FLOW.meta.json', 'FLOW.ts', 'contracts'])
+  await writeFile(join(caller, 'FLOW.calls.d.ts'), declaration)
+
+  const node = process.env.FLOW_NODE ?? Bun.which('node')
+  if (node === undefined || node === null) throw new Error('TypeScript requires Node')
+  const tsc = fileURLToPath(new URL('./bin/tsc', import.meta.resolve('typescript/package.json')))
+  const compile = async (current: string, errorAt?: string) => {
+    await writeFile(join(caller, 'FLOW.ts'), current)
+    const result = await settleTestCommand(
+      Bun.spawn(
+        [
+          node,
+          tsc,
+          '--strict',
+          '--noEmit',
+          '--pretty',
+          'false',
+          '--module',
+          'NodeNext',
+          'flows/worker/FLOW.ts',
+        ],
+        { cwd: project, env: foundationEnvironment(), stdout: 'pipe', stderr: 'pipe' },
+      ),
+      { evidence: join(root, `command-${++sequence}`), timeoutMs: 15_000 },
+    )
+    expect(result.stderr).toBe('')
+    if (errorAt === undefined) {
+      expect(result.code, result.stdout).toBe(0)
+      expect(result.stdout).toBe('')
+    } else {
+      const line = current.split('\n').findIndex((text) => text.includes(errorAt)) + 1
+      expect(line).toBeGreaterThan(0)
+      expect(result.code, result.stdout).toBe(1)
+      expect(result.stdout.split('\n').filter((text) => text.includes('error TS'))).toHaveLength(1)
+      expect(result.stdout).toMatch(
+        new RegExp(`^flows/worker/FLOW\\.ts\\(${line},\\d+\\): error TS`),
+      )
+    }
+  }
+  await compile(source)
+  await compile(source.replace("slot: 'review'", "slot: 'reivew'"), "slot: 'reivew'")
+  await compile(source.replace("text: 'Draft'", 'text: 42'), 'text: 42')
+
+  await writeFile(
+    contractPath,
+    JSON.stringify({
+      ...contract,
+      outcomes: { ...contract.outcomes, deferred: 'Review later.' },
+      result: { oneOf: [...contract.result.oneOf, reviewOutcome('deferred', 'reason')] },
+    }),
+  )
+  const expanded = await generate()
+  expect(expanded).not.toBe(declaration)
+  expect(await generate()).toBe(expanded)
+  await writeFile(join(caller, 'FLOW.calls.d.ts'), expanded)
+  await compile(source, 'const missing: never')
+  await compile(
+    source.replace(
+      'const missing: never = result\n      return missing',
+      "return { outcome: 'done', output: result.outcome }",
+    ),
+  )
+
+  await writeFile(contractPath, JSON.stringify({ ...contract, input: { type: 'invalid' } }))
+  const invalid = await invoke(['types', 'flows/worker'], project)
+  expect(invalid).toMatchObject({ code: 1, stdout: '' })
+  expect(invalid.stderr).toContain('SCHEMA_INVALID')
+  expect(invalid.stderr).toContain('flows/worker/contracts/reviewer.json')
+  passed++
+}, 60_000)
+
+function reviewOutcome(outcome: string, outputField: string) {
+  return {
+    type: 'object',
+    properties: {
+      outcome: { const: outcome },
+      output: {
+        type: 'object',
+        properties: { [outputField]: { type: 'string' } },
+        required: [outputField],
+        additionalProperties: false,
+      },
+    },
+    required: ['outcome', 'output'],
+    additionalProperties: false,
+  }
+}
+
 test('installed attempt help and malformed requests retain exact private-safe framing', async () => {
   for (const operation of [
     'inspect',
@@ -406,6 +554,6 @@ test('installed attempt help and malformed requests retain exact private-safe fr
 })
 
 afterAll(async () => {
-  if (passed === 8) await rm(root, { recursive: true, force: true })
+  if (passed === 9) await rm(root, { recursive: true, force: true })
   else if (root) console.error(`Installed CLI portable evidence retained at ${root}`)
 })

@@ -11,4 +11,6 @@ Make the read-only lookup usable from an owner request or a Flow source path.
 Point agents to the scoped Binding split after they locate the exact caller slot.
 Teach agents to check working composition and compare configured changes before requesting review.
 Keep literal membership and source review guidance with the generated design guide.
+
 Keep authored behavioral context distinct from computed configuration and actual execution evidence.
+Link caller-side type assistance to the generated contract authoring guide.

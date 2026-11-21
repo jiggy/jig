@@ -9,6 +9,8 @@ Teach practical applications built from code and Agent methods.
 Task guides own composition, Agent setup, dependencies, effects, files,
 conversations, progress, project design, collaboration, and result interpretation.
 
+`contracts.md` owns the child call type projection limits and caller authoring workflow.
+
 `design.md` owns source-grounded route-change guidance, including decision ownership, preserved alternatives, and affected evidence consumers.
 `design.md` also teaches the scoped Binding split, literal membership, and source review.
 Authored behavioral maps remain distinct from host-computed configured topology.

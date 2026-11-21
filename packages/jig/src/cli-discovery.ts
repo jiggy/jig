@@ -147,7 +147,7 @@ export function invocationGuide(snapshot: JsonValue): string {
 /** Small native shell adapters; dynamic lookup reads approval, never project code. */
 export function completionScript(shell: string): string | undefined {
   const commands =
-    'init new split-binding check review run explore inspect views completion import-contract'
+    'init new types split-binding check review run explore inspect views completion import-contract'
   const contracts = JIG_STANDARD_CONTRACTS.map((entry) => `jig:${entry.name}`).join(' ')
   const runOptions =
     '--help --input --attach --select --out --receive --updates --timeout --verification --json --display --display-bundle'

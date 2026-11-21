@@ -75,6 +75,11 @@ All selected domain requirements still apply.
   Stage complete source outside ordinary Flow discovery before non-replacing
   publication.
 
+- `src/cli-call-types.ts` owns the declaration emitted by `jig types`.
+  Reuse exact member capture and inspected `uses` contracts.
+  Emit only public SDK types, and keep review and the runtime responsible for validation.
+  Declaration generation takes no evaluator, provider, or execution host.
+
 ### Command grammar and review
 
 - Child composition refusals identify the caller slot and preserve a closed diagnostic.

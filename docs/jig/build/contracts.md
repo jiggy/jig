@@ -101,6 +101,61 @@ accepted. Review identifies the affected file and field and gives a correction.
 See [FLOW schema files](https://flow.jig.md/spec/schema-files) for the supported
 keywords, local references and limits.
 
+## Type-check child calls
+
+Use `jig types` to check a TypeScript Flow's calls against its declared slots.
+The command reads `uses` in the caller's `FLOW.meta.json` and the exact package-local bundles it references.
+Handwritten JSON and compatible TypeSpec-generated JSON use the same path.
+Run the command from the project root with the caller's package directory.
+
+```sh
+jig types flows/worker > flows/worker/FLOW.calls.d.ts
+```
+
+Save the declaration separately from `FLOW.contract.d.ts`, which describes the implementation's own interface.
+The command emits only to stdout and reads the selected package as data.
+Import its `RunContext` as a type and apply it once inside the ordinary FLOW SDK handler.
+This assertion relies on the generated declaration matching the caller's current contracts.
+
+```typescript
+import { handle } from '@jigging/flow'
+import type { RunContext } from './FLOW.calls.js'
+
+await handle(async (context) => {
+  const run = context as RunContext
+  const result = await run.call({
+    operationId: 'review',
+    slot: 'review',
+    input: { text: 'Draft' },
+  })
+  if (result.outcome === 'done') {
+    return { outcome: 'done', output: result.output.summary }
+  }
+  return { outcome: 'done', output: result.output.request }
+})
+```
+
+This example assumes the `review` contract defines a `done` result with `summary` and a `needs-evidence` result with `request`.
+Regenerate after changes to `uses` or its contract bundles.
+If you need to preserve the previous declaration, redirect to a temporary file and move it after successful generation.
+TypeScript checks the code that uses the declaration. Review still checks implementation selection, and the runtime validates input and results.
+
+An explicit `never` check can flag an added outcome after regeneration.
+A catch-all can continue to handle that outcome when it uses fields common to the results it handles.
+
+The declaration keeps the SDK's call options, channels, attachments, and artifact handles.
+Each uncontracted slot keeps the SDK's broad input and result types.
+Without declared slots, the declaration re-exports the ordinary SDK context.
+
+The projection covers these shapes for single-operation contracts.
+
+- It projects scalar `const` and `enum`, explicit scalar types, object properties and required names, and homogeneous array `items`.
+- It includes `done` and the contract's named outcomes. Direct `outcome` and `output` properties can distinguish result shapes across up to 32 root `oneOf` or `anyOf` alternatives.
+- It widens integers to `number` and tuple arrays to arrays of JSON values. It keeps objects open and leaves bounds, references, and other schema constraints to runtime validation.
+- Unprojected values and fields beyond 12 schema levels stay broad. Slots with named-operation contracts retain broad SDK input and result types.
+
+The command refuses declarations over 256 KiB. You can always use the ordinary FLOW SDK context.
+
 ## Named methods with progress
 
 Declare identity and ports explicitly; the compiler does not infer semantics:

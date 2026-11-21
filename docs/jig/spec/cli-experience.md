@@ -13,6 +13,7 @@ makes usable control an observable requirement;
 | Task | Required sections |
 | --- | --- |
 | Import an agreement | [Contract import](#contract-import) |
+| Type-check child calls | [Child call declarations](#child-call-declarations) |
 | Select a display | [Display selection](#display-selection), [browser activation](#browser-activation) |
 | Explore before execution | [Project exploration](#project-exploration) |
 | Check a working workflow edit | [Composition check](#composition-check) |
@@ -106,6 +107,20 @@ Exit 1 means invalid configuration or an absent baseline for `--diff`.
 An absent baseline reports `JIG_CHECK_NO_APPROVAL`.
 Exit 2 means invalid usage, an unavailable check or baseline, or interruption.
 Failures emit a bounded diagnostic on stderr and no success record.
+
+### Child call declarations
+
+`jig types <package-path>` selects one exact project-relative package directory containing a `FLOW.ts` entrypoint.
+Jig captures and validates that package through the ordinary source boundary.
+It uses portable `FLOW.meta.json` slot declarations and their referenced package-local contract bundles.
+It emits one deterministic TypeScript declaration to stdout for unchanged inputs.
+It acquires no execution host, evaluates no source, installs no dependencies, and writes no project files or approval.
+Validation failures report a diagnostic without emitting a declaration.
+
+The declaration uses the public FLOW SDK types, with declared slot names and a bounded schema projection on `call`.
+Other Run context members retain their SDK types.
+Uncontracted declared slots retain the broad SDK payloads.
+The [authoring guide](../build/contracts.md#type-check-child-calls) owns the projection limits and operator workflow.
 
 ### Progress and observation
 
