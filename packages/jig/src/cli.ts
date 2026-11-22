@@ -2118,7 +2118,8 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     usage('run', '--display-bundle requires a result destination selected with --out.')
   const rootTarget =
     parsed.target.kind === 'flow' ? flowSelector(parsed.target.path) : `binding:${parsed.target.id}`
-  const callEvidence = parsed.recordCalls ? new PrivateCallEvidence() : undefined
+  const explorer = runtime.progress.lifetime.onRunSettled !== undefined
+  const callEvidence = parsed.recordCalls || explorer ? new PrivateCallEvidence() : undefined
   runtime.progress.model.configureWorkspace({
     target: rootTarget,
     limitMs: parsed.timeoutMs,
@@ -2720,6 +2721,9 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       }
     knownTerminal = record
     if (cleanupFailed) await runtime.progress.closeWorkspace().catch(() => undefined)
+    const includeFiles =
+      !cleanupFailed && !runtime.signal?.aborted && status.terminal.status === 'succeeded'
+    const recordedCalls = callEvidence?.finish(status.runId, rootTarget, includeFiles)
     let delivery: PrivateDeliveryReceipt | undefined
     if (parsed.output !== undefined) {
       record = {
@@ -2729,9 +2733,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         input: { digest: sha256(canonicalJson(input)), attachments: files.identity.attachments },
       } as unknown as JsonValue
       knownTerminal = record
-      const includeFiles =
-        !cleanupFailed && !runtime.signal?.aborted && status.terminal.status === 'succeeded'
-      const savedCalls = callEvidence?.finish(status.runId, rootTarget, includeFiles)
+      const savedCalls = parsed.recordCalls ? recordedCalls : undefined
       try {
         runtime.progress.stage('Publishing the result packet')
         delivery = await runtime.host.delivery!.publish(
@@ -2877,6 +2879,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
             ...(delivery === undefined ? {} : { delivery }),
           } as JsonValue,
           artifact,
+          recordedCalls,
         )
       } else await runtime.progress.closeWorkspace()
       await emitTerminal(publicTerminal(status.terminal))
@@ -2889,7 +2892,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       return 2
     }
     const terminal = status.terminal
-    await runtime.progress.settleDisplay(decodeJson1(encodedRecord), artifact)
+    await runtime.progress.settleDisplay(decodeJson1(encodedRecord), artifact, recordedCalls)
     await emitTerminal(decodeJson1(encodedRecord))
     if (terminal.status === 'succeeded' && !presentation)
       runtime.progress.note(

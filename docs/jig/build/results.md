@@ -170,6 +170,12 @@ Runs use the workflow's approved powers and can produce its normal effects.
 Select **Open run** to inspect live behavior, application views, calls, and delivered evidence in another tab.
 The explorer keeps your draft for the next explicit invocation.
 
+After a local `jig review`, refresh the explorer to see the new approval.
+Choose **Reuse previous input** to reload the last accepted JSON and uploads for matching read attachments.
+Review the input and file choices, then select **Run workflow** to execute under the new approval.
+Open **Compare last two Runs** to see each approval and compare observed call paths, outcomes, and counts.
+The input comparison covers your submitted JSON and uploads. Reviewed attachments belong to their respective approvals.
+
 This tab retains up to 16 input drafts within 16 MiB.
 Larger drafts stay visible but may be cleared when you choose another workflow.
 The file picker accepts one UTF-8 file up to 16 MiB and keeps the current draft if it cannot load the file.
