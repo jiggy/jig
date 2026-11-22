@@ -101,7 +101,7 @@ and project-maintained skills for external libraries.
 - [doctrine/AGENTS.md](doctrine/AGENTS.md) — Product purpose, FLOW and Jig
   reasoning, and cross-product judgment. The compass remains the entrypoint.
 - [coordination/AGENTS.md](coordination/AGENTS.md) — Project roadmap, postponed
-  work, and child-agent session cleanup.
+  work, and Orca agent startup and cleanup.
 - [field-notes/AGENTS.md](field-notes/AGENTS.md) — Optional non-normative
   engineering retrospectives and historical causal evidence.
 - [marketing/AGENTS.md](marketing/AGENTS.md) — Promotional materials,

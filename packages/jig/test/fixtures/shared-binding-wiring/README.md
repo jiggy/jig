@@ -11,20 +11,18 @@ Both calls review the entire manuscript before delivery.
 
 Copy this directory to an empty location outside the Jig checkout.
 Use Bun supported by the installed Jig release and Node 22 or later.
-The published Jig version in the manifest accepts Bun 1.3.3 locks on Linux and macOS.
+Use a Jig archive that includes the `types --project` command.
 Run these commands from the copy.
-
-```sh
-bun install --ignore-scripts
-node --test wiring.mjs
-```
-
-To test a locally packed Jig archive, use its qualified Bun release and replace the install command.
 
 ```sh
 bun add --dev --ignore-scripts /absolute/path/to/jig.tgz
 node --test wiring.mjs
 ```
+
+The type-check scenario generates a project declaration and specializes the offer's typed producer from a typed caller.
+It checks the edited Bindings with standard `tsc` and Jig's contained evaluator.
+It also checks that `tsc` identifies an unknown slot and a mistyped setting in their Binding declarations.
+The diff and review preview show the scoped edit and the preserved book, shared producer, and direct Flow selectors.
 
 The test installs a Flow dependency lock in each temporary project before review.
 It needs registry access for installation and no provider credentials.

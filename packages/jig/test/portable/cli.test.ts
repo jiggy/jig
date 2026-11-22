@@ -63,6 +63,7 @@ test('installed help is focused and version matches the installed manifest', asy
   for (const args of [
     ['--help'],
     ['init', '--help'],
+    ['types', '--help'],
     ['review', '-h'],
     ['run', '--help'],
     ['inspect', '--help'],
@@ -89,10 +90,18 @@ test('installed help is focused and version matches the installed manifest', asy
       expect(result.stdout).toContain('Exported environment values take precedence')
     }
     if (args[0] === 'init') expect(result.stdout).toContain('--bare')
-    if (args[0] !== 'init') {
+    if (args[0] === 'types') expect(result.stdout).toContain('jig types --project')
+    if (args[0] !== 'init' && args[0] !== 'types') {
       expect(result.stdout).toContain('--verification MODE')
       expect(result.stdout).toContain('Fast can miss changed tool bytes')
     }
+  }
+  for (const args of [['types'], ['types', '--project', 'flows/worker']]) {
+    const result = await invoke(args)
+    expect(result).toMatchObject({ code: 2, stdout: '' })
+    expect(result.stderr).toContain(
+      'Specify --project or one project-relative Flow package directory.',
+    )
   }
   const manifest = JSON.parse(
     await readFile(join(root, 'node_modules/@jigging/jig/package.json'), 'utf8'),

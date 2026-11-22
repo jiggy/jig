@@ -1,4 +1,5 @@
 import { ProjectAdministrationError } from '../administration/project.js'
+import { asciiJsonString } from '../cli-usage.js'
 import { privateCliValueFields } from '../cli-value-presentation.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import { flowSelector } from '../project/package-selector.js'
@@ -6,6 +7,13 @@ import { privateAcpAgentRuntime, requirePrivateAcpAgentProvider } from './acp-ag
 import { ACP_SETUP_CAUSES, ACP_SETUP_HINTS } from './acp-setup-diagnostics.js'
 import type { PrivateActivationReviewPlan } from './activation-admission-store.js'
 import { inspectPrivateBunDirectIdentityWithCurrentEnvironment } from './bun-direct-run.js'
+import {
+  type ConfiguredSelection,
+  type ConfiguredTarget,
+  projectConfiguredBindingSplits,
+  renderBindingSplitContext,
+  renderBindingSplitOmissions,
+} from './configured-binding-splits.js'
 import { type PrivateDirectRunRecipe, requirePrivateDirectRunRecipe } from './direct-run.js'
 import { grantChanges, requiresAuthorityApproval } from './grant-review.js'
 
@@ -45,6 +53,10 @@ export function renderPrivateProjectPlanReview(
     proposed,
     review.baseCandidate?.candidate.targets ?? [],
     plan.proposed.targets,
+  )
+  const bindingSplits = projectConfiguredBindingSplits(
+    configuredTargets(review.baseCandidate?.candidate.targets ?? []),
+    configuredTargets(plan.proposed.targets),
   )
   const acp = projectAcpSelections(plan.proposed.targets, recipes)
   const grants = grantChanges(review.baseCandidate?.lock ?? null, plan.proposed.lock)
@@ -137,6 +149,18 @@ export function renderPrivateProjectPlanReview(
       summary.write(
         '  File arguments select current job data when invoked; paths are project-relative.\n\n',
       )
+    }
+    if (bindingSplits.visible.length > 0) {
+      summary.write('Configured Binding splits:\n')
+      for (const split of bindingSplits.visible) {
+        const { caller, slot, original, added } = split
+        summary.write(
+          `  Slot ${asciiJsonString(caller)} / ${asciiJsonString(slot)}: ${asciiJsonString(original)} -> ${asciiJsonString(added)}\n`,
+        )
+        for (const line of renderBindingSplitContext(split)) summary.write(`${line}\n`)
+      }
+      for (const line of renderBindingSplitOmissions(bindingSplits)) summary.write(`${line}\n`)
+      summary.write('\n')
     }
     writeChanges(
       summary,
@@ -240,6 +264,20 @@ export function renderPrivateProjectPlanReview(
 }
 
 type ReviewedTarget = PrivateActivationReviewPlan['candidate']['candidate']['targets'][number]
+
+function configuredTargets(
+  targets: readonly ReviewedTarget[],
+): ReadonlyMap<string, ConfiguredTarget> {
+  return new Map(
+    targets.map(({ request }) => {
+      const slots = new Map<string, ConfiguredSelection>()
+      for (const [slot, route] of Object.entries(request.slots)) {
+        if (route.kind === 'flow') slots.set(slot, { target: targetKey(route.target) })
+      }
+      return [targetKey(request.target), { packagePath: request.packagePath, slots }]
+    }),
+  )
+}
 
 export function privateProjectReviewedAcpSelection(
   grant: { readonly client?: string; readonly authProfile?: string | undefined },

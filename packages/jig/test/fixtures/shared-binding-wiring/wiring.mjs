@@ -25,9 +25,11 @@ for (const key of [
   if (process.env[key] !== undefined) env[key] = process.env[key]
 }
 
-async function scenario(label, run) {
+async function scenario(label, run, parent) {
   const keep = process.env.JIG_WIRING_EVIDENCE_DIRECTORY
-  const root = await mkdtemp(join(await realpath(keep ?? tmpdir()), `jig-wiring-${label}-`))
+  const root = await mkdtemp(
+    join(await realpath(parent ?? keep ?? tmpdir()), `jig-wiring-${label}-`),
+  )
   const cwd = join(root, 'project')
   let passed = false
   try {
@@ -45,7 +47,7 @@ async function scenario(label, run) {
   }
 }
 
-async function command(root, cwd, label, executable, args, diagnostic) {
+async function captureCommand(root, cwd, label, executable, args) {
   const result = spawnSync(executable, args, {
     cwd,
     env,
@@ -61,13 +63,14 @@ async function command(root, cwd, label, executable, args, diagnostic) {
     stderr: result.stderr,
   })
   if (result.error) throw result.error
-  assert.equal(
-    result.status,
-    diagnostic === undefined ? 0 : 1,
-    `${label}: ${result.stderr}\n${result.stdout}`,
-  )
+  assert.equal(result.signal, null)
+  return result
+}
+
+async function command(root, cwd, label, executable, args, { status = 0, diagnostic } = {}) {
+  const result = await captureCommand(root, cwd, label, executable, args)
+  assert.equal(result.status, status, `${label}: ${result.stderr}\n${result.stdout}`)
   if (diagnostic !== undefined) {
-    assert.equal(result.stdout, '')
     assert.match(result.stderr, diagnostic)
   }
   return result.stdout
@@ -83,8 +86,26 @@ async function save(root, label, record) {
 const shared = 'binding:shared-producer'
 const dedicated = 'binding:offer-producer'
 const direct = 'flow:flows/producer'
+const offer = 'binding:develop-offer'
+const book = 'binding:coordinate-book'
 const standard = 'binding:standard'
 const specialist = 'binding:specialist'
+const splitScope = [
+  `  Slot "${offer}" / "sample": "${shared}" -> "${dedicated}"`,
+  `    Configured selection retained: "${book}" / "production" -> "${shared}"`,
+  `    Original selector still configured: "${shared}"`,
+  `    Direct Flow selector still configured: "${direct}"`,
+].join('\n')
+
+async function assertSplitReview({ root, cwd }, label) {
+  const preview = await command(root, cwd, label, jig, ['review'], {
+    status: 2,
+    diagnostic: /JIG_APPROVAL_REQUIRED/,
+  })
+  assert.ok(preview.includes(`Configured Binding splits:\n${splitScope}`), preview)
+  assert.match(preview, /^- .*"id": "shared-producer"$/m)
+  assert.match(preview, /^\+ .*"id": "offer-producer"$/m)
+}
 
 async function review({ root, cwd, client }, stage, offerProducer, sharedPostEdit) {
   const lock = await readFile(join(cwd, 'bun.lock'))
@@ -95,7 +116,7 @@ async function review({ root, cwd, client }, stage, offerProducer, sharedPostEdi
   await save(root, `${stage}-inventory`, inventory)
   const { approval } = inventory
   assert.match(approval, digestPattern)
-  const targets = ['binding:book', 'binding:offer', shared, direct, standard, specialist]
+  const targets = [book, offer, shared, direct, standard, specialist]
   if (offerProducer === dedicated) targets.push(dedicated)
   assert.deepEqual(inventory.targets.map(({ target }) => target).sort(), targets.sort())
   const inspected = Object.fromEntries(
@@ -122,12 +143,12 @@ async function review({ root, cwd, client }, stage, offerProducer, sharedPostEdi
     assert.deepEqual(actual, expected, id)
   }
 
-  for (const [caller, producer] of [
-    ['binding:book', shared],
-    ['binding:offer', offerProducer],
+  for (const [caller, slot, producer] of [
+    [book, 'production', shared],
+    [offer, 'sample', offerProducer],
   ]) {
-    routes(caller, { producer })
-    assert.equal(inspected[caller].slots.producer.attachments.review.create, true)
+    routes(caller, { [slot]: producer })
+    assert.equal(inspected[caller].slots[slot].attachments.review.create, true)
   }
   routes(shared, { 'post-edit': sharedPostEdit, review: standard })
   routes(direct, { 'post-edit': standard, review: standard })
@@ -269,16 +290,8 @@ async function change(source, before, after) {
 
 async function verifyStage(context, stage, admission, offerReviewer) {
   for (const mode of ['fresh', 'resumed']) {
-    verifyReviews(
-      await run(context, admission, stage, 'binding:book', mode, 'book'),
-      mode,
-      'standard',
-    )
-    verifyReviews(
-      await run(context, admission, stage, 'binding:offer', mode, 'offer'),
-      mode,
-      offerReviewer,
-    )
+    verifyReviews(await run(context, admission, stage, book, mode, 'book'), mode, 'standard')
+    verifyReviews(await run(context, admission, stage, offer, mode, 'offer'), mode, offerReviewer)
   }
   verifyReviews(await run(context, admission, stage, direct, 'resumed'), 'resumed', 'standard')
   verifyReviews(await run(context, admission, stage, shared, 'fresh'), 'fresh', 'standard')
@@ -287,8 +300,13 @@ async function verifyStage(context, stage, admission, offerReviewer) {
 test('checks the working composition and compares a specialized slot without changing approval', async () => {
   await scenario('composition-check', async (context) => {
     const { root, cwd, client } = context
-    const check = (label, args, diagnostic) =>
-      command(root, cwd, label, jig, ['check', ...args], diagnostic)
+    const check = async (label, args, diagnostic) => {
+      const output = await command(root, cwd, label, jig, ['check', ...args], {
+        ...(diagnostic === undefined ? {} : { status: 1, diagnostic }),
+      })
+      if (diagnostic !== undefined) assert.equal(output, '')
+      return output
+    }
     const linked = { basis: 'working-tree', status: 'linked' }
     const initialFiles = (await readdir(cwd)).sort()
     assert.deepEqual(JSON.parse(await check('before-approval', ['--json'])), linked)
@@ -315,11 +333,12 @@ test('checks the working composition and compares a specialized slot without cha
       ...linked,
       diff: { basis: 'approved', targets: [], slots: [], settingsChanged: [] },
     })
+    await change(join(cwd, 'flows/producer/FLOW.ts'), "'Opening Chapter'", "'Chapter One'")
     await command(root, cwd, 'specialize', jig, [
       'specialize-slot',
-      'binding:offer',
+      offer,
       '--slot',
-      'producer',
+      'sample',
       '--as',
       'offer-producer',
       '--select',
@@ -327,10 +346,7 @@ test('checks the working composition and compares a specialized slot without cha
     ])
     assert.equal(await check('specialized-check', []), 'Working configuration linked.\n')
     const plain = await check('specialized-diff-plain', ['--diff'])
-    assert.match(
-      plain,
-      /Slot "binding:offer" \/ "producer": "binding:shared-producer" -> "binding:offer-producer"/,
-    )
+    assert.ok(plain.includes(splitScope), plain)
     assert.deepEqual(JSON.parse(await check('specialized-diff', ['--diff', '--json'])), {
       ...linked,
       diff: {
@@ -338,8 +354,8 @@ test('checks the working composition and compares a specialized slot without cha
         targets: [{ target: dedicated, before: null, after: 'flows/producer' }],
         slots: [
           {
-            caller: 'binding:offer',
-            slot: 'producer',
+            caller: offer,
+            slot: 'sample',
             before: { target: shared },
             after: { target: dedicated },
           },
@@ -349,15 +365,137 @@ test('checks the working composition and compares a specialized slot without cha
         settingsChanged: [],
       },
     })
-    await change(join(cwd, 'bindings/offer.ts'), dedicated, 'binding:missing-producer')
+    const callerFile = join(cwd, 'bindings/develop-offer.ts')
+    await change(callerFile, dedicated, 'binding:missing-producer')
     await check('unwired-check', ['--json'], /PROJECT_BINDING_SLOT_MISSING/)
     await check('unwired-diff', ['--diff', '--json'], /PROJECT_BINDING_SLOT_MISSING/)
-    await change(join(cwd, 'bindings/offer.ts'), 'binding:missing-producer', standard)
+    await change(callerFile, 'binding:missing-producer', standard)
     await check('incompatible-check', ['--json'], /PROJECT_CHILD_ATTACHMENT_MAPPING_INVALID/)
     const after = await hashes()
     await save(root, 'after-checks-hashes', after)
     assert.deepEqual(after, before)
+
+    await change(callerFile, standard, dedicated)
+    await assertSplitReview(context, 'specialized-review-preview')
+    const afterPreview = await hashes()
+    await save(root, 'after-review-preview-hashes', afterPreview)
+    assert.equal(afterPreview.approval, before.approval)
+    assert.equal(afterPreview.jigLock, before.jigLock)
+    assert.equal(afterPreview.bunLock, before.bunLock)
   })
+})
+
+test('type-checks a scoped Binding edit with the installed Jig declaration', async () => {
+  await scenario(
+    'binding-types',
+    async (context) => {
+      const { root, cwd, client } = context
+      const types = async (label, diagnostic) => {
+        const output = await command(root, cwd, label, jig, ['types', '--project'], {
+          ...(diagnostic === undefined ? {} : { status: 1, diagnostic }),
+        })
+        if (diagnostic !== undefined) assert.equal(output, '')
+        return output
+      }
+      const initialFiles = (await readdir(cwd)).sort()
+      const declaration = await types('project-types-before-edit')
+      assert.deepEqual((await readdir(cwd)).sort(), initialFiles)
+      await writeFile(join(cwd, 'jig.types.d.ts'), declaration)
+
+      const bookPath = join(cwd, 'bindings/coordinate-book.ts')
+      const caller = 'bindings/develop-offer.ts'
+      const child = 'bindings/shared-producer.ts'
+      const clone = 'bindings/offer-producer.ts'
+      const reviewer = 'bindings/specialist.ts'
+      const bookSource = await readFile(bookPath, 'utf8')
+      const typed = new Map()
+      for (const path of [caller, child, reviewer]) {
+        const source = join(cwd, path)
+        const text = await readFile(source, 'utf8')
+        const withImport = replaceOnce(
+          text,
+          '\n\nexport default',
+          "\nimport type { BindingInput } from '../jig.types.js'\n\nexport default",
+        )
+        const annotated = replaceOnce(withImport, '\n})', '\n} satisfies BindingInput)')
+        await writeFile(source, annotated)
+        typed.set(path, annotated)
+      }
+
+      const baseline = await review(context, 'typed-baseline', shared, standard)
+      const jigLock = await readFile(join(cwd, 'jig.lock'))
+      const bunLock = await readFile(join(cwd, 'bun.lock'))
+      await command(root, cwd, 'typed-specialize', jig, [
+        'specialize-slot',
+        offer,
+        '--slot',
+        'sample',
+        '--as',
+        'offer-producer',
+        '--select',
+        'post-edit=binding:specialist',
+      ])
+      assert.equal(await readFile(bookPath, 'utf8'), bookSource)
+      assert.equal(await readFile(join(cwd, child), 'utf8'), typed.get(child))
+      assert.equal(
+        await readFile(join(cwd, caller), 'utf8'),
+        replaceOnce(typed.get(caller), shared, dedicated),
+      )
+      assert.equal(
+        await readFile(join(cwd, clone), 'utf8'),
+        replaceOnce(typed.get(child), `'post-edit': '${standard}'`, `'post-edit': '${specialist}'`),
+      )
+      assert.equal(await types('project-types-after-edit'), declaration)
+
+      const tsc = fileURLToPath(new URL('node_modules/typescript/bin/tsc', import.meta.url))
+      const args = [
+        tsc,
+        '--strict',
+        '--noEmit',
+        '--pretty',
+        'false',
+        '--module',
+        'NodeNext',
+        caller,
+        child,
+        clone,
+        reviewer,
+      ]
+      await command(root, cwd, 'typed-tsc-valid', process.execPath, args)
+      for (const [label, path, before, after, pattern] of [
+        ['unknown-slot', clone, "'post-edit'", "'post-edti'", /'post-edti'.*does not exist/],
+        [
+          'wrong-settings',
+          reviewer,
+          'minimumWords: 2',
+          "minimumWords: 'two'",
+          /minimumWords[^\n]*incompatible\.\s+Type 'string' is not assignable to type 'number'/,
+        ],
+      ]) {
+        const source = join(cwd, path)
+        const valid = await readFile(source, 'utf8')
+        const invalid = replaceOnce(valid, before, after)
+        await writeFile(source, invalid)
+        const result = await captureCommand(root, cwd, `typed-tsc-${label}`, process.execPath, args)
+        assert.notEqual(result.status, 0)
+        assert.equal(result.stderr, '')
+        const errors = result.stdout.split('\n').filter((text) => text.includes('error TS'))
+        assert.equal(errors.length, 1, result.stdout)
+        assert.ok(errors[0].startsWith(`${path}(`), result.stdout)
+        assert.match(result.stdout, pattern)
+        if (label === 'wrong-settings')
+          await types('project-types-invalid-link', /PROJECT_BINDING_SETTINGS_INVALID/)
+        await writeFile(source, valid)
+      }
+      const plain = await command(root, cwd, 'typed-check', jig, ['check', '--diff'])
+      assert.ok(plain.includes(splitScope), plain)
+      await assertSplitReview(context, 'typed-review-preview')
+      assert.equal((await client.inspect()).approval, baseline.approval)
+      assert.deepEqual(await readFile(join(cwd, 'jig.lock')), jigLock)
+      assert.deepEqual(await readFile(join(cwd, 'bun.lock')), bunLock)
+    },
+    import.meta.dirname,
+  )
 })
 
 test('only offer adopts a dedicated post-edit reviewer', async () => {
@@ -377,8 +515,8 @@ async function isolateOffer(context, baseline) {
     replaceOnce(original, "'post-edit': 'binding:standard'", "'post-edit': 'binding:specialist'"),
     { flag: 'wx' },
   )
-  await change(join(bindings, 'offer.ts'), shared, dedicated)
-  const stillApproved = await context.client.inspect({ target: 'binding:offer' })
+  await change(join(bindings, 'develop-offer.ts'), shared, dedicated)
+  const stillApproved = await context.client.inspect({ target: offer })
   assert.equal(stillApproved.approval, baseline.approval)
   const edited = await review(context, 'edited', dedicated, standard)
   assert.notEqual(edited.approval, baseline.approval)
@@ -394,11 +532,11 @@ test('editing the shared Binding violates the sibling expectation', async (t) =>
       "'post-edit': 'binding:specialist'",
     )
     const wrong = await review(context, 'wrong', shared, specialist)
-    const offer = await run(context, wrong, 'wrong', 'binding:offer', 'resumed', 'offer')
-    verifyReviews(offer, 'resumed', 'specialist')
-    const book = await run(context, wrong, 'wrong', 'binding:book', 'resumed', 'book')
-    verifyReviews(book, 'resumed', 'specialist')
-    assert.throws(() => verifyReviews(book, 'resumed', 'standard'), {
+    const offerReviews = await run(context, wrong, 'wrong', offer, 'resumed', 'offer')
+    verifyReviews(offerReviews, 'resumed', 'specialist')
+    const bookReviews = await run(context, wrong, 'wrong', book, 'resumed', 'book')
+    verifyReviews(bookReviews, 'resumed', 'specialist')
+    assert.throws(() => verifyReviews(bookReviews, 'resumed', 'standard'), {
       code: 'ERR_ASSERTION',
       message: /^resumed reviewer handoffs/,
     })

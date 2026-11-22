@@ -12,6 +12,7 @@ import {
   publicTerminal,
 } from './cli.js'
 import { executePrivateCliAttempt } from './cli-attempt-execution.js'
+import { generateProjectTypes } from './cli-call-types.js'
 import { privateExploreHandoff, privateInstalledExploreLaunch } from './cli-explore-launch.js'
 import { privateCliStderrDiagnostic } from './cli-presentation.js'
 import { PrivateCliOutput } from './internal/cli-output.js'
@@ -135,7 +136,7 @@ async function runPrivateInstalledCli(
     return run()
   try {
     return await withPrivateInstallationVerification(operatorEnvironment, run, {
-      readOnly: ['check', 'inspect', 'specialize-slot'].includes(arguments_[0] ?? ''),
+      readOnly: ['check', 'inspect', 'specialize-slot', 'types'].includes(arguments_[0] ?? ''),
     })
   } catch (error) {
     if (!(error instanceof PrivateInstallationVerificationConfigurationError)) throw error
@@ -143,7 +144,7 @@ async function runPrivateInstalledCli(
       privateCliStderrDiagnostic(
         'JIG_VERIFICATION_INVALID',
         `${
-          arguments_[0] === 'check'
+          arguments_[0] === 'check' || arguments_[0] === 'types'
             ? 'Set JIG_VERIFICATION to cached (default), strict, or fast.'
             : 'Choose --verification cached (default), strict, or fast, or set JIG_VERIFICATION to one of those values.'
         } Fast reuses installation identities without checking file freshness.\nNo Flow was started.\nNext step: https://jig.md/reference/configuration#startup-verification`,
@@ -264,8 +265,8 @@ async function runWithEnvironment(
   }
 
   try {
-    const checkOnly = arguments_[0] === 'check'
-    const recovery = checkOnly ? undefined : privateFileRecovery()
+    const declarationOnly = arguments_[0] === 'check' || arguments_[0] === 'types'
+    const recovery = declarationOnly ? undefined : privateFileRecovery()
     const commandLifetimeMs = privateCliCommandLifetimeMs(
       arguments_,
       process.stdin.isTTY === true &&
@@ -292,9 +293,9 @@ async function runWithEnvironment(
       if (delegation.kind === 'private-rootless-linux-reexecuted/1') return delegation
     }
 
-    if (!checkOnly) privateProfileActivate()
+    if (!declarationOnly) privateProfileActivate()
 
-    const delivery = checkOnly ? undefined : await privateConnectFileOwner()
+    const delivery = declarationOnly ? undefined : await privateConnectFileOwner()
     try {
       const location = Object.freeze({
         releaseRoot: await realpath(releaseRoot),
@@ -312,6 +313,12 @@ async function runWithEnvironment(
         return exit(0)
       }
       const host: PrivateCliCommandHost = Object.freeze({
+        generateProjectTypes: async (project: string, signal?: AbortSignal) =>
+          generateProjectTypes(
+            project,
+            await openPrivateInstalledDeclarationEvaluator(location, project),
+            signal,
+          ),
         specializeSlot: async (
           project: string,
           request: SlotSpecialization,

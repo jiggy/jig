@@ -131,6 +131,8 @@ credentials and model choices in your operator environment or ignored
 
 ## Parallel worktrees
 
+For Orca coding agents, follow the [worktree setup guidance](.agents/coordination/AGENTS.md#work-guidance).
+
 Keep the primary checkout in `jig/main` and task checkouts beside it. From the
 workspace directory, create a branch and checkout with:
 
@@ -153,7 +155,7 @@ The workspace owns shared local state. Existing ignored links such as
 `main/.agent-sandbox.env -> ../.agent-sandbox.env` are reproduced in new
 checkouts. Shared targets must already exist as real workspace entries. To
 share another local entry, ignore it and link it from the primary checkout to
-`../<same-name>` first. Environment files are never copied.
+`../<same-name>` first.
 
 Links in the opposite direction—workspace `.agents`, `.envrc`, and `shell.nix`
 pointing into `main`—stay unchanged. Every checkout uses its own tracked copies

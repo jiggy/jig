@@ -26,8 +26,8 @@ import {
 } from './attempt-contract.js'
 import { preparePrivateCliRun, privateAttemptFailureMessage } from './cli-attempt-execution.js'
 import { PrivateAttemptInput } from './cli-attempt-io.js'
+import { generateCallTypes, type generateProjectTypes } from './cli-call-types.js'
 import { PrivateCallEvidence } from './cli-call-evidence.js'
-import { generateCallTypes } from './cli-call-types.js'
 import { compareConfiguredRouting, parseCheck, renderCheck } from './cli-check.js'
 import { approvedTargets, completionScript, invocationGuide } from './cli-discovery.js'
 import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-archive.js'
@@ -135,6 +135,7 @@ Usage:
   jig init <directory>       Create a project with a small greeting Flow
   jig new <name>             Add an editable Flow to the current project
   jig types <package-path>   Print TypeScript types for a Flow's settings and child calls
+  jig types --project        Print TypeScript types for project Binding declarations
   jig add-use <package-path> <slot>=<source>  Declare a collaborator in an existing Flow
   jig specialize-slot <caller>  Give one caller slot its own child Binding
   jig check [--diff]         Check the working project's composition before review
@@ -261,14 +262,17 @@ from an existing installation.
 
 Edit the caller and configure the slot in the project, then run jig check
 and jig review.`,
-  types: `Usage: jig types <package-path>
+  types: `Usage: jig types <package-path> | jig types --project
 
 Select one project-relative package directory containing FLOW.ts. Print a
 TypeScript declaration from its settings.schema.json and declared child calls.
-Jig reads source as data and writes the declaration to stdout.
+With --project, use contained declaration evaluation and link the working tree.
+Print a declaration for Binding package selections, declared slots, and settings.
+Both forms write the declaration to stdout. Run from the project root.
 
-Example:
-  $ jig types flows/worker > flows/worker/FLOW.calls.d.ts`,
+Examples:
+  $ jig types flows/worker > flows/worker/FLOW.calls.d.ts
+  $ jig types --project > jig.types.d.ts`,
   completion: `Usage: jig completion <bash|zsh|fish>
 
 Print a completion script; Jig does not modify your shell configuration.
@@ -474,6 +478,10 @@ const textDecoder = new TextDecoder()
 /** Private injection seam until the installed host owns project acquisition. */
 export interface PrivateCliCommandHost {
   readonly prepareRun?: typeof preparePrivateCliRun
+  readonly generateProjectTypes?: (
+    project: string,
+    signal?: AbortSignal,
+  ) => ReturnType<typeof generateProjectTypes>
   readonly specializeSlot?: (
     project: string,
     request: SlotSpecialization,
@@ -957,10 +965,20 @@ async function executeAddUse(arguments_: readonly string[], runtime: CliRuntime)
 
 async function executeTypes(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   const path = arguments_[1]
-  if (arguments_.length !== 2 || path === undefined || path.startsWith('-'))
-    usage('types', 'Specify one project-relative Flow package directory.')
+  const project = path === '--project'
+  if (arguments_.length !== 2 || path === undefined || (!project && path.startsWith('-')))
+    usage('types', 'Specify --project or one project-relative Flow package directory.')
+  const generate = project
+    ? runtime.host.generateProjectTypes
+    : (root: string, signal?: AbortSignal) => generateCallTypes(root, path, signal)
+  if (generate === undefined)
+    throw new CliDiagnostic(
+      'JIG_TYPES_UNAVAILABLE',
+      'Project types require the installed Jig declaration evaluator on a supported host.',
+      2,
+    )
   try {
-    const declaration = await generateCallTypes(runtime.currentDirectory, path, runtime.signal)
+    const declaration = await generate(runtime.currentDirectory, runtime.signal)
     runtime.signal?.throwIfAborted()
     await runtime.writeRecord(declaration)
     return 0
@@ -973,12 +991,18 @@ async function executeTypes(arguments_: readonly string[], runtime: CliRuntime):
         : ` at ${asciiJsonString(error.path.slice(0, 1024))}`
     const pointer =
       error.pointer === undefined ? '' : ` ${asciiJsonString(error.pointer.slice(0, 1024))}`
-    const cause = invalidSource
-      ? asciiJsonString(error.message.slice(0, 1024))
-      : 'Could not capture the package safely. Check its location and readability.'
+    const cause =
+      (project ? evaluatorInspectionHint(error.code) : undefined) ??
+      (invalidSource
+        ? asciiJsonString(error.message.slice(0, 1024))
+        : project
+          ? 'Check the declarations, installed dependencies, and supported host setup.'
+          : 'Could not capture the package safely. Check its location and readability.')
+    const subject = project ? 'Binding types' : 'child call types'
+    const section = project ? 'type-check-binding-declarations' : 'type-check-child-calls'
     throw new CliDiagnostic(
       error.code,
-      `Could not generate child call types${location}${pointer}. ${cause}\nNext step: https://jig.md/build/contracts#type-check-child-calls`,
+      `Could not generate ${subject}${location}${pointer}. ${cause}\nNext step: https://jig.md/build/contracts#${section}`,
       invalidSource ? 1 : 2,
     )
   }
@@ -1160,6 +1184,7 @@ async function executeCheck(arguments_: readonly string[], runtime: CliRuntime):
 /** Whether the installed command needs the private host environment. */
 export function privateCliRequiresHost(arguments_: readonly string[]): boolean {
   if (isHelpRequest(arguments_)) return false
+  if (arguments_[0] === 'types') return arguments_.length === 2 && arguments_[1] === '--project'
   if (arguments_[0] === 'attempt')
     return ['submit', 'reconcile'].includes(privateCliAttemptOperation(arguments_) ?? '')
   try {

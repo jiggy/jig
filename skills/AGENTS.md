@@ -14,4 +14,4 @@ Teach agents to check working composition and compare configured changes before 
 Keep literal membership and source review guidance with the generated design guide.
 
 Keep authored behavioral context distinct from computed configuration and actual execution evidence.
-Link type assistance for settings reads and child calls to the generated contract authoring guide.
+Link type assistance for Flow contexts and project Bindings to the generated contract authoring guide.

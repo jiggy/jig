@@ -190,17 +190,37 @@ Save this invocation contract as `FLOW.contract.json` in both `flows/hello` and 
 }
 ```
 
-Create `bindings/brief-welcome-group.ts`:
+Move the standard options into `config/welcome-group.ts`.
+
+```ts
+export default {
+  package: 'flows/welcome-group',
+  slots: { greeting: 'flow:flows/hello' },
+} as const
+```
+
+Update `bindings/welcome-group.ts` to use those options.
 
 ```ts
 import { defineBinding } from '@jigging/jig'
+import welcomeGroup from '../config/welcome-group.ts'
+
+export default defineBinding(welcomeGroup)
+```
+
+Create `bindings/brief-welcome-group.ts`.
+
+```ts
+import { defineBinding } from '@jigging/jig'
+import welcomeGroup from '../config/welcome-group.ts'
 
 export default defineBinding({
-  package: 'flows/welcome-group',
-  slots: { greeting: 'flow:flows/brief-hello' },
+  ...welcomeGroup,
+  slots: { ...welcomeGroup.slots, greeting: 'flow:flows/brief-hello' },
 })
 ```
 
+The brief Binding shares the standard declaration and selects a different greeter.
 Discovery includes the new Flow and Binding.
 If you use explicit membership, add both paths to `jig.ts`.
 Save `fixtures/group.json` with this input for both calls:
@@ -273,10 +293,33 @@ The test leaves other inputs, cancellation, and any other invocations unobserved
 
 To see the regression, copy the source and dependency locks into a disposable sibling directory.
 Run `npm ci` in that copy.
-Select `flow:flows/brief-hello` in its `bindings/welcome-group.ts` too.
+Select `flow:flows/brief-hello` in its `config/welcome-group.ts` too.
 Review and approve that copy after inspecting the changed selection.
 Run the same test command there.
 The brief route still passes, and the standard route fails on its message assertion despite a successful Run with outcome `done`.
+
+### Test callers in your application
+
+Start each test configuration from a disposable copy of an application revision and its locks.
+Keep the real callers and their Binding selections in that copy.
+Select deterministic Flows for external collaborators, such as model-backed reviewers.
+Keep production credentials and grants out of the test project.
+If a slot names a contract, supply the same contract with each test implementation.
+Review the test project before running it.
+
+Exercise each affected entrypoint and at least one neighboring route that should keep its behavior.
+For resumption, use an input that makes the application return a continuation at a known boundary.
+Pass that continuation to the next Run.
+Test direct invocation when callers share the same Binding.
+Run the same assertions against a disposable copy with a deliberately broader selection to check that they detect the regression.
+
+Record what each check establishes.
+
+- `jig inspect --flow --topology --all --approved --json` shows configured destinations.
+- The [live application map](results.md#follow-available-and-observed-calls) can show observed requests and outcomes. The map reports any observation limits.
+- Check the command exit, root execution status, and expected domain outcome. If the application forwards child evidence, assert the exact values it received.
+- For file results, use `--out` with a fresh directory. Use `jig inspect --result` to verify the packet.
+  Compare the relevant files with your expected output.
 
 ## Watch invalid input stop
 

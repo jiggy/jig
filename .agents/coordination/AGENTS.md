@@ -27,6 +27,15 @@ gate.
 
 - Update an existing task rather than creating competing descriptions.
 - Keep investigation history and private operational details out of task files.
+- Pass `--setup inherit` explicitly when creating a Jig worktree for a coding
+  agent with Orca. Use the flag with `orchestration worker-start` or
+  `worktree create`. The repository setup hook copies `.agent-sandbox.env`
+  before the agent starts. Skipping setup leaves the agent without the project
+  configuration, even if the sandbox launcher starts with defaults.
+- Use `--timeout-ms 300000` with `orchestration worker-start`.
+  This gives Orca five minutes to finish setup and start the agent.
+- Before starting a coding agent in an existing Orca worktree, verify that
+  setup completed and `.agent-sandbox.env` is present.
 - Release finished child-agent sessions promptly once their changes and
   evidence are saved and no follow-up is planned. Use the orchestrator's
   guarded release operation and verify its result. Keep sessions open when
