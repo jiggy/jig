@@ -401,6 +401,7 @@ runs its default entrypoint without target, input, attachment or timeout overrid
 It verifies the preview and unchanged project definition. A separate reviewed
 operator configuration checks Agent-contract and mixed mapping with a deterministic
 header task, without claiming model quality.
+The direct code mapper records complete empty call evidence in the Run result without a packet.
 
 `linux-host/example-smoke.test.ts` registers one first-run case for every
 discovered example. Its fresh projects retain all original source and manifests.
