@@ -402,9 +402,12 @@ It verifies the preview and unchanged project definition. A separate reviewed
 operator configuration checks Agent-contract and mixed mapping with a deterministic
 header task, without claiming model quality.
 The direct code mapper records complete empty call evidence in the Run result without a packet.
+
 The packed Explorer compares real Contact Import Runs across two local approvals.
 The proof checks equal submitted JSON and CSV bytes, stale refusal, and duplicate intent without execution.
 It checks the changed mapper target and the preserved reader, converter, exporter, and verified preview.
+On failure, the fixture reports its phase, check lines and bounded error codes through the existing command summary.
+Raw terminal output and command transcripts stay private beside the consumer.
 
 `host/installed-call-evidence.test.ts` checks a packetless result exactly at the JSON frame node limit through the installed CLI.
 It verifies valid child-call evidence, combined overflow, and stderr omission diagnostics without changing the ordinary result or successful exit.
