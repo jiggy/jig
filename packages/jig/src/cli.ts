@@ -105,7 +105,14 @@ import {
   PRIVATE_WORKSPACE_SOURCE_ROOT_LIMIT,
   PRIVATE_WORKSPACE_SOURCE_ROOT_PATH_BYTES,
 } from './internal/workspace-source-roots.js'
-import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
+import {
+  canonicalJson,
+  decodeJson1,
+  JSON_1_LIMITS,
+  Json1Error,
+  type JsonValue,
+  validateJson1,
+} from './json.js'
 import { bindingRef, parseRunTargetSelector, type RunTargetRef } from './project/author.js'
 import { resolveProjectEntrypoint } from './project/entrypoint.js'
 import { EVALUATOR_HINTS, evaluatorInspectionHint } from './project/evaluator-diagnostics.js'
@@ -451,7 +458,7 @@ Unavailable alternatives remain unavailable until a new review approves them.
   --attach NAME=DIR   Capture a declared read attachment; repeat for each name
   --select NAME=FILE  Select a relative file within an attachment; repeat as needed
   --out DIR          Choose a new result directory (file outputs default to temp)
-  --record-calls     Retain bounded child-call evidence in the selected result packet
+  --record-calls     Include bounded child-call evidence in the result and any packet
   --receive CHANNEL  Stream a declared output channel; repeat for distinct names
   --updates off      Disable automatic Flow updates on terminal stderr
   --display MODE     Select auto (default), plain, tui or web
@@ -2403,6 +2410,8 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       if (!runtime.progress.workspaceUsed) presentation?.diagnostic(decoded, operations)
     },
   }
+  const terminalFrame = (record: JsonValue): JsonValue =>
+    parsed.receive.length === 0 ? record : { type: 'terminal', result: record }
   let terminalEmissionStarted = false
   const emitTerminal = async (record: JsonValue): Promise<void> => {
     terminalEmissionStarted = true
@@ -2410,9 +2419,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       await presentation.result(record)
       return
     }
-    await runtime.writeRecord(
-      `${textDecoder.decode(canonicalJson(parsed.receive.length === 0 ? record : { type: 'terminal', result: record }))}\n`,
-    )
+    await runtime.writeRecord(`${textDecoder.decode(canonicalJson(terminalFrame(record)))}\n`)
   }
   let input = parsed.input
   try {
@@ -2854,6 +2861,26 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       await runtime.progress.closeWorkspace()
       reportDeliveryCleanupFailure()
       reportLocalFileCleanupFailure()
+    }
+    if (parsed.output === undefined && callEvidence !== undefined) {
+      const observed = callEvidence.finish(
+        status.runId,
+        rootTarget,
+        !cleanupFailed && !runtime.signal?.aborted && status.terminal.status === 'succeeded',
+      )
+      const extended = {
+        ...(record as Record<string, JsonValue>),
+        runId: status.runId,
+        callEvidence: observed,
+      }
+      try {
+        validateJson1(terminalFrame(extended))
+        record = extended
+        knownTerminal = record
+      } catch (error) {
+        // Optional observations must fit alongside the ordinary terminal frame.
+        if (!(error instanceof Json1Error)) throw error
+      }
     }
     const artifact = inspectionCapture
       ? {

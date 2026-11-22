@@ -1487,14 +1487,16 @@ Recorded destinations and attachment names do not select other paths.
 
 #### Saved child calls
 
-`jig run --record-calls --out DIRECTORY` requests bounded observations in the packet's `callEvidence` field.
+`jig run --record-calls` requests bounded observations in the result's `callEvidence` field.
 The operator supplies this flag on the Run command once.
-An entrypoint may supply the selected output directory.
+The flag leaves ordinary output directory selection in effect.
 The field binds its `runId` to the root record and gives the root selector and the admitted candidate digest as `revision`.
+
+For result-only Runs without a packet, terminal output carries this evidence and its matching `runId`.
+When a packet is written, terminal output includes exactly the call evidence acknowledged by the file owner.
 
 An unavailable observation omits `revision`.
 It has an empty call list and zero omitted events.
-The file owner acknowledges only the evidence included in the written packet.
 
 The record gives `provenance: "recorded-claim"`, `coverage`, `omittedEvents` and `calls`.
 It covers up to 256 calls and 128 KiB of encoded evidence.
@@ -1507,7 +1509,7 @@ An observed return gives its validated `outcome`.
 The row number identifies a call within one record. It does not establish execution order.
 Call bodies, diagnostic text, original operation names, timestamps and publisher identities stay outside this record.
 
-Saved child calls cover invocation requests. The host's artifact release protocol operation stays outside the record.
+Recorded child calls cover invocation requests. The host's artifact release protocol operation stays outside the record.
 
 Coverage is `complete` for a successful settled Run with matching retained calls and no known observation gaps.
 A complete empty list records zero calls.
