@@ -41,7 +41,7 @@ export class PrivateCallEvidence {
 
   observe(runId: string, event: PrivateCallEvent): void {
     const source = this.#source
-    if (source?.runId !== runId || !source.started) return
+    if (source?.runId !== runId || !source.started || event.artifactRelease === true) return
     try {
       const { publisher, operationId, childPublisher, slot, state, time, outcome } = event
       if (!localName(slot) || (outcome !== undefined && !localName(outcome))) {

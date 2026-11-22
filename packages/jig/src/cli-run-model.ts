@@ -30,6 +30,7 @@ export type PrivateCallEvent = Readonly<{
   cause?: string
   outcome?: string
   childPublisher?: string
+  artifactRelease?: true
 }>
 export type PrivateCallNode = PrivateCallEvent & {
   key: string

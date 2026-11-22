@@ -87,6 +87,7 @@ All selected domain requirements still apply.
 
 - `src/cli-call-evidence.ts` retains opted-in call observations for the exact Run.
   Reuse live attribution and retain only closed route and result fields.
+  A host protocol marker excludes artifact release without filtering authored slot names.
   `inspect --result --calls` checks the saved record without loading the project.
 
 ### Command grammar and review
