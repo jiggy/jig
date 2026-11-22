@@ -71,20 +71,25 @@ selection or authority grant. Reporting retains its MPL-2.0 license.
 
 ### Collaborator declaration
 
-`jig add-use <package-path> <slot>=<source>` declares one expected collaborator in an existing Flow.
+`jig add-use <package-path> <slot>[=<source>]` declares one expected collaborator in an existing Flow.
 Run it from the Jig project root with an exact project-relative code package directory.
 The package must have one code entrypoint and a regular, standalone `FLOW.meta.json`.
 Jig refuses protected, ambiguous, linked, and nested-project destinations.
 
-Use a new LocalName and an identified single-operation invocation agreement.
-Sources follow [contract import](#contract-import). Read descriptor paths relative to the project root.
+Use a new LocalName for the slot.
+A bare slot name inserts an empty object at `uses.<slot>`. It declares an uncontracted slot for explicit target selection.
+
+With `=<source>`, select an identified single-operation invocation agreement.
+A failed source selection leaves the slot undeclared. A valid invocation agreement without portable identity points to the bare slot form.
+
+Sources follow [contract import](#contract-import). Jig reads descriptor paths relative to the project root.
 Jig searches from the target slot directory's parent for the nearest installed `npm:` source.
 Jig refuses agreements in protected Jig state and bundles with protected package paths.
 
-Jig inserts one `uses.<slot>` entry with the package-local descriptor reference.
-It preserves the other metadata values and their original text.
-An existing slot or contract destination causes refusal.
-The complete bundle is published without replacement under `contracts/<slot>` before Jig replaces the sidecar.
+When a source is supplied, Jig publishes the complete bundle without replacement under `contracts/<slot>`.
+It then replaces the sidecar with an entry that references the copied descriptor.
+An existing slot causes refusal in either form. An existing contract destination causes refusal when copying an agreement.
+Both forms preserve the other metadata values and their original text.
 The command evaluates no project code, installs no dependencies, and changes no Bindings, locks, or approvals.
 
 Edit the caller and configure the target separately. Use `jig check` to check the working composition.
@@ -94,7 +99,7 @@ Use ordinary `jig review` to consider the proposed revision for approval.
 Interruption before publication removes staged files when possible.
 If the bundle is published and the sidecar edit fails, Jig leaves the bundle and staging information for recovery.
 Process loss can leave `.jig-add-use-stage` in the project root.
-Once the edit has stopped, use its `intent.json`, if present, to inspect the affected sidecar and bundle.
+Once the edit has stopped, use its `intent.json`, if present, to inspect the sidecar and any listed bundle.
 
 Keep the bundle if the sidecar refers to it.
 If publication stopped before the sidecar edit, finish the declaration in source or remove the abandoned bundle.

@@ -146,7 +146,7 @@ Usage:
   jig new <name>             Add an editable Flow to the current project
   jig types <package-path>   Print TypeScript types for a Flow's settings and child calls
   jig types --project        Print TypeScript types for project Binding declarations
-  jig add-use <package-path> <slot>=<source>  Declare a collaborator in an existing Flow
+  jig add-use <package-path> <slot>[=<source>]  Declare a collaborator in an existing Flow
   jig specialize-slot <caller>  Give one caller slot its own child Binding
   jig check [--diff]         Check the working project's composition before review
   jig review [project]       Review changes and approve an exact revision
@@ -261,13 +261,15 @@ relative to this project; jig: names select the installed standard library.
 Browse it with jig import-contract --list. npm sources must already be installed in its tree
 or an ancestor. Edit FLOW.ts to call the slots; providers and grants stay separate.
 Review project membership in jig.ts if you use explicit arrays rather than discover().`,
-  'add-use': `Usage: jig add-use <package-path> <slot>=<source>
+  'add-use': `Usage: jig add-use <package-path> <slot>[=<source>]
 
-Copy a named invocation agreement into contracts/<slot> and declare it in
-the existing FLOW.meta.json. Run from the project root with an exact local
-code package path. Sources are jig:name, a descriptor file, or npm:package
-from an existing installation.
+Declare a slot in the existing FLOW.meta.json. Run from the project root with
+an exact local code package path. Use a slot name alone for an uncontracted
+slot. With =<source>, Jig copies a named invocation agreement into
+contracts/<slot>. Sources are jig:name, a descriptor file, or npm:package from
+an existing installation.
 
+  $ jig add-use flows/worker local-review
   $ jig add-use flows/worker review=./flows/editor/FLOW.contract.json
 
 Edit the caller and configure the slot in the project, then run jig check
@@ -944,22 +946,24 @@ async function executeAddUse(arguments_: readonly string[], runtime: CliRuntime)
     path.startsWith('-') ||
     declaration === undefined ||
     declaration.startsWith('-') ||
-    separator <= 0 ||
+    separator === 0 ||
     separator === declaration.length - 1
   )
-    usage('add-use', 'Specify one exact local Flow package path and one slot=source.')
-  const slot = declaration.slice(0, separator)
+    usage('add-use', 'Specify one exact local Flow package path and one slot or slot=source.')
+  const slot = separator === -1 ? declaration : declaration.slice(0, separator)
   try {
     const descriptor = await addFlowUse(
       runtime.currentDirectory,
       path,
       slot,
-      declaration.slice(separator + 1),
+      separator === -1 ? undefined : declaration.slice(separator + 1),
       runtime.signal,
       runtime.standardContractDirectory,
     )
+    const subject = descriptor === undefined ? 'uncontracted slot ' : ''
+    const agreement = descriptor === undefined ? '' : ` using ${asciiJsonString(descriptor)}`
     runtime.writeOutput(
-      `Declared ${asciiJsonString(slot)} in ${asciiJsonString(`${path}/FLOW.meta.json`)} using ${asciiJsonString(descriptor)}.\nEdit the caller to use the slot. Configure its target, then run jig check and jig review.\n`,
+      `Declared ${subject}${asciiJsonString(slot)} in ${asciiJsonString(`${path}/FLOW.meta.json`)}${agreement}.\nEdit the caller to use the slot. Configure its target, then run jig check and jig review.\n`,
     )
     return 0
   } catch (error) {
