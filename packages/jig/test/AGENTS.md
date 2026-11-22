@@ -406,6 +406,7 @@ The direct code mapper records complete empty call evidence in the Run result wi
 The packed Explorer compares real Contact Import Runs across two local approvals.
 The proof checks equal submitted JSON and CSV bytes, stale refusal, and duplicate intent without execution.
 It checks the changed mapper target and the preserved reader, converter, exporter, and verified preview.
+The fixture drains both terminal streams while a Run submission can wait for the previous inspector to close.
 On failure, the fixture reports its phase, check lines and bounded error codes through the existing command summary.
 Raw terminal output and command transcripts stay private beside the consumer.
 
