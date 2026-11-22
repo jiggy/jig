@@ -69,6 +69,194 @@ async function noPageOverflow(page) {
   )
 }
 
+test('Explorer reloads compatible input across approvals and compares retained call paths', async () => {
+  const root = 'binding:review'
+  const worker = 'binding:worker'
+  const source = { name: 'source', mode: 'read', bound: false }
+  const project = (revision, targetId, attachments) => ({
+    kind: 'project',
+    revision,
+    state: 'approved',
+    targets: [{ id: targetId, label: 'Review', kind: 'binding', availability: 'ready' }],
+    selected: {
+      targetId,
+      attachments,
+      receives: [],
+      input: { state: 'unconstrained' },
+      composition: { state: 'unavailable', reason: 'unavailable' },
+      launch: { state: 'available' },
+    },
+  })
+  const earlier = project('approval-earlier', 'target-earlier', [
+    source,
+    {
+      name: 'archived',
+      mode: 'read',
+      bound: false,
+    },
+  ])
+  const later = project('approval-later', 'target-later', [
+    source,
+    {
+      name: 'archived',
+      mode: 'read',
+      bound: true,
+    },
+    { name: 'new', mode: 'read', bound: false },
+  ])
+  const returned = (caller, slot, target, outcome = 'done') => ({
+    caller,
+    slot,
+    target,
+    state: 'returned',
+    outcome,
+  })
+  const primary = returned(root, 'primary', worker)
+  const secondary = returned(root, 'secondary', worker)
+  const check = returned(worker, 'check', 'flow:flows/check')
+  const kept = returned(root, 'preserved', 'flow:flows/preserved')
+  const earlierCalls = [
+    primary,
+    { ...check, parent: 1 },
+    { ...check, parent: 1 },
+    secondary,
+    { ...check, parent: 4 },
+    kept,
+    returned(root, 'earlier-only', 'flow:flows/old'),
+  ]
+  const laterCalls = [
+    kept,
+    secondary,
+    { ...check, parent: 2 },
+    primary,
+    { ...check, parent: 4, target: 'flow:flows/new', outcome: 'warned' },
+    { slot: 'unplaced', state: 'failed' },
+  ]
+  let approval = earlier
+  let run = { state: 'idle' }
+  const submissions = []
+  const host = await startBrowserFixture({
+    async explorer(request) {
+      if (request.url === '/api/project?target=target-earlier' && approval === later)
+        return { value: { code: 'PROJECT_CHANGED' }, status: 409 }
+      if (request.url.startsWith('/api/project')) return { value: approval }
+      if (request.url === '/api/run' && request.method === 'GET') return { value: run }
+      if (request.url === '/api/run' && request.method === 'POST') {
+        const chunks = []
+        for await (const chunk of request) chunks.push(chunk)
+        const form = await new Response(Buffer.concat(chunks), {
+          headers: { 'Content-Type': request.headers['content-type'] },
+        }).formData()
+        const intent = JSON.parse(await form.get('_intent').text())
+        const uploads = await Promise.all(
+          [...form].slice(1).map(async ([port, file]) => [port, file.name, await file.text()]),
+        )
+        submissions.push({ intent, uploads })
+        run = {
+          state: 'settled',
+          requestId: intent.requestId,
+          targetId: intent.targetId,
+          comparison: {
+            revision: intent.revision,
+            label: 'Review',
+            root,
+            inputId: (approval === earlier ? 'a' : 'b').repeat(64),
+            evidence: {
+              execution: 'succeeded',
+              outcome: 'done',
+              delivery: 'none',
+              calls: approval === earlier ? earlierCalls : laterCalls,
+              callCoverage: approval === earlier ? 'complete' : 'incomplete',
+              callsOmitted: approval === earlier ? 0 : 2,
+            },
+          },
+        }
+        return { value: run }
+      }
+      return { value: {}, status: 404 }
+    },
+  })
+  const page = await browser.newPage({ viewport: { width: 390, height: 920 } })
+  page.setDefaultTimeout(5000)
+  const errors = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  const upload = (port, name, content) =>
+    page.getByLabel(`Choose files for ${port}`).setInputFiles({
+      name,
+      mimeType: 'text/plain',
+      buffer: Buffer.from(content),
+    })
+  const submit = page.getByRole('button', { name: 'Run workflow', exact: true })
+  const input = page.getByRole('textbox', { name: 'Input JSON', exact: true })
+  try {
+    await page.goto(host.url)
+    await page.getByRole('button', { name: 'Run with input', exact: true }).click()
+    await input.fill('  {"message":"review"}  ')
+    await upload('source', 'source.txt', 'same source')
+    await upload('archived', 'before.txt', 'first approval only')
+    await submit.click()
+    await page.getByText('Run settled', { exact: false }).first().waitFor()
+    approval = later
+    await page.getByRole('button', { name: 'Refresh approved project' }).click()
+    await page.getByText('Input captured by the Binding', { exact: true }).waitFor()
+    await upload('new', 'new.txt', 'already selected')
+    const reuse = page.getByRole('button', { name: 'Reuse previous input' })
+    await reuse.click()
+    assert.equal(new URL(page.url()).hash, '')
+    assert.equal(await input.inputValue(), '  {"message":"review"}  ')
+    assert.equal(await page.getByText('source.txt', { exact: true }).count(), 1)
+    assert.equal(await page.getByText('new.txt', { exact: true }).count(), 1)
+    assert.equal(await page.getByText('before.txt', { exact: true }).count(), 0)
+    assert.equal(submissions.length, 1)
+    await submit.click()
+    await page.getByText('Compare last two Runs', { exact: true }).click()
+    const comparison = page.getByRole('table', { name: 'Compare last two Runs' })
+    assert.match(await comparison.innerText(), /approval-earlier[\s\S]*approval-later/)
+    await page.getByText('Different submitted JSON or uploaded files.', { exact: false }).waitFor()
+    await page
+      .getByText('Incomplete recording · 2 omitted observations · 1 call without a matched path', {
+        exact: false,
+      })
+      .waitFor()
+    const calls = page.getByRole('table', { name: 'Compare observed calls' })
+    const primaryCheck = calls.getByRole('row').filter({ hasText: /check.*Via primary/s })
+    assert.match(
+      await primaryCheck.innerText(),
+      /Different retained observations[\s\S]*check · returned done ×2[\s\S]*new · returned warned ×1/,
+    )
+    const secondaryCheck = calls.getByRole('row').filter({ hasText: /check.*Via secondary/s })
+    assert.match(await secondaryCheck.innerText(), /Matching retained observations/)
+    assert.match(
+      await calls.getByRole('row').filter({ hasText: 'earlier-only' }).innerText(),
+      /No retained match/,
+    )
+    await page.getByText('Later calls without a matched path', { exact: true }).click()
+    await page.getByText('unplaced', { exact: true }).waitFor()
+    assert.equal(submissions.length, 2)
+    assert.deepEqual(
+      submissions.map(({ intent }) => [intent.revision, intent.targetId, intent.input]),
+      [
+        ['approval-earlier', 'target-earlier', { message: 'review' }],
+        ['approval-later', 'target-later', { message: 'review' }],
+      ],
+    )
+    assert.deepEqual(submissions[1].uploads, [
+      ['source', 'source.txt', 'same source'],
+      ['new', 'new.txt', 'already selected'],
+    ])
+    assert(
+      host.requests
+        .filter(({ path }) => path.startsWith('/api/'))
+        .every(({ authorized }) => authorized),
+    )
+    assert.deepEqual(errors, [])
+    await noPageOverflow(page)
+  } finally {
+    await page.close()
+    await host.close()
+  }
+})
+
 async function readableTextContrast(page, applicationMaterial = true) {
   const result = await page.evaluate(() => {
     const rgb = (value) => {

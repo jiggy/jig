@@ -118,7 +118,10 @@ The browser cannot name a host directory or replace a reviewed attachment.
 
 Flat file names must be unique within each attachment. The request accepts at most 64 files.
 The explorer shares selected files by attachment name across workflows under the same approval.
-The input panel shows the files that will be supplied and offers the previous submitted JSON for reuse.
+
+The input panel offers explicit reuse of the last accepted JSON and uploads across approvals.
+Reuse restores uploads only for unbound read attachments with matching names.
+The operator can edit the draft and change file choices before explicitly selecting Run.
 Reviewed file bindings and ordinary automatic output delivery retain their existing behavior.
 
 Run is an explicit action under a separate project control capability.
@@ -144,9 +147,14 @@ That inspector receives its own observation capability on its own loopback liste
 It receives no project control capability.
 Closing a settled inspector before the next launch releases its command owner.
 
-The explorer tab can compare its last two settled Runs with available evidence.
+The explorer tab can compare its two most recent observed settlements with available evidence.
 Each summary retains its selected approval, execution, application outcome, reported progress, observed calls, and verified delivery.
 Submitted input equality covers canonical JSON, attachment names, file names, and uploaded bytes. It excludes files supplied by approved Bindings.
+
+The comparison groups retained calls by exact root, ancestor path, caller, and slot.
+Each group shows counts by target, state, and outcome for each Run.
+Each Run summary retains up to eight recorded calls and displays the coverage and known omissions.
+Call counts describe retained observations. Rows imply no call order or facts about omitted observations.
 The comparison stays in browser memory and retains no previous observer URL.
 
 Close explorer prevents new launches and cancels active owned work through ordinary cancellation and cleanup.
