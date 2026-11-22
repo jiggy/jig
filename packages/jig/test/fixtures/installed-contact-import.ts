@@ -221,8 +221,7 @@ defaultProviders:{'https://jig.md/contracts/agent-run':'binding:model'}})
     ],
   )
   assert.doesNotMatch(JSON.stringify(saved), /Ada Lovelace|Read and validate|operationId/)
-  const directPacket = join(directory, 'direct-mapper')
-  await command(
+  const directRun = await command(
     [
       cli,
       'run',
@@ -230,16 +229,17 @@ defaultProviders:{'https://jig.md/contracts/agent-run':'binding:model'}})
       '--input',
       '{"headers":["Name","Email","Organization"]}',
       '--record-calls',
-      '--out',
-      directPacket,
       '--json',
     ],
     project,
   )
-  const direct = JSON.parse(
-    (await command([cli, 'inspect', '--result', directPacket, '--calls', '--json'], directory))
-      .stdout,
-  )
+  const directResult = JSON.parse(directRun.stdout)
+  assert.equal(directResult.status, 'succeeded')
+  assert.equal(directResult.outcome, 'done')
+  assert.equal(directResult.cleanup, undefined)
+  assert.equal(directResult.delivery, undefined)
+  const direct = directResult.callEvidence
+  assert.equal(direct.runId, directResult.runId)
   assert.equal(direct.root, 'flow:flows/map-code')
   assert.equal(direct.coverage, 'complete')
   assert.deepEqual(direct.calls, [])
