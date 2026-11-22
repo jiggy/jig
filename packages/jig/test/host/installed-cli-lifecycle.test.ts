@@ -1,3 +1,4 @@
+import { constants, Database } from 'bun:sqlite'
 import { expect, test } from 'bun:test'
 import { existsSync, realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -217,6 +218,45 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
       ])
         expect(existsSync(join(project, path))).toBe(false)
       expect(await foundationResidue(qualification, command, root)).toEqual(before)
+    }
+    const packet = join(root, 'greeting-result')
+    const written = JSON.parse(
+      (
+        await command(
+          [
+            cli,
+            'run',
+            'flow:flows/hello',
+            '--input',
+            JSON.stringify('Ada'),
+            '--out',
+            packet,
+            '--json',
+          ],
+          project,
+        )
+      ).stdout,
+    )
+    const saved = JSON.parse(
+      (await command([cli, 'inspect', '--result', packet, '--json'], root)).stdout,
+    )
+    expect(saved.runId).toBe(written.runId)
+    expect(saved.status).toBe('succeeded')
+    expect(saved.output).toEqual({ message: 'Hello, Ada!' })
+    expect(saved.delivery.files).toEqual([])
+    const database = Database.open(
+      join(project, '.jig/jig.sqlite3'),
+      constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW,
+    )
+    try {
+      const limits = database
+        .query<{ artifact_limit: number; result_limit: number }, [string]>(
+          'SELECT artifact_limit, result_limit FROM prepared_attempts WHERE run_id = ?1',
+        )
+        .get(written.runId)
+      expect(limits).toEqual({ artifact_limit: 0, result_limit: 1_048_576 })
+    } finally {
+      database.close()
     }
     await checkInstalledFlowBehavior(cli, join(root, 'behavior'), command)
     expect(await foundationResidue(qualification, command, root)).toEqual(before)
