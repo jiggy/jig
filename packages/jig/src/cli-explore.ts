@@ -31,7 +31,7 @@ type Entry = {
   readonly digest: string
   status: Exclude<DisplayProjectRun, { state: 'idle' }>
   viewerUrl?: string
-  comparison?: Readonly<{ revision: string; label: string; inputId: string }>
+  comparison?: Readonly<{ revision: string; label: string; inputId: string; root: string }>
 }
 type Child = {
   readonly entry: Entry
@@ -233,6 +233,10 @@ export class PrivateExploreSession {
         entry.comparison = {
           label: selection.label,
           revision: request.revision,
+          root:
+            selection.target.kind === 'flow'
+              ? flowSelector(selection.target.path)
+              : `binding:${selection.target.id}`,
           inputId: createHmac('sha256', this.#inputKey)
             .update(JSON.stringify(['jig-explorer-input/1', fileIdentity]))
             .update(inputBytes)

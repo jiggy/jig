@@ -29,7 +29,9 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
   let inputFileRead: FileReader | undefined
   let inputFileStatus = ''
   let fileRevision: string | undefined
-  let previousInput: string | undefined
+  let previousSubmission:
+    | Readonly<{ input: string; files: ReadonlyMap<string, readonly File[]> }>
+    | undefined
   let comparisonOpen = false
   const files = new Map<string, readonly File[]>()
   let draftNotice = ''
@@ -244,13 +246,13 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
     const revision = client?.project?.revision
     if (fileRevision !== revision) {
       files.clear()
-      previousInput = undefined
       fileRevision = revision
     }
     const readPorts =
       client?.project?.selected?.attachments.filter(
         (attachment) => attachment.mode === 'read' && !attachment.bound,
       ) ?? []
+    const previous = previousSubmission
     render(
       h(ExplorerPage, {
         project: client?.project,
@@ -273,7 +275,13 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
         closing: client?.closing ?? false,
         filter,
         input: draft.input,
-        previousInput,
+        canReuse:
+          previous !== undefined &&
+          (previous.input !== draft.input ||
+            readPorts.some(
+              ({ name }) =>
+                previous.files.has(name) && previous.files.get(name) !== files.get(name),
+            )),
         files,
         inputOpen,
         inputTouched: draft.touched,
@@ -313,6 +321,21 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
         onInputFile(file: File) {
           loadInputFile(draft, file)
         },
+        onReuse() {
+          if (!previous) return
+          clearInputFile()
+          writeInput(draft, previous.input)
+          draft.touched = true
+          for (const { name } of readPorts) {
+            const selected = previous.files.get(name)
+            if (selected) files.set(name, selected)
+          }
+          inputFileStatus = readPorts.some(({ name }) => !files.has(name))
+            ? 'Previous input loaded. Choose files for the remaining attachments.'
+            : 'Previous input loaded.'
+          redraw()
+          document.getElementById('explorer-input')?.focus()
+        },
         onInputTouched() {
           draft.touched = true
           redraw()
@@ -350,7 +373,7 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
         },
         onInputClose: closeInput,
         onRun() {
-          if (inputFileRead) return
+          if (inputFileRead || !client?.canLaunch) return
           draft.touched = true
           if (privateExplorerInput(draft.input).state !== 'valid') {
             redraw()
@@ -363,14 +386,17 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
               return selection === undefined ? [] : [[port.name, selection] as const]
             }),
           )
-          previousInput = draft.input
-          void client?.launch(draft.input, crypto.randomUUID(), submitted)
+          const input = draft.input
+          void client.launch(input, crypto.randomUUID(), submitted, () => {
+            previousSubmission = { input, files: submitted }
+          })
         },
         async onClose() {
           clearInputFile()
           if (await client?.close()) {
             drafts.clear()
             files.clear()
+            previousSubmission = undefined
             inputOpen = false
             redraw()
           }
@@ -486,6 +512,7 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
       if (client?.connection === 'closed' || client?.connection === 'unauthorized') {
         clearInputFile()
         drafts.clear()
+        previousSubmission = undefined
       }
       redraw()
     })
@@ -499,6 +526,8 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
       clearInputFile()
       client?.stop()
       drafts.clear()
+      files.clear()
+      previousSubmission = undefined
       releaseViewport()
       document.removeEventListener('keydown', handleEscape)
       root.removeEventListener('focusin', focusChanged)

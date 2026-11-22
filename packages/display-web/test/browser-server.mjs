@@ -9,8 +9,8 @@ export async function startBrowserFixture(fixture, assets = webAssets) {
   const streams = new Set()
   const requests = []
   let closed = false
-  const server = createServer((request, response) => {
-    const asset = assets[request.url]
+  const server = createServer(async (request, response) => {
+    const asset = assets[fixture.explorer && request.url === '/explore' ? '/' : request.url]
     if (request.method === 'GET' && asset) {
       response
         .writeHead(200, {
@@ -34,6 +34,19 @@ export async function startBrowserFixture(fixture, assets = webAssets) {
     }
     if (closed) {
       response.writeHead(410).end()
+      return
+    }
+    if (fixture.explorer && request.url?.startsWith('/api/')) {
+      try {
+        const { value, status = 200 } = await fixture.explorer(request)
+        response.writeHead(status, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+        })
+        response.end(JSON.stringify(value))
+      } catch {
+        response.writeHead(500).end()
+      }
       return
     }
     if (request.url === '/api/snapshot' && request.method === 'GET') {
@@ -96,7 +109,7 @@ export async function startBrowserFixture(fixture, assets = webAssets) {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const origin = `http://127.0.0.1:${server.address().port}`
   return {
-    url: `${origin}/#cap=${capability}`,
+    url: `${origin}/${fixture.explorer ? 'explore' : ''}#cap=${capability}`,
     origin,
     requests,
     update(next) {
