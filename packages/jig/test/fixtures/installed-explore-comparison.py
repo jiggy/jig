@@ -3,6 +3,7 @@
 import http.client
 import importlib.util
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import re
 import signal
@@ -73,8 +74,16 @@ def main(cli):
                 b"Content-Type: text/csv", b"", source,
                 b"--" + boundary + b"--", b"",
             ]
-            return request("/api/run", b"\r\n".join(parts),
-                           "multipart/form-data; boundary=" + boundary.decode("ascii"))
+            # A later submission joins the previous inspector. Keep draining its
+            # inherited terminal streams while the server waits for that exit.
+            with ThreadPoolExecutor(max_workers=1) as worker:
+                response = worker.submit(
+                    request, "/api/run", b"\r\n".join(parts),
+                    "multipart/form-data; boundary=" + boundary.decode("ascii"),
+                )
+                while not response.done():
+                    owner.pump()
+                return response.result()
 
         def run(project, request_id):
             status = submit(project, request_id)
