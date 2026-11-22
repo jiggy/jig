@@ -191,8 +191,8 @@ remain supported and are not rewritten by a review default.
   The requirement never adds the host to runtime dependency selection.
   This requirement grants no execution authority or registry access.
 
-- `add-use` reuses offline contract capture and copies one identified invocation agreement.
-  It inserts one metadata member and keeps every other value and spelling intact.
+- `add-use` inserts one metadata member and keeps every other value and spelling intact.
+  A bare slot writes an empty object. A supplied source uses offline capture to copy one identified invocation agreement.
 
 - `import-contract` copies a validated local invocation/channel bundle into a
   new directory, preserving bytes and relative paths. A direct descriptor path

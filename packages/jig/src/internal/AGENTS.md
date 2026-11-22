@@ -60,10 +60,10 @@ tests use genuine host capture through their own fixture entry.
   Rejection immediately stops the root Run before exposing a catchable child failure.
   The Agent guide owns matching limits and launch-copy cleanup.
 
-- Collaborator declaration stages bounded contract bytes and a sidecar edit
-  outside Flow source. Publish the bundle without replacement before replacing
-  the checked sidecar. On uncertain cleanup, preserve recoverable state and
-  identify the affected files.
+- Collaborator declaration stages a sidecar edit outside Flow source.
+  When a source is supplied, stage its bounded contract bytes there too.
+  Publish any bundle without replacement before replacing the checked sidecar.
+  On uncertain cleanup, preserve recoverable state and identify the affected files.
 
 - Slot specialization uses held declaration directories and the captured authoring closure.
   The child must exist before explicit membership selects it, and the caller changes last.

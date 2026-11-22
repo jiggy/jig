@@ -40,10 +40,10 @@ export async function addFlowUse(
   project: string,
   operand: string,
   slot: string,
-  source: string,
+  source?: string,
   signal?: AbortSignal,
   standardDirectory?: string,
-): Promise<string> {
+): Promise<string | undefined> {
   let path: string
   try {
     path = normalizeProjectPath(operand, 'Flow package path')
@@ -52,8 +52,11 @@ export async function addFlowUse(
   }
   if (path.split('/').some(protectedSegment))
     invalid('ADD_USE_PATH', 'Select a local Flow package outside protected paths.', path)
-  if (!isLocalName(slot) || !source || source.length > 2048 || source.includes('\0'))
-    invalid('ADD_USE_SLOT', 'Specify one LocalName and contract source as slot=source.')
+  if (
+    !isLocalName(slot) ||
+    (source !== undefined && (!source || source.length > 2048 || source.includes('\0')))
+  )
+    invalid('ADD_USE_SLOT', 'Specify a LocalName as slot or slot=source.')
 
   signal?.throwIfAborted()
   const metadataPath = `${path}/${METADATA}`
@@ -76,46 +79,52 @@ export async function addFlowUse(
     const metadata = parseSidecar(original.bytes, metadataPath)
     if (metadata.uses && Object.hasOwn(metadata.uses, slot))
       invalid('ADD_USE_EXISTS', 'Choose an unused slot. The slot already exists.', metadataPath)
-    if (
-      Object.values(metadata.uses ?? {}).some(
-        ({ contract }) => contract && fullCaseFold15_1(contract).startsWith(`./contracts/${slot}/`),
+    let bundle: Awaited<ReturnType<typeof captureContractBundle>> | undefined
+    if (source !== undefined) {
+      if (
+        Object.values(metadata.uses ?? {}).some(
+          ({ contract }) =>
+            contract && fullCaseFold15_1(contract).startsWith(`./contracts/${slot}/`),
+        )
       )
-    )
-      invalid(
-        'ADD_USE_EXISTS',
-        'An existing slot already refers to this contract directory.',
-        metadataPath,
-      )
+        invalid(
+          'ADD_USE_EXISTS',
+          'An existing slot already refers to this contract directory.',
+          metadataPath,
+        )
 
-    if (await exactEntry(directory, CONTRACTS, path)) {
-      contracts = await openPrivateSourceChild(directory, CONTRACTS, DIRECTORY)
-      if (await exactEntry(contracts, slot, `${path}/contracts`)) destinationExists(bundlePath)
-    }
-    const bundle = await captureContractBundle(
-      /^(jig:|npm:)/.test(source) ? source : resolve(project, source),
-      resolve(project, path, CONTRACTS),
-      signal,
-      standardDirectory,
-      { excludeProtectedState: true },
-    )
-    if (
-      bundle.agreement.kind !== 'invocation' ||
-      bundle.agreement.contract.descriptor.id === undefined ||
-      bundle.agreement.contract.profile !== 'single'
-    )
-      invalid(
-        'ADD_USE_CONTRACT',
-        'Select an identified single-operation invocation agreement.',
-        source,
+      if (await exactEntry(directory, CONTRACTS, path)) {
+        contracts = await openPrivateSourceChild(directory, CONTRACTS, DIRECTORY)
+        if (await exactEntry(contracts, slot, `${path}/contracts`)) destinationExists(bundlePath)
+      }
+      bundle = await captureContractBundle(
+        /^(jig:|npm:)/.test(source) ? source : resolve(project, source),
+        resolve(project, path, CONTRACTS),
+        signal,
+        standardDirectory,
+        { excludeProtectedState: true },
       )
-    for (const file of bundle.documents.keys()) {
-      validateLogicalPath(`contracts/${slot}/${file}`)
-      if (file.split('/').some(protectedSegment))
-        invalid('ADD_USE_CONTRACT', 'The agreement references a protected package path.', source)
+      if (bundle.agreement.kind !== 'invocation' || bundle.agreement.contract.profile !== 'single')
+        invalid(
+          'ADD_USE_CONTRACT',
+          'Select an identified single-operation invocation agreement.',
+          source,
+        )
+      if (bundle.agreement.contract.descriptor.id === undefined)
+        invalid(
+          'ADD_USE_CONTRACT',
+          'This invocation agreement has no portable identity. Omit =<source> to declare an uncontracted slot.',
+          source,
+        )
+      for (const file of bundle.documents.keys()) {
+        validateLogicalPath(`contracts/${slot}/${file}`)
+        if (file.split('/').some(protectedSegment))
+          invalid('ADD_USE_CONTRACT', 'The agreement references a protected package path.', source)
+      }
     }
-    const descriptor = `./contracts/${slot}/${bundle.descriptor}`
+    const descriptor = bundle && `./contracts/${slot}/${bundle.descriptor}`
     const sourceText = Buffer.from(original.bytes).toString('utf8')
-    const entry = { contract: descriptor }
+    const entry = descriptor === undefined ? {} : { contract: descriptor }
     const edited =
       metadata.uses === undefined
         ? appendJson1ObjectEntry(sourceText, 'root', 'uses', { [slot]: entry })
@@ -135,7 +144,7 @@ export async function addFlowUse(
     await writeStageFile(
       stage,
       'intent.json',
-      `${JSON.stringify({ metadata: metadataPath, bundle: bundlePath })}\n`,
+      `${JSON.stringify({ metadata: metadataPath, bundle: bundle && bundlePath })}\n`,
     )
     const stagedMetadata = await writeStageFile(
       stage,
@@ -144,87 +153,90 @@ export async function addFlowUse(
       Number(original.info.mode & 0o777n),
     )
 
-    // If the contracts directory is absent, publish it and its first bundle together.
-    const stagedContracts = privateChildLocation(stage, CONTRACTS)
-    await mkdirPrivateFile(stagedContracts)
-    const container = await openPrivateSourceChild(stage, CONTRACTS, DIRECTORY)
-    try {
-      await mkdirPrivateFile(privateChildLocation(container, slot))
-      const stagedBundle = await openPrivateSourceChild(container, slot, DIRECTORY)
+    if (bundle) {
+      // Publish an absent contracts directory and its first bundle together.
+      await mkdirPrivateFile(privateChildLocation(stage, CONTRACTS))
+      const container = await openPrivateSourceChild(stage, CONTRACTS, DIRECTORY)
       try {
-        await writeContractBundle(stagedBundle, bundle, signal)
-        await root.verify()
-        await verifyVisiblePackage(root.handle, path, directory)
-        await verifySidecar(directory, original.info, metadataPath)
-        await verifyIdentity(allocation, stageIdentity, STAGE)
-        if (contracts) {
-          await verifyIdentity(
-            privateChildLocation(directory, CONTRACTS),
-            await contracts.stat({ bigint: true }),
-            path,
-          )
-          if (await exactEntry(contracts, slot, `${path}/contracts`)) destinationExists(bundlePath)
-        } else if (await exactEntry(directory, CONTRACTS, path)) {
-          destinationExists(bundlePath)
-        }
-        signal?.throwIfAborted()
+        await mkdirPrivateFile(privateChildLocation(container, slot))
+        const stagedBundle = await openPrivateSourceChild(container, slot, DIRECTORY)
         try {
-          if (contracts) privatePublishDirectory(contracts.fd, slot, slot, container.fd)
-          else privatePublishDirectory(directory.fd, CONTRACTS, CONTRACTS, stage.fd)
-          published = true
-        } catch (error) {
-          if (errorCode(error) === 'EEXIST') destinationExists(bundlePath)
-          throw error
-        }
-
-        await root.verify()
-        await verifyVisiblePackage(root.handle, path, directory)
-        await exactEntry(directory, CONTRACTS, path)
-        const visibleContracts = await openPrivateSourceChild(directory, CONTRACTS, DIRECTORY)
-        try {
-          await exactEntry(visibleContracts, slot, `${path}/contracts`)
-          await verifyIdentity(
-            privateChildLocation(visibleContracts, slot),
-            await stagedBundle.stat({ bigint: true }),
-            bundlePath,
-          )
-        } finally {
-          await visibleContracts.close()
-        }
-        const copied = await captureOpenedPackageDirectory(bundlePath, stagedBundle, {
-          includes: () => true,
-          maximumFiles: bundle.documents.size,
-          maximumBytes: 1_048_576,
-        })
-        try {
-          if (copied.files.length !== bundle.documents.size) sourceChanged(bundlePath)
-          for (const file of copied.files) {
-            const expected = bundle.documents.get(file.path)
-            if (
-              expected === undefined ||
-              expected.length !== file.size ||
-              !Buffer.from(expected).equals(await copied.read(file.path, expected.length))
+          await writeContractBundle(stagedBundle, bundle, signal)
+          await root.verify()
+          await verifyVisiblePackage(root.handle, path, directory)
+          await verifySidecar(directory, original.info, metadataPath)
+          await verifyIdentity(allocation, stageIdentity, STAGE)
+          if (contracts) {
+            await verifyIdentity(
+              privateChildLocation(directory, CONTRACTS),
+              await contracts.stat({ bigint: true }),
+              path,
             )
-              sourceChanged(bundlePath)
+            if (await exactEntry(contracts, slot, `${path}/contracts`))
+              destinationExists(bundlePath)
+          } else if (await exactEntry(directory, CONTRACTS, path)) {
+            destinationExists(bundlePath)
+          }
+          signal?.throwIfAborted()
+          try {
+            if (contracts) privatePublishDirectory(contracts.fd, slot, slot, container.fd)
+            else privatePublishDirectory(directory.fd, CONTRACTS, CONTRACTS, stage.fd)
+            published = true
+          } catch (error) {
+            if (errorCode(error) === 'EEXIST') destinationExists(bundlePath)
+            throw error
+          }
+
+          await exactEntry(directory, CONTRACTS, path)
+          const visibleContracts = await openPrivateSourceChild(directory, CONTRACTS, DIRECTORY)
+          try {
+            await exactEntry(visibleContracts, slot, `${path}/contracts`)
+            await verifyIdentity(
+              privateChildLocation(visibleContracts, slot),
+              await stagedBundle.stat({ bigint: true }),
+              bundlePath,
+            )
+          } finally {
+            await visibleContracts.close()
+          }
+          const copied = await captureOpenedPackageDirectory(bundlePath, stagedBundle, {
+            includes: () => true,
+            maximumFiles: bundle.documents.size,
+            maximumBytes: 1_048_576,
+          })
+          try {
+            if (copied.files.length !== bundle.documents.size) sourceChanged(bundlePath)
+            for (const file of copied.files) {
+              const expected = bundle.documents.get(file.path)
+              if (
+                expected === undefined ||
+                expected.length !== file.size ||
+                !Buffer.from(expected).equals(await copied.read(file.path, expected.length))
+              )
+                sourceChanged(bundlePath)
+            }
+          } finally {
+            await copied.dispose()
           }
         } finally {
-          await copied.dispose()
+          await stagedBundle.close()
         }
-        if ((await requireCodeEntrypoint(directory, path)) !== entrypoint) sourceChanged(path)
-        await verifyFile(stage, stagedMetadata, metadataPath)
-        await verifySidecar(directory, original.info, metadataPath)
-        signal?.throwIfAborted()
-        await renamePrivateFile(
-          privateChildLocation(stage, METADATA),
-          privateChildLocation(directory, METADATA),
-        )
-        committed = true
       } finally {
-        await stagedBundle.close()
+        await container.close()
       }
-    } finally {
-      await container.close()
     }
+    await root.verify()
+    await verifyVisiblePackage(root.handle, path, directory)
+    await verifyIdentity(allocation, stageIdentity, STAGE)
+    if ((await requireCodeEntrypoint(directory, path)) !== entrypoint) sourceChanged(path)
+    await verifyFile(stage, stagedMetadata, metadataPath)
+    await verifySidecar(directory, original.info, metadataPath)
+    signal?.throwIfAborted()
+    await renamePrivateFile(
+      privateChildLocation(stage, METADATA),
+      privateChildLocation(directory, METADATA),
+    )
+    committed = true
     return descriptor
   } catch (error) {
     if (published) recoveryRequired(committed, bundlePath)
@@ -245,7 +257,12 @@ export async function addFlowUse(
         }
       }
     } catch {
-      recoveryRequired(committed, bundlePath)
+      if (published) recoveryRequired(committed, bundlePath)
+      unavailable(
+        'ADD_USE_RECOVERY',
+        'Inspect FLOW.meta.json and .jig-add-use-stage before retrying the edit.',
+        metadataPath,
+      )
     } finally {
       await Promise.all([stage?.close(), contracts?.close(), directory?.close(), root.dispose()])
     }

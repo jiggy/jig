@@ -537,6 +537,8 @@ test('add-use copies a closure and inserts one slot while preserving the existin
       }),
     ).not.toBe(0)
     expect(error).toContain(diagnostic)
+    if (declaration === 'fresh=../anonymous.json')
+      expect(error).toContain('Omit =<source> to declare an uncontracted slot.')
     expect(await readFile(sidecar, 'utf8')).toBe(edited)
     expect(await readdir(join(caller, 'contracts/occupied'))).toEqual([])
     expect(await readdir(project)).not.toContain('.jig-add-use-stage')
@@ -548,6 +550,48 @@ test('add-use copies a closure and inserts one slot while preserving the existin
     'review',
   ])
   expect(await readFile(join(root, 'source/FLOW.contract.json'), 'utf8')).toBe(descriptor)
+})
+
+test('add-use with a bare slot edits only the sidecar', async () => {
+  const root = await fixture()
+  const project = join(root, 'project')
+  await createProject(project, undefined, true)
+  await createFlow(project, 'caller')
+  const manifest = join(project, 'jig.ts')
+  const config = 'throw new Error("must not evaluate")'
+  await writeFile(manifest, config)
+  const caller = join(project, 'flows/caller')
+  const sidecar = join(caller, 'FLOW.meta.json')
+  const metadata = '{"name":"caller","x-extra":{"signed":-0}}\n'
+  await writeFile(sidecar, metadata)
+  const originalCode = await readFile(join(caller, 'FLOW.ts'))
+  const files = (await readdir(caller)).sort()
+  let output = ''
+  let error = ''
+  const run = (declaration: string) =>
+    main(['add-use', 'flows/caller', declaration], {
+      currentDirectory: project,
+      writeOutput: (text) => {
+        output += text
+      },
+      writeError: (text) => {
+        error += text
+      },
+    })
+  expect(privateCliRequiresHost(['add-use', 'flows/caller', 'review'])).toBe(false)
+  expect(await run('review=')).not.toBe(0)
+  expect(await readFile(sidecar, 'utf8')).toBe(metadata)
+  expect(await run('review')).toBe(0)
+  expect(output).toContain('Declared uncontracted slot "review"')
+  expect(await run('review')).toBe(1)
+  expect(error).toContain('ADD_USE_EXISTS')
+  expect(await readFile(sidecar, 'utf8')).toBe(
+    '{"name":"caller","x-extra":{"signed":-0}, "uses": {"review":{}}}\n',
+  )
+  expect(await readFile(join(caller, 'FLOW.ts'))).toEqual(originalCode)
+  expect(await readFile(manifest, 'utf8')).toBe(config)
+  expect((await readdir(caller)).sort()).toEqual(files)
+  expect(await readdir(project)).not.toContain('.jig-add-use-stage')
 })
 
 test('add-use serializes edits and refuses to replace a stage left by an interruption', async () => {
