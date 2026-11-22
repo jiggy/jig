@@ -8,6 +8,9 @@ description: Find where to change a Jig workflow route, who calls a Flow, and wh
 ## Find where to change a workflow
 
 When changing which Flow runs next or how one caller uses a shared Flow, run `jig inspect --flow` from the project root.
+To start from the owner's words, use `jig inspect --flow --find TEXT` from the project root.
+Follow the matched caller's source links and check which other callers use its shared destinations.
+
 When the caller needs a new collaborator, use [`jig add-use`](reference/build/contracts.md#declare-a-collaborator-in-an-existing-flow) to declare its slot.
 Use `jig specialize-slot --help` after locating the exact caller slot when only that caller needs a different child configuration.
 To find the callers of a known Flow source file, use `jig inspect --flow <path>` with its project-relative path.
