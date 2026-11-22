@@ -748,6 +748,7 @@ function specialistDispatcher(
         publisher: participant?.id ?? `flow:${input.call.operationId}`,
         operationId: call.operationId,
         slot: call.slot,
+        ...(call.artifactRelease === undefined ? {} : { artifactRelease: call.artifactRelease }),
         ...(call.intent === undefined ? {} : { intent: call.intent }),
         state,
         time: Date.now(),

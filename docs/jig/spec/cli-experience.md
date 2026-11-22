@@ -1427,6 +1427,8 @@ An observed return gives its validated `outcome`.
 The row number identifies a call within one record. It does not establish execution order.
 Call bodies, diagnostic text, original operation names, timestamps and publisher identities stay outside this record.
 
+Saved child calls cover invocation requests. The host's artifact release protocol operation stays outside the record.
+
 Coverage is `complete` for a successful settled Run with matching retained calls and no known observation gaps.
 A complete empty list records zero calls.
 Coverage is `incomplete` when a Run failed, a match is missing, or observation has a gap.

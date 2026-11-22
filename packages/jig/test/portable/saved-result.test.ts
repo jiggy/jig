@@ -744,7 +744,12 @@ test('saved call inspection preserves exact ancestry, incomplete coverage and Ru
         root: app,
         targets: [
           { request: { target: app, slots: { work: { kind: 'flow', target: worker } } } },
-          { request: { target: worker, slots: { write: { kind: 'flow', target: write } } } },
+          {
+            request: {
+              target: worker,
+              slots: { 'artifact-release': { kind: 'flow', target: write } },
+            },
+          },
           { request: { target: write, slots: {} } },
         ],
       },
@@ -774,10 +779,19 @@ test('saved call inspection preserves exact ancestry, incomplete coverage and Ru
     scope.observe(runId, {
       publisher: 'child',
       operationId: 'private-operation',
-      slot: 'write',
+      slot: 'artifact-release',
       time: 2,
       state: 'failed',
       cause: 'unretained cause',
+    })
+    scope.observe(runId, {
+      publisher: 'root',
+      operationId: 'implicit-artifact-release',
+      slot: 'artifact-release',
+      artifactRelease: true,
+      time: 2,
+      state: 'returned',
+      outcome: 'done',
     })
     scope.observe(runId, {
       publisher: 'root',
@@ -802,7 +816,7 @@ test('saved call inspection preserves exact ancestry, incomplete coverage and Ru
         id: 2,
         parent: 1,
         caller: 'binding:worker',
-        slot: 'write',
+        slot: 'artifact-release',
         target: 'binding:writer',
         state: 'failed',
       },
