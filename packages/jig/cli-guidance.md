@@ -88,6 +88,11 @@ All selected domain requirements still apply.
   Project Binding declarations reuse the contained evaluator, working-tree linker, and the same captured schemas.
   They project canonical package selections and declared slots without copying active targets or Binding settings values.
 
+- `src/cli-call-evidence.ts` retains opted-in call observations for the exact Run.
+  Reuse live attribution and retain only closed route and result fields.
+  A host protocol marker excludes artifact release without filtering authored slot names.
+  `inspect --result --calls` checks the saved record without loading the project.
+
 ### Command grammar and review
 
 - Child composition refusals identify the caller slot and preserve a closed diagnostic.

@@ -218,6 +218,7 @@ export async function executePrivateRootRunLaunch(input: {
         input.channelOutput!.composition!(
           composition,
           privateActivationCandidateDigestV5(work.candidate),
+          input.runId,
         ),
     )
   }
@@ -500,7 +501,7 @@ async function startOrResumeCurrentExecution(
       // grace; aborting the Backend signal here would skip that protocol.
       stop.releaseStartupEnforcement()
       try {
-        input.channelOutput?.dispatched?.()
+        input.channelOutput?.dispatched?.(input.runId)
       } catch {
         // Optional command presentation cannot alter admitted execution.
       }
@@ -1468,16 +1469,20 @@ function operationDispatcher(
   return Object.freeze({
     channels: channels.root,
     onCall: (call, state, cause, outcome) =>
-      input.channelOutput?.call?.({
-        publisher: channels.root.id,
-        operationId: call.operationId,
-        slot: call.slot,
-        ...(call.intent === undefined ? {} : { intent: call.intent }),
-        state,
-        time: Date.now(),
-        ...(cause === undefined ? {} : { cause }),
-        ...(outcome === undefined ? {} : { outcome }),
-      }),
+      input.channelOutput?.call?.(
+        {
+          publisher: channels.root.id,
+          operationId: call.operationId,
+          slot: call.slot,
+          ...(call.artifactRelease === undefined ? {} : { artifactRelease: call.artifactRelease }),
+          ...(call.intent === undefined ? {} : { intent: call.intent }),
+          state,
+          time: Date.now(),
+          ...(cause === undefined ? {} : { cause }),
+          ...(outcome === undefined ? {} : { outcome }),
+        },
+        input.runId,
+      ),
     onCancellation: (code) => channels.broker.abort(code),
     releaseArtifact: (reference) => releasePrivateFlowArtifact(files, reference),
     validateResult: (result) => {
@@ -1533,7 +1538,7 @@ function operationDispatcher(
                 broker: channels.broker,
                 contracts: channels.contracts,
               },
-              onCall: input.channelOutput?.call,
+              onCall: (event) => input.channelOutput?.call?.(event, input.runId),
               ...(input.channelOutput === undefined
                 ? {}
                 : {

@@ -27,6 +27,7 @@ import {
 import { preparePrivateCliRun, privateAttemptFailureMessage } from './cli-attempt-execution.js'
 import { PrivateAttemptInput } from './cli-attempt-io.js'
 import { generateCallTypes, type generateProjectTypes } from './cli-call-types.js'
+import { PrivateCallEvidence } from './cli-call-evidence.js'
 import { compareConfiguredRouting, parseCheck, renderCheck } from './cli-check.js'
 import { approvedTargets, completionScript, invocationGuide } from './cli-discovery.js'
 import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-archive.js'
@@ -93,6 +94,7 @@ import {
 } from './internal/root-run-timeout-policy.js'
 import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
+import { readPrivateSavedCalls } from './internal/saved-call-evidence.js'
 import { PrivateSavedResultError, privateCaptureSavedResult } from './internal/saved-result.js'
 import type { SlotSpecialization, specializeWorkingSlot } from './internal/specialize-slot.js'
 import { JIG_STANDARD_CONTRACTS } from './internal/standard-contracts.js'
@@ -316,7 +318,7 @@ Example:
        jig inspect --flow [target | path | --package PATH | --all] [--topology] [--approved] [--json]
        jig inspect --flow --snapshot
        jig inspect --flow --compare BASELINE [--all]
-       jig inspect --result DIRECTORY [--display plain|tui|web] [--json]
+       jig inspect --result DIRECTORY [--display plain|tui|web | --calls] [--json]
 
 List the current project's approved targets, or show one target's retained
 input/result schemas, settings, child slots, capabilities, files and channels.
@@ -339,12 +341,13 @@ Launch readiness and remote provider availability remain unchecked.
   --snapshot With --flow: emit a machine baseline for the complete application
   --compare BASELINE  With --flow: show current behavior changes from that baseline
   --result DIRECTORY  Inspect a saved packet without approval or new execution
+  --calls             Show recorded child calls and application outcomes
   --display MODE      For saved results: plain (default), tui or web
 
 Saved results are local recorded claims. Files are captured once and checked
 against the recorded manifest; matching hashes do not authenticate the report.
 No project, provider, verification setting or execution support is acquired.
-Live views and history are not retained in a result packet. Inspection exits 0
+Runs with --record-calls can retain bounded child-call evidence. Inspection exits 0
 for valid consistent evidence (including failed Runs), 1 for unreadable/invalid
 evidence, incomplete files or output failure, and 2 for external interruption.
 
@@ -437,6 +440,7 @@ Unavailable alternatives remain unavailable until a new review approves them.
   --attach NAME=DIR   Capture a declared read attachment; repeat for each name
   --select NAME=FILE  Select a relative file within an attachment; repeat as needed
   --out DIR          Choose a new result directory (file outputs default to temp)
+  --record-calls     Retain bounded child-call evidence in the selected result packet
   --receive CHANNEL  Stream a declared output channel; repeat for distinct names
   --updates off      Disable automatic Flow updates on terminal stderr
   --display MODE     Select auto (default), plain, tui or web
@@ -1370,6 +1374,7 @@ function parseInspect(arguments_: readonly string[]) {
   let resultDirectory: string | undefined
   let display: 'plain' | 'tui' | 'web' | undefined
   let flow = false
+  let calls = false
   let approved = false
   let all = false
   let topology = false
@@ -1410,6 +1415,10 @@ function parseInspect(arguments_: readonly string[]) {
     }
     if (value === '--approved' && !approved) {
       approved = true
+      continue
+    }
+    if (value === '--calls' && !calls) {
+      calls = true
       continue
     }
     if (value === '--flow' && !flow) {
@@ -1462,6 +1471,8 @@ function parseInspect(arguments_: readonly string[]) {
   }
   if (resultDirectory !== undefined && (selector !== undefined || verification !== undefined))
     usage('inspect', '--result cannot be combined with a target or --verification.')
+  if (calls && (resultDirectory === undefined || display !== undefined))
+    usage('inspect', '--calls requires --result DIRECTORY. Omit --display.')
   if (display !== undefined && resultDirectory === undefined)
     usage('inspect', '--display requires --result DIRECTORY.')
   if (approved && !flow) usage('inspect', '--approved requires --flow.')
@@ -1488,7 +1499,7 @@ function parseInspect(arguments_: readonly string[]) {
   if (packagePath !== undefined && (all || selector !== undefined))
     usage('inspect', '--package selects a scope. Omit --all and the target.')
   if (flow && resultDirectory !== undefined)
-    usage('inspect', 'Saved packets contain no retained flow context.')
+    usage('inspect', 'Use --calls to inspect recorded invocations in a saved packet.')
   return {
     selector,
     packagePath,
@@ -1497,6 +1508,7 @@ function parseInspect(arguments_: readonly string[]) {
     verification,
     resultDirectory,
     display: display ?? 'plain',
+    calls,
     flow,
     approved,
     all,
@@ -1535,6 +1547,43 @@ async function executeSavedResultInspect(
           'Saved file verification incomplete',
         ),
       )
+    if (parsed.calls) {
+      const evidence = readPrivateSavedCalls(packet.record.callEvidence, packet.record.runId)
+      if (evidence === undefined) {
+        runtime.writeError(
+          renderDiagnostic(
+            'JIG_RESULT_CALLS_UNAVAILABLE',
+            packet.record.callEvidence === undefined
+              ? 'This packet has no saved call record. To capture another Run, use --record-calls with a fresh --out directory.'
+              : 'The saved call record is invalid or belongs to a different Run.',
+          ),
+        )
+        return 1
+      }
+      if (parsed.json || !runtime.humanOutput) {
+        await runtime.writeRecord(`${textDecoder.decode(canonicalJson(evidence))}\n`)
+      } else {
+        const lines = [
+          `Recorded calls for ${asciiJsonString(evidence.root)}`,
+          `Coverage: ${evidence.coverage}`,
+          ...(evidence.coverage === 'complete' && evidence.calls.length === 0
+            ? ['No child calls were recorded.']
+            : []),
+          ...(evidence.omittedEvents === 0 ? [] : [`Omitted events: ${evidence.omittedEvents}`]),
+          ...evidence.calls.map((call) => {
+            const parent = call.parent === undefined ? '' : ` (parent #${call.parent})`
+            const route =
+              call.caller === undefined
+                ? asciiJsonString(call.slot) + ' (unmatched)'
+                : `${asciiJsonString(call.caller)} · ${asciiJsonString(call.slot)} → ${asciiJsonString(call.target!)}`
+            const outcome = call.outcome === undefined ? '' : ` · ${asciiJsonString(call.outcome)}`
+            return `  #${call.id}${parent}  ${route}  ${call.state}${outcome}`
+          }),
+        ]
+        await runtime.writeRecord(lines.join('\n') + '\n')
+      }
+      return packet.complete && evidence.coverage === 'complete' ? 0 : 1
+    }
     if (parsed.json || !runtime.humanOutput) {
       await runtime.writeRecord(`${textDecoder.decode(canonicalJson(packet.record))}\n`)
     } else {
@@ -2060,11 +2109,11 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   const parsed = parseRun(arguments_)
   if (parsed.displayBundle && parsed.output === undefined)
     usage('run', '--display-bundle requires a result destination selected with --out.')
+  const rootTarget =
+    parsed.target.kind === 'flow' ? flowSelector(parsed.target.path) : `binding:${parsed.target.id}`
+  const callEvidence = parsed.recordCalls ? new PrivateCallEvidence() : undefined
   runtime.progress.model.configureWorkspace({
-    target:
-      parsed.target.kind === 'flow'
-        ? flowSelector(parsed.target.path)
-        : `binding:${parsed.target.id}`,
+    target: rootTarget,
     limitMs: parsed.timeoutMs,
     startedAt: privatePresentationNow(),
   })
@@ -2178,9 +2227,11 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       throw error
     }
   }
+  const presentCalls = !parsed.json && parsed.receive.length === 0
   const channelOutput: PrivateRunChannelOutput = {
     receive: parsed.receive,
-    dispatched: () => {
+    dispatched: (runId) => {
+      callEvidence?.dispatched(runId)
       rootDispatched = true
       if (!workspaceRequested) return
       // Root execution never waits on terminal setup. The CLI joins it before settlement.
@@ -2192,12 +2243,15 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         )
         .catch((error) => outputStop.abort(error))
     },
-    ...(!parsed.json && parsed.receive.length === 0
+    ...(presentCalls || callEvidence !== undefined
       ? {
           composition: (
             value: import('./cli-composition.js').PrivateRunComposition,
             candidate: string,
+            runId: string,
           ) => {
+            callEvidence?.admit(runId, candidate, value)
+            if (!presentCalls) return
             runtime.progress.observeComposition(value)
             if (!webRequested || value.state !== 'available') return
             // Presentation reads its own retained bytes and never delays execution.
@@ -2213,8 +2267,10 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
               .then((expanded) => runtime.progress.model.observeSourceBehavior(value, expanded))
               .catch(() => {})
           },
-          call: (event: import('./cli-run-model.js').PrivateCallEvent) =>
-            runtime.progress.observeCall(event),
+          call: (event: import('./cli-run-model.js').PrivateCallEvent, runId: string) => {
+            callEvidence?.observe(runId, event)
+            if (presentCalls) runtime.progress.observeCall(event)
+          },
         }
       : {}),
     ...(parsed.receive.length === 0 && !parsed.json && parsed.updates !== 'off'
@@ -2666,14 +2722,16 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         input: { digest: sha256(canonicalJson(input)), attachments: files.identity.attachments },
       } as unknown as JsonValue
       knownTerminal = record
+      const includeFiles =
+        !cleanupFailed && !runtime.signal?.aborted && status.terminal.status === 'succeeded'
+      const savedCalls = callEvidence?.finish(status.runId, rootTarget, includeFiles)
       try {
         runtime.progress.stage('Publishing the result packet')
-        const includeFiles =
-          !cleanupFailed && !runtime.signal?.aborted && status.terminal.status === 'succeeded'
         delivery = await runtime.host.delivery!.publish(
           record,
           includeFiles ? files.deliveryOutput(runtime.signal) : undefined,
           runtime.signal,
+          savedCalls,
         )
       } catch {
         delivery = {
@@ -2687,6 +2745,9 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       record = {
         ...(record as Record<string, JsonValue>),
         delivery,
+        ...(savedCalls === undefined || !runtime.host.delivery!.callEvidenceRetained
+          ? {}
+          : { callEvidence: savedCalls }),
         ...(runtime.host.delivery!.checkpoint === undefined
           ? {}
           : { checkpoint: runtime.host.delivery!.checkpoint }),

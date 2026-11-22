@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { validateReportingMessage } from '@jigging/reporting'
 import { privateCliRequiresHost, privateCliSavedResultInspection } from '../../src/cli.js'
+import { PrivateCallEvidence } from '../../src/cli-call-evidence.js'
+import { projectPrivateRunComposition } from '../../src/cli-composition.js'
 import { PrivateCliProgress } from '../../src/cli-progress.js'
 import { PrivateRunModel } from '../../src/cli-run-model.js'
 import {
@@ -17,6 +19,7 @@ import {
 import { sha256 } from '../../src/internal/file-input.js'
 import { privateCaptureSavedResult } from '../../src/internal/saved-result.js'
 import { canonicalJson, JSON_1_LIMITS, type JsonValue } from '../../src/json.js'
+import { parseRun } from '../../src/run-arguments.js'
 import { settleTestCommand } from '.././fixtures/bounded-command.js'
 
 async function fixture(work: (root: string) => Promise<void>) {
@@ -719,4 +722,126 @@ test('plain and machine saved inspection can skip optional decoding while retain
     } finally {
       capture.close()
     }
+  }))
+
+test('record-calls requires a selected result and remains an operator option', () => {
+  expect(() => parseRun(['run', 'binding:app', '--record-calls'])).toThrow(/--out/)
+  expect(() =>
+    parseRun(['run', 'binding:app', '--out', 'packet', '--record-calls', '--record-calls']),
+  ).toThrow(/once/)
+  expect(
+    parseRun(['run', 'binding:app', '--record-calls', '--out', 'packet']).recordCalls,
+  ).toBeTrue()
+})
+
+test('saved call inspection preserves exact ancestry, incomplete coverage and Run identity', async () =>
+  fixture(async (root) => {
+    const app = { kind: 'binding', id: 'app' } as const
+    const worker = { kind: 'binding', id: 'worker' } as const
+    const write = { kind: 'binding', id: 'writer' } as const
+    const composition = projectPrivateRunComposition(
+      {
+        root: app,
+        targets: [
+          { request: { target: app, slots: { work: { kind: 'flow', target: worker } } } },
+          {
+            request: {
+              target: worker,
+              slots: { 'artifact-release': { kind: 'flow', target: write } },
+            },
+          },
+          { request: { target: write, slots: {} } },
+        ],
+      },
+      { nodes: 20, edges: 20, bytes: 8192 },
+    )
+    const runId = sha256(Buffer.from('original'))
+    const another = sha256(Buffer.from('another'))
+    const scope = new PrivateCallEvidence()
+    scope.admit(runId, sha256(Buffer.from('candidate')), composition)
+    scope.dispatched(runId)
+    scope.observe(another, {
+      publisher: 'root',
+      operationId: 'foreign',
+      slot: 'work',
+      time: 0,
+      state: 'active',
+    })
+    scope.observe(runId, {
+      publisher: 'root',
+      childPublisher: 'child',
+      operationId: 'private-operation',
+      slot: 'work',
+      time: 1,
+      state: 'active',
+      intent: 'unretained intent',
+    })
+    scope.observe(runId, {
+      publisher: 'child',
+      operationId: 'private-operation',
+      slot: 'artifact-release',
+      time: 2,
+      state: 'failed',
+      cause: 'unretained cause',
+    })
+    scope.observe(runId, {
+      publisher: 'root',
+      operationId: 'implicit-artifact-release',
+      slot: 'artifact-release',
+      artifactRelease: true,
+      time: 2,
+      state: 'returned',
+      outcome: 'done',
+    })
+    scope.observe(runId, {
+      publisher: 'root',
+      operationId: 'private-operation',
+      slot: 'work',
+      time: 3,
+      state: 'returned',
+      outcome: 'needs-review',
+    })
+    const evidence = scope.finish(runId, 'binding:app', true)
+    expect(evidence.coverage).toBe('complete')
+    expect(evidence.calls).toEqual([
+      {
+        id: 1,
+        caller: 'binding:app',
+        slot: 'work',
+        target: 'binding:worker',
+        state: 'returned',
+        outcome: 'needs-review',
+      },
+      {
+        id: 2,
+        parent: 1,
+        caller: 'binding:worker',
+        slot: 'artifact-release',
+        target: 'binding:writer',
+        state: 'failed',
+      },
+    ])
+    await packet(root, {}, { runId, callEvidence: evidence })
+    let result = await inspect(root, ['--calls', '--json'])
+    expect(result.code, result.stderr).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual(evidence)
+    expect(result.stdout).not.toMatch(/private-operation|unretained|foreign/)
+    await packet(
+      root,
+      {},
+      { runId, callEvidence: { ...evidence, coverage: 'incomplete', omittedEvents: 2 } },
+    )
+    result = await inspect(root, ['--calls', '--json'])
+    expect(result.code).toBe(1)
+    expect(JSON.parse(result.stdout).omittedEvents).toBe(2)
+    await packet(root, {}, { runId: another, callEvidence: evidence })
+    result = await inspect(root, ['--calls', '--json'])
+    expect(result.code).toBe(1)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toContain('belongs to a different Run')
+    await packet(root, {}, { runId })
+    result = await inspect(root, ['--calls', '--json'])
+    expect(result.code).toBe(1)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toContain('no saved call record')
   }))

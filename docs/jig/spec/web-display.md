@@ -343,7 +343,8 @@ Missing child identity remains explicitly unavailable.
 Stale or incomplete observations disable these links.
 
 The selected live invocation offers an explicit **Copy investigation brief** action.
-The plain text identifies the observed caller, slot, caller-local operation, and observed state.
+The plain text gives the Run root shown in the workspace.
+It identifies the observed caller, slot, caller-local operation, and observed state.
 It presents any admitted application outcome separately from lifecycle state.
 It uses admitted configuration labels only for exact matches and counts reported views by exact child attribution.
 Missing or conflicting correspondence and relevant omissions remain explicit.
@@ -457,9 +458,8 @@ actual ancestors of matching calls. Call details may include retained reports
 associated by accepted-source or host-observed correspondence, never by matching
 names or diagnostic path strings.
 
-Saved packets contain no retained portable views or invocation history. Render
-only fixed recorded fields, captured files and recorded diagnostics, without
-reconstructing domain views or a graph from prose or familiar keys.
+The saved browser inspector renders fixed recorded fields, captured files and recorded diagnostics.
+Use [saved child calls](cli-experience.md#saved-child-calls) for opt-in call evidence in a packet.
 The separately selected application archive retains explicit display bundles under its own contract.
 Manifest consistency is not authentication of the report.
 

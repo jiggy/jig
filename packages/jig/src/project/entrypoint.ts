@@ -143,7 +143,7 @@ function groups(args: readonly string[]): Map<string, [string, string | undefine
   const grouped = new Map<string, [string, string | undefined][]>()
   for (let index = 0; index < args.length; index++) {
     const option = args[index]!
-    const argument = option === '--json' ? undefined : args[++index]
+    const argument = option === '--json' || option === '--record-calls' ? undefined : args[++index]
     const key =
       option === '--attach' || option === '--select'
         ? `${option}:${argument?.split('=', 1)[0]}`

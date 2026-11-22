@@ -49,6 +49,7 @@ import {
   privatePresentationDeadline,
   privatePresentationNow,
 } from './root-run-timeout-policy.js'
+import { readPrivateSavedCalls, retainPrivateSavedCalls } from './saved-call-evidence.js'
 
 const MARKER = 'JIG_PRIVATE_FILE_OWNER'
 const RECOVERY = 'JIG_PRIVATE_FILE_RECOVERY'
@@ -436,6 +437,10 @@ export async function privateOwnFileCommand(
                   coordinatorLost.signal,
                   undefined,
                   capture,
+                  readPrivateSavedCalls(
+                    request.callEvidence,
+                    (record as Record<string, JsonValue> | null)?.runId,
+                  ),
                 )
               } finally {
                 if (capture)
@@ -490,6 +495,7 @@ export async function privateOwnFileCommand(
                 send(socket, {
                   ok: true,
                   receipt,
+                  ...(owner.callEvidenceRetained ? { callEvidenceRetained: true } : {}),
                   ...(checkpoints === undefined ? {} : { checkpoint: checkpoints.latest ?? null }),
                 } as unknown as JsonValue)
               })
@@ -804,19 +810,25 @@ export function privateFileDeliveryConnection(
   let destination: string | undefined
   let checkpoint: import('./private-run-checkpoint.js').RetainedRunCheckpoint | null | undefined
   let inspection = false
+  let callEvidenceRetained = false
   let pending: Promise<Record<string, JsonValue>> | undefined
   const request = (
     fields: Record<string, JsonValue>,
     allowRetire = false,
+    callEvidence?: JsonValue,
   ): Promise<Record<string, JsonValue>> => {
     if ((retiring && !allowRetire) || pending)
       return Promise.reject(new Error('file delivery boundary unavailable'))
     const operation = (async () => {
-      send(socket, {
+      const message = {
         ...fields,
         token: selected.token,
         ...(selected.platform === 'linux' ? { pid: process.pid } : {}),
-      })
+      }
+      send(
+        socket,
+        callEvidence === undefined ? message : retainPrivateSavedCalls(message, callEvidence),
+      )
       const next = await iterator.next()
       if (
         !next.done &&
@@ -971,6 +983,9 @@ export function privateFileDeliveryConnection(
       })()
       return retirement
     },
+    get callEvidenceRetained() {
+      return callEvidenceRetained
+    },
     get checkpoint() {
       return checkpoint
     },
@@ -1032,7 +1047,7 @@ export function privateFileDeliveryConnection(
       return (await request({ type: 'checkpoint', input: input as unknown as JsonValue }))
         .receipt as unknown as import('./private-run-checkpoint.js').RunCheckpointReceipt
     },
-    async publish(record, output, signal) {
+    async publish(record, output, signal, callEvidence) {
       let transferred: ReturnType<typeof requirePrivateCapturedOutput> | undefined
       if (output !== undefined) {
         if (selected.platform === 'darwin' && output.kind !== 'snapshot')
@@ -1057,20 +1072,24 @@ export function privateFileDeliveryConnection(
                 files: transferred.files,
                 directories: transferred.directories,
               } as unknown as JsonValue)
-        const pending = request({
-          type: 'publish',
-          record,
-          output:
-            output === undefined
-              ? null
-              : selected.platform === 'linux'
-                ? output.kind === 'linux-directory'
-                  ? output.directory.fd
-                  : { fd: transferred!.fd, manifest: manifest! }
-                : manifest!,
-          cancelled: signal?.aborted ?? false,
-          inspection,
-        })
+        const pending = request(
+          {
+            type: 'publish',
+            record,
+            output:
+              output === undefined
+                ? null
+                : selected.platform === 'linux'
+                  ? output.kind === 'linux-directory'
+                    ? output.directory.fd
+                    : { fd: transferred!.fd, manifest: manifest! }
+                  : manifest!,
+            cancelled: signal?.aborted ?? false,
+            inspection,
+          },
+          false,
+          callEvidence,
+        )
         const transfer =
           selected.platform === 'darwin' && transferred !== undefined
             ? sendPrivateMacosDescriptors(
@@ -1085,6 +1104,7 @@ export function privateFileDeliveryConnection(
           socket.destroy()
           throw error
         })
+        callEvidenceRetained = reply.callEvidenceRetained === true
         if (Object.hasOwn(reply, 'checkpoint'))
           checkpoint = reply.checkpoint as unknown as typeof checkpoint
         return reply.receipt as unknown as PrivateDeliveryReceipt

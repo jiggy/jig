@@ -126,7 +126,7 @@ Unavailable identity and stale observations remain explicit rather than selectin
 
 From an invocation opened through **Application map** or **Execution**, select **Copy investigation brief**.
 Paste the plain text into a coding-agent request and add your own question.
-The brief includes the caller, slot, original operation, observed state, and any available application outcome.
+The brief includes the Run root, caller, slot, original operation, observed state, and any available application outcome.
 It includes the configured target only when Jig matches the invocation to the admitted configuration.
 It states when correspondence is unavailable or the Run omitted observations.
 
@@ -142,7 +142,7 @@ The invocation view retains those calls for inspection.
 
 The map has [fixed display limits](../reference/limits.md#inspect-application-composition).
 An oversized composition becomes explicitly unavailable without changing execution.
-Saved packets and retained application views do not contain this live composition or its call history.
+Use [saved child calls](#inspect-saved-child-calls) to reopen opted-in call evidence.
 
 The Run inspector remains read-only.
 Use the map and invocation evidence to identify changes for your codebase.
@@ -218,9 +218,8 @@ destination inside `result.json` does not redirect inspection elsewhere.
 Saved values are recorded local claims, not newly authenticated execution facts.
 File previews use immutable captured bytes checked against the saved manifest.
 Matching digests establish consistency with that manifest. Missing or mismatched
-files are reported, while already verified previews remain available. Live Flow
-tabs and call history are not retained in current packets and are not
-reconstructed. The TUI inspector asks before leaving with `q` or keyboard
+files are reported, while already verified previews remain available.
+The TUI inspector asks before leaving with `q` or keyboard
 Ctrl-C, with **Stay** selected.
 
 Escape returns within the TUI. Inspection remains subject to any explicit
@@ -242,6 +241,25 @@ report records a failed Run. Exit 1 means invalid or unavailable evidence,
 incomplete file verification, or output failure. Exit 2 means external
 interruption. Always examine the recorded execution and application outcome
 before deciding what to do.
+
+
+### Inspect saved child calls
+
+To check an application's route after the Run closes, ask Jig to save its observed calls.
+
+```sh
+jig run binding:code --attach source=fixtures/known --record-calls --out ./import-result
+jig inspect --result ./import-result --calls
+```
+
+This example uses the Contact Import application's code Binding.
+The record shows the reader, mapper, converter and exporter calls with their returned outcomes.
+Copy the packet to reopen the same evidence after the source changes.
+
+Use `--calls --json` in an integration test to assert the caller, slot, target and outcome.
+Check that `coverage` is `complete` before asserting that Jig observed no call through a slot.
+An earlier branch or a missing observation can both leave a slot absent.
+See the [saved call contract](https://jig.md/spec/cli-experience.md#saved-child-calls) for coverage and exit codes.
 
 ## Reopen application views
 

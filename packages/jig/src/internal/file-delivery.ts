@@ -39,6 +39,7 @@ import type {
   RunCheckpointReceipt,
 } from './private-run-checkpoint.js'
 import { privatePresentationNow } from './root-run-timeout-policy.js'
+import { type PrivateSavedCalls, retainPrivateSavedCalls } from './saved-call-evidence.js'
 
 export interface PrivateDeliveryReceipt {
   readonly status: 'written' | 'failed' | 'unknown'
@@ -72,6 +73,7 @@ export interface PrivateDeliveryConnection {
   ): Promise<PrivateDeliveryInspectionPreview>
   /** Authority release, ACK and expected channel completion all precede resolution. */
   retire?(options: PrivateDeliveryInspectionOptions): Promise<void>
+  readonly callEvidenceRetained?: boolean
   readonly checkpoint?: RetainedRunCheckpoint | null | undefined
   prepare(directory: string, roots: readonly number[]): Promise<void>
   bindCheckpoint?(identity: RunCheckpointIdentity, project: string, epoch: number): Promise<void>
@@ -80,6 +82,7 @@ export interface PrivateDeliveryConnection {
     record: JsonValue,
     output: PrivateExecutionOutput | undefined,
     signal?: AbortSignal,
+    callEvidence?: PrivateSavedCalls,
   ): Promise<PrivateDeliveryReceipt>
 }
 
@@ -116,6 +119,11 @@ interface DeliveryFile {
 
 /** Owned by the outer command, never the execution coordinator or Flow. */
 export class PrivateFileDeliveryOwner {
+  #callEvidenceRetained = false
+  get callEvidenceRetained(): boolean {
+    return this.#callEvidenceRetained
+  }
+
   #parent: FileHandle | undefined
   #parentPath: string | undefined
   #leaf: string | undefined
@@ -286,6 +294,7 @@ export class PrivateFileDeliveryOwner {
     coordinatorLost?: AbortSignal,
     phaseDeadline?: number,
     checkpointCapture?: PrivateCapturedOutput,
+    callEvidence?: PrivateSavedCalls,
   ): Promise<PrivateDeliveryReceipt> {
     if (this.#close || this.#publishing)
       return Promise.reject(new Error('delivery owner unavailable'))
@@ -297,6 +306,7 @@ export class PrivateFileDeliveryOwner {
       coordinatorLost,
       phaseDeadline,
       checkpointCapture,
+      callEvidence,
     )
     return this.#publication
   }
@@ -308,6 +318,7 @@ export class PrivateFileDeliveryOwner {
     coordinatorLost?: AbortSignal,
     phaseDeadline?: number,
     checkpointCapture?: PrivateCapturedOutput,
+    callEvidence?: PrivateSavedCalls,
   ): Promise<PrivateDeliveryReceipt> {
     if (
       this.#close ||
@@ -444,6 +455,7 @@ export class PrivateFileDeliveryOwner {
       this.#stage = { location, inode: info.ino, device: info.dev }
       await this.onStaged?.()
       checkTime()
+      let retainedCalls = false
       let delivery: PrivateDeliveryReceipt
       const stage = await openPrivateFile(
         location,
@@ -501,10 +513,14 @@ export class PrivateFileDeliveryOwner {
           source: output !== undefined ? 'final' : checkpoint !== undefined ? 'checkpoint' : 'none',
           files: Object.freeze(files.map(({ path, bytes, digest }) => ({ path, bytes, digest }))),
         })
+        const packet = { ...rootRecord, delivery } as unknown as Record<string, JsonValue>
+        const retained =
+          callEvidence === undefined ? packet : retainPrivateSavedCalls(packet, callEvidence)
+        retainedCalls = retained !== packet
         await writePrivateDeliveryStream(
           stage,
           'result.json',
-          privateCanonicalJsonChunks({ ...rootRecord, delivery } as unknown as JsonValue, true),
+          privateCanonicalJsonChunks(retained, true),
           checkTime,
         )
       } finally {
@@ -518,6 +534,7 @@ export class PrivateFileDeliveryOwner {
         throw new Error('delivery stage identity changed')
       await publishPrivateDirectory(this.#parent, name, this.#leaf)
       this.#published = true
+      this.#callEvidenceRetained = retainedCalls
       this.#stage = undefined
       if (this.#retainPreview) {
         this.#previewFiles = previews

@@ -140,7 +140,9 @@ export interface RunHostOperationDispatcher {
   call?(call: RunHostCall, signal: AbortSignal): Promise<RunHostOperationTerminal>
   /** Bounded metadata only; observation cannot change dispatch or its terminal. */
   onCall?(
-    call: Pick<RunHostCall, 'operationId' | 'slot' | 'intent'>,
+    call: Pick<RunHostCall, 'operationId' | 'slot' | 'intent'> & {
+      readonly artifactRelease?: true
+    },
     state: 'requested' | 'active' | 'cancel-requested' | 'returned' | 'failed' | 'uncertain',
     cause?: string,
     outcome?: string,
@@ -214,6 +216,7 @@ interface ParsedOperation {
   readonly operationId: string
   readonly signature: string
   readonly call: RunHostCall
+  readonly artifactRelease?: true
 }
 
 type NormalizedOperationTerminal = RunHostOperationTerminal
@@ -645,8 +648,8 @@ export class RunHostSession {
         : this.dispatcher?.call
     if (dispatch === undefined) {
       const terminal = failedOperation('UNAVAILABLE', 'no invocation dispatcher is installed')
-      this.observeCall(operation.call, 'requested')
-      this.observeCall(operation.call, 'failed', terminal.message)
+      this.observeCall(operation, 'requested')
+      this.observeCall(operation, 'failed', terminal.message)
       const settled: OperationRecord = {
         signature: operation.signature,
         controller: new AbortController(),
@@ -665,15 +668,15 @@ export class RunHostSession {
     }
     this.operations.set(operation.operationId, record)
     this.attachOperationWaiter(request.id, record)
-    this.observeCall(operation.call, 'requested')
+    this.observeCall(operation, 'requested')
     record.controller.signal.addEventListener(
       'abort',
-      () => this.observeCall(operation.call, 'cancel-requested'),
+      () => this.observeCall(operation, 'cancel-requested'),
       { once: true },
     )
     const task = Promise.resolve()
       .then(() => {
-        this.observeCall(operation.call, 'active')
+        this.observeCall(operation, 'active')
         return dispatch.call(this.dispatcher, operation.call, record.controller.signal)
       })
       .then((terminal) => normalizeOperationTerminal(terminal))
@@ -693,7 +696,7 @@ export class RunHostSession {
       })
       .then((terminal) => {
         this.observeCall(
-          operation.call,
+          operation,
           terminal.status === 'succeeded'
             ? 'returned'
             : terminal.code === 'UNCERTAIN'
@@ -708,7 +711,7 @@ export class RunHostSession {
   }
 
   private observeCall(
-    call: RunHostCall,
+    { call, artifactRelease }: ParsedOperation,
     state: Parameters<NonNullable<RunHostOperationDispatcher['onCall']>>[1],
     cause?: string,
     outcome?: string,
@@ -725,6 +728,7 @@ export class RunHostSession {
         {
           operationId: call.operationId,
           slot: call.slot,
+          ...(artifactRelease === undefined ? {} : { artifactRelease }),
           ...(intent === undefined ? {} : { intent }),
         },
         state,
@@ -1508,6 +1512,7 @@ function parseArtifactRelease(request: ParsedRequest): ParsedOperation {
     operationId,
     signature: `release:${operationSignature(params)}`,
     call: Object.freeze({ operationId, slot: 'artifact-release', input: reference }),
+    artifactRelease: true,
   }
 }
 

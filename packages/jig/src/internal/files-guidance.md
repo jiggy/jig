@@ -265,6 +265,9 @@ These links locate module rules. All selected domain requirements still apply.
   output once and fences further projection, checkpoint and retention after
   close begins.
 
+  Optional saved call evidence uses only spare transport and packet capacity.
+  Confirm inclusion with the same publication receipt before returning the field on stdout.
+
 ### delivery-inspection
 
 - `delivery-inspection.ts` transfers verified receipt-selected complete bytes and excerpts to

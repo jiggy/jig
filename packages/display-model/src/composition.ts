@@ -15,13 +15,21 @@ export type DisplayCompositionObservations = Readonly<{
   unmatched: readonly DisplayCompositionUnmatched[]
 }>
 
-type Call = DisplaySnapshot['calls'][number]
+type Call = Pick<
+  DisplaySnapshot['calls'][number],
+  'id' | 'sourceId' | 'childSourceId' | 'parentId' | 'slot'
+>
+type CompositionInput = Pick<DisplaySnapshot, 'mode' | 'composition' | 'rootSourceId'> & {
+  readonly calls: readonly Call[]
+}
 type Resolution =
   | { match: DisplayCompositionMatch }
   | { reason: DisplayCompositionUnmatched['reason'] }
 
 /** Match retained requests in a validated snapshot, without inferring execution or sequence. */
-export function compositionObservations(snapshot: DisplaySnapshot): DisplayCompositionObservations {
+export function compositionObservations(
+  snapshot: CompositionInput,
+): DisplayCompositionObservations {
   const composition = snapshot.composition
   if (snapshot.mode !== 'live-run' || composition?.state !== 'available')
     return {
@@ -35,7 +43,10 @@ export function compositionObservations(snapshot: DisplaySnapshot): DisplayCompo
   const routes = new Map<string, Map<string, (typeof composition.edges)[number]>>()
   for (const edge of composition.edges) {
     let slots = routes.get(edge.source)
-    if (!slots) routes.set(edge.source, (slots = new Map()))
+    if (!slots) {
+      slots = new Map()
+      routes.set(edge.source, slots)
+    }
     slots.set(edge.slot, edge)
   }
   const calls = new Map(snapshot.calls.map((call) => [call.id, call]))
