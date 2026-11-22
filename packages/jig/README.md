@@ -46,7 +46,7 @@ Project commands:
 ```text
 jig init [--bare] <directory> [--agent [codex|claude]]
 jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
-jig add-use <package-path> <slot>=<source>
+jig add-use <package-path> <slot>[=<source>]
 jig types <package-path>
 jig types --project
 jig specialize-slot binding:<caller> --slot <slot> --as <name> --select <child-slot>=<target>
@@ -110,8 +110,8 @@ offline. For example, `jig new worker --use agent=jig:agent-run` copies the comp
 Agent agreement and declares the collaborator slot. Importing preserves exact
 descriptors and licenses as local snapshots; implementations and grants remain
 separately selected and reviewed. Channel agreements belong under `channels`.
-Use `jig add-use flows/worker review=./flows/editor/FLOW.contract.json` to copy
-an agreement and declare a collaborator in an existing code Flow.
+Use `jig add-use flows/worker review` to declare an uncontracted slot in an existing code Flow.
+Supply `review=./flows/editor/FLOW.contract.json` to require and copy a named agreement.
 Edit the caller, configure its target, and use ordinary check and review.
 
 Interactive `jig run` can offer an explicit choice of ready approved targets;

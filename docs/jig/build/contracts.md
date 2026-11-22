@@ -261,7 +261,17 @@ not fetch dependencies, run code, overwrite a destination or approve work.
 
 ## Declare a collaborator in an existing Flow
 
-Run this from the project root to add a named invocation agreement to an existing code Flow:
+Run `jig add-use` from the project root with the path to an existing code Flow.
+Use a bare slot name when you plan to select a local collaborator explicitly:
+
+```sh
+jig add-use flows/worker review
+```
+
+Jig adds `"review": {}` under `uses` in the caller's existing `FLOW.meta.json`.
+This declares an uncontracted slot. The selected Flow's own input and result contract still applies.
+
+To require a specific named agreement, supply its source with the slot:
 
 ```sh
 jig add-use flows/worker review=./flows/editor/FLOW.contract.json
@@ -270,6 +280,7 @@ jig add-use flows/worker review=./flows/editor/FLOW.contract.json
 Jig copies the complete agreement into `flows/worker/contracts/review`.
 It adds `uses.review` to the existing `FLOW.meta.json`.
 You can also select a standard `jig:` agreement or an installed `npm:` package.
+If the descriptor has no portable identity, Jig refuses the copy and points to the bare slot form.
 
 Edit the caller to call `review` for the intended conditions.
 Set its target in the caller's Binding.
