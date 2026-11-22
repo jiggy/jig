@@ -80,6 +80,7 @@ test('real HTTP client reconciles a lost launch reply without submitting the Run
   let status = { state: 'idle' }
   const submissions = []
   let requests = 0
+  let accepted = 0
   const server = await serverFor(async (request, response) => {
     requests++
     if (request.headers.authorization !== 'Bearer ' + cap) return send(response, {}, 401)
@@ -100,8 +101,11 @@ test('real HTTP client reconciles a lost launch reply without submitting the Run
     await client.refreshProject()
     await client.refreshRun()
     assert.equal(client.canLaunch, true)
-    await client.launch('{"issue":"first","issue":"second"}', 'run-one')
+    await client.launch('{"issue":"first","issue":"second"}', 'run-one', new Map(), () => {
+      accepted++
+    })
     await until(() => client.run?.state === 'starting')
+    assert.equal(accepted, 0)
     assert.equal(client.unresolvedRequest, undefined)
     assert.equal(client.canLaunch, false)
     assert.equal(submissions.length, 1)
@@ -112,6 +116,9 @@ test('real HTTP client reconciles a lost launch reply without submitting the Run
     status = { state: 'settled', requestId: 'run-one', targetId: 'review' }
     await client.refreshRun()
     assert.equal(client.canLaunch, true)
+    assert.equal(accepted, 1)
+    await client.refreshRun()
+    assert.equal(accepted, 1)
     assert(requests >= 5)
   } finally {
     client.stop()

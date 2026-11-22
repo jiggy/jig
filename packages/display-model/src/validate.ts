@@ -699,12 +699,13 @@ export function validateDisplayProjectRunRequest(value: unknown): DisplayProject
   }
 }
 
-function runEvidence(value: unknown): void {
+function runEvidence(value: unknown, root?: string): void {
   const data = record(value, [
     'execution',
     'outcome',
     'progress',
     'calls',
+    'callCoverage',
     'callsOmitted',
     'delivery',
     'files',
@@ -718,9 +719,19 @@ function runEvidence(value: unknown): void {
       if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity < 0) fail()
     }
   })
-  for (const value of list(data.calls, 8)) {
-    const call = record(value, ['slot', 'state', 'outcome'])
+  const calls = list(data.calls, 8)
+  const coverage = choice(data.callCoverage, ['complete', 'incomplete', 'unavailable'])
+  const omitted = count(data.callsOmitted)
+  if (coverage === 'unavailable' && (calls.length || omitted)) fail()
+  if (coverage === 'complete' && omitted) fail()
+  const targets: (string | undefined)[] = []
+  for (const [index, value] of calls.entries()) {
+    const call = record(value, ['parent', 'caller', 'slot', 'target', 'state', 'outcome'])
     text(call.slot, 128, 1)
+    if (call.parent !== undefined && (count(call.parent) < 1 || Number(call.parent) > index)) fail()
+    if ((call.caller === undefined) !== (call.target === undefined)) fail()
+    const caller = call.caller === undefined ? undefined : text(call.caller, 1029, 1)
+    targets.push(call.target === undefined ? undefined : text(call.target, 1029, 1))
     choice(call.state, [
       'requested',
       'active',
@@ -729,12 +740,18 @@ function runEvidence(value: unknown): void {
       'failed',
       'uncertain',
     ])
-    if (call.outcome !== undefined) {
-      if (call.state !== 'returned') fail()
-      text(call.outcome, 64, 1)
+    if (call.state === 'returned') text(call.outcome, 64, 1)
+    else if (call.outcome !== undefined) fail()
+    if (coverage === 'complete') {
+      if (caller === undefined || (call.state !== 'failed' && call.state !== 'returned')) fail()
+      if (
+        call.parent === undefined
+          ? root && caller !== root
+          : caller !== targets[Number(call.parent) - 1]
+      )
+        fail()
     }
   }
-  count(data.callsOmitted)
   optional(data.files, (value) => {
     const files = record(value, ['total', 'paths'])
     const paths = list(files.paths, 8)
@@ -777,11 +794,17 @@ export function validateDisplayProjectRun(value: unknown): DisplayProjectRun {
     identity(data.targetId)
     if (data.comparison !== undefined) {
       if (state !== 'settled') fail()
-      const comparison = record(data.comparison, ['revision', 'inputId', 'label', 'evidence'])
+      const comparison = record(data.comparison, [
+        'revision',
+        'inputId',
+        'label',
+        'root',
+        'evidence',
+      ])
       identity(comparison.revision)
       if (!/^[a-f0-9]{64}$/u.test(text(comparison.inputId, 64, 64))) fail()
       text(comparison.label, 256, 1)
-      runEvidence(comparison.evidence)
+      runEvidence(comparison.evidence, text(comparison.root, 1029, 1))
     }
     if (state === 'refused' || state === 'uncertain') {
       text(data.reason, 1024, 1)

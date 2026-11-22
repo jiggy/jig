@@ -113,7 +113,7 @@ export class PrivateExplorerClient {
   #changed: () => void
   #base: string
   #selected: string | undefined
-  #submitted: { requestId: string; targetId: string } | undefined
+  #submitted: { requestId: string; targetId: string; onAccepted?: () => void } | undefined
   #stopped = false
   #closeRequested = false
   #projectRequest: AbortController | undefined
@@ -250,7 +250,7 @@ export class PrivateExplorerClient {
       run.requestId === this.#submitted?.requestId &&
       run.targetId === this.#submitted.targetId
     ) {
-      if (run.requestId === this.unresolvedRequest) this.unresolvedRequest = undefined
+      this.#acknowledgeSubmission(run)
       if (run.state === 'refused') this.requestError = ''
     }
   }
@@ -263,10 +263,19 @@ export class PrivateExplorerClient {
     const run = validateDisplayProjectRun(value)
     if (run.state === 'idle' || run.requestId !== requestId || run.targetId !== targetId)
       throw new Error('Request status does not match its identity')
-    if (this.unresolvedRequest === requestId) this.unresolvedRequest = undefined
+    this.#acknowledgeSubmission(run)
     if (run.state === 'refused') this.requestError = run.reason
-    this.#retainComparison(run)
     return run
+  }
+
+  #acknowledgeSubmission(run: Exclude<DisplayProjectRun, { state: 'idle' }>): void {
+    const submitted = this.#submitted
+    if (submitted?.requestId !== run.requestId || submitted.targetId !== run.targetId) return
+    if (this.unresolvedRequest === run.requestId) this.unresolvedRequest = undefined
+    if (run.state === 'starting') return
+    const accepted = submitted.onAccepted
+    delete submitted.onAccepted
+    if (run.state === 'running' || run.state === 'settled') accepted?.()
   }
 
   #retainComparison(run: DisplayProjectRun): void {
@@ -357,6 +366,7 @@ export class PrivateExplorerClient {
     input: string,
     requestId: string,
     files: ReadonlyMap<string, readonly File[]> = new Map(),
+    onAccepted?: () => void,
   ): Promise<boolean> {
     const project = this.project
     const selected = project?.selected
@@ -389,7 +399,11 @@ export class PrivateExplorerClient {
     this.#submission = controller
     this.sending = true
     this.runCurrent = false
-    this.#submitted = { requestId, targetId: selected.targetId }
+    this.#submitted = {
+      requestId,
+      targetId: selected.targetId,
+      ...(onAccepted === undefined ? {} : { onAccepted }),
+    }
     this.unresolvedRequest = requestId
     this.runError = ''
     this.requestError = ''
@@ -411,6 +425,7 @@ export class PrivateExplorerClient {
       const value = await boundedJson(response, STATUS_BYTES, controller.signal)
       if (this.#stopped) return false
       if ([400, 409, 413, 429].includes(response.status)) {
+        this.#submitted = undefined
         this.unresolvedRequest = undefined
         this.runCurrent = false
         this.requestError = responseReason(

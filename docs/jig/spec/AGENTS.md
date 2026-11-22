@@ -69,6 +69,7 @@ execution evidence.
 - Project exploration reads approved configuration before execution, with separate project and Run observation capabilities.
   Explicit launch rechecks approval and input through the ordinary installed Run path.
   Reconnection never resubmits work, and unknown execution blocks further launch.
+  Input reuse prepares the editor only. Run comparison keeps separate approvals and bounded call recording coverage.
 - Execution client examples preserve selected receipt approval, exact tickets,
   conservative dispatch evidence, and original final/checkpoint status.
   Retained allowances, shared attempt quota, live artifact limits, and review
