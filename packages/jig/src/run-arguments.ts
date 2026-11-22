@@ -199,8 +199,6 @@ export function parseRun(
       '--select requires a matching --attach name',
       1,
     )
-  if (recordCalls && output === undefined && !allowUnboundSelect)
-    usage('run', '--record-calls requires a result directory selected with --out.')
   return {
     target,
     recordCalls,

@@ -724,8 +724,10 @@ test('plain and machine saved inspection can skip optional decoding while retain
     }
   }))
 
-test('record-calls requires a selected result and remains an operator option', () => {
-  expect(() => parseRun(['run', 'binding:app', '--record-calls'])).toThrow(/--out/)
+test('record-calls can select evidence without a result directory', () => {
+  const resultOnly = parseRun(['run', 'binding:app', '--record-calls'])
+  expect(resultOnly.recordCalls).toBeTrue()
+  expect(resultOnly.output).toBeUndefined()
   expect(() =>
     parseRun(['run', 'binding:app', '--out', 'packet', '--record-calls', '--record-calls']),
   ).toThrow(/once/)

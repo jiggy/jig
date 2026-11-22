@@ -245,7 +245,11 @@ before deciding what to do.
 
 ### Inspect saved child calls
 
-To check an application's route after the Run closes, ask Jig to save its observed calls.
+Use `jig run ... --record-calls --json` to read observed calls in the result's `callEvidence` field.
+The field is optional. Check its coverage before using it in a test.
+For a result-only target, you can read this evidence without creating a packet directory.
+
+To keep evidence for later inspection, select a fresh result packet.
 
 ```sh
 jig run binding:code --attach source=fixtures/known --record-calls --out ./import-result
@@ -256,7 +260,7 @@ This example uses the Contact Import application's code Binding.
 The record shows the reader, mapper, converter and exporter calls with their returned outcomes.
 Copy the packet to reopen the same evidence after the source changes.
 
-Use `--calls --json` in an integration test to assert the caller, slot, target and outcome.
+Use either record to assert the caller, slot, target and outcome.
 Check that `coverage` is `complete` before asserting that Jig observed no call through a slot.
 An earlier branch or a missing observation can both leave a slot absent.
 See the [saved call contract](../spec/cli-experience.md#saved-child-calls) for coverage and exit codes.
