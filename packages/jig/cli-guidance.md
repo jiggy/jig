@@ -47,6 +47,9 @@ All selected domain requirements still apply.
   Checkpoint export alone accepts a scope selector and echoes it in the receipt.
   Correlate both replies with the exact transmitted selector, including caller mutation and serialization behavior.
   Root packet fallback never selects a child scope implicitly.
+  Ordinary Runs reserve artifact storage only for declared writable ports, forwarded
+  results, or reachable checkpoint grants. A packet of result data needs the ordinary
+  result reservation.
 
   Observational machine commands may reacquire a read-only snapshot only after
   typed `ADMISSION_STATE_BUSY` and completed disposal. Use one existing command

@@ -72,7 +72,7 @@ export async function preparePrivateCliRun(input: {
       constraints: {
         durationMs: input.durationMs,
         resultBytes: 1_048_576,
-        artifactBytes: input.output || names.size !== 0 || checkpoints ? 268_435_456 : 0,
+        artifactBytes: names.size !== 0 || checkpoints ? 268_435_456 : 0,
       },
       outputIntent: { packet: input.output, receive: [...names].sort() },
     },
