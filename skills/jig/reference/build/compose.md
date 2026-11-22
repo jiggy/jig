@@ -250,12 +250,12 @@ const jig = fileURLToPath(new URL('node_modules/.bin/jig', project))
 
 test('only the brief group uses the brief greeting', async t => {
   const cases = [
-    { target: 'binding:brief-welcome-group', messages: ['Hi, Ada.', 'Hi, Grace.'] },
-    { target: 'binding:welcome-group', messages: ['Welcome, Ada!', 'Welcome, Grace!'] },
+    { target: 'binding:brief-welcome-group', greeter: 'flow:flows/brief-hello', messages: ['Hi, Ada.', 'Hi, Grace.'] },
+    { target: 'binding:welcome-group', greeter: 'flow:flows/hello', messages: ['Welcome, Ada!', 'Welcome, Grace!'] },
   ]
-  for (const { target, messages } of cases) {
+  for (const { target, greeter, messages } of cases) {
     await t.test(target, () => {
-      const args = ['run', target, '--input', '@fixtures/group.json', '--timeout', '30s', '--json']
+      const args = ['run', target, '--input', '@fixtures/group.json', '--timeout', '30s', '--json', '--record-calls']
       const stdout = execFileSync(jig, args, {
         cwd: project,
         encoding: 'utf8',
@@ -265,6 +265,13 @@ test('only the brief group uses the brief greeting', async t => {
       assert.equal(result.status, 'succeeded')
       assert.equal(result.outcome, 'done')
       assert.deepEqual(result.output?.messages, messages)
+      const evidence = result.callEvidence
+      assert.equal(evidence?.coverage, 'complete')
+      assert.equal(evidence.runId, result.runId)
+      assert.deepEqual(
+        evidence.calls.map(call => [call.caller, call.slot, call.target, call.state, call.outcome]),
+        messages.map(() => [target, 'greeting', greeter, 'returned', 'done']),
+      )
     })
   }
 })
@@ -287,9 +294,12 @@ node --test test/wiring.test.mjs
 
 Expect both Binding subtests to pass.
 The test checks execution status, method outcome, and the exact messages separately.
-Each greeter produces a distinct message, and the coordinator forwards it from the child result.
-Those messages witness the selected implementation for this input.
-The test leaves other inputs, cancellation, and any other invocations unobserved.
+The recorded calls check the exact greeter that returned each result.
+`--record-calls --json` includes that evidence in the Run result.
+Result-only checks need no packet directory.
+
+Await each subtest so only one Run uses the project at a time.
+The results cover these inputs and these invocations.
 
 To see the regression, copy the source and dependency locks into a disposable sibling directory.
 Run `npm ci` in that copy.
@@ -318,6 +328,7 @@ Record what each check establishes.
 - `jig inspect --flow --topology --all --approved --json` shows configured destinations.
 - The [live application map](results.md#follow-available-and-observed-calls) can show observed requests and outcomes. The map reports any observation limits.
 - Check the command exit, root execution status, and expected domain outcome. If the application forwards child evidence, assert the exact values it received.
+- Use `--record-calls --json` for [observed child calls](results.md#inspect-saved-child-calls). Require complete coverage before asserting absence.
 - For file results, use `--out` with a fresh directory. Use `jig inspect --result` to verify the packet.
   Compare the relevant files with your expected output.
 
