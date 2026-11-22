@@ -173,10 +173,24 @@ def main(cli):
         }))
         return 0
     except Exception as error:
-        lines = "/".join(str(frame.lineno) for frame in traceback.extract_tb(error.__traceback__)
-                         if frame.filename == __file__)
-        print(f"Installed Explorer comparison stopped at {phase} ({type(error).__name__}, lines {lines})",
-              file=sys.stderr)
+        lines = [str(frame.lineno) for frame in traceback.extract_tb(error.__traceback__)
+                 if frame.filename == __file__]
+        failure = {
+            "application": "contact-explorer-comparison",
+            "stage": phase,
+            "code": type(error).__name__,
+        }
+        if lines:
+            failure["operation"] = "lines-" + "-".join(lines[-6:])
+        if isinstance(error, OSError) and error.errno is not None:
+            failure["terminalCode"] = f"errno-{error.errno}"
+        else:
+            terminal = review if review is not None else owner
+            if terminal is not None:
+                code = terminal.process.poll()
+                if code is not None:
+                    failure["terminalCode"] = f"exit-{code}"
+        print("Foundation client failure: " + json.dumps(failure), file=sys.stderr)
         return 1
     finally:
         if review is not None:
