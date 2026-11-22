@@ -1158,6 +1158,23 @@ When multiple caller slots select the same target, its row puts those slots and 
 The index displays up to eight caller slots per target.
 The row counts additional caller slots. Links open the captured Binding declarations for the target and its displayed callers, where available.
 
+`jig inspect --flow --find TEXT` looks up a phrase in the working-tree navigation index.
+Compare the phrase without case distinctions against caller slot names, destination selectors, package paths, and captured Flow descriptions.
+Show name and slot matches before description-only matches among handoffs.
+Include matching targets with no configured callers. Show up to twelve matches and count omissions.
+
+Require one nonempty phrase of up to 128 characters.
+The lookup emits Markdown and takes no other inspection scope or view option.
+An empty match list exits successfully.
+
+Show the matched handoffs and other caller slots that share one of their caller's destinations.
+Identify the destination's independent Run selector.
+Link the caller's Binding declaration, local entry file, and focused inspection when available.
+Show up to four single- or double-quoted slot references per handoff from captured local source.
+Check up to 64 source files of the entry file's language and read up to 256 KiB per caller package.
+
+These locations match quoted slot text. Conditions, order, and execution require separate evidence.
+
 An exact target retains its configured context, including other uses of its implementation and callers.
 Source behavior links the captured entry file for a local target and for displayed local choices at incoming slots.
 The application map shows the entry file once per Flow package. Package inspection shows it when a configured use is present.

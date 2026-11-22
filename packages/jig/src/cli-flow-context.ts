@@ -1,6 +1,7 @@
 import {
   type ConfiguredConnection,
   renderFlowNavigationIndex,
+  renderFlowNavigationMatches,
   renderFlowOrientation,
   renderFlowPackageUses,
 } from './cli-flow-orientation.js'
@@ -10,6 +11,7 @@ import {
   record,
   selectFlowContext,
 } from './internal/flow-inspection-scope.js'
+import type { FlowNavigationSearch } from './internal/flow-navigation.js'
 import { PRIVATE_FLOW_CONTEXT_LIMITS } from './internal/inspection-policy.js'
 import type { JsonValue } from './json.js'
 
@@ -31,6 +33,10 @@ const diagram = (value: string): string =>
     .replace(/[\p{Cc}\u2028\u2029]/gu, ' ')
 const targetKey = (target: string) => `target:${target}`
 const resourceKey = (caller: string, slot: string) => `resource:${JSON.stringify([caller, slot])}`
+
+export function renderFlowSearch(search: FlowNavigationSearch): string {
+  return renderFlowNavigationMatches(search, markdown).join('\n')
+}
 
 function diagramIds(snapshot: Record<string, JsonValue>) {
   const names = new Map<string, string>()

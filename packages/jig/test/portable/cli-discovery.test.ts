@@ -30,6 +30,9 @@ test('usage mistakes show one correction, not the entire manual', async () => {
     [['run', 'flow:flows/hello', '--timeot', '2m'], 'Did you mean --timeout?'],
     [['review', '--oops'], 'Unknown or repeated review option'],
     [['check', '--diff', '--diff'], 'Use only --diff and --json'],
+    [['inspect', '--flow', '--find'], 'Specify --find with one search phrase'],
+    [['inspect', '--flow', '--find', 'release', '--json'], 'Use --flow --find TEXT'],
+    [['inspect', '--flow', '--find', 'release', 'binding:book'], 'Use --flow --find TEXT'],
   ] as const) {
     let text = ''
     expect(
