@@ -31,6 +31,8 @@ The installed lifecycle case verifies relative Flow selectors in current and app
 It checks that a project without an entrypoint opens the navigation index and can still open focused, topology, and complete behavior views.
 
 Check shared callers against the exact selected target and link to the captured Binding paths.
+The installed workflow lookup checks description and slot matches, quoted source locations, and shared destination selectors.
+
 The installed check includes the independent Run selector for a shared target and resolves an exact Binding declaration path.
 The slot specialization scenario exercises discovery and literal membership through the installed command.
 It checks unselected files, both intermediate states for explicit membership, collision refusal, and rollback.

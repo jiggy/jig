@@ -56,6 +56,7 @@ jig run [flow:path|npm:package|binding:id] [options]
 jig inspect [flow:path|npm:package|binding:id] [--json]
 jig inspect --flow [target | --all] [--topology] [--approved] [--json]
 jig inspect --flow bindings/example.ts
+jig inspect --flow --find export
 jig inspect --flow --snapshot
 jig inspect --flow --compare BASELINE [--all]
 jig inspect --result <directory> [--display plain|tui|web] [--json]
@@ -194,6 +195,7 @@ changed or unverifiable environments. It does not check visible source edits,
 launch readiness or remote availability; Run still revalidates before execution.
 
 Use `jig inspect --flow` to read supported source routes before a Run.
+Use `jig inspect --flow --find TEXT` to locate a handoff by slot, target name, or Flow description.
 Add `--topology` for a configured connection map.
 Focus on a target to see its caller continuations and other uses of the same implementation.
 The [source behavior guide](https://jig.md/build/results#inspect-source-behavior) explains partial coverage and how to verify a route.

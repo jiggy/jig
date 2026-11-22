@@ -287,6 +287,11 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Link the captured Binding declarations.
   The installed inspection selects the index before loading the source analyzer.
 
+  `--find TEXT` searches the same captured routes by slot, destination selector, package path, or Flow description.
+  Show matched handoffs, shared destination uses, and the caller's source links.
+  Present quoted slot matches as text locations and keep behavior in focused inspection.
+  This lookup opens no behavior analyzer and does not change the topology records.
+
   The comparison renders changed source evidence from `--snapshot` and a fresh capture.
   It leads with source-linked changes on paths with uniquely corresponding captured checks.
   Unmatched-path summaries can retain call order from current source paths.

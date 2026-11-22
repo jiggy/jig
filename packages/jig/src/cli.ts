@@ -26,15 +26,15 @@ import {
 } from './attempt-contract.js'
 import { preparePrivateCliRun, privateAttemptFailureMessage } from './cli-attempt-execution.js'
 import { PrivateAttemptInput } from './cli-attempt-io.js'
-import { generateCallTypes, type generateProjectTypes } from './cli-call-types.js'
 import { PrivateCallEvidence } from './cli-call-evidence.js'
+import { generateCallTypes, type generateProjectTypes } from './cli-call-types.js'
 import { compareConfiguredRouting, parseCheck, renderCheck } from './cli-check.js'
 import { approvedTargets, completionScript, invocationGuide } from './cli-discovery.js'
 import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-archive.js'
 import { parsePrivateExploreArguments, privateExecuteExplore } from './cli-explore.js'
 import type { PrivateExploreLaunch } from './cli-explore-launch.js'
 import { renderFlowBehavior, renderFlowBehaviorComparison } from './cli-flow-behavior.js'
-import { flowContextRecord, renderFlowContext } from './cli-flow-context.js'
+import { flowContextRecord, renderFlowContext, renderFlowSearch } from './cli-flow-context.js'
 import {
   privateCliHumanText,
   privateCliStyleEnabled,
@@ -82,6 +82,7 @@ import {
   record,
 } from './internal/flow-inspection-scope.js'
 import { PrivateInputInspectionCapture } from './internal/input-inspection.js'
+import { PRIVATE_FLOW_NAVIGATION_LIMITS } from './internal/inspection-policy.js'
 import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
 import { PrivateAttemptError } from './internal/prepared-attempt-store.js'
 import { privateProfileSpan } from './internal/private-profile.js'
@@ -316,6 +317,7 @@ Example:
   jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
        jig inspect --flow [target | path | --package PATH | --all] [--topology] [--approved] [--json]
+       jig inspect --flow --find TEXT
        jig inspect --flow --snapshot
        jig inspect --flow --compare BASELINE [--all]
        jig inspect --result DIRECTORY [--display plain|tui|web | --calls] [--json]
@@ -336,6 +338,7 @@ Launch readiness and remote provider availability remain unchecked.
              A target retains callers, their other slots and shared package uses
   --all      With --flow: include every target, or every changed path in a comparison
   --package PATH  With --flow: find configured uses and callers. A bare package path also works.
+  --find TEXT     With --flow: find working-tree handoffs by name, slot or Flow description
   --topology With --flow: emit configured connections
   --approved With --flow: emit retained approved topology
   --snapshot With --flow: emit a machine baseline for the complete application
@@ -1380,6 +1383,7 @@ function parseInspect(arguments_: readonly string[]) {
   let topology = false
   let snapshot = false
   let comparison: string | undefined
+  let find: string | undefined
   for (let index = 1; index < arguments_.length; index++) {
     const value = arguments_[index]!
     if (value === '--topology' && !topology) {
@@ -1395,6 +1399,14 @@ function parseInspect(arguments_: readonly string[]) {
       } catch {
         usage('inspect', 'Use a project-relative Flow package path or an exact npm: package name.')
       }
+      continue
+    }
+    if (value === '--find') {
+      const next = arguments_[++index]?.trim()
+      const maximum = PRIVATE_FLOW_NAVIGATION_LIMITS.phraseCharacters
+      if (find !== undefined || !next || next.startsWith('-') || [...next].length > maximum)
+        usage('inspect', `Specify --find with one search phrase of up to ${maximum} characters.`)
+      find = next
       continue
     }
     if (value === '--snapshot' && !snapshot) {
@@ -1480,6 +1492,20 @@ function parseInspect(arguments_: readonly string[]) {
   if (topology && !flow) usage('inspect', '--topology requires --flow.')
   if (packagePath !== undefined && !flow) usage('inspect', '--package requires --flow.')
   if (
+    find !== undefined &&
+    (!flow ||
+      approved ||
+      topology ||
+      json ||
+      snapshot ||
+      comparison !== undefined ||
+      all ||
+      packagePath !== undefined ||
+      targetOperand !== undefined ||
+      resultDirectory !== undefined)
+  )
+    usage('inspect', 'Use --flow --find TEXT to search the working-tree navigation index.')
+  if (
     (snapshot || comparison !== undefined) &&
     (!flow ||
       approved ||
@@ -1515,6 +1541,7 @@ function parseInspect(arguments_: readonly string[]) {
     topology,
     snapshot,
     comparison,
+    find,
   }
 }
 
@@ -1668,11 +1695,16 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
         runtime.currentDirectory,
         {
           ...flowScope,
+          ...(parsed.find === undefined ? {} : { find: parsed.find }),
           ...(parsed.all || parsed.snapshot || before ? { all: true } : {}),
         },
         runtime.signal,
       )
       runtime.signal?.throwIfAborted()
+      if (inspected.kind === 'search') {
+        await runtime.writeRecord(renderFlowSearch(inspected.search))
+        return 0
+      }
       if (inspected.kind === 'index') {
         await runtime.writeRecord(
           renderFlowContext(inspected.topology, {
@@ -1743,7 +1775,7 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
         error.code === 'INSPECTION_PACKAGE_MISSING'
           ? 'JIG_PACKAGE_NOT_FOUND'
           : 'JIG_TARGET_NOT_FOUND',
-        `${error.message} List configured targets and packages with this command.\n\n  $ jig inspect --flow --topology --all${parsed.approved ? ' --approved' : ''}`,
+        `${error.message} List configured targets and packages with this command.\n\n  $ jig inspect --flow --topology --all${parsed.approved ? ' --approved' : ''}${!parsed.approved && pathOperand !== undefined ? '\n\n  To look up a phrase, use jig inspect --flow --find TEXT.' : ''}`,
         1,
       )
     if (

@@ -10,12 +10,14 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
     await mkdir(dirname(file), { recursive: true })
     await writeFile(file, source)
   }
-  const flow = async (name: string, source: string, uses?: Record<string, object>) => {
+  const flow = async (
+    name: string,
+    source: string,
+    uses?: Record<string, object>,
+    description = 'Source behavior fixture.',
+  ) => {
     await put(`flows/${name}/FLOW.ts`, source)
-    await put(
-      `flows/${name}/FLOW.meta.json`,
-      JSON.stringify({ name, description: 'Source behavior fixture.', uses }),
-    )
+    await put(`flows/${name}/FLOW.meta.json`, JSON.stringify({ name, description, uses }))
     await put(
       `flows/${name}/package.json`,
       JSON.stringify({
@@ -56,7 +58,7 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
   const converter = (status: string) =>
     method(`return { outcome: 'done', output: { status: '${status}' } }`)
   await flow('import', importer, { converter: {}, exporter: {} })
-  await flow('convert', converter('ready'))
+  await flow('convert', converter('ready'), undefined, 'Normalize the contact records.')
   await flow('export', method(`return { outcome: 'done', output: { status: 'exported' } }`))
   await flow(
     'opaque',
@@ -75,6 +77,18 @@ export async function checkInstalledFlowBehavior(cli: string, project: string, c
   )
 
   const inspect = (...args: string[]) => command([cli, 'inspect', '--flow', ...args], project)
+  const found = await inspect('--find', 'Normalize the contact')
+  expect(found.stdout).toStartWith('# Flow navigation\n')
+  expect(found.stdout).toContain('binding:code · converter → flow:flows/convert')
+  expect(found.stdout).not.toContain('binding:manual · converter → flow:flows/opaque')
+  expect(found.stdout).toMatch(/flows\/import\/FLOW.ts:\d+\]\(.\/flows\/import\/FLOW.ts#L\d+\)/)
+  expect(found.stdout).toContain('independent Run flow:flows/export')
+  expect(found.stdout).toContain('binding:manual · exporter')
+  expect(found.stdout).not.toContain('# Source behavior')
+  expect((await inspect('--find', 'EXPORTER')).stdout).toContain(
+    'binding:manual · exporter → flow:flows/export',
+  )
+  expect((await inspect('--find', 'no such workflow step')).stdout).toContain('No matches.')
   const packageUses = await inspect('flows/import')
   expect(packageUses.stdout).toBe((await inspect('--package', 'flows/import')).stdout)
   expect(packageUses.stdout).toContain('    jig inspect --flow binding:code\n')

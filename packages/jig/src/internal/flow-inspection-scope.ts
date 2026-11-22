@@ -13,7 +13,8 @@ export const list = (value: JsonValue | undefined): JsonValue[] =>
 
 export type FlowContextOptions = Readonly<{ target?: string; packagePath?: string; all?: boolean }>
 
-export type FlowInspectionOptions = FlowContextOptions & Readonly<{ pathOperand?: string }>
+export type FlowInspectionOptions = FlowContextOptions &
+  Readonly<{ pathOperand?: string; find?: string }>
 
 /** Resolve a positional path using one captured configuration and its own file inventory. */
 export async function resolveFlowInspectionPath(
