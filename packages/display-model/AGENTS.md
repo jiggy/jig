@@ -55,6 +55,7 @@ with their producer. This package owns readonly display data and pure meaning.
   Viewer handoffs accept only the exact numeric-loopback capability URL profile.
   Keep catalogue, schema, complete payload and request bounds explicit.
 - Run comparison accepts bounded trusted settlement evidence and an opaque input comparison identity.
+  Retained calls supply exact selectors and parent references where available, with explicit coverage and omission counts.
   Keep it free of prior viewer capabilities and original input bytes.
 - Composition bounds have one canonical owner in `src/types.ts`.
   Validation enforces node, edge and encoded UTF-8 byte capacities.

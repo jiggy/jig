@@ -36,6 +36,7 @@ import { CliDiagnostic } from './cli-usage.js'
 import { PrivateWebDisplay } from './cli-web.js'
 import { PrivateWebInput } from './cli-web-input.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
+import type { PrivateSavedCalls } from './internal/saved-call-evidence.js'
 import type { PrivateSavedResult } from './internal/saved-result.js'
 import type { JsonValue } from './json.js'
 
@@ -733,6 +734,7 @@ export class PrivateCliProgress {
       read?: (path: string) => Promise<Uint8Array | undefined>
       capture?: PrivateArtifactCapture
     },
+    recordedCalls?: PrivateSavedCalls,
   ): Promise<void> {
     this.#settled = true
     this.#dashboard?.markSettled()
@@ -784,7 +786,7 @@ export class PrivateCliProgress {
       // This method is entered only after the ordinary Run has joined project
       // closure and retired file authority. A lost handoff cannot alter it.
       if (this.lifetime.onRunSettled)
-        await this.lifetime.onRunSettled(this.#explorerEvidence()).catch(() => {})
+        await this.lifetime.onRunSettled(this.#explorerEvidence(recordedCalls)).catch(() => {})
     }
     if (!this.#cancelled && this.#web?.active) {
       this.#armDeadline()
@@ -1170,7 +1172,7 @@ export class PrivateCliProgress {
     }
   }
 
-  #explorerEvidence(): DisplayProjectRunEvidence | undefined {
+  #explorerEvidence(recordedCalls?: PrivateSavedCalls): DisplayProjectRunEvidence | undefined {
     const snapshot = this.#displaySnapshot()
     const facts = snapshot.kind === 'snapshot' ? snapshot.workspace.facts : undefined
     if (snapshot.kind !== 'snapshot' || !facts || snapshot.workspace.phase !== 'settled') return
@@ -1180,6 +1182,17 @@ export class PrivateCliProgress {
       .flatMap((view) => view.value.sections.flatMap((section) => section.blocks))
       .find((block) => block.kind === 'progress')
     const artifacts = snapshot.artifacts
+    // Keep a prefix so a retained nested call always keeps its parent index.
+    const calls: DisplayProjectRunEvidence['calls'][number][] = []
+    for (const { id: _id, ...call } of recordedCalls?.calls.slice(0, 8) ?? []) {
+      // Reserve space for the settlement facts and eight escaped file paths.
+      if (Buffer.byteLength(JSON.stringify([...calls, call])) > 5 * 1024) break
+      calls.push(call)
+    }
+    const callsOmitted = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      (recordedCalls?.omittedEvents ?? 0) + ((recordedCalls?.calls.length ?? 0) - calls.length),
+    )
     try {
       return validateDisplayProjectRunEvidence({
         execution: facts.execution.value,
@@ -1192,15 +1205,9 @@ export class PrivateCliProgress {
                 ...(progress.total === undefined ? {} : { total: progress.total }),
               },
             }),
-        calls: snapshot.calls.slice(0, 8).map(({ slot, state, outcome }) => ({
-          slot,
-          state,
-          ...(outcome === undefined ? {} : { outcome }),
-        })),
-        callsOmitted: Math.min(
-          Number.MAX_SAFE_INTEGER,
-          snapshot.omissions.calls + Math.max(0, snapshot.calls.length - 8),
-        ),
+        calls,
+        callCoverage: callsOmitted ? 'incomplete' : (recordedCalls?.coverage ?? 'unavailable'),
+        callsOmitted,
         delivery: facts.delivery.value,
         ...(artifacts.phase === 'ready' && artifacts.provenance === 'verified-delivery'
           ? {

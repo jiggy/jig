@@ -55,7 +55,11 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   Keep the draft on file refusal. Cancel pending reads on edits, selection, project refresh, panel exit, or explorer closure.
   Send the draft only through explicit submission.
 - File selections use browser File values shared by attachment name within one approval.
-  File bytes travel only on explicit launch. Keep comparison evidence for two settled Runs in tab memory.
+  Explicit reuse restores the last accepted JSON and its uploads for unbound read ports with matching names.
+  File bytes travel only on explicit launch.
+- Keep comparison evidence for two settled Runs in tab memory.
+  Group calls by exact root, ancestor path, caller and slot, with counts by target, state and outcome.
+  Keep both approvals, unmatched observations and incomplete recording visible. Equality covers submitted JSON and uploads.
 - Retain one snapshot task, bounded SSE reader/retry owner and active preview.
   Equal revisions acknowledge freshness without replacing semantic data.
 - Validate incoming snapshot shape before atomic replacement. Incomplete/stale

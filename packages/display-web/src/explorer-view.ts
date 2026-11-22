@@ -5,6 +5,7 @@ import type {
 } from '@jigging/display-model'
 import { type ComponentChildren, h } from 'preact'
 import { CompositionPage } from './composition-view.js'
+import { ExplorerCallComparison } from './explorer-call-comparison.js'
 import { type PrivateExplorerConnection, privateExplorerInput } from './explorer-client.js'
 import { privateBrowserLiteral } from './navigation.js'
 
@@ -27,7 +28,7 @@ export type PrivateExplorerViewProps = {
   filter: string
   input: string
   files?: ReadonlyMap<string, readonly File[]>
-  previousInput?: string | undefined
+  canReuse?: boolean
   inputOpen: boolean
   inputTouched: boolean
   inputFileStatus: string
@@ -42,6 +43,7 @@ export type PrivateExplorerViewProps = {
   onRefreshRun: () => void
   onInput: (value: string) => void
   onInputFile: (file: File) => void
+  onReuse?: () => void
   onFiles?: (port: string, files: readonly File[]) => void
   onInputTouched: () => void
   onInputOpen: () => void
@@ -80,26 +82,6 @@ function RunComparison(
           ? 'Unavailable'
           : progress.completed + (progress.total === undefined ? '' : '/' + progress.total),
     ],
-    [
-      'Recorded calls',
-      ({ evidence }: DisplayProjectRunComparison) =>
-        evidence.calls.length || evidence.callsOmitted
-          ? h(
-              'ul',
-              {},
-              evidence.calls.map((call, index) =>
-                h(
-                  'li',
-                  { key: index },
-                  literal(call.slot),
-                  ' · ',
-                  literal(call.outcome ?? call.state),
-                ),
-              ),
-              evidence.callsOmitted ? h('li', {}, evidence.callsOmitted + ' omitted') : null,
-            )
-          : 'No retained calls',
-    ],
     ['Delivery', (item: DisplayProjectRunComparison) => literal(item.evidence.delivery)],
     [
       'Verified files',
@@ -132,7 +114,10 @@ function RunComparison(
     h(
       'p',
       { class: 'secondary' },
-      first.inputId === second.inputId ? 'Same submitted input.' : 'Different submitted input.',
+      first.inputId === second.inputId
+        ? 'Same submitted JSON and uploaded files.'
+        : 'Different submitted JSON or uploaded files.',
+      ' Reviewed attachment bytes are outside this comparison.',
     ),
     h(
       'table',
@@ -147,9 +132,10 @@ function RunComparison(
           [first, second].map((item, index) =>
             h(
               'th',
-              { scope: 'col' },
+              { key: index, scope: 'col' },
               h('span', {}, index === 0 ? 'Earlier · ' : 'Later · ', literal(item.label)),
-              h('small', { title: item.revision }, 'Approval ' + item.revision.slice(0, 12)),
+              h('small', {}, literal(item.root)),
+              h('small', {}, 'Approval ', literal(item.revision)),
             ),
           ),
         ),
@@ -168,6 +154,7 @@ function RunComparison(
         ),
       ),
     ),
+    h(ExplorerCallComparison, { earlier: first, later: second }),
   )
 }
 
@@ -400,10 +387,10 @@ function InputPanel(props: PrivateExplorerViewProps): ComponentChildren {
             disabled: props.sending || props.closing || props.connection !== 'current',
           },
         ),
-        props.previousInput === undefined || props.previousInput === props.input
+        !props.canReuse || !props.onReuse
           ? null
-          : button('Reuse last JSON', () => props.onInput(props.previousInput!), {
-              disabled: props.sending,
+          : button('Reuse previous input', props.onReuse, {
+              disabled: props.sending || props.closing || props.connection !== 'current',
             }),
       ),
       h('textarea', {

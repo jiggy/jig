@@ -119,7 +119,17 @@ export type DisplayProjectRunEvidence = Readonly<{
   execution: string
   outcome: string
   progress?: Readonly<{ completed: number; total?: number }>
-  calls: readonly Readonly<{ slot: string; state: DisplayCallState; outcome?: string }>[]
+  calls: readonly Readonly<{
+    /** One-based index of the retained parent call, when present. */
+    parent?: number
+    caller?: string
+    slot: string
+    target?: string
+    state: DisplayCallState
+    outcome?: string
+  }>[]
+  callCoverage: 'complete' | 'incomplete' | 'unavailable'
+  /** Known loss from recording and from bounding the comparison excerpt. */
   callsOmitted: number
   delivery: string
   files?: Readonly<{ total: number; paths: readonly string[] }>
@@ -128,6 +138,7 @@ export type DisplayProjectRunComparison = Readonly<{
   revision: string
   inputId: string
   label: string
+  root: string
   evidence: DisplayProjectRunEvidence
 }>
 export type DisplayProjectRun =

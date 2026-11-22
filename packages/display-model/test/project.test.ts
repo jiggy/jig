@@ -3,8 +3,10 @@ import {
   DISPLAY_PROJECT_SCHEMA_BYTE_LIMIT,
   DISPLAY_PROJECT_TARGET_LIMIT,
   type DisplayJsonValue,
+  type DisplayProjectRunEvidence,
   type DisplayProjectSnapshot,
   validateDisplayProjectRun,
+  validateDisplayProjectRunEvidence,
   validateDisplayProjectRunRequest,
   validateDisplayProjectSnapshot,
 } from '@jigging/display-model'
@@ -68,6 +70,51 @@ test('project exploration owns inert approved meaning without manufacturing Run 
       targets: [],
     }).state,
   ).toBe('unreviewed')
+})
+
+test('settled Run comparison preserves bounded exact paths and explicit recording gaps', () => {
+  const root = 'binding:workflow'
+  const child = 'binding:review'
+  const evidence: DisplayProjectRunEvidence = {
+    execution: 'succeeded',
+    outcome: 'done',
+    delivery: 'none',
+    callCoverage: 'complete',
+    callsOmitted: 0,
+    calls: [
+      { caller: root, target: child, slot: 'review', state: 'returned', outcome: 'done' },
+      { parent: 1, caller: child, target: 'flow:flows/check', slot: 'check', state: 'failed' },
+    ],
+  }
+  const comparison = {
+    revision: 'earlier',
+    inputId: 'a'.repeat(64),
+    label: 'Workflow',
+    root,
+    evidence,
+  }
+  const run = { state: 'settled', requestId: 'run-1', targetId: 'workflow', comparison }
+  expect(validateDisplayProjectRun(run)).toEqual(run)
+  expect(Object.isFrozen(validateDisplayProjectRunEvidence(evidence).calls[1])).toBeTrue()
+  for (const invalid of [
+    { ...evidence, callsOmitted: 1 },
+    { ...evidence, callCoverage: 'unavailable' },
+    { ...evidence, calls: [{ ...evidence.calls[0], parent: 1 }] },
+    { ...evidence, calls: [...evidence.calls, { ...evidence.calls[1], caller: root }] },
+    { ...evidence, calls: [{ ...evidence.calls[0], outcome: undefined }] },
+    { ...evidence, calls: Array(9).fill(evidence.calls[0]) },
+  ])
+    expect(() => validateDisplayProjectRunEvidence(invalid)).toThrow(TypeError)
+  expect(() =>
+    validateDisplayProjectRun({ ...run, comparison: { ...comparison, root: child } }),
+  ).toThrow(TypeError)
+  const incomplete = {
+    ...evidence,
+    callCoverage: 'incomplete',
+    callsOmitted: 2,
+    calls: [...evidence.calls, { slot: 'unplaced', state: 'active' }],
+  }
+  expect(validateDisplayProjectRunEvidence(incomplete)).toEqual(incomplete)
 })
 
 test('project replacement rejects private fields, inconsistent identity and invented launch readiness', () => {
