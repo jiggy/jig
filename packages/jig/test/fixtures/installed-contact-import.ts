@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import {
   type FoundationArchives,
@@ -182,8 +182,24 @@ await handle(async run => {
   assert.deepEqual(JSON.parse(previewBytes.toString('utf8')), result.output)
   assert.deepEqual(await readdir(join(packet, 'files')), ['preview'])
   assert.deepEqual(await readdir(join(packet, 'files/preview')), ['preview.json'])
-  // Qualify the alternative mappers in a separate operator configuration.
   assert.equal(await hash(join(project, 'jig.lock')), lock)
+  const explorer = await command(
+    [
+      process.env.PYTHON ?? 'python3',
+      join(import.meta.dir, 'installed-explore-comparison.py'),
+      cli,
+    ],
+    project,
+    200_000,
+  )
+  const comparison = JSON.parse(explorer.stdout)
+  assert.equal(comparison.sameSubmittedInput, true)
+  assert.equal(comparison.staleApprovalRefused, true)
+  assert.equal(comparison.duplicateRequestDidNotReplay, true)
+  await put(directory, 'verified-explorer.json', comparison)
+  await cp(join(example, 'bindings/code.ts'), join(project, 'bindings/code.ts'))
+  await rm(join(project, 'bindings/map-code.ts'))
+  // Qualify the alternative mappers in a separate operator configuration.
   await writeFile(
     join(project, 'jig.ts'),
     `import {defineJig,discover} from '@jigging/jig'
