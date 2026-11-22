@@ -31,6 +31,7 @@ import {
   resolveFlowInspectionPath,
   selectFlowContext,
 } from './flow-inspection-scope.js'
+import { type FlowNavigationSearch, findFlowNavigation } from './flow-navigation.js'
 import { privateDomainDigest } from './identity.js'
 import { PRIVATE_FLOW_CONTEXT_LIMITS } from './inspection-policy.js'
 
@@ -52,6 +53,7 @@ export function inspectWorkingFlow(
 
 export type WorkingFlowReport =
   | { kind: 'index'; topology: JsonValue; bindingDeclarations: ReadonlyMap<string, string> }
+  | { kind: 'search'; search: FlowNavigationSearch }
   | { kind: 'behavior'; behavior: BehaviorReport }
 
 export function inspectWorkingFlowReport(
@@ -65,6 +67,11 @@ export function inspectWorkingFlowReport(
     evaluator,
     options,
     async (topology, scope, linked, members) => {
+      if (options.find !== undefined)
+        return {
+          kind: 'search',
+          search: await findFlowNavigation(topology, linked, members, options.find, signal),
+        }
       const selection = selectFlowContext(topology, scope)
       if (selection.focus === undefined && scope.packagePath === undefined && !scope.all)
         return {
@@ -239,7 +246,7 @@ async function captureWorkingFlow<T>(
         ...(linked.entrypoint === undefined ? {} : { entrypoint: linked.entrypoint }),
         targets,
       }
-      const { pathOperand, ...requested } = options
+      const { pathOperand, find: _find, ...requested } = options
       let scope = requested
       if (pathOperand !== undefined) {
         const binding = linked.bindings.find(

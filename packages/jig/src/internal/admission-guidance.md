@@ -18,6 +18,10 @@ These links locate module rules. All selected domain requirements still apply.
 
 `working-flow-inspection.ts` captures current declarations and package source in a command-owned temporary lifetime.
 It supplies behavior inspection with the already linked routes and captured package descriptors.
+
+`flow-navigation.ts` searches those linked routes and captured descriptions before source behavior analysis.
+It reads bounded text from the same caller package descriptors for quoted slot references.
+
 Package scope matches captured package identities before projecting their configured uses.
 Behavior analysis borrows this capture until rendering data is ready for disposal.
 It consumes source as inert data and has no path to admission or execution.

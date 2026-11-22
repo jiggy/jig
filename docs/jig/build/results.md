@@ -340,6 +340,20 @@ Inspection checks the project's declared Jig version before evaluating declarati
 
 ## Inspect source behavior
 
+When you know a step by name or purpose, start with the owner's words.
+
+```sh
+jig inspect --flow --find export
+```
+
+The lookup matches configured slot names, destination selectors, package paths, and Flow descriptions.
+Find the caller and slot in **Configured handoffs**.
+Check the shared destinations for other caller slots and independent Runs that use them.
+Open the caller's source links to read its decision, or run the focused inspection command.
+
+Quoted slot references give text locations. Read the caller's code to determine which conditions reach the call.
+Use Run results to verify observed behavior.
+
 Prepare the application map before changing a conditional route.
 
 ```sh

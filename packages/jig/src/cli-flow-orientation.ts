@@ -1,5 +1,6 @@
 import { cliShellWord } from './cli-discovery.js'
 import { record } from './internal/flow-inspection-scope.js'
+import type { FlowNavigationSearch } from './internal/flow-navigation.js'
 import { PRIVATE_FLOW_CONTEXT_LIMITS } from './internal/inspection-policy.js'
 import { canonicalJson, type JsonValue } from './json.js'
 
@@ -30,8 +31,8 @@ function sourceLabel(edge: ConfiguredConnection, text: (value: string) => string
   )
 }
 
-function configuredCallers(connections: readonly ConfiguredConnection[]) {
-  const incoming = new Map<string, ConfiguredConnection[]>()
+function configuredCallers<T extends ConfiguredConnection>(connections: readonly T[]) {
+  const incoming = new Map<string, T[]>()
   for (const connection of connections) {
     if (connection.resource) continue
     const callers = incoming.get(connection.to) ?? []
@@ -91,6 +92,7 @@ export function renderFlowNavigationIndex(
     `${targets.length} configured targets across ${packages.size} packages. No declared entrypoint.`,
     '',
     'Shared caller slots and independent Runs use the same configured target. Follow a wiring link to its Binding declaration or run the target command to inspect its behavior.',
+    'Use `jig inspect --flow --find TEXT` to look up a step by name, slot, or description.',
     'Use `jig inspect --flow --all` for application behavior.',
     '',
     '| Package | Inspect a target | Shared target uses | Configured slots |',
@@ -125,6 +127,110 @@ export function renderFlowNavigationIndex(
     }
   }
   return [...lines, '']
+}
+
+export function renderFlowNavigationMatches(
+  search: FlowNavigationSearch,
+  text: (value: string) => string,
+): string[] {
+  const lines = [
+    '# Flow navigation',
+    '',
+    'Basis: captured working tree (unapproved). Revision ' + text(search.revision) + '.',
+    '',
+    'Matches for ' + text(JSON.stringify(search.phrase)) + '.',
+    '',
+  ]
+  const { matches, independent, handoffs, omitted } = search
+  if (!matches.length && !independent.length)
+    return [
+      ...lines,
+      'No matches. Use a shorter phrase or run `jig inspect --flow --topology --all` to list targets.',
+      '',
+    ]
+  const configured = handoffs.map((edge) => ({ ...edge, from: edge.caller.id, to: edge.target.id }))
+  const incoming = configuredCallers(configured)
+  const describe = (description: string | undefined) => {
+    if (description === undefined) return ''
+    const points = [...description]
+    return ' · ' + text(points.length > 240 ? points.slice(0, 239).join('') + '…' : description)
+  }
+  const link = (path: string) => flowSourceLink(path, text(path))
+  if (matches.length) {
+    lines.push('## Configured handoffs', '')
+    for (const { caller, slot, target } of matches)
+      lines.push(
+        '- ' +
+          text(caller.id) +
+          ' · ' +
+          text(slot) +
+          ' → ' +
+          text(target.id) +
+          describe(target.description),
+      )
+    lines.push('')
+    for (const caller of new Set(matches.map((edge) => edge.caller))) {
+      const selected = matches.filter((edge) => edge.caller === caller)
+      lines.push('### ' + text(caller.id), '')
+      if (caller.declaration) lines.push('Binding wiring · ' + link(caller.declaration) + '.', '')
+      const command = targetInspectionCommand(caller.id)
+      if (command) lines.push('    ' + command, '')
+      const shared = new Map(
+        configured
+          .filter((edge) => edge.caller === caller && (incoming.get(edge.to)?.length ?? 0) > 1)
+          .map((edge) => [edge.to, incoming.get(edge.to)!]),
+      )
+      if (shared.size) {
+        lines.push('**Shared destinations of this caller**', '')
+        for (const [target, callers] of [...shared].slice(0, 6)) {
+          const callerSlots = callers.slice(0, 8).map((edge) => {
+            const label = text(edge.from) + ' · ' + text(edge.slot)
+            return edge.caller.declaration ? flowSourceLink(edge.caller.declaration, label) : label
+          })
+          if (callers.length > 8) callerSlots.push(`+${callers.length - 8} more`)
+          lines.push(
+            '- ' +
+              callerSlots.join(', ') +
+              ' → ' +
+              text(target) +
+              ' · independent Run ' +
+              text(target),
+          )
+        }
+        if (shared.size > 6) lines.push(`- ${shared.size - 6} more shared destinations.`)
+        lines.push('')
+      }
+      lines.push('**Caller source**', '')
+      if (caller.entrySource) lines.push('- Captured entry · ' + link(caller.entrySource))
+      else lines.push('- Local entry source is unavailable.')
+      for (const edge of selected) {
+        const references = edge.locations.map(({ path, line }) =>
+          flowSourceLink(path, text(path + ':' + line), line),
+        )
+        if (references.length)
+          lines.push('- ' + text(edge.slot) + ' · quoted references · ' + references.join(', '))
+        else
+          lines.push('- ' + text(edge.slot) + ' · no quoted reference found in the source checked.')
+      }
+      lines.push('')
+    }
+    lines.push(
+      'Quoted references are source text matches. Read the caller’s code to establish conditions and call order.',
+      'Run results supply observed execution.',
+      '',
+    )
+  }
+  if (independent.length) {
+    lines.push('## Targets with no configured callers', '')
+    for (const target of independent) {
+      lines.push('- ' + text(target.id) + describe(target.description))
+      const command = targetInspectionCommand(target.id)
+      if (command) lines.push('  - ' + text(command))
+    }
+    lines.push('')
+  }
+  if (omitted) lines.push(`${omitted} additional matches omitted. Use a more specific phrase.`, '')
+  return lines
 }
 
 export function renderFlowPackageUses(
