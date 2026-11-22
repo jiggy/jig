@@ -78,7 +78,8 @@ All selected domain requirements still apply.
   Stage complete source outside ordinary Flow discovery before non-replacing
   publication.
 
-- `jig add-use` adds one named collaborator to an exact code Flow sidecar.
+- `jig add-use` declares one collaborator slot in an exact code Flow sidecar.
+  A bare slot name declares an uncontracted slot. An explicit source requires a named agreement.
   It takes no evaluator or execution host. Its success output sends the author
   to the caller, the target configuration, and ordinary check and review.
 
