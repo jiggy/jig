@@ -298,7 +298,9 @@ The comparison shows each recorded Run and approved revision.
 For the same root, caller and slot, it matches the full recorded chain of ancestor slots and targets.
 It shows differing observations first, then matching observations, with counts by target, state and outcome.
 With incomplete coverage, a missing row says “No retained match.”
-The browser discloses any observations outside its bounded call excerpt.
+The browser gives nonmatching paths priority within its bounded comparison.
+A displayed row counts all retained observations on that path.
+The browser reports omitted paths separately from incomplete Run recording.
 
 The comparison uses the recorded JSON input identity and submitted attachment manifest.
 It reports whether the recorded identity is the same, different, or unknown when either record is missing or malformed.
