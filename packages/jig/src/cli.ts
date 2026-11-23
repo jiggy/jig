@@ -337,7 +337,7 @@ Example:
        jig inspect --flow --snapshot
        jig inspect --flow --compare BASELINE [--all]
        jig inspect --result DIRECTORY [--display plain|tui|web | --calls] [--json]
-       jig inspect --result EARLIER --compare LATER [--display web]
+       jig inspect --result EARLIER --compare LATER [--display web | --json]
 
 List the current project's approved targets, or show one target's retained
 input/result schemas, settings, child slots, capabilities, files and channels.
@@ -1522,9 +1522,9 @@ function parseInspect(arguments_: readonly string[]) {
   if (
     resultDirectory !== undefined &&
     comparison !== undefined &&
-    (json || calls || (display !== undefined && display !== 'web'))
+    (calls || (display !== undefined && (json || display !== 'web')))
   )
-    usage('inspect', 'Use --result EARLIER --compare LATER with optional --display web.')
+    usage('inspect', 'Use --result EARLIER --compare LATER with optional --display web or --json.')
   if (
     find !== undefined &&
     (!flow ||
@@ -1622,6 +1622,10 @@ async function executeSavedResultInspect(
     if (later) {
       runtime.signal?.throwIfAborted()
       const comparison = privateSavedCallComparison(packet, later)
+      if (parsed.json) {
+        await runtime.writeRecord(`${textDecoder.decode(canonicalJson(comparison.json))}\n`)
+        return comparison.jsonComplete ? 0 : 1
+      }
       if (parsed.display === 'web' && runtime.humanOutput)
         await runtime.progress.inspectSavedComparison(
           comparison.browser,

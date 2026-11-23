@@ -674,6 +674,7 @@ Live observations, delivery and interruption remain in
 
 `portable/cli-composition.test.ts` checks inert route projection, separate Binding identities, bounded completeness and observer failure isolation.
 Saved call tests use actual packet files and subprocess inspection. The installed Contact Import consumer reopens its opted-in record after a different approval.
+Saved comparison tests check JSON path variants, coverage and disclosure through the saved-result command.
 `portable/cli-display-observations.test.ts` checks opaque projection and exact call joins through public display-model exports.
 These pure fixtures establish no admission or execution authority.
 
