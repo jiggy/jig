@@ -64,6 +64,9 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   Preserve request order through delayed recovery and duplicate evidence, discarding older comparisons before newer ones.
   Group calls by exact root, ancestor path, caller and slot, with counts by target, state and outcome.
   Keep both approvals, unmatched observations and incomplete recording visible. Equality covers submitted JSON and uploads.
+- Prioritize whole nonmatching rows within the shared comparison bound.
+  Disclose settlement omissions separately from rows omitted by the browser.
+  Stale Run status prevents absence wording.
 - The ordinary inspection shell uses the same call table for two explicitly
   saved packets. Display recorded Run and revision identities, relation and
   coverage as local claims. Show supplied nonmatching rows first and disclose

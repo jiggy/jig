@@ -67,7 +67,10 @@ const button = (
 ) => h('button', { type: 'button', onClick: action, ...props }, label)
 
 function RunComparison(
-  props: Pick<PrivateExplorerViewProps, 'recent' | 'comparisonOpen' | 'onComparisonToggle'>,
+  props: Pick<
+    PrivateExplorerViewProps,
+    'recent' | 'comparisonOpen' | 'onComparisonToggle' | 'connection' | 'runCurrent'
+  >,
 ): ComponentChildren {
   if (props.recent?.length !== 2) return null
   const [first, second] = props.recent.map((item) => item.comparison)
@@ -154,7 +157,11 @@ function RunComparison(
         ),
       ),
     ),
-    h(ObservedCallComparison, { earlier: first, later: second }),
+    h(ObservedCallComparison, {
+      earlier: first,
+      later: second,
+      stale: props.connection !== 'current' || !props.runCurrent,
+    }),
   )
 }
 

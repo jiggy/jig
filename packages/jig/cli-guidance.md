@@ -206,8 +206,10 @@ All selected domain requirements still apply.
   capability. Its private handoff reports only its viewer URL and confirmed
   settlement. Never parse human stderr to establish either fact.
 
-  Explorer settlement can carry a bounded prefix from the ordinary exact call recorder.
-  Preserve parent references and disclose coverage loss. Explorer launch does not request a saved call packet.
+  Explorer settlement carries the whole retained tree from the ordinary call recorder when it fits the existing 5 KiB call allowance.
+  Its parent references remain exact. When it does not fit, omit the tree and
+  disclose the lost observations and placeable paths.
+  Explorer launch does not request a saved call packet.
 
   The child starts in a separate process group and session, with inherited
   terminal output and a referenced process handle. The explorer receives

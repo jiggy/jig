@@ -129,8 +129,10 @@ export type DisplayProjectRunEvidence = Readonly<{
     outcome?: string
   }>[]
   callCoverage: 'complete' | 'incomplete' | 'unavailable'
-  /** Known loss from recording and from bounding the comparison excerpt. */
+  /** Known observations lost in recording or settlement. */
   callsOmitted: number
+  /** All placeable paths withheld when the retained tree exceeded the settlement allowance. */
+  callPathsOmitted?: number
   delivery: string
   files?: Readonly<{ total: number; paths: readonly string[] }>
 }>
@@ -353,9 +355,10 @@ export type DisplayIncompleteSnapshot = Readonly<{
 export type DisplaySnapshotEnvelope = DisplaySnapshot | DisplayIncompleteSnapshot
 export type WebAssets = Readonly<Record<string, Readonly<{ body: string; contentType: string }>>>
 
-export const DISPLAY_RECORDED_CALL_ROWS = 8
-export const DISPLAY_RECORDED_CALL_BYTES = 5 * 1024
-export const DISPLAY_RECORDED_CALL_ANCESTORS = 7
+export const DISPLAY_EXPLORER_CALL_BYTES = 5 * 1024
+export const DISPLAY_COMPARISON_CALL_ROWS = 8
+export const DISPLAY_COMPARISON_CALL_BYTES = 5 * 1024
+export const DISPLAY_COMPARISON_CALL_ANCESTORS = 7
 export const DISPLAY_SNAPSHOT_LIMIT = 16 * 1024 * 1024
 export const DISPLAY_INCOMPLETE_LIMIT = 2 * 1024 * 1024
 export const DISPLAY_COMPOSITION_NODE_LIMIT = 256
