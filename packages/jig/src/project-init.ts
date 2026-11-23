@@ -16,6 +16,7 @@ import { privateJigVersion } from './installation-version.js'
 import { importContract } from './internal/contract-import.js'
 import { openPrivateChild } from './internal/descriptor-files.js'
 import { privatePublishDirectory } from './internal/file-input.js'
+import { scopedGreetingFiles } from './project-starter.js'
 
 /** @internal Not exported from the package. */
 export interface ProjectInitFileSystem {
@@ -44,6 +45,7 @@ const AUTHORING_SKILLS_README = [
   '',
 ] as const
 export type ProjectInitAgent = 'codex' | 'claude'
+export type ProjectInitStarter = 'scoped-greeting'
 
 export type ProjectInitErrorCode =
   | 'JIG_NEW_INVALID'
@@ -257,6 +259,7 @@ export async function createProject(
   fileSystem: ProjectInitFileSystem = DEFAULT_FILE_SYSTEM,
   bare = false,
   agent?: ProjectInitAgent,
+  starter?: ProjectInitStarter,
 ): Promise<void> {
   const target = resolve(destination)
   const created: Array<{ readonly kind: 'directory' | 'file'; readonly path: string }> = []
@@ -275,27 +278,16 @@ export async function createProject(
     }
     created.push({ kind: 'directory', path: target })
 
-    for (const name of ['flows', 'bindings']) {
-      const path = join(target, name)
-      await fileSystem.mkdir(path)
-      created.push({ kind: 'directory', path })
-    }
-
-    if (!bare) {
-      for (const name of ['flows/hello', 'fixtures']) {
-        const path = join(target, name)
-        await fileSystem.mkdir(path)
-        created.push({ kind: 'directory', path })
-      }
-    }
     const sourceFiles: readonly (readonly [string, string])[] = [
       ['jig.ts', renderJigModule(agent)],
       ...(!bare && agent === undefined
         ? ([['package.json', renderProjectManifest()]] as const)
         : []),
-      ...(!bare
-        ? greetingFiles().filter(([path]) => agent === undefined || path !== 'README.md')
-        : []),
+      ...(starter === 'scoped-greeting'
+        ? scopedGreetingFiles(GREETING_SDK_VERSION, flowAgentGuidance)
+        : !bare
+          ? greetingFiles().filter(([path]) => agent === undefined || path !== 'README.md')
+          : []),
       ...(agent === undefined ? [] : agentFiles(agent)),
     ]
     const files: readonly (readonly [string, string])[] = [
@@ -303,6 +295,17 @@ export async function createProject(
       ['AGENTS.md', projectAgentGuidance(sourceFiles)],
       ...sourceFiles,
     ]
+    const directories = new Set(['flows', 'bindings'])
+    for (const [name] of files) {
+      const parts = name.split('/')
+      for (let depth = 1; depth < parts.length; depth++)
+        directories.add(parts.slice(0, depth).join('/'))
+    }
+    for (const name of directories) {
+      const path = join(target, name)
+      await fileSystem.mkdir(path)
+      created.push({ kind: 'directory', path })
+    }
     for (const [name, contents] of files) {
       const path = join(target, name)
       await fileSystem.writeFile(path, contents, {

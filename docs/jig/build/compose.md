@@ -145,168 +145,49 @@ The operator must configure and review those differences.
 
 ## Test a scoped route
 
-Use a brief greeting for one configured group and preserve the standard greeting for the other.
-This optional test runs both Bindings through the installed Jig on a [supported Linux host](../start/index.md#supported-host).
-Use Node.js 22 or newer to run the test and Bun 1.4.4 to prepare the locks.
-Start with the group project above and set the standard greeting to `Welcome, ${name}!`.
-
-Install the same Jig release locally as in the [application tutorial](../start/application.md#before-you-start).
-For a packed candidate, pass its absolute `.tgz` path to `npm install --save-exact`.
-Use that local executable for both review and the test.
+Create a starter with two group Bindings and a test through installed Jig.
+Use a [supported host](../start/index.md#supported-host) and Node.js 22 or newer.
 
 ```sh
-./node_modules/.bin/jig new brief-hello
+jig init scoped-greetings --starter scoped-greeting
+cd scoped-greetings
+jig check
+jig review --allow-resolution-network
 ```
 
-Set the `description` in `flows/brief-hello/FLOW.meta.json` to `Greet one person briefly.`
-Replace `flows/brief-hello/FLOW.ts`:
-
-```ts
-import { handle } from '@jigging/flow'
-
-await handle(run => ({ outcome: 'done', output: { message: `Hi, ${run.input}.` } }))
-```
-
-Save this invocation contract as `FLOW.contract.json` in both `flows/hello` and `flows/brief-hello`:
-
-```json
-{
-  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
-  "input": { "type": "string" },
-  "result": {
-    "type": "object",
-    "properties": {
-      "outcome": { "const": "done" },
-      "output": {
-        "type": "object",
-        "properties": { "message": { "type": "string" } },
-        "required": ["message"],
-        "additionalProperties": false
-      }
-    },
-    "required": ["outcome", "output"],
-    "additionalProperties": false
-  }
-}
-```
-
-Move the standard options into `config/welcome-group.ts`.
-
-```ts
-export default {
-  package: 'flows/welcome-group',
-  slots: { greeting: 'flow:flows/hello' },
-} as const
-```
-
-Update `bindings/welcome-group.ts` to use those options.
-
-```ts
-import { defineBinding } from '@jigging/jig'
-import welcomeGroup from '../config/welcome-group.ts'
-
-export default defineBinding(welcomeGroup)
-```
-
-Create `bindings/brief-welcome-group.ts`.
-
-```ts
-import { defineBinding } from '@jigging/jig'
-import welcomeGroup from '../config/welcome-group.ts'
-
-export default defineBinding({
-  ...welcomeGroup,
-  slots: { ...welcomeGroup.slots, greeting: 'flow:flows/brief-hello' },
-})
-```
-
-The brief Binding shares the standard declaration and selects a different greeter.
-Discovery includes the new Flow and Binding.
-If you use explicit membership, add both paths to `jig.ts`.
-Save `fixtures/group.json` with this input for both calls:
-
-```json
-["Ada", "Grace"]
-```
-
-Generate and keep the Flow dependency locks:
-
-```sh
-bun install --lockfile-only --cwd flows/hello
-bun install --lockfile-only --cwd flows/brief-hello
-bun install --lockfile-only --cwd flows/welcome-group
-```
-
-Create `test/wiring.test.mjs`:
-
-```js
-import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import test from 'node:test'
-import { fileURLToPath } from 'node:url'
-
-const project = new URL('../', import.meta.url)
-const jig = fileURLToPath(new URL('node_modules/.bin/jig', project))
-
-test('only the brief group uses the brief greeting', async t => {
-  const cases = [
-    { target: 'binding:brief-welcome-group', greeter: 'flow:flows/brief-hello', messages: ['Hi, Ada.', 'Hi, Grace.'] },
-    { target: 'binding:welcome-group', greeter: 'flow:flows/hello', messages: ['Welcome, Ada!', 'Welcome, Grace!'] },
-  ]
-  for (const { target, greeter, messages } of cases) {
-    await t.test(target, () => {
-      const args = ['run', target, '--input', '@fixtures/group.json', '--timeout', '30s', '--json', '--record-calls']
-      const stdout = execFileSync(jig, args, {
-        cwd: project,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'inherit'],
-      })
-      const result = JSON.parse(stdout)
-      assert.equal(result.status, 'succeeded')
-      assert.equal(result.outcome, 'done')
-      assert.deepEqual(result.output?.messages, messages)
-      const evidence = result.callEvidence
-      assert.equal(evidence?.coverage, 'complete')
-      assert.equal(evidence.runId, result.runId)
-      assert.deepEqual(
-        evidence.calls.map(call => [call.caller, call.slot, call.target, call.state, call.outcome]),
-        messages.map(() => [target, 'greeting', greeter, 'returned', 'done']),
-      )
-    })
-  }
-})
-```
-
-From the project root, review the new source and both selections:
-
-```sh
-./node_modules/.bin/jig review
-```
-
-Approve the exact revision after inspection.
-Before testing further source or Binding edits, complete review and approve the changed revision.
-Jig can still use the earlier approval after an edit or a declined review.
-The test uses existing approval and leaves review to the project operator.
+Inspect the proposed source and approve its exact revision.
+The flag permits dependency resolution before approval.
+See [dependency preparation](./dependencies.md#fresh-resolution-and-network-access) for its scope.
 
 ```sh
 node --test test/wiring.test.mjs
 ```
 
-Expect both Binding subtests to pass.
-The test checks execution status, method outcome, and the exact messages separately.
-The recorded calls check the exact greeter that returned each result.
-`--record-calls --json` includes that evidence in the Run result.
-Result-only checks need no packet directory.
+Both cases should pass.
+The brief group selects `flow:flows/brief-hello`, and the standard group selects `flow:flows/hello`.
+Both use `fixtures/group.json`, which you can also load in [Explorer](./results.md#explore-before-starting-a-run).
+The test checks successful execution, the domain outcome, and the messages.
+It requires complete [call evidence](./results.md#inspect-saved-child-calls) and checks each exact caller, slot, target, state, and outcome.
 
-Await each subtest so only one Run uses the project at a time.
-The results cover these inputs and these invocations.
+To change the brief group, follow the project README.
+Use `jig check --diff` to see its moved slot before approval.
+After reviewing the edit, run the same test with the intended expectation for the changed route.
+The standard case should still pass with its original messages and calls.
 
-To see the regression, copy the source and dependency locks into a disposable sibling directory.
-Run `npm ci` in that copy.
-Select `flow:flows/brief-hello` in its `config/welcome-group.ts` too.
-Review and approve that copy after inspecting the changed selection.
-Run the same test command there.
-The brief route still passes, and the standard route fails on its message assertion despite a successful Run with outcome `done`.
+#### Detect a wrong target with the same output
+
+In a disposable copy of the starter, add `bindings/standard-copy.ts`:
+
+```ts
+import { defineBinding } from '@jigging/jig'
+
+export default defineBinding({ package: 'flows/hello' })
+```
+
+In `bindings/welcome-group.ts`, select `binding:standard-copy` for the `greeting` slot.
+Keep the original test, then review and approve that copy before running it.
+The brief case passes and the standard group still returns the same messages.
+Its test fails on the exact target assertion because the preserved route called the copy.
 
 ### Test callers in your application
 
