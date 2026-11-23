@@ -552,6 +552,63 @@ test('add-use copies a closure and inserts one slot while preserving the existin
   expect(await readFile(join(root, 'source/FLOW.contract.json'), 'utf8')).toBe(descriptor)
 })
 
+test('add-use requires an identified source for an optional slot and copies its exact closure', async () => {
+  const root = await fixture()
+  const project = join(root, 'project')
+  await createProject(project, undefined, true)
+  await createFlow(project, 'caller')
+  const caller = join(project, 'flows/caller')
+  const sidecar = join(caller, 'FLOW.meta.json')
+  const metadata = '{"name":"caller","x-extra":{"signed":-0},"uses":{"draft":{}}}\n'
+  await writeFile(sidecar, metadata)
+  await writeFile(
+    join(root, 'anonymous.json'),
+    '{"$schema":"https://flow.jig.md/schemas/invocation-contract-0.schema.json"}',
+  )
+  let output = ''
+  let error = ''
+  const run = (declaration: string) =>
+    main(['add-use', 'flows/caller', declaration, '--optional'], {
+      currentDirectory: project,
+      writeOutput: (text) => {
+        output += text
+      },
+      writeError: (text) => {
+        error += text
+      },
+    })
+
+  expect(await run('review')).toBe(1)
+  expect(error).toContain('ADD_USE_SLOT')
+  expect(error).toContain('Use --optional with slot=source and an identified invocation agreement.')
+  expect(await readFile(sidecar, 'utf8')).toBe(metadata)
+  error = ''
+  expect(await run('review=../anonymous.json')).toBe(1)
+  expect(error).toContain('Select an identified agreement for --optional.')
+  expect(await readFile(sidecar, 'utf8')).toBe(metadata)
+  expect(await readdir(caller)).not.toContain('contracts')
+  expect(await readdir(project)).not.toContain('.jig-add-use-stage')
+
+  expect(await run('review=../source/FLOW.contract.json')).toBe(0)
+  expect(output).toContain('Declared optional slot "review"')
+  const edited = metadata.replace(
+    '"draft":{}}',
+    '"draft":{}, "review": {"contract":"./contracts/review/FLOW.contract.json","optional":true}}',
+  )
+  expect(await readFile(sidecar, 'utf8')).toBe(edited)
+  expect(await readFile(join(caller, 'contracts/review/FLOW.contract.json'), 'utf8')).toBe(
+    descriptor,
+  )
+  expect(await readFile(join(caller, 'contracts/review/contracts/events.json'), 'utf8')).toBe(
+    agreement,
+  )
+  error = ''
+  expect(await run('review=../source/FLOW.contract.json')).toBe(1)
+  expect(error).toContain('ADD_USE_EXISTS')
+  expect(await readFile(sidecar, 'utf8')).toBe(edited)
+  expect(await readdir(project)).not.toContain('.jig-add-use-stage')
+})
+
 test('add-use with a bare slot edits only the sidecar', async () => {
   const root = await fixture()
   const project = join(root, 'project')

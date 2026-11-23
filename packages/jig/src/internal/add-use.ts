@@ -40,10 +40,16 @@ export async function addFlowUse(
   project: string,
   operand: string,
   slot: string,
-  source?: string,
+  source: string | undefined,
+  optional: boolean,
   signal?: AbortSignal,
   standardDirectory?: string,
 ): Promise<string | undefined> {
+  if (optional && source === undefined)
+    invalid(
+      'ADD_USE_SLOT',
+      'Use --optional with slot=source and an identified invocation agreement.',
+    )
   let path: string
   try {
     path = normalizeProjectPath(operand, 'Flow package path')
@@ -113,7 +119,9 @@ export async function addFlowUse(
       if (bundle.agreement.contract.descriptor.id === undefined)
         invalid(
           'ADD_USE_CONTRACT',
-          'This invocation agreement has no portable identity. Omit =<source> to declare an uncontracted slot.',
+          optional
+            ? 'This invocation agreement has no portable identity. Select an identified agreement for --optional.'
+            : 'This invocation agreement has no portable identity. Omit =<source> to declare an uncontracted slot.',
           source,
         )
       for (const file of bundle.documents.keys()) {
@@ -124,7 +132,10 @@ export async function addFlowUse(
     }
     const descriptor = bundle && `./contracts/${slot}/${bundle.descriptor}`
     const sourceText = Buffer.from(original.bytes).toString('utf8')
-    const entry = descriptor === undefined ? {} : { contract: descriptor }
+    const entry =
+      descriptor === undefined
+        ? {}
+        : { contract: descriptor, ...(optional ? { optional: true } : {}) }
     const edited =
       metadata.uses === undefined
         ? appendJson1ObjectEntry(sourceText, 'root', 'uses', { [slot]: entry })

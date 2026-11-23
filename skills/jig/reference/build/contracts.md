@@ -282,6 +282,16 @@ It adds `uses.review` to the existing `FLOW.meta.json`.
 You can also select a standard `jig:` agreement or an installed `npm:` package.
 If the descriptor has no portable identity, Jig refuses the copy and points to the bare slot form.
 
+If some uses of the caller can proceed with the slot unbound, declare the named requirement as optional.
+
+```sh
+jig add-use flows/worker review=./flows/editor/FLOW.contract.json --optional
+```
+
+Jig copies the named agreement and adds `"optional": true` to `uses.review`.
+Optional ordinary slots stay unbound unless explicitly selected. Any selected target must match the exact agreement.
+Handle the unbound case in the caller before invoking the slot.
+
 Edit the caller to call `review` for the intended conditions.
 Set its target in the caller's Binding.
 Run `jig check`, then use `jig review` to decide whether to approve the changed project.
