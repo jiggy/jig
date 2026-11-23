@@ -1160,12 +1160,16 @@ The row counts additional caller slots. Links open the captured Binding declarat
 
 `jig inspect --flow --find TEXT` looks up a phrase in the working-tree navigation index.
 Compare the phrase without case distinctions against caller slot names, destination selectors, package paths, and captured Flow descriptions.
-Show name and slot matches before description-only matches among handoffs.
-Include matching targets with no configured callers. Show up to twelve matches and count omissions.
+For slot names, selectors, and paths, also match runs of whitespace, ASCII hyphens, and underscores as one separator.
+Return the exact configured names and paths.
+
+Within each section, show literal name and slot matches first, then literal description matches, then separator matches.
+Include matching targets with no configured callers. Reserve space for literal matches before adding separator matches.
+Show up to twelve matches and count omissions.
 
 Require one nonempty phrase of up to 128 characters.
 The lookup emits Markdown and takes no other inspection scope or view option.
-An empty match list exits successfully.
+An empty match list exits successfully and suggests retrying with one word from the request.
 
 Show the matched handoffs and other caller slots that share one of their caller's destinations.
 Identify the destination's independent Run selector.

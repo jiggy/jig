@@ -310,6 +310,10 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   The installed inspection selects the index before loading the source analyzer.
 
   `--find TEXT` searches the same captured routes by slot, destination selector, package path, or Flow description.
+  Ignore differences among whitespace, hyphens, and underscores when searching configured names and paths.
+  Keep literal matches first within each section and reserve result capacity for them.
+  On a miss, suggest retrying with one word from the request.
+
   Show matched handoffs, shared destination uses, and the caller's source links.
   Present quoted slot matches as text locations and keep behavior in focused inspection.
   This lookup opens no behavior analyzer and does not change the topology records.
