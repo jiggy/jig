@@ -436,7 +436,8 @@ the fixture tasks from actual prompts. Unknown, repeated or missing tasks fail.
 Portable HTTPS tests qualify that peer, not native execution or model quality.
 
 `host/installed-cli-lifecycle.test.ts` first exercises pristine `jig init` output
-outside the installed tooling directory. Its first review and greeting Runs
+outside the installed tooling directory. Check the project before review and run
+the greeting with its generated JSON fixture. The review and Runs
 require no inserted manifest, workspace, Git repository or local dependency setup.
 The test verifies generated source stays unchanged before later explicit edits.
 

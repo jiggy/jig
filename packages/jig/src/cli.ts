@@ -163,8 +163,9 @@ Usage:
 Start here:
   jig init hello-jig
   cd hello-jig
+  jig check
   jig review --allow-resolution-network
-  jig run flow:flows/hello --input '"Ada"'
+  jig run flow:flows/hello --input @fixtures/greeting.json
 
 ${VERIFICATION_HELP}
 
@@ -1982,8 +1983,8 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
       agent !== undefined
         ? `Created Jig project ${asciiJsonString(destination)} with ${agent} selected.\n\nNext:\n  Open the project README for native client prerequisites and the first Run.\n  Review bindings/agent.ts for the requested authority, then:\n\n  $ jig review --allow-resolution-network\n\nNo client installed, credentials copied or execution approved.\n`
         : bare
-          ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig review\n`
-          : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig review --allow-resolution-network\n  jig run flow:flows/hello --input '"Ada"'\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
+          ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig check\n  $ jig review\n`
+          : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig check\n  jig review --allow-resolution-network\n  jig run flow:flows/hello --input @fixtures/greeting.json\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
     )
     return 0
   } catch (error) {

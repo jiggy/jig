@@ -416,7 +416,7 @@ using FLOW;
   const initialized = await run([command, 'init', '--bare', bareProject], consumer)
   assert.equal(
     initialized.stdout,
-    `Created bare Jig project ${JSON.stringify(bareProject)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig review\n`,
+    `Created bare Jig project ${JSON.stringify(bareProject)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig check\n  $ jig review\n`,
   )
   assert.equal(initialized.stderr, '')
   assert.deepEqual((await readdir(bareProject)).sort(), [

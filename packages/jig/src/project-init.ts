@@ -16,7 +16,6 @@ import { privateJigVersion } from './installation-version.js'
 import { importContract } from './internal/contract-import.js'
 import { openPrivateChild } from './internal/descriptor-files.js'
 import { privatePublishDirectory } from './internal/file-input.js'
-import { doxFramework } from './project-dox.js'
 
 /** @internal Not exported from the package. */
 export interface ProjectInitFileSystem {
@@ -283,29 +282,13 @@ export async function createProject(
     }
 
     if (!bare) {
-      const path = join(target, 'flows', 'hello')
-      await fileSystem.mkdir(path)
-      created.push({ kind: 'directory', path })
+      for (const name of ['flows/hello', 'fixtures']) {
+        const path = join(target, name)
+        await fileSystem.mkdir(path)
+        created.push({ kind: 'directory', path })
+      }
     }
-    const files: readonly (readonly [string, string])[] = [
-      ['.gitignore', '.jig/\n'],
-      [
-        'AGENTS.md',
-        [
-          '# Workflow edits',
-          '',
-          'When changing which Flow runs next or how one caller uses a shared Flow,',
-          'run `jig inspect --flow` from the project root. Find the caller that owns',
-          'the decision and the other routes that use it. To inspect a known Flow source',
-          'file or Binding declaration, pass its project-relative path to the same command.',
-          '',
-          'For a wording change or another edit within one Flow, use its source and tests directly.',
-          '',
-          '---',
-          '',
-          doxFramework,
-        ].join('\n'),
-      ],
+    const sourceFiles: readonly (readonly [string, string])[] = [
       ['jig.ts', renderJigModule(agent)],
       ...(!bare && agent === undefined
         ? ([['package.json', renderProjectManifest()]] as const)
@@ -314,6 +297,11 @@ export async function createProject(
         ? greetingFiles().filter(([path]) => agent === undefined || path !== 'README.md')
         : []),
       ...(agent === undefined ? [] : agentFiles(agent)),
+    ]
+    const files: readonly (readonly [string, string])[] = [
+      ['.gitignore', '.jig/\n'],
+      ['AGENTS.md', projectAgentGuidance(sourceFiles)],
+      ...sourceFiles,
     ]
     for (const [name, contents] of files) {
       const path = join(target, name)
@@ -347,6 +335,32 @@ export async function createProject(
       'the destination cannot be initialized',
     )
   }
+}
+
+function projectAgentGuidance(files: readonly (readonly [string, string])[]): string {
+  const childGuides = files.map(([path]) => path).filter((path) => path.endsWith('/AGENTS.md'))
+  return [
+    '# Workflow edits',
+    '',
+    'Read the nearest `AGENTS.md` for the files you edit. For a change within one',
+    'Flow, work from its source and tests.',
+    '',
+    'For a routing or shared Binding change, run `jig inspect --flow` from the',
+    'project root. Pass a known Flow file or Binding declaration by its relative',
+    'path. Find the caller, its slot, and the routes to preserve. Give a caller',
+    'its own Binding when it needs a different collaborator.',
+    '',
+    'Check configuration changes with `jig check` before review. Use',
+    '`jig check --diff` when a prior approval exists. After authorized review,',
+    'replay the changed and preserved routes with the same fixture. When routing',
+    'matters, verify the exact caller, slot, and target in the Run evidence.',
+    '',
+    'See [Jig and FLOW authoring guidance](https://jig.md/for-agents) for setup and focused guides.',
+    '',
+    ...(childGuides.length === 0
+      ? []
+      : ['## Local guidance', '', ...childGuides.map((path) => `- [${path}](./${path})`), '']),
+  ].join('\n')
 }
 
 function errorCode(error: unknown): string | undefined {
@@ -458,6 +472,7 @@ function flowAgentGuidance(name: string): string {
 
 function greetingFiles(): readonly (readonly [string, string])[] {
   return [
+    ['fixtures/greeting.json', '"Ada"\n'],
     ['flows/hello/AGENTS.md', flowAgentGuidance('hello')],
     [
       'flows/hello/FLOW.meta.json',
@@ -487,17 +502,20 @@ function greetingFiles(): readonly (readonly [string, string])[] {
         'From this directory:',
         '',
         '```sh',
+        'jig check',
         'jig review --allow-resolution-network',
-        'jig run flow:flows/hello --input \'"Ada"\'',
+        'jig run flow:flows/hello --input @fixtures/greeting.json',
         '```',
+        '',
+        'Expect `Hello, Ada!`. Use the same fixture in `jig explore` with Load input JSON file.',
         '',
         'Review prepares dependencies privately, shows changes, and asks for approval.',
         'The resolution flag permits dependency-selected network requests before approval;',
         'declining cannot undo those requests. It does not grant network access to Runs.',
         'Initialization itself makes no network requests and approves nothing.',
         '',
-        'Edit `flows/hello/FLOW.ts`, repeat `jig review --allow-resolution-network`,',
-        'then run the accepted revision. Code edits can require fresh dependency',
+        'Edit `flows/hello/FLOW.ts`, check the working project, and review the change.',
+        'Run the accepted revision with the same fixture. Code edits can require fresh dependency',
         'resolution until you add an authored lock; unchanged reviews reuse admitted bytes.',
         'This ordinary package names the exact SDK revision tested with this Jig build.',
         'Resolution retains exact versions privately; add an authored Bun lock when',

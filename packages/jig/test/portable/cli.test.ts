@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
-import { createHash } from 'node:crypto'
 import { lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -206,21 +205,10 @@ test('installed bare init writes only the inert envelope and preserves existing 
   const guidance = await readFile(join(project, 'AGENTS.md'), 'utf8')
   expect(guidance.startsWith('# Workflow edits\n')).toBe(true)
   expect(guidance).toContain('jig inspect --flow')
-  expect(guidance).toContain(
-    'file or Binding declaration, pass its project-relative path to the same command.',
-  )
-  expect(guidance).not.toContain('MIT License')
-  expect(guidance).not.toContain('Copyright')
-  const notices = await readFile(
-    join(root, 'node_modules/@jigging/jig/THIRD_PARTY_NOTICES'),
-    'utf8',
-  )
-  expect(notices).toContain('Copyright (c) 2026 Agent Zero')
-  const dox = guidance.slice(guidance.indexOf('# DOX framework\n'))
-  // Upstream AGENTS.md at agent0ai/dox@765ae4ac, including its final newline.
-  expect(createHash('sha256').update(dox).digest('hex')).toBe(
-    'e1123d740736d6792efc4d11afa5a6a0f34610131ee7714ccf592f007b9bc3ea',
-  )
+  expect(guidance).toContain('jig check --diff')
+  expect(guidance).toContain('After authorized review')
+  expect(guidance).toContain('https://jig.md/for-agents')
+  expect(guidance).not.toContain('## Local guidance')
   expect(await readdir(join(project, 'flows'))).toEqual([])
   expect(await readdir(join(project, 'bindings'))).toEqual([])
   expect(await readFile(join(project, '.gitignore'), 'utf8')).toBe('.jig/\n')
@@ -276,26 +264,31 @@ test('installed greeting and Agent initialization create ordinary editable files
     expect(result.code).toBe(0)
     expect(result.stderr).toBe('')
     expect(result.stdout).not.toContain('\u001b')
-    expect(await readFile(join(project, 'AGENTS.md'), 'utf8')).toContain('# DOX framework\n')
+    const guidance = await readFile(join(project, 'AGENTS.md'), 'utf8')
+    expect(guidance).toContain('[flows/hello/AGENTS.md](./flows/hello/AGENTS.md)')
+    expect(guidance).toContain('slot, and target in the Run evidence')
     const notes = await readFile(join(project, 'flows/hello/AGENTS.md'), 'utf8')
     expect(notes).toContain('# hello Flow\n')
     expect(notes).toContain('[FLOW.ts](./FLOW.ts)')
-    expect(notes).not.toContain('# DOX framework')
-    expect(notes).not.toContain('MIT License')
     expect(await readFile(join(project, 'flows/hello/FLOW.ts'), 'utf8')).toContain(
       'import { handle } from "@jigging/flow"',
     )
     const projectManifest = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'))
     expect(projectManifest.engines).toEqual({ jig: current.version })
     expect(projectManifest.peerDependencies).toBeUndefined()
+    expect(JSON.parse(await readFile(join(project, 'fixtures/greeting.json'), 'utf8'))).toBe('Ada')
     if (client) {
       expect(await readFile(join(project, 'bindings/agent.ts'), 'utf8')).toContain(
         `client: ${JSON.stringify(client)}`,
       )
       expect(await readFile(join(project, 'jig.ts'), 'utf8')).toContain('defaultProviders:')
     } else {
+      expect(result.stdout).toContain('jig check')
       expect(result.stdout).toContain('jig review --allow-resolution-network')
-      expect(result.stdout).toContain(`jig run flow:flows/hello --input '"Ada"'`)
+      expect(result.stdout).toContain('jig run flow:flows/hello --input @fixtures/greeting.json')
+      expect(await readFile(join(project, 'README.md'), 'utf8')).toContain(
+        '@fixtures/greeting.json',
+      )
     }
     for (const path of ['.jig', 'jig.lock', 'node_modules', 'bun.lock'])
       await expect(lstat(join(project, path))).rejects.toMatchObject({ code: 'ENOENT' })
