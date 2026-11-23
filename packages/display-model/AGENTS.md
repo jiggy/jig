@@ -57,9 +57,11 @@ with their producer. This package owns readonly display data and pure meaning.
 - Run comparison accepts bounded trusted settlement evidence and an opaque input comparison identity.
   Retained calls supply exact selectors and parent references where available, with explicit coverage and omission counts.
   Keep it free of prior viewer capabilities and original input bytes.
-  A settled recorded-packet snapshot may carry a closed two-Run comparison.
-  It provides the submitted identity relation and bounded call claims without
-  carrying views, original bodies, input or artifact references.
+- A settled recorded-packet snapshot may carry a closed two-Run comparison.
+  It provides the submitted identity relation and bounded grouped rows without
+  carrying views, original bodies, input or artifact references. Each displayed
+  path keeps both sides’ exact counts. Source coverage and row omissions remain
+  separate. Live Explorer continues to carry a call prefix.
 - Composition bounds have one canonical owner in `src/types.ts`.
   Validation enforces node, edge and encoded UTF-8 byte capacities.
   Valid configuration does not guarantee executability or observed execution.

@@ -1,9 +1,13 @@
 import {
   compareObservedCalls,
+  DISPLAY_RECORDED_CALL_ANCESTORS,
+  DISPLAY_RECORDED_CALL_BYTES,
+  DISPLAY_RECORDED_CALL_ROWS,
+  type DisplayCallPathComparison,
   type DisplayRecordedComparison,
   type DisplayRecordedRun,
+  displayCallPathComparison,
 } from '@jigging/display-model'
-import { privateCallExcerpt } from './cli-call-evidence.js'
 import { asciiJsonString } from './cli-usage.js'
 import { normalizePrivateRunFileIdentity } from './internal/root-run-files.js'
 import { localName, readPrivateSavedCalls } from './internal/saved-call-evidence.js'
@@ -20,7 +24,6 @@ function recorded(packet: PrivateSavedResult) {
   return {
     runId: typeof runId === 'string' && /^sha256:[0-9a-f]{64}$/.test(runId) ? runId : 'unknown',
     status: recordedStatus,
-    evidence: calls,
     outcome: localName(outcome) ? outcome : undefined,
     root: calls?.root,
     revision: calls?.revision,
@@ -91,7 +94,7 @@ function recordedSubmittedIdentity(value: JsonValue | undefined): string | undef
   }
 }
 
-function browserRun(run: Recorded): DisplayRecordedRun {
+function browserRun(run: Recorded, callsUnplaced: number): DisplayRecordedRun {
   return {
     ...(run.runId === 'unknown' ? {} : { runId: run.runId }),
     ...(run.revision === undefined ? {} : { revision: run.revision }),
@@ -100,8 +103,34 @@ function browserRun(run: Recorded): DisplayRecordedRun {
     ...(run.outcome === undefined ? {} : { outcome: run.outcome }),
     filesComplete: run.filesComplete,
     invalidCalls: run.invalid,
-    ...privateCallExcerpt(run.evidence),
+    callCoverage: run.coverage,
+    callsOmitted: run.omitted,
+    callsRecorded: run.calls.length,
+    callsUnplaced,
   }
+}
+
+/** Bound whole rows after comparison. A rejected row contributes no partial counts. */
+function browserRows(compared: ReturnType<typeof compareObservedCalls>['rows']) {
+  const rows: DisplayCallPathComparison[] = []
+  let bytes = 2 // List delimiters.
+  let nonmatchingOmitted = 0
+  for (const row of compared) {
+    if (
+      rows.length < DISPLAY_RECORDED_CALL_ROWS &&
+      row.group.ancestors.length <= DISPLAY_RECORDED_CALL_ANCESTORS
+    ) {
+      const projected = displayCallPathComparison(row)
+      const size = Buffer.byteLength(JSON.stringify(projected)) + (rows.length ? 1 : 0)
+      if (bytes + size <= DISPLAY_RECORDED_CALL_BYTES) {
+        rows.push(projected)
+        bytes += size
+        continue
+      }
+    }
+    if (!row.matches) nonmatchingOmitted += 1
+  }
+  return { rows, rowsOmitted: compared.length - rows.length, nonmatchingOmitted }
 }
 
 /** Plain literal comparison and a closed browser projection of the same captured claims. */
@@ -164,9 +193,10 @@ export function privateSavedCallComparison(earlier: PrivateSavedResult, later: P
   return {
     text,
     browser: {
-      earlier: browserRun(before),
-      later: browserRun(after),
+      earlier: browserRun(before, beforeUnplaced.length),
+      later: browserRun(after, afterUnplaced.length),
       submittedIdentity,
+      ...browserRows(rows),
     } satisfies DisplayRecordedComparison,
     complete:
       before.filesComplete &&

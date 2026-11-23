@@ -1069,3 +1069,122 @@ test('saved comparison uses closed normalized submitted identities without displ
       earlier.close()
     }
   }))
+
+test('saved browser comparison selects full nonmatching paths before bounding rows', async () =>
+  fixture(async (root) => {
+    const first = join(root, 'earlier')
+    const second = join(root, 'later')
+    const runId = sha256(Buffer.from('full calls'))
+    const rootSelector = 'binding:desk'
+    const observed = (slot: string, target: string) => ({
+      caller: rootSelector,
+      slot,
+      target,
+      state: 'returned',
+      outcome: 'done',
+    })
+    const observedCalls = (label: string) =>
+      [
+        ...Array.from({ length: 12 }, () => observed('production', 'binding:prep')),
+        ...Array.from({ length: 34 }, (_, i) =>
+          observed('bulk', `flow:flows/${label}-${'a'.repeat(140)}-${i}`),
+        ),
+        observed('review', `binding:${label}-review`),
+        ...Array.from({ length: 10 }, (_, i) => observed(`z-check-${i}`, 'binding:prep')),
+      ].map((call, index) => ({ ...call, id: index + 1 }))
+    for (const [path, label] of [
+      [first, 'house'],
+      [second, 'fieldnote'],
+    ] as const)
+      await packet(
+        path,
+        {},
+        {
+          runId,
+          callEvidence: {
+            provenance: 'recorded-claim',
+            runId,
+            revision: sha256(Buffer.from(label)),
+            root: rootSelector,
+            coverage: 'complete',
+            omittedEvents: 0,
+            calls: observedCalls(label),
+          },
+        },
+      )
+    const earlier = await privateCaptureSavedResult(first, undefined, false)
+    const later = await privateCaptureSavedResult(second, undefined, false)
+    try {
+      const { browser } = privateSavedCallComparison(earlier, later)
+      expect(browser.earlier.callCoverage).toBe('complete')
+      expect(browser.later.callCoverage).toBe('complete')
+      expect(browser.earlier.callsOmitted).toBe(0)
+      expect(browser.rows[0]?.slot).toBe('review')
+      expect(browser.rows[0]?.matches).toBeFalse()
+      expect(browser.rows.find(({ slot }) => slot === 'bulk')).toBeUndefined()
+      expect(browser.rows.find(({ slot }) => slot === 'production')).toMatchObject({
+        earlier: [{ target: 'binding:prep', count: 12 }],
+        later: [{ target: 'binding:prep', count: 12 }],
+        matches: true,
+      })
+      expect(browser.nonmatchingOmitted).toBe(1)
+      expect(browser.rowsOmitted).toBe(5)
+      expect(browser.rows).toHaveLength(8)
+      expect(Buffer.byteLength(JSON.stringify(browser.rows))).toBeLessThanOrEqual(5 * 1024)
+    } finally {
+      later.close()
+      earlier.close()
+    }
+  }))
+
+test('saved browser comparison discloses a nonmatching path deeper than its ancestor limit', async () =>
+  fixture(async (root) => {
+    const first = join(root, 'earlier')
+    const second = join(root, 'later')
+    const rootSelector = 'binding:desk'
+    const runId = sha256(Buffer.from('nested calls'))
+    for (const [path, label] of [
+      [first, 'house'],
+      [second, 'fieldnote'],
+    ] as const) {
+      const calls = Array.from({ length: 9 }, (_, i) => ({
+        id: i + 1,
+        ...(i ? { parent: i } : {}),
+        caller: i === 0 ? rootSelector : `binding:step-${i}`,
+        slot: i < 8 ? 'advance' : 'review',
+        target: i < 8 ? `binding:step-${i + 1}` : `binding:${label}-review`,
+        state: 'returned',
+        outcome: 'done',
+      }))
+      await packet(
+        path,
+        {},
+        {
+          runId,
+          callEvidence: {
+            provenance: 'recorded-claim',
+            runId,
+            revision: sha256(Buffer.from(label)),
+            root: rootSelector,
+            coverage: 'complete',
+            omittedEvents: 0,
+            calls,
+          },
+        },
+      )
+    }
+    const earlier = await privateCaptureSavedResult(first, undefined, false)
+    const later = await privateCaptureSavedResult(second, undefined, false)
+    try {
+      const comparison = privateSavedCallComparison(earlier, later)
+      expect(comparison.text).toContain('"review" · Different retained observations')
+      expect(comparison.browser.earlier.callsRecorded).toBe(9)
+      expect(comparison.browser.rows.every((row) => row.ancestors.length <= 7)).toBeTrue()
+      expect(comparison.browser.rows.every((row) => row.matches)).toBeTrue()
+      expect(comparison.browser.rowsOmitted).toBe(1)
+      expect(comparison.browser.nonmatchingOmitted).toBe(1)
+    } finally {
+      later.close()
+      earlier.close()
+    }
+  }))
