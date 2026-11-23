@@ -1,4 +1,9 @@
-import { compareObservedCalls } from '@jigging/display-model'
+import {
+  compareObservedCalls,
+  type DisplayRecordedComparison,
+  type DisplayRecordedRun,
+} from '@jigging/display-model'
+import { privateCallExcerpt } from './cli-call-evidence.js'
 import { asciiJsonString } from './cli-usage.js'
 import { normalizePrivateRunFileIdentity } from './internal/root-run-files.js'
 import { localName, readPrivateSavedCalls } from './internal/saved-call-evidence.js'
@@ -10,9 +15,12 @@ type Group = NonNullable<ReturnType<typeof compareObservedCalls>['rows'][number]
 function recorded(packet: PrivateSavedResult) {
   const { runId, callEvidence, status, outcome } = packet.record
   const calls = readPrivateSavedCalls(callEvidence, runId)
+  const recordedStatus: DisplayRecordedRun['status'] =
+    status === 'succeeded' || status === 'failed' ? status : 'lost'
   return {
     runId: typeof runId === 'string' && /^sha256:[0-9a-f]{64}$/.test(runId) ? runId : 'unknown',
-    status,
+    status: recordedStatus,
+    evidence: calls,
     outcome: localName(outcome) ? outcome : undefined,
     root: calls?.root,
     revision: calls?.revision,
@@ -83,7 +91,20 @@ function recordedSubmittedIdentity(value: JsonValue | undefined): string | undef
   }
 }
 
-/** Plain literal comparison of already captured local claims. */
+function browserRun(run: Recorded): DisplayRecordedRun {
+  return {
+    ...(run.runId === 'unknown' ? {} : { runId: run.runId }),
+    ...(run.revision === undefined ? {} : { revision: run.revision }),
+    ...(run.root === undefined ? {} : { root: run.root }),
+    status: run.status,
+    ...(run.outcome === undefined ? {} : { outcome: run.outcome }),
+    filesComplete: run.filesComplete,
+    invalidCalls: run.invalid,
+    ...privateCallExcerpt(run.evidence),
+  }
+}
+
+/** Plain literal comparison and a closed browser projection of the same captured claims. */
 export function privateSavedCallComparison(earlier: PrivateSavedResult, later: PrivateSavedResult) {
   const before = recorded(earlier)
   const after = recorded(later)
@@ -94,12 +115,12 @@ export function privateSavedCallComparison(earlier: PrivateSavedResult, later: P
     beforeInput === undefined || afterInput === undefined
       ? 'unknown'
       : beforeInput === afterInput
-        ? 'same recorded identity'
-        : 'different recorded identity'
+        ? 'same'
+        : 'different'
   let text = [
     'Saved Run call comparison',
     'Local recorded claims. No work was started.',
-    `Submitted input and attachments: ${submittedIdentity}`,
+    `Submitted input and attachments: ${submittedIdentity === 'unknown' ? 'unknown' : `${submittedIdentity} recorded identity`}`,
     '',
     heading('Earlier', before, beforeUnplaced.length),
     heading('Later', after, afterUnplaced.length),
@@ -142,6 +163,11 @@ export function privateSavedCallComparison(earlier: PrivateSavedResult, later: P
     text += `${hidden} call paths omitted from this excerpt. Inspect each packet with --calls for its full record.\n`
   return {
     text,
+    browser: {
+      earlier: browserRun(before),
+      later: browserRun(after),
+      submittedIdentity,
+    } satisfies DisplayRecordedComparison,
     complete:
       before.filesComplete &&
       after.filesComplete &&

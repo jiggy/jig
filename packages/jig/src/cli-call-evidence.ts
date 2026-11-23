@@ -1,3 +1,4 @@
+import type { DisplayProjectRunEvidence } from '@jigging/display-model'
 import { compositionObservations, type DisplayComposition } from '@jigging/display-model'
 import type { PrivateCallEvent, PrivateCallState } from './cli-run-model.js'
 import { PrivateRunModel } from './cli-run-model.js'
@@ -8,6 +9,25 @@ import {
   settled,
 } from './internal/saved-call-evidence.js'
 import { flowSelector } from './project/package-selector.js'
+
+/** Browser comparisons keep a prefix so a retained child keeps its parent index. */
+export function privateCallExcerpt(recorded?: PrivateSavedCalls) {
+  const calls: DisplayProjectRunEvidence['calls'][number][] = []
+  for (const { id: _id, ...call } of recorded?.calls.slice(0, 8) ?? []) {
+    // Reserve space for the settlement facts and any separately projected live file paths.
+    if (Buffer.byteLength(JSON.stringify([...calls, call])) > 5 * 1024) break
+    calls.push(call)
+  }
+  const callsOmitted = Math.min(
+    Number.MAX_SAFE_INTEGER,
+    (recorded?.omittedEvents ?? 0) + ((recorded?.calls.length ?? 0) - calls.length),
+  )
+  return {
+    calls,
+    callCoverage: callsOmitted ? ('incomplete' as const) : (recorded?.coverage ?? 'unavailable'),
+    callsOmitted,
+  }
+}
 
 function nodeTarget(node: Extract<DisplayComposition, { state: 'available' }>['nodes'][number]) {
   if (node.kind === 'resource') return `resource:${node.resourceKind}`

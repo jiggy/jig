@@ -60,6 +60,10 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
 - Keep comparison evidence for two settled Runs in tab memory.
   Group calls by exact root, ancestor path, caller and slot, with counts by target, state and outcome.
   Keep both approvals, unmatched observations and incomplete recording visible. Equality covers submitted JSON and uploads.
+- The ordinary inspection shell uses the same call table for two explicitly
+  saved packets. Display recorded Run and revision identities, relation and
+  coverage as local claims. Disable absence wording when the body is stale.
+  The comparison offers no packet navigation, input, or file controls.
 - Retain one snapshot task, bounded SSE reader/retry owner and active preview.
   Equal revisions acknowledge freshness without replacing semantic data.
 - Validate incoming snapshot shape before atomic replacement. Incomplete/stale

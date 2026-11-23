@@ -39,6 +39,8 @@ export type {
   DisplayProjectSelection,
   DisplayProjectSnapshot,
   DisplayProjectTarget,
+  DisplayRecordedComparison,
+  DisplayRecordedRun,
   DisplayReferenceRecord,
   DisplaySnapshot,
   DisplaySnapshotEnvelope,
