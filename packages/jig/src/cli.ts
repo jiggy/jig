@@ -26,8 +26,8 @@ import {
 } from './attempt-contract.js'
 import { preparePrivateCliRun, privateAttemptFailureMessage } from './cli-attempt-execution.js'
 import { PrivateAttemptInput } from './cli-attempt-io.js'
-import { generateCallTypes, type generateProjectTypes } from './cli-call-types.js'
 import { PrivateCallEvidence } from './cli-call-evidence.js'
+import { generateCallTypes, type generateProjectTypes } from './cli-call-types.js'
 import { compareConfiguredRouting, parseCheck, renderCheck } from './cli-check.js'
 import { approvedTargets, completionScript, invocationGuide } from './cli-discovery.js'
 import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-archive.js'
@@ -134,7 +134,7 @@ const HELP = `Jig runs reusable methods with powers you approve.
 Usage:
   jig init <directory>       Create a project with a small greeting Flow
   jig new <name>             Add an editable Flow to the current project
-  jig types <package-path>   Print TypeScript types for a Flow's settings and child calls
+  jig types <package-path>   Print types for a Flow's invocation, settings and child calls
   jig types --project        Print TypeScript types for project Binding declarations
   jig add-use <package-path> <slot>=<source>  Declare a collaborator in an existing Flow
   jig specialize-slot <caller>  Give one caller slot its own child Binding
@@ -265,7 +265,7 @@ and jig review.`,
   types: `Usage: jig types <package-path> | jig types --project
 
 Select one project-relative package directory containing FLOW.ts. Print a
-TypeScript declaration from its settings.schema.json and declared child calls.
+TypeScript declaration from its invocation contract, settings schema and child calls.
 With --project, use contained declaration evaluation and link the working tree.
 Print a declaration for Binding package selections, declared slots, and settings.
 Both forms write the declaration to stdout. Run from the project root.
@@ -998,8 +998,8 @@ async function executeTypes(arguments_: readonly string[], runtime: CliRuntime):
         : project
           ? 'Check the declarations, installed dependencies, and supported host setup.'
           : 'Could not capture the package safely. Check its location and readability.')
-    const subject = project ? 'Binding types' : 'child call types'
-    const section = project ? 'type-check-binding-declarations' : 'type-check-child-calls'
+    const subject = project ? 'Binding types' : 'Flow types'
+    const section = project ? 'type-check-binding-declarations' : 'type-check-a-flow'
     throw new CliDiagnostic(
       error.code,
       `Could not generate ${subject}${location}${pointer}. ${cause}\nNext step: https://jig.md/build/contracts#${section}`,

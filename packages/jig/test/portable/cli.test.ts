@@ -380,7 +380,7 @@ test('installed inspection is read-only and returns exact machine JSON', async (
   passed++
 })
 
-test('installed Flow declarations check settings and child calls with TypeScript', async () => {
+test('installed Flow declarations check invocation, settings and child calls with TypeScript', async () => {
   const project = join(root, 'type-consumer')
   const caller = join(project, 'flows/worker')
   await mkdir(join(caller, 'contracts'), { recursive: true })
@@ -582,10 +582,12 @@ await handle(async (context) => {
   await rm(settingsPath)
   const broad = await generate()
   await writeFile(join(caller, 'FLOW.calls.d.ts'), broad)
-  await compile(`import type { RunContext as SDKContext } from '@jigging/flow'
-import type { RunContext } from './FLOW.calls.js'
+  await compile(`import type { RunContext as SDKContext, RunResult } from '@jigging/flow'
+import type { FlowResult, RunContext } from './FLOW.calls.js'
 declare const sdk: SDKContext
 export const run: RunContext = sdk
+declare const result: RunResult
+export const broadResult: FlowResult = result
 `)
   await writeFile(
     settingsPath,
@@ -601,6 +603,64 @@ export const run: RunContext = sdk
   expect(invalidSettings).toMatchObject({ code: 1, stdout: '' })
   expect(invalidSettings.stderr).toContain('SCHEMA_INVALID')
   expect(invalidSettings.stderr).toContain('flows/worker/settings.schema.json')
+  await rm(settingsPath)
+
+  const ownPath = join(caller, 'FLOW.contract.json')
+  const invocation = {
+    $schema: contract.$schema,
+    input: contract.input,
+    outcomes: contract.outcomes,
+    result: contract.result,
+  }
+  await writeFile(ownPath, JSON.stringify(invocation))
+  const ownDeclaration = await generate()
+  expect(await generate()).toBe(ownDeclaration)
+  await writeFile(join(caller, 'FLOW.calls.d.ts'), ownDeclaration)
+  const ownHandler = `import { handle, type Artifact } from '@jigging/flow'
+import type { FlowResult, RunContext } from './FLOW.calls.js'
+
+await handle(async (context): Promise<FlowResult> => {
+  const run = context as RunContext
+  const reason = run.input.reason.trim()
+  if (reason !== '') return { outcome: 'needs-evidence', output: { request: reason } }
+  return { outcome: 'done', output: { summary: run.input.headers.join(', ') } }
+})
+
+export function artifactResult(artifact: Artifact): FlowResult {
+  return { outcome: 'done', output: { summary: '' }, artifactResults: { report: artifact } }
+}
+`
+  for (const compiler of [tsc59, tsc]) await compile(ownHandler, undefined, compiler)
+  await compile(
+    ownHandler.replace(
+      'const reason = run.input.reason.trim()',
+      'const reason: string = run.input.reaosn',
+    ),
+    'run.input.reaosn',
+  )
+  await compile(ownHandler.replace("outcome: 'done'", "outcome: 'sent'"), "outcome: 'sent'")
+  await compile(
+    ownHandler.replace('output: { request: reason }', 'output: { summary: reason }'),
+    'output: { summary: reason }',
+  )
+  await writeFile(
+    ownPath,
+    JSON.stringify({
+      ...invocation,
+      $defs: { Input: invocation.input, Result: invocation.result },
+      input: { $ref: '#/$defs/Input' },
+      result: { $ref: '#/$defs/Result' },
+    }),
+  )
+  await writeFile(join(caller, 'FLOW.calls.d.ts'), await generate())
+  await compile(`import { handle, type JsonValue, type RunContext as SDKContext } from '@jigging/flow'
+import type { FlowResult, RunContext } from './FLOW.calls.js'
+await handle(async (run: SDKContext): Promise<FlowResult> => {
+  const context: RunContext = run
+  const input: JsonValue = context.input
+  return { outcome: 'done', output: input }
+})
+`)
   passed++
 }, 60_000)
 

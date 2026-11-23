@@ -80,8 +80,9 @@ All selected domain requirements still apply.
   to the caller, the target configuration, and ordinary check and review.
 
 - `src/cli-call-types.ts` owns declarations emitted by `jig types`.
-  Reuse exact member capture, inspected `uses` contracts, and the validated package settings schema.
+  Reuse exact member capture, the inspected invocation and `uses` contracts, and the validated package settings schema.
   Infer the selected slot for payload diagnostics and preserve the slot and input pairing in union requests.
+  Keep the SDK's root `RunResult` and child `CallResult` artifact fields distinct.
   Emit only public SDK types, and keep review and the runtime responsible for validation.
   Flow-local declarations take no evaluator and use the caller's contracts.
 
