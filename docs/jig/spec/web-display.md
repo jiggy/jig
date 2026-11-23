@@ -153,8 +153,13 @@ Submitted input equality covers canonical JSON, attachment names, file names, an
 
 The comparison groups retained calls by exact root, ancestor path, caller, and slot.
 Each group shows counts by target, state, and outcome for each Run.
-Each Run summary retains up to eight recorded calls and displays the coverage and known omissions.
+A settlement carries the entire retained call tree if its JSON fits 5 KiB.
+If the tree exceeds that allowance, omit it and disclose the withheld paths and observations.
+
+The browser shows up to eight whole rows within 5 KiB, with up to seven ancestors per row.
+It shows nonmatching paths before matching paths and counts omitted paths.
 Call counts describe retained observations. Rows imply no call order or facts about omitted observations.
+Stale status prevents absence wording.
 The comparison stays in browser memory and retains no previous observer URL.
 
 Close explorer prevents new launches and cancels active owned work through ordinary cancellation and cleanup.

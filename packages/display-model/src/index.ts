@@ -8,9 +8,9 @@ export { DISPLAY_IMAGE_BYTES, validDisplayImage } from './image.js'
 export type { DisplayDestination } from './semantics.js'
 export {
   attentionImportance,
+  boundDisplayCallComparison,
   callObservationSpans,
   compareObservedCalls,
-  displayCallPathComparison,
   displayDestinations,
   displayDuration,
   displayViewKey,
@@ -54,14 +54,15 @@ export {
   DISPLAY_COMPOSITION_BYTE_LIMIT,
   DISPLAY_COMPOSITION_EDGE_LIMIT,
   DISPLAY_COMPOSITION_NODE_LIMIT,
+  DISPLAY_EXPLORER_CALL_BYTES,
   DISPLAY_INCOMPLETE_LIMIT,
   DISPLAY_PROJECT_BYTE_LIMIT,
   DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT,
   DISPLAY_PROJECT_SCHEMA_BYTE_LIMIT,
   DISPLAY_PROJECT_TARGET_LIMIT,
-  DISPLAY_RECORDED_CALL_ANCESTORS,
-  DISPLAY_RECORDED_CALL_BYTES,
-  DISPLAY_RECORDED_CALL_ROWS,
+  DISPLAY_COMPARISON_CALL_ANCESTORS,
+  DISPLAY_COMPARISON_CALL_BYTES,
+  DISPLAY_COMPARISON_CALL_ROWS,
   DISPLAY_SNAPSHOT_LIMIT,
 } from './types.js'
 export {
