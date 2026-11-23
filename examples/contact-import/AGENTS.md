@@ -70,6 +70,11 @@ or both, then using ordinary code to produce a contact preview.
   proof that an Agent request started, returned or produced correct semantics.
   The selected branch must use the same condition as the running method.
 
+  When root Reporting is connected, the importer explicitly subscribes to the
+  selected mapper's Reporting port. It projects only the bounded match and
+  choice from Columns into Contact preview. The reference selects the parent-owned
+  `map-columns` invocation. Optional reporting does not select the mapper or retry it.
+
   All child Flows have independent optional domain views
   through `progress`. FLOW entrypoints own scoped publishers, activity and
   failure notices. Pure methods retain their exact results and policy. The

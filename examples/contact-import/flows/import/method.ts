@@ -6,9 +6,10 @@ import {
   contactPreviewView,
   type ImportState,
 } from './dashboard.ts'
+import { callMapper } from './mapper-decision.ts'
 
 export async function runMethod(
-  run: Pick<RunContext, 'input' | 'attachments' | 'signal' | 'call'>,
+  run: Pick<RunContext, 'input' | 'attachments' | 'signal' | 'call' | 'channel' | 'channels'>,
   reporter?: Reporter,
 ): Promise<RunResult> {
   let view = reporter?.view('reading', { title: 'Contact preview' })
@@ -34,11 +35,9 @@ export async function runMethod(
     view = reporter?.view('contacts', contactPreviewOptions(headers, rows))
 
     show('mapping')
-    const proposal = await run.call({
-      operationId: 'map-columns',
-      slot: 'mapper',
-      intent: 'Choose name, email and organization columns',
-      input: { headers },
+    const proposal = await callMapper(run, headers, (mapperDecision) => {
+      state = { ...state, mapperDecision }
+      show('mapping')
     })
     run.signal.throwIfAborted()
     if (proposal.outcome === 'blocked' || proposal.outcome === 'limit') {
