@@ -1159,6 +1159,11 @@ The index displays up to eight caller slots per target.
 The row counts additional caller slots. Links open the captured Binding declarations for the target and its displayed callers, where available.
 
 `jig inspect --flow --find TEXT` looks up a phrase in the working-tree navigation index.
+Adding `--approved` searches the last locally approved configured routes and captured package descriptions.
+It reads the same retained revision as approved topology without evaluating current declarations or checking the current environment.
+Label that basis and revision, and retain `--approved` in focused commands and retry hints.
+Without local approval, refuse with a command for working-tree lookup.
+
 Compare the phrase without case distinctions against caller slot names, destination selectors, package paths, and captured Flow descriptions.
 For slot names, selectors, and paths, also match runs of whitespace, ASCII hyphens, and underscores as one separator.
 Return the exact configured names and paths.
@@ -1168,13 +1173,14 @@ Include matching targets with no configured callers. Reserve space for literal m
 Show up to twelve matches and count omissions.
 
 Require one nonempty phrase of up to 128 characters.
-The lookup emits Markdown and takes no other inspection scope or view option.
+The lookup emits Markdown. It accepts `--approved` as its only scope or view option.
 An empty match list exits successfully and suggests retrying with one word from the request.
 
 Show the matched handoffs and other caller slots that share one of their caller's destinations.
 Identify the destination's independent Run selector.
-Link the caller's Binding declaration, local entry file, and focused inspection when available.
-Show up to four single- or double-quoted slot references per handoff from captured local source.
+Show a focused inspection command when available.
+The working-tree view also links the caller's captured Binding declaration and local entry file.
+Show up to four single- or double-quoted slot references per handoff from captured local source in that view.
 Check up to 64 source files of the entry file's language and read up to 256 KiB per caller package.
 
 These locations match quoted slot text. Conditions, order, and execution require separate evidence.

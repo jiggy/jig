@@ -104,6 +104,21 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
     expect(originalTopology.targets[0].flow.routes).toEqual([])
     expect(existsSync(join(project, '.jig'))).toBe(false)
     expect(existsSync(join(project, 'jig.lock'))).toBe(false)
+    const approvedLookup = [cli, 'inspect', '--flow', '--find', 'supplied string', '--approved']
+    const unreviewed = await settleTestCommand(
+      Bun.spawn(approvedLookup, {
+        cwd: project,
+        env: foundationEnvironment(),
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      }),
+      { evidence: join(root, 'unreviewed-lookup'), timeoutMs: 30_000, graceMs: 10_000 },
+    )
+    expect(unreviewed.code).toBe(1)
+    expect(unreviewed.stdout).toBe('')
+    expect(unreviewed.stderr).toContain('No locally approved revision to search.')
+    expect(existsSync(join(project, '.jig'))).toBe(false)
     await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
     const lock = await readFile(join(project, 'jig.lock'), 'utf8')
     const graph = await command([cli, 'inspect', '--flow', '--topology'], project)
@@ -131,6 +146,47 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
       project,
     )
     expect(JSON.parse(approvedByFile.stdout)).toEqual(approvedTopology)
+    const statePath = join(project, '.jig', 'jig.sqlite3')
+    const state = await readFile(statePath)
+    const metadataPath = join(project, 'flows/hello/FLOW.meta.json')
+    const metadata = await readFile(metadataPath, 'utf8')
+    await writeFile(
+      metadataPath,
+      JSON.stringify({ ...JSON.parse(metadata), description: 'Identify this working greeting.' }),
+    )
+    const liveLookup = await command(
+      [cli, 'inspect', '--flow', '--find', 'working greeting'],
+      project,
+    )
+    expect(liveLookup.stdout).toContain('flow:flows/hello · Identify this working greeting.')
+    const retained = await command(approvedLookup, project)
+    expect(retained.stdout).toContain(
+      'Basis: last locally approved configuration. Revision ' + approvedTopology.revision + '.',
+    )
+    expect(retained.stdout).toContain('Current source and environment are unchecked.')
+    expect(retained.stdout).toContain('flow:flows/hello · Greet the supplied string')
+    expect(retained.stdout).toContain('jig inspect --flow --approved flow:flows/hello')
+    expect(retained.stdout).not.toContain('Identify this working greeting.')
+    await writeFile(metadataPath, metadata)
+    const declarationPath = join(project, 'jig.ts')
+    const declaration = await readFile(declarationPath)
+    await writeFile(declarationPath, 'export default {')
+    const invalidLookup = await settleTestCommand(
+      Bun.spawn([cli, 'inspect', '--flow', '--find', 'supplied string'], {
+        cwd: project,
+        env: foundationEnvironment(),
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      }),
+      { evidence: join(root, 'invalid-current-lookup'), timeoutMs: 30_000, graceMs: 10_000 },
+    )
+    expect(invalidLookup.code).toBe(1)
+    expect(invalidLookup.stdout).toBe('')
+    expect(invalidLookup.stderr).toContain('JIG_SOURCE_INSPECTION_FAILED')
+    expect((await command(approvedLookup, project)).stdout).toBe(retained.stdout)
+    await writeFile(declarationPath, declaration)
+    expect(await readFile(statePath)).toEqual(state)
     expect(await readFile(join(project, 'jig.lock'), 'utf8')).toBe(lock)
     await writeFile(methodPath, originalMethod)
 

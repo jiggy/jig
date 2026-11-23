@@ -295,6 +295,8 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Show matched handoffs, shared destination uses, and the caller's source links.
   Present quoted slot matches as text locations and keep behavior in focused inspection.
   This lookup opens no behavior analyzer and does not change the topology records.
+  With `--approved`, search the read-only approved topology and retained package descriptions.
+  Label the retained basis, omit working-source links, and keep focused commands on that basis.
 
   The comparison renders changed source evidence from `--snapshot` and a fresh capture.
   It leads with source-linked changes on paths with uniquely corresponding captured checks.

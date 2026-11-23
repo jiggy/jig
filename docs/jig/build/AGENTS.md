@@ -24,6 +24,7 @@ external boundaries of an isolated test project.
 `results.md` explains live application maps alongside observed calls, without implying sequence, branch evaluation, or saved invocation history.
 It teaches the selected invocation's clipboard handoff and its source lookup limits.
 It also owns configured-topology inspection of current source or retained approval.
+It teaches phrase lookup on either basis and the limits of retained lookup.
 It explains checking working composition and comparing it to retained approval before review.
 
 Source behavior inspection owns the linked application map and its coverage limits.
