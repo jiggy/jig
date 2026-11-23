@@ -43,6 +43,7 @@ import {
 import { PrivateCliProgress, type PrivateProgressLifetime } from './cli-progress.js'
 import { renderReviewAgentSelections, renderReviewAgentSetup } from './cli-review-agent-setup.js'
 import { PrivateCliRunPresentation, privateCliInvalidInputText } from './cli-run-presentation.js'
+import { privateSavedCallComparison } from './cli-saved-call-comparison.js'
 import { privateSavedResultPlain } from './cli-saved-result-presentation.js'
 import { asciiJsonString, CliDiagnostic, spellingHint, usage } from './cli-usage.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
@@ -336,6 +337,7 @@ Example:
        jig inspect --flow --snapshot
        jig inspect --flow --compare BASELINE [--all]
        jig inspect --result DIRECTORY [--display plain|tui|web | --calls] [--json]
+       jig inspect --result EARLIER --compare LATER
 
 List the current project's approved targets, or show one target's retained
 input/result schemas, settings, child slots, capabilities, files and channels.
@@ -348,7 +350,8 @@ No installation, provider requests, recovery, approval or project-state writes.
 Ordinary approval inspection does not compare visible source.
 Launch readiness and remote provider availability remain unchecked.
 
-  --json     Emit JSON even in a terminal (redirected output is JSON unless --flow is selected)
+  --json     Emit JSON even in a terminal
+             Piped output is JSON except for source reports and saved comparisons
   --flow     Explain supported source behavior as Markdown, including when piped
              A target retains callers, their other slots and shared package uses
   --all      With --flow: include every target, or every changed path in a comparison
@@ -358,6 +361,7 @@ Launch readiness and remote provider availability remain unchecked.
   --approved With --flow: use the last locally approved configuration
   --snapshot With --flow: emit a machine baseline for the complete application
   --compare BASELINE  With --flow: show current behavior changes from that baseline
+  --compare LATER     With --result: compare recorded calls in two saved packets
   --result DIRECTORY  Inspect a saved packet without approval or new execution
   --calls             Show recorded child calls and application outcomes
   --display MODE      For saved results: plain (default), tui or web
@@ -374,6 +378,7 @@ Examples:
   jig inspect flow:flows/hello
   jig inspect binding:repair --json
   jig inspect --result ./result-packet --display tui
+  jig inspect --result ./yesterday --compare ./today
   jig inspect --result ./result-packet --display web
 
 ${VERIFICATION_HELP}`,
@@ -1436,7 +1441,10 @@ function parseInspect(arguments_: readonly string[]) {
     if (value === '--compare') {
       const next = arguments_[++index]
       if (comparison !== undefined || next === undefined || next.startsWith('-'))
-        usage('inspect', 'Specify --compare with one behavior baseline file.')
+        usage(
+          'inspect',
+          'Specify --compare with one behavior baseline file or later saved packet directory.',
+        )
       comparison = next
       continue
     }
@@ -1511,6 +1519,8 @@ function parseInspect(arguments_: readonly string[]) {
   if (all && !flow) usage('inspect', '--all requires --flow.')
   if (topology && !flow) usage('inspect', '--topology requires --flow.')
   if (packagePath !== undefined && !flow) usage('inspect', '--package requires --flow.')
+  if (resultDirectory !== undefined && comparison !== undefined && (json || calls || display))
+    usage('inspect', 'Use --result EARLIER --compare LATER for a plain saved call comparison.')
   if (
     find !== undefined &&
     (!flow ||
@@ -1525,7 +1535,7 @@ function parseInspect(arguments_: readonly string[]) {
   )
     usage('inspect', 'Use --flow --find TEXT, optionally with --approved.')
   if (
-    (snapshot || comparison !== undefined) &&
+    (snapshot || (comparison !== undefined && resultDirectory === undefined)) &&
     (!flow ||
       approved ||
       topology ||
@@ -1579,20 +1589,35 @@ async function executeSavedResultInspect(
   runtime: CliRuntime,
 ): Promise<number> {
   let packet: Awaited<ReturnType<typeof privateCaptureSavedResult>> | undefined
+  let later: typeof packet
   try {
     packet = await privateCaptureSavedResult(
       resolve(runtime.currentDirectory, parsed.resultDirectory!),
       runtime.signal,
       !parsed.json && runtime.humanOutput && (parsed.display === 'tui' || parsed.display === 'web'),
     )
-    if (packet.finding)
-      runtime.writeError(
-        renderDiagnostic(
-          'JIG_RESULT_FILES_INCOMPLETE',
-          packet.finding,
-          'Saved file verification incomplete',
-        ),
+    if (parsed.comparison !== undefined)
+      later = await privateCaptureSavedResult(
+        resolve(runtime.currentDirectory, parsed.comparison),
+        runtime.signal,
+        false,
       )
+    for (const capture of [packet, later]) {
+      if (capture?.finding)
+        runtime.writeError(
+          renderDiagnostic(
+            'JIG_RESULT_FILES_INCOMPLETE',
+            capture.finding,
+            'Saved file verification incomplete',
+          ),
+        )
+    }
+    if (later) {
+      runtime.signal?.throwIfAborted()
+      const comparison = privateSavedCallComparison(packet, later)
+      await runtime.writeRecord(comparison.text)
+      return comparison.complete ? 0 : 1
+    }
     if (parsed.calls) {
       const evidence = readPrivateSavedCalls(packet.record.callEvidence, packet.record.runId)
       if (evidence === undefined) {
@@ -1670,6 +1695,7 @@ async function executeSavedResultInspect(
     return 1
   } finally {
     await runtime.progress.closeWorkspace().catch(() => undefined)
+    later?.close()
     packet?.close()
   }
 }

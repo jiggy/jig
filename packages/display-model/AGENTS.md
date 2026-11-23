@@ -13,8 +13,8 @@ with their producer. This package owns readonly display data and pure meaning.
   owns bounded inert-data validation. No value grants execution authority.
 - `src/image.ts` validates bounded PNG/JPEG payloads and matching encoded
   dimensions. It owns no decoder, IO or authenticity claim.
-- `src/semantics.ts` owns destination vocabulary, observation intervals and
-  typed reference helpers. `src/index.ts` declares the public surface.
+- `src/semantics.ts` owns destination vocabulary, observation intervals,
+  exact path grouping for observed call comparisons and typed reference helpers. `src/index.ts` declares the public surface.
 - `src/composition.ts` matches retained invocation requests to supplied admitted
   composition. It owns no graph discovery, admission, execution, or layout.
 - Package metadata, README, notices, justfile and tests own this release unit.
