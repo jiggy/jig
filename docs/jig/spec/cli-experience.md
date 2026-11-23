@@ -1503,8 +1503,9 @@ unknown. Explorer comparison identities stay private to its live session.
 
 Compare only calls with an exact retained root, ancestor slot and target chain,
 caller and slot. Compare counts by target, state and observed outcome within
-each path. Matching observations describe retained evidence only. A path without
-a counterpart can say “None observed” only with complete coverage under the
+each path. Matching observations describe retained evidence only.
+
+A path without a counterpart can say “None observed” only with complete coverage under the
 same root. An incomplete record can say “No retained match.” A different root
 and unavailable evidence are distinct. Disclose omitted events, observations
 without an exact path and clipped output. Packet-local call numbers are used
