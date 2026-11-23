@@ -1678,6 +1678,7 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
   }
   const flowScope = { ...flowView, ...(pathOperand === undefined ? {} : { pathOperand }) }
   let snapshot: JsonValue
+  let bindingDeclarations: ReadonlyMap<string, string> | undefined
   runtime.signal?.throwIfAborted()
   try {
     if (parsed.flow && parsed.approved && parsed.find !== undefined) {
@@ -1773,6 +1774,7 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
       )
       snapshot = inspected.topology
       flowView = inspected.scope
+      bindingDeclarations = inspected.bindingDeclarations
     } else {
       snapshot = await inspectPrivateApprovedProject(
         runtime.currentDirectory,
@@ -1856,7 +1858,7 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
   }
   runtime.signal?.throwIfAborted()
   if (parsed.flow && !json) {
-    await runtime.writeRecord(renderFlowContext(snapshot, flowView))
+    await runtime.writeRecord(renderFlowContext(snapshot, { ...flowView, bindingDeclarations }))
     return 0
   }
   if (parsed.flow && json) {
