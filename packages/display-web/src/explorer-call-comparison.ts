@@ -1,7 +1,9 @@
 import {
   compareObservedCalls,
+  type DisplayCallPathComparison,
   type DisplayProjectRunEvidence,
   type DisplayRecordedComparison,
+  displayCallPathComparison,
 } from '@jigging/display-model'
 import { type ComponentChildren, h } from 'preact'
 import { privateBrowserLiteral } from './navigation.js'
@@ -11,7 +13,13 @@ type CallEvidence = Pick<DisplayProjectRunEvidence, 'calls' | 'callCoverage' | '
 type CallSide = Readonly<{ root?: string | undefined; evidence: CallEvidence }>
 const literal = (value: string) => h('bdi', { class: 'literal' }, privateBrowserLiteral(value))
 
-function coverage(evidence: CallEvidence, unplaced: number): string {
+type Coverage = Pick<CallEvidence, 'callCoverage' | 'callsOmitted'> & { callsRecorded: number }
+type ComparisonSide = Readonly<{
+  root?: string | undefined
+  callCoverage: CallEvidence['callCoverage']
+}>
+
+function coverage(evidence: Coverage, unplaced: number): string {
   const parts: string[] = [
     {
       complete: 'Complete recording',
@@ -22,7 +30,7 @@ function coverage(evidence: CallEvidence, unplaced: number): string {
   if (evidence.callsOmitted) parts.push(`${evidence.callsOmitted} omitted observations`)
   if (unplaced)
     parts.push(`${unplaced} ${unplaced === 1 ? 'call' : 'calls'} without a matched path`)
-  if (evidence.callCoverage === 'complete' && !evidence.calls.length)
+  if (evidence.callCoverage === 'complete' && !evidence.callsRecorded)
     parts.push('No calls observed')
   return parts.join(' · ')
 }
@@ -32,25 +40,22 @@ function outcome(call: Pick<Call, 'state' | 'outcome'>): ComponentChildren {
 }
 
 function variants(
-  group: ReturnType<typeof compareObservedCalls>['rows'][number]['previous'],
-  side: CallSide,
+  calls: DisplayCallPathComparison['earlier'],
+  side: ComparisonSide,
   root: string,
   stale: boolean,
 ): ComponentChildren {
-  if (!group) {
-    const { evidence } = side
-    if (evidence.callCoverage === 'unavailable') return 'Unavailable'
+  if (!calls.length) {
+    if (side.callCoverage === 'unavailable') return 'Unavailable'
     if (side.root !== root) return 'Different root'
-    return !stale && evidence.callCoverage === 'complete' ? 'None observed' : 'No retained match'
+    return !stale && side.callCoverage === 'complete' ? 'None observed' : 'No retained match'
   }
   return h(
     'ul',
     {},
-    [...group.variants]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, value]) =>
-        h('li', { key }, literal(value.target), ' · ', outcome(value), ` ×${value.count}`),
-      ),
+    calls.map((value, index) =>
+      h('li', { key: index }, literal(value.target), ' · ', outcome(value), ` ×${value.count}`),
+    ),
   )
 }
 
@@ -101,69 +106,106 @@ export function ObservedCallComparison({
     'section',
     { class: 'explorer-call-comparison' },
     h('h3', {}, 'Observed calls'),
-    h('p', { class: 'secondary' }, 'Earlier · ', coverage(earlier.evidence, beforeUnplaced.length)),
-    h('p', { class: 'secondary' }, 'Later · ', coverage(later.evidence, afterUnplaced.length)),
-    rows.length === 0
-      ? h('p', { class: 'secondary' }, 'No calls with matched paths were retained.')
-      : h(
-          'table',
-          { 'aria-label': 'Compare observed calls' },
-          h(
-            'thead',
-            {},
-            h(
-              'tr',
-              {},
-              h('th', { scope: 'col' }, 'Caller and slot'),
-              h('th', { scope: 'col' }, 'Earlier'),
-              h('th', { scope: 'col' }, 'Later'),
-            ),
-          ),
-          h(
-            'tbody',
-            {},
-            rows.map(({ key, previous, current, group, matches }) =>
-              h(
-                'tr',
-                { key },
-                h(
-                  'th',
-                  { scope: 'row' },
-                  literal(group.caller),
-                  ' · ',
-                  literal(group.slot),
-                  earlier.root === later.root ? null : h('small', {}, 'Root ', literal(group.root)),
-                  group.ancestors.length === 0
-                    ? null
-                    : h(
-                        'small',
-                        {},
-                        'Via ',
-                        group.ancestors.map(({ slot, target }, index) =>
-                          h(
-                            'span',
-                            { key: index },
-                            index === 0 ? null : ' → ',
-                            literal(slot),
-                            ' → ',
-                            literal(target),
-                          ),
-                        ),
-                      ),
-                  matches
-                    ? h('small', {}, 'Matching retained observations')
-                    : previous && current
-                      ? h('small', {}, 'Different retained observations')
-                      : null,
-                ),
-                h('td', {}, variants(previous, earlier, group.root, stale)),
-                h('td', {}, variants(current, later, group.root, stale)),
-              ),
-            ),
-          ),
-        ),
+    h(
+      'p',
+      { class: 'secondary' },
+      'Earlier · ',
+      coverage(
+        { ...earlier.evidence, callsRecorded: earlier.evidence.calls.length },
+        beforeUnplaced.length,
+      ),
+    ),
+    h(
+      'p',
+      { class: 'secondary' },
+      'Later · ',
+      coverage(
+        { ...later.evidence, callsRecorded: later.evidence.calls.length },
+        afterUnplaced.length,
+      ),
+    ),
+    comparisonTable(
+      rows.map(displayCallPathComparison),
+      { root: earlier.root, callCoverage: earlier.evidence.callCoverage },
+      { root: later.root, callCoverage: later.evidence.callCoverage },
+      stale,
+    ),
     unplacedCalls('Earlier', beforeUnplaced),
     unplacedCalls('Later', afterUnplaced),
+  )
+}
+
+function comparisonTable(
+  rows: readonly DisplayCallPathComparison[],
+  earlier: ComparisonSide,
+  later: ComparisonSide,
+  stale: boolean,
+  omitted = 0,
+): ComponentChildren {
+  if (!rows.length)
+    return h(
+      'p',
+      { class: 'secondary' },
+      omitted
+        ? 'No call paths fit in this browser comparison.'
+        : 'No calls with matched paths were retained.',
+    )
+  return h(
+    'table',
+    { 'aria-label': 'Compare observed calls' },
+    h(
+      'thead',
+      {},
+      h(
+        'tr',
+        {},
+        h('th', { scope: 'col' }, 'Caller and slot'),
+        h('th', { scope: 'col' }, 'Earlier'),
+        h('th', { scope: 'col' }, 'Later'),
+      ),
+    ),
+    h(
+      'tbody',
+      {},
+      rows.map((row) =>
+        h(
+          'tr',
+          { key: JSON.stringify([row.root, row.ancestors, row.caller, row.slot]) },
+          h(
+            'th',
+            { scope: 'row' },
+            literal(row.caller),
+            ' · ',
+            literal(row.slot),
+            earlier.root === later.root ? null : h('small', {}, 'Root ', literal(row.root)),
+            row.ancestors.length === 0
+              ? null
+              : h(
+                  'small',
+                  {},
+                  'Via ',
+                  row.ancestors.map(({ slot, target }, index) =>
+                    h(
+                      'span',
+                      { key: index },
+                      index === 0 ? null : ' → ',
+                      literal(slot),
+                      ' → ',
+                      literal(target),
+                    ),
+                  ),
+                ),
+            row.matches
+              ? h('small', {}, 'Matching retained observations')
+              : row.earlier.length && row.later.length
+                ? h('small', {}, 'Different retained observations')
+                : null,
+          ),
+          h('td', {}, variants(row.earlier, earlier, row.root, stale)),
+          h('td', {}, variants(row.later, later, row.root, stale)),
+        ),
+      ),
+    ),
   )
 }
 
@@ -246,10 +288,24 @@ export function SavedRunComparison({
           ]
         : [],
     ),
-    h(ObservedCallComparison, {
-      earlier: { root: earlier.root, evidence: earlier },
-      later: { root: later.root, evidence: later },
-      stale,
-    }),
+    h(
+      'section',
+      { class: 'explorer-call-comparison' },
+      h('h3', {}, 'Observed calls'),
+      h('p', { class: 'secondary' }, 'Earlier · ', coverage(earlier, earlier.callsUnplaced)),
+      h('p', { class: 'secondary' }, 'Later · ', coverage(later, later.callsUnplaced)),
+      comparison.rowsOmitted
+        ? h(
+            'p',
+            { class: 'secondary' },
+            `${comparison.rowsOmitted} call paths omitted from this browser comparison.`,
+            comparison.nonmatchingOmitted
+              ? ` ${comparison.nonmatchingOmitted} omitted paths lacked matching observations.`
+              : '',
+            ' See the plain comparison for more recorded paths.',
+          )
+        : null,
+      comparisonTable(comparison.rows, earlier, later, stale, comparison.rowsOmitted),
+    ),
   )
 }
