@@ -15,8 +15,13 @@ import {
   completionScript,
   invocationGuide,
 } from '../../src/cli-discovery.js'
-import { flowContextRecord, renderFlowContext } from '../../src/cli-flow-context.js'
+import {
+  flowContextRecord,
+  renderFlowContext,
+  renderFlowSearch,
+} from '../../src/cli-flow-context.js'
 import { CheckError } from '../../src/diagnostics.js'
+import { findFlowNavigation } from '../../src/internal/flow-navigation.js'
 import type { JsonValue } from '../../src/json.js'
 
 import { checkPackageDirectory } from '../../src/package/inspect.js'
@@ -49,6 +54,58 @@ test('usage mistakes show one correction, not the entire manual', async () => {
     expect(text.split('\n').length).toBeLessThan(13)
     expect(privateCliRequiresHost(args)).toBe(false)
   }
+})
+
+test('phrase lookup preserves literal matches when separator matches fill the result limit', async () => {
+  const target = 'binding:fact-check'
+  const independent = 'flow:flows/fact_check'
+  const alternateSlots = Array.from({ length: 13 }, (_, index) => `fact-check-${index}`)
+  const literalRoutes = ['draft', 'revision'].map((slot) => {
+    const packagePath = `flows/fact_check-${slot}`
+    return { slot, target: `flow:${packagePath}`, packagePath }
+  })
+  const topology = {
+    revision: 'test',
+    targets: [
+      {
+        target: 'binding:weekday',
+        package: 'flows/publish',
+        flow: {
+          routes: [
+            ...alternateSlots.map((slot) => ({ slot, target })),
+            ...literalRoutes.map(({ slot, target }) => ({ slot, target })),
+          ],
+        },
+      },
+      { target, package: 'flows/review' },
+      { target: independent, package: 'flows/fact_check' },
+      ...literalRoutes.map(({ target, packagePath }) => ({ target, package: packagePath })),
+    ],
+  }
+  const linked = { flows: [], bindings: [] }
+  const found = await findFlowNavigation(topology, linked, [], 'FACT_CHECK')
+  expect(found.matches.map(({ slot }) => slot)).toEqual([
+    ...literalRoutes.map(({ slot }) => slot),
+    ...alternateSlots.slice(0, 9),
+  ])
+  expect(found.matches[0]?.target).toEqual({
+    id: 'flow:flows/fact_check-draft',
+    packagePath: 'flows/fact_check-draft',
+  })
+  expect(found.independent.map(({ id }) => id)).toEqual([independent])
+  expect(found.omitted).toBe(4)
+
+  const spaced = await findFlowNavigation(topology, linked, [], 'fact   check')
+  expect(spaced.matches[0]?.target.id).toBe(target)
+  expect(await findFlowNavigation(topology, linked, [], '__')).toMatchObject({
+    matches: [],
+    independent: [],
+  })
+  const noMatch = await findFlowNavigation(topology, linked, [], 'request a budget estimate')
+  expect(noMatch).toMatchObject({ matches: [], independent: [], omitted: 0 })
+  expect(renderFlowSearch(noMatch)).toContain(
+    'No matches. Try `jig inspect --flow --find WORD` with one word from the request.',
+  )
 })
 
 test('composition diff compares exact selectors, caller slots, settings, and entrypoint targets', () => {
