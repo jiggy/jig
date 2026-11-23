@@ -175,6 +175,12 @@ operational baselines, and public-site assembly.
   Five consecutive fresh memory Runs must each pass the complete proof and residue checks.
   The first rejection stops the probe and retains its diagnostic. Later successes cannot replace a failed observation.
 
+  Only the installed fixed-deadline command receives a private profile
+  destination inside its disposable owner directory, outside captured source.
+  On case failure, the ordinary transcript receives the shared bounded phase
+  summary. Retain the original failure and residue checks even if the profile
+  is missing or incomplete. Keep raw profiles out of uploaded evidence.
+
   The plan retains both closed native boot coordinates and the sealed owner's
   matching boot identity. It never derives native coordinates from wall time.
   The same proof requires a prepared Linux owner, positive `memory.events`
