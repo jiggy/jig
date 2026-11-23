@@ -67,24 +67,44 @@ export async function findFlowNavigation(
   )
   const query = phrase.toLowerCase()
   const matchesText = (value: string) => value.toLowerCase().includes(query)
-  const rank = (target: NavigationTarget, slot = '') =>
-    [slot, target.id, target.packagePath].some(matchesText)
-      ? 0
-      : target.description && matchesText(target.description)
-        ? 1
-        : 2
+  const withSpaces = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[\s_-]+/gu, ' ')
+      .trim()
+  const nameQuery = withSpaces(phrase)
+  const separatorMatch = 2
+  const noMatch = 3
+  const rank = (target: NavigationTarget, slot = '') => {
+    const names = [slot, target.id, target.packagePath]
+    if (names.some(matchesText)) return 0
+    if (target.description && matchesText(target.description)) return 1
+    if (nameQuery && names.some((name) => withSpaces(name).includes(nameQuery)))
+      return separatorMatch
+    return noMatch
+  }
   const selected = handoffs
     .map((edge) => ({ edge, rank: rank(edge.target, edge.slot) }))
-    .filter((match) => match.rank < 2)
+    .filter((match) => match.rank < noMatch)
     .sort((a, b) => a.rank - b.rank)
   const called = new Set(handoffs.map(({ target }) => target.id))
   const independent = [...targets.values()]
-    .filter((target) => !called.has(target.id) && rank(target) < 2)
-    .sort((a, b) => rank(a) - rank(b))
+    .filter((target) => !called.has(target.id))
+    .map((target) => ({ target, rank: rank(target) }))
+    .filter((match) => match.rank < noMatch)
+    .sort((a, b) => a.rank - b.rank)
+
+  // A separator match must not displace a literal independent match.
+  const literalHandoffs = selected.filter((match) => match.rank < separatorMatch).length
+  const literalIndependent = independent.filter((match) => match.rank < separatorMatch).length
+  const reservedIndependent = Math.min(
+    literalIndependent,
+    Math.max(0, limits.matches - literalHandoffs),
+  )
 
   const sources = new Map<string, ReadonlyMap<string, readonly string[]>>()
   const matches = []
-  for (const { edge } of selected.slice(0, limits.matches)) {
+  for (const { edge } of selected.slice(0, limits.matches - reservedIndependent)) {
     const { caller, slot } = edge
     let callerSource = sources.get(caller.packagePath)
     if (callerSource === undefined) {
@@ -109,7 +129,7 @@ export async function findFlowNavigation(
     revision: String(snapshot.revision),
     phrase,
     matches,
-    independent: independent.slice(0, limits.matches - matches.length),
+    independent: independent.slice(0, limits.matches - matches.length).map(({ target }) => target),
     handoffs,
     omitted: Math.max(0, selected.length + independent.length - limits.matches),
   }

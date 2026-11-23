@@ -7,6 +7,7 @@
 `portable/cli-discovery.test.ts` covers configured-topology grammar, readable collision-safe identities, contextual focus, complete inventories including disconnected targets, shared package uses, cycles, explicit boundary omissions, and graph bounds.
 Package scope preserves independent uses, distinct caller slots, and settings differences without expanding the caller's callers.
 Package-path diagnostics supply a copyable command without treating source paths as shell code.
+Phrase lookup checks that separator matches preserve literal matches under the result limit.
 
 `portable/activation-admission-store.test.ts` verifies retained topology without mutable-source reads or state writes.
 `host/installed-cli-lifecycle.test.ts` checks pre-approval topology and current versus approved source identity through the installed CLI.
