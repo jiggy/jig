@@ -80,6 +80,8 @@ All selected domain requirements still apply.
 
 - `jig add-use` declares one collaborator slot in an exact code Flow sidecar.
   A bare slot name declares an uncontracted slot. An explicit source requires a named agreement.
+  `--optional` requires a source. The command refuses a bare slot with this flag before editing files.
+
   It takes no evaluator or execution host. Its success output sends the author
   to the caller, the target configuration, and ordinary check and review.
 
