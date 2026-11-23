@@ -102,7 +102,9 @@ test('settled Run comparison preserves bounded exact paths and explicit recordin
     { ...evidence, calls: [{ ...evidence.calls[0], parent: 1 }] },
     { ...evidence, calls: [...evidence.calls, { ...evidence.calls[1], caller: root }] },
     { ...evidence, calls: [{ ...evidence.calls[0], outcome: undefined }] },
-    { ...evidence, calls: Array(9).fill(evidence.calls[0]) },
+    { ...evidence, calls: Array(256).fill(evidence.calls[0]) },
+    { ...evidence, callPathsOmitted: 1 },
+    { ...evidence, calls: [], callCoverage: 'incomplete', callsOmitted: 1, callPathsOmitted: 2 },
   ])
     expect(() => validateDisplayProjectRunEvidence(invalid)).toThrow(TypeError)
   expect(() =>
@@ -115,6 +117,13 @@ test('settled Run comparison preserves bounded exact paths and explicit recordin
     calls: [...evidence.calls, { slot: 'unplaced', state: 'active' }],
   }
   expect(validateDisplayProjectRunEvidence(incomplete)).toEqual(incomplete)
+  const whole = { ...evidence, calls: [...Array(13).fill(evidence.calls[0]), ...evidence.calls] }
+  const tree = { ...run, comparison: { ...comparison, evidence: whole } }
+  // Preserve the nested occurrence under the final root call.
+  whole.calls[14] = { ...evidence.calls[1], parent: 14 }
+  expect(validateDisplayProjectRun(tree)).toEqual(tree)
+  const withheld = { ...incomplete, calls: [], callPathsOmitted: 1 }
+  expect(validateDisplayProjectRunEvidence(withheld)).toEqual(withheld)
 })
 
 test('project replacement rejects private fields, inconsistent identity and invented launch readiness', () => {

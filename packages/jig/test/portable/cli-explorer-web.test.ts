@@ -4,8 +4,10 @@ import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { webAssets } from '@jigging/display-web/assets'
+import { privateExplorerCallEvidence } from '../../src/cli-call-evidence.js'
 import { PrivateExploreSession } from '../../src/cli-explore.js'
 import { type PrivateExplorerRunEvent, PrivateWebExplorer } from '../../src/cli-explorer-web.js'
+import type { PrivateSavedCalls } from '../../src/internal/saved-call-evidence.js'
 
 const owners: { root: string; server: PrivateWebExplorer }[] = []
 afterEach(async () => {
@@ -255,6 +257,52 @@ test('child handoff and project control capabilities cannot authorize each other
   expect(accepted.status).toBe(200)
   await accepted.body?.cancel()
   expect(events).toEqual([{ event: 'viewer', url }])
+  const root = 'binding:fieldnote'
+  const recorded = (repetitions: number): PrivateSavedCalls => ({
+    provenance: 'recorded-claim',
+    runId: `sha256:${'a'.repeat(64)}`,
+    revision: `sha256:${'b'.repeat(64)}`,
+    root,
+    coverage: 'complete',
+    omittedEvents: 0,
+    calls: Array.from({ length: repetitions + 1 }, (_, i) => ({
+      id: i + 1,
+      caller: root,
+      slot: i < repetitions ? 'production' : 'review',
+      target: i < repetitions ? 'binding:draft' : 'binding:review',
+      state: 'returned',
+      outcome: 'done',
+    })),
+  })
+  const whole = privateExplorerCallEvidence(recorded(14))
+  expect(whole.calls).toHaveLength(15)
+  expect(whole.calls.at(-1)).toMatchObject({ slot: 'review' })
+  expect(whole.calls.at(-1)).not.toHaveProperty('id')
+  expect(whole.callCoverage).toBe('complete')
+  expect(whole.callsOmitted).toBe(0)
+  const withheld = privateExplorerCallEvidence(recorded(85))
+  expect(withheld).toEqual({
+    calls: [],
+    callCoverage: 'incomplete',
+    callsOmitted: 86,
+    callPathsOmitted: 2,
+  })
+  for (const callEvidence of [whole, withheld]) {
+    const evidence = { ...callEvidence, execution: 'succeeded', outcome: 'done', delivery: 'none' }
+    const body = JSON.stringify({ event: 'settled', evidence })
+    const result = await fetch(bridge.url, { method: 'POST', headers, body })
+    expect(result.status).toBe(200)
+    await result.body?.cancel()
+    expect(events.at(-1)).toEqual({ event: 'settled', evidence })
+  }
+  const oversized = await fetch(bridge.url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ event: 'settled', padding: 'x'.repeat(16 * 1024) }),
+  })
+  expect(oversized.status).toBe(400)
+  await oversized.body?.cancel()
+  expect(events).toHaveLength(3)
   bridge.close()
   const retired = await fetch(bridge.url, { method: 'POST', headers, body: '{"event":"settled"}' })
   expect(retired.status).toBe(403)

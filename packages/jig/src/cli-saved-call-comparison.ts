@@ -1,12 +1,8 @@
 import {
   compareObservedCalls,
-  DISPLAY_RECORDED_CALL_ANCESTORS,
-  DISPLAY_RECORDED_CALL_BYTES,
-  DISPLAY_RECORDED_CALL_ROWS,
-  type DisplayCallPathComparison,
+  boundDisplayCallComparison,
   type DisplayRecordedComparison,
   type DisplayRecordedRun,
-  displayCallPathComparison,
 } from '@jigging/display-model'
 import { asciiJsonString } from './cli-usage.js'
 import { normalizePrivateRunFileIdentity } from './internal/root-run-files.js'
@@ -110,29 +106,6 @@ function browserRun(run: Recorded, callsUnplaced: number): DisplayRecordedRun {
   }
 }
 
-/** Bound whole rows after comparison. A rejected row contributes no partial counts. */
-function browserRows(compared: ReturnType<typeof compareObservedCalls>['rows']) {
-  const rows: DisplayCallPathComparison[] = []
-  let bytes = 2 // List delimiters.
-  let nonmatchingOmitted = 0
-  for (const row of compared) {
-    if (
-      rows.length < DISPLAY_RECORDED_CALL_ROWS &&
-      row.group.ancestors.length <= DISPLAY_RECORDED_CALL_ANCESTORS
-    ) {
-      const projected = displayCallPathComparison(row)
-      const size = Buffer.byteLength(JSON.stringify(projected)) + (rows.length ? 1 : 0)
-      if (bytes + size <= DISPLAY_RECORDED_CALL_BYTES) {
-        rows.push(projected)
-        bytes += size
-        continue
-      }
-    }
-    if (!row.matches) nonmatchingOmitted += 1
-  }
-  return { rows, rowsOmitted: compared.length - rows.length, nonmatchingOmitted }
-}
-
 /** Plain literal comparison and a closed browser projection of the same captured claims. */
 export function privateSavedCallComparison(earlier: PrivateSavedResult, later: PrivateSavedResult) {
   const before = recorded(earlier)
@@ -196,7 +169,7 @@ export function privateSavedCallComparison(earlier: PrivateSavedResult, later: P
       earlier: browserRun(before, beforeUnplaced.length),
       later: browserRun(after, afterUnplaced.length),
       submittedIdentity,
-      ...browserRows(rows),
+      ...boundDisplayCallComparison(rows),
     } satisfies DisplayRecordedComparison,
     complete:
       before.filesComplete &&
