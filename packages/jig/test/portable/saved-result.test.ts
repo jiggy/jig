@@ -925,6 +925,42 @@ test('saved comparison groups exact paths and keeps missing observations uncerta
     expect(result.stdout).toContain('Later: None observed')
     expect(result.stdout).not.toContain('/forged/historical/destination')
     expect(result.stdout).not.toContain('#1')
+    const compared = await inspect(first, ['--compare', second, '--json'])
+    expect(compared.code, compared.stderr).toBe(0)
+    expect(JSON.parse(compared.stdout)).toMatchObject({
+      provenance: 'recorded-claim',
+      submittedIdentity: 'unknown',
+      approvedRevision: 'different',
+      earlier: {
+        root: rootSelector,
+        filesComplete: true,
+        callCoverage: 'complete',
+        callsRecorded: 3,
+      },
+      later: { root: rootSelector, status: 'succeeded', outcome: 'done', callsUnplaced: 0 },
+      rowsOmitted: 0,
+      nonmatchingOmitted: 0,
+    })
+    const { rows } = JSON.parse(compared.stdout)
+    expect(rows).toContainEqual({
+      root: rootSelector,
+      caller: rootSelector,
+      ancestors: [],
+      slot: 'review',
+      earlier: [{ target: 'binding:check', state: 'returned', outcome: 'done', count: 1 }],
+      later: [{ target: 'binding:manual', state: 'returned', outcome: 'needs-review', count: 1 }],
+      matches: false,
+    })
+    expect(rows.find((row: { caller: string }) => row.caller === 'binding:check')).toMatchObject({
+      ancestors: [{ slot: 'review', target: 'binding:check' }],
+      slot: 'format',
+      later: [],
+    })
+    for (const hidden of [firstRun, secondRun, firstRevision, secondRevision, 'forged', 'Checked patch'])
+      expect(compared.stdout).not.toContain(hidden)
+    const combined = await inspect(first, ['--compare', second, '--display', 'web', '--json'])
+    expect(combined.code).toBe(2)
+    expect(combined.stdout).toBe('')
     expect(
       privateCliSavedResultInspection([
         'inspect',
@@ -960,6 +996,15 @@ test('saved comparison groups exact paths and keeps missing observations uncerta
     expect(result.stdout).toContain('Omitted events: 1')
     expect(result.stdout).toContain('Calls without a matched path: 1')
     expect(result.stdout).toContain('"publish" · Matching retained observations')
+    const partial = await inspect(first, ['--compare', second, '--json'])
+    expect(partial.code).toBe(1)
+    expect(JSON.parse(partial.stdout).later).toMatchObject({
+      callCoverage: 'incomplete',
+      invalidCalls: false,
+      callsOmitted: 1,
+      callsUnplaced: 1,
+      callsRecorded: 3,
+    })
 
     await packet(second, {}, { runId: secondRun, callEvidence: { ...later, runId: firstRun } })
     result = await inspect(first, ['--compare', second])
@@ -967,6 +1012,12 @@ test('saved comparison groups exact paths and keeps missing observations uncerta
     expect(result.stdout).toContain('Call coverage: unavailable (invalid or mismatched record)')
     expect(result.stdout).toContain('Later: Unavailable')
     expect(result.stdout).not.toContain('None observed')
+    const invalid = await inspect(first, ['--compare', second, '--json'])
+    expect(invalid.code).toBe(1)
+    expect(JSON.parse(invalid.stdout)).toMatchObject({
+      approvedRevision: 'unknown',
+      later: { callCoverage: 'unavailable', invalidCalls: true, callsRecorded: 0 },
+    })
 
     expect(
       privateCliSavedResultInspection(['inspect', '--result', first, '--compare', second]),
@@ -980,7 +1031,7 @@ test('saved comparison groups exact paths and keeps missing observations uncerta
         second,
         '--json',
       ]),
-    ).toBeFalse()
+    ).toBeTrue()
   }))
 
 test('saved comparison uses closed normalized submitted identities without displaying their data', async () =>
@@ -1061,6 +1112,9 @@ test('saved comparison uses closed normalized submitted identities without displ
             expect(text, name).not.toContain(file.path)
             expect(text, name).not.toContain('/private/file')
           }
+          expect(privateSavedCallComparison(earlier, later).json.submittedIdentity, name).toBe(
+            expected.split(' ')[0],
+          )
         } finally {
           later.close()
         }
@@ -1131,6 +1185,15 @@ test('saved browser comparison selects full nonmatching paths before bounding ro
       expect(browser.rowsOmitted).toBe(5)
       expect(browser.rows).toHaveLength(8)
       expect(Buffer.byteLength(JSON.stringify(browser.rows))).toBeLessThanOrEqual(5 * 1024)
+      const json = await inspect(first, ['--compare', second, '--json'])
+      expect(json.code).toBe(1)
+      expect(JSON.parse(json.stdout)).toMatchObject({
+        rows: browser.rows,
+        rowsOmitted: 5,
+        nonmatchingOmitted: 1,
+        earlier: { callCoverage: 'complete' },
+        later: { callCoverage: 'complete' },
+      })
     } finally {
       later.close()
       earlier.close()

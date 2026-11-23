@@ -90,10 +90,11 @@ function recordedSubmittedIdentity(value: JsonValue | undefined): string | undef
   }
 }
 
-function browserRun(run: Recorded, callsUnplaced: number): DisplayRecordedRun {
+function recordedRunClaims(
+  run: Recorded,
+  callsUnplaced: number,
+): Omit<DisplayRecordedRun, 'runId' | 'revision'> {
   return {
-    ...(run.runId === 'unknown' ? {} : { runId: run.runId }),
-    ...(run.revision === undefined ? {} : { revision: run.revision }),
     ...(run.root === undefined ? {} : { root: run.root }),
     status: run.status,
     ...(run.outcome === undefined ? {} : { outcome: run.outcome }),
@@ -106,19 +107,27 @@ function browserRun(run: Recorded, callsUnplaced: number): DisplayRecordedRun {
   }
 }
 
-/** Plain literal comparison and a closed browser projection of the same captured claims. */
+function browserRun(run: Recorded, claims: ReturnType<typeof recordedRunClaims>): DisplayRecordedRun {
+  return {
+    ...(run.runId === 'unknown' ? {} : { runId: run.runId }),
+    ...(run.revision === undefined ? {} : { revision: run.revision }),
+    ...claims,
+  }
+}
+
+function identityRelation(earlier: string | undefined, later: string | undefined) {
+  if (earlier === undefined || later === undefined) return 'unknown'
+  return earlier === later ? 'same' : 'different'
+}
+
+/** Compare the same captured claims for plain, browser and JSON output. */
 export function privateSavedCallComparison(earlier: PrivateSavedResult, later: PrivateSavedResult) {
   const before = recorded(earlier)
   const after = recorded(later)
   const { rows, beforeUnplaced, afterUnplaced } = compareObservedCalls(before, after)
   const beforeInput = recordedSubmittedIdentity(earlier.record.input)
   const afterInput = recordedSubmittedIdentity(later.record.input)
-  const submittedIdentity =
-    beforeInput === undefined || afterInput === undefined
-      ? 'unknown'
-      : beforeInput === afterInput
-        ? 'same'
-        : 'different'
+  const submittedIdentity = identityRelation(beforeInput, afterInput)
   let text = [
     'Saved Run call comparison',
     'Local recorded claims. No work was started.',
@@ -163,19 +172,31 @@ export function privateSavedCallComparison(earlier: PrivateSavedResult, later: P
   if (!rows.length) text += 'No calls with matched paths were retained.\n'
   if (hidden)
     text += `${hidden} call paths omitted from this excerpt. Inspect each packet with --calls for its full record.\n`
+  const bounded = boundDisplayCallComparison(rows)
+  const earlierClaims = recordedRunClaims(before, beforeUnplaced.length)
+  const laterClaims = recordedRunClaims(after, afterUnplaced.length)
+  const evidenceComplete =
+    before.filesComplete &&
+    after.filesComplete &&
+    before.coverage === 'complete' &&
+    after.coverage === 'complete'
   return {
     text,
     browser: {
-      earlier: browserRun(before, beforeUnplaced.length),
-      later: browserRun(after, afterUnplaced.length),
+      earlier: browserRun(before, earlierClaims),
+      later: browserRun(after, laterClaims),
       submittedIdentity,
-      ...boundDisplayCallComparison(rows),
+      ...bounded,
     } satisfies DisplayRecordedComparison,
-    complete:
-      before.filesComplete &&
-      after.filesComplete &&
-      before.coverage === 'complete' &&
-      after.coverage === 'complete' &&
-      hidden === 0,
+    json: {
+      provenance: 'recorded-claim',
+      earlier: earlierClaims,
+      later: laterClaims,
+      submittedIdentity,
+      approvedRevision: identityRelation(before.revision, after.revision),
+      ...bounded,
+    } satisfies JsonValue,
+    complete: evidenceComplete && hidden === 0,
+    jsonComplete: evidenceComplete && bounded.rowsOmitted === 0,
   }
 }
