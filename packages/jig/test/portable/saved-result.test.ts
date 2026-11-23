@@ -847,3 +847,122 @@ test('saved call inspection preserves exact ancestry, incomplete coverage and Ru
     expect(result.stdout).toBe('')
     expect(result.stderr).toContain('no saved call record')
   }))
+
+test('saved comparison groups exact paths and keeps missing observations uncertain', async () =>
+  fixture(async (root) => {
+    const first = join(root, 'first')
+    const second = join(root, 'second')
+    const firstRun = sha256(Buffer.from('first run'))
+    const secondRun = sha256(Buffer.from('second run'))
+    const firstRevision = sha256(Buffer.from('first approval'))
+    const secondRevision = sha256(Buffer.from('second approval'))
+    const rootSelector = 'binding:desk'
+    const common = { provenance: 'recorded-claim', root: rootSelector, omittedEvents: 0 }
+    const check = {
+      id: 1,
+      caller: rootSelector,
+      slot: 'review',
+      target: 'binding:check',
+      state: 'returned',
+      outcome: 'done',
+    }
+    const detail = {
+      id: 2,
+      parent: 1,
+      caller: 'binding:check',
+      slot: 'format',
+      target: 'binding:format',
+      state: 'returned',
+      outcome: 'done',
+    }
+    const publish = {
+      id: 3,
+      caller: rootSelector,
+      slot: 'publish',
+      target: 'binding:publish',
+      state: 'returned',
+      outcome: 'done',
+    }
+    await packet(
+      first,
+      {},
+      {
+        runId: firstRun,
+        callEvidence: {
+          ...common,
+          runId: firstRun,
+          revision: firstRevision,
+          coverage: 'complete',
+          calls: [check, detail, publish],
+        },
+      },
+    )
+    const later = {
+      ...common,
+      runId: secondRun,
+      revision: secondRevision,
+      coverage: 'complete',
+      calls: [
+        { ...check, target: 'binding:manual', outcome: 'needs-review' },
+        { ...detail, caller: 'binding:manual' },
+        publish,
+      ],
+    }
+    await packet(second, {}, { runId: secondRun, callEvidence: later })
+    let result = await inspect(first, ['--compare', second])
+    expect(result.code, result.stderr).toBe(0)
+    expect(result.stdout).toContain(`Earlier Run: ${firstRun}`)
+    expect(result.stdout).toContain(`Later Run: ${secondRun}`)
+    expect(result.stdout).toContain(`Approved revision: ${firstRevision}`)
+    expect(result.stdout).toContain(`Approved revision: ${secondRevision}`)
+    expect(result.stdout).toContain('Submitted input and attachments: unknown')
+    expect(result.stdout).toContain('"review" · Different retained observations')
+    expect(result.stdout).toContain('"publish" · Matching retained observations')
+    expect(result.stdout).toContain('"binding:manual" returned "needs-review" ×1')
+    expect(result.stdout).toContain('"review" → "binding:check" → "format" · Observed on one side')
+    expect(result.stdout).toContain('"review" → "binding:manual" → "format" · Observed on one side')
+    expect(result.stdout).toContain('Later: None observed')
+    expect(result.stdout).not.toContain('/forged/historical/destination')
+    expect(result.stdout).not.toContain('#1')
+
+    await packet(
+      second,
+      {},
+      {
+        runId: secondRun,
+        callEvidence: {
+          ...later,
+          coverage: 'incomplete',
+          omittedEvents: 1,
+          calls: [{ ...check, target: 'binding:manual' }, detail, publish],
+        },
+      },
+    )
+    result = await inspect(first, ['--compare', second])
+    expect(result.code, result.stderr).toBe(1)
+    expect(result.stdout).toContain('Later: No retained match')
+    expect(result.stdout).toContain('Omitted events: 1')
+    expect(result.stdout).toContain('Calls without a matched path: 1')
+    expect(result.stdout).toContain('"publish" · Matching retained observations')
+
+    await packet(second, {}, { runId: secondRun, callEvidence: { ...later, runId: firstRun } })
+    result = await inspect(first, ['--compare', second])
+    expect(result.code, result.stderr).toBe(1)
+    expect(result.stdout).toContain('Call coverage: unavailable (invalid or mismatched record)')
+    expect(result.stdout).toContain('Later: Unavailable')
+    expect(result.stdout).not.toContain('None observed')
+
+    expect(
+      privateCliSavedResultInspection(['inspect', '--result', first, '--compare', second]),
+    ).toBeTrue()
+    expect(
+      privateCliSavedResultInspection([
+        'inspect',
+        '--result',
+        first,
+        '--compare',
+        second,
+        '--json',
+      ]),
+    ).toBeFalse()
+  }))
