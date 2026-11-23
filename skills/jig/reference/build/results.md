@@ -306,6 +306,20 @@ The comparison uses the recorded JSON input identity and submitted attachment ma
 It reports whether the recorded identity is the same, different, or unknown when either record is missing or malformed.
 The match covers submitted data only. Configured Binding files and other Run conditions are outside the comparison.
 
+For a Node integration test, request the same bounded path comparison as JSON.
+
+```sh
+jig inspect --result ./before --compare ./after --json
+```
+
+Check the command exit status before asserting the changed and preserved paths.
+Use the root, ancestor slots and targets, caller and slot to select a row.
+Check each side's target, state, outcome and count. `matches` describes retained observations.
+
+`submittedIdentity` and `approvedRevision` report independent relations.
+If the output omits paths or the call coverage is incomplete, the command exits 1.
+See the [exact comparison contract](https://jig.md/spec/cli-experience.md#saved-child-calls).
+
 Use `jig inspect --result DIR --calls` for the full call record of either Run.
 The comparison only reads the two saved packets.
 
