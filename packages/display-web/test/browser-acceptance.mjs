@@ -958,7 +958,10 @@ for (const width of [1440, 390]) {
       assert.match(returned, /Observed state: returned\nApplication outcome: "needs-review"/)
       assert.match(returned, /Reported views retained: 1/)
       assert.match(returned, /Omitted call observations: 4/)
-      assert.match(returned, /jig inspect --flow --topology --all/)
+      assert.match(
+        returned,
+        /^Run `jig inspect --flow --topology binding:review` in the project\.$/m,
+      )
       assert.doesNotMatch(returned, /prepare-one|worker-two-notes|bearer|#cap=|These notes/i)
       await noPageOverflow(page)
 
@@ -993,6 +996,38 @@ for (const width of [1440, 390]) {
     })
   })
 }
+
+test('investigation brief keeps the nested slot and only commands with exact Run roots', async () => {
+  const cases = [
+    ['flow:flows/review', 'flow:flows/review'],
+    ['npm:@cedar/review', 'npm:@cedar/review'],
+    ['Run root unavailable', '--all'],
+    ['flow:flows/review; echo unsafe', '--all'],
+    ['flow:./flows/review', '--all'],
+  ]
+  for (const [root, operand] of cases) {
+    const fixture = compositionFixture()
+    fixture.snapshot.workspace.target = root
+    fixture.snapshot.composition.nodes[0].kind = 'flow'
+    await withPage(fixture, {}, async (page, host) => {
+      await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], {
+        origin: host.origin,
+      })
+      await openTab(page, 'Execution')
+      await page.locator('[data-call="fetch-one"]').click()
+      const detail = page.getByRole('complementary', { name: 'Selected call' })
+      await detail.getByRole('button', { name: 'Copy investigation brief' }).press('Enter')
+      await detail.getByText('Investigation brief copied.').waitFor()
+      const brief = await page.evaluate(() => navigator.clipboard.readText())
+      assert.match(brief, /Configured caller: "Worker" \(binding\)/)
+      assert.match(brief, /^Slot: "fetch"$/m)
+      assert.deepEqual(brief.match(/`jig [^`]+`/g), [
+        `\`jig inspect --flow --topology ${operand}\``,
+      ])
+      assert.doesNotMatch(brief, /worker-one|fetch-route|These notes/)
+    })
+  }
+})
 
 test('investigation brief scopes clipboard feedback to the current selection and observation', async () => {
   const fixture = compositionFixture()

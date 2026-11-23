@@ -19,7 +19,29 @@ const unmatched = {
   'identity-conflict': 'Conflicting identities prevent a configuration match.',
 }
 
+function canInspectRoot(root: string): boolean {
+  // Accept only exact selectors that can be pasted as one unquoted shell word.
+  if (/[^A-Za-z0-9@./:_-]/.test(root)) return false
+  if (root.startsWith('binding:'))
+    return root.length <= 72 && /^binding:[a-z0-9]+(?:-[a-z0-9]+)*$/.test(root)
+  if (root.startsWith('npm:'))
+    return (
+      root.length <= 218 &&
+      /^npm:(?:@[a-z0-9][a-z0-9._-]*\/)?[A-Za-z0-9][A-Za-z0-9._-]*$/.test(root)
+    )
+  if (!root.startsWith('flow:') || root.length > 1029) return false
+
+  const segments = root.slice(5).split('/')
+  return (
+    segments.length <= 64 &&
+    segments.every(
+      (segment) => segment !== '.' && segment !== '..' && /^[A-Za-z0-9._-]{1,255}$/.test(segment),
+    )
+  )
+}
+
 function investigationBrief(snapshot: DisplaySnapshot, call: Call, childViews: ChildViews): string {
+  const root = snapshot.workspace.target
   const observations = compositionObservations(snapshot)
   const match = observations.matches.find((item) => item.callId === call.id)
   const nodes = snapshot.composition?.state === 'available' ? snapshot.composition.nodes : []
@@ -39,7 +61,7 @@ function investigationBrief(snapshot: DisplaySnapshot, call: Call, childViews: C
 
   return [
     'Investigate this observed Jig invocation.',
-    `Run root: ${quote(snapshot.workspace.target)}`,
+    `Run root: ${quote(root)}`,
     caller ? `Configured caller: ${quote(caller.label)} (${caller.kind})` : undefined,
     `Observed caller: ${quote(call.sourceLabel)}`,
     `Slot: ${quote(call.slot)}`,
@@ -55,8 +77,10 @@ function investigationBrief(snapshot: DisplaySnapshot, call: Call, childViews: C
       ? `Reported views retained: ${childViews.views.length}`
       : undefined,
     `Coverage: Retained Run observations only.${coverage.length ? ` ${coverage.join(' ')}` : ''}`,
-    'The exact target selector is unavailable here. Run `jig inspect --flow --topology --all` in the project.',
-    'Use the Run root, caller, and slot to locate the corresponding source. Confirm that the current wiring matches the observed Run.',
+    canInspectRoot(root)
+      ? `Run \`jig inspect --flow --topology ${root}\` in the project.`
+      : 'The exact target selector is unavailable here. Run `jig inspect --flow --topology --all` in the project.',
+    'Find the caller and slot in the topology. Check the caller source to confirm that the current wiring matches the observed Run.',
   ]
     .filter((line) => line !== undefined)
     .join('\n')

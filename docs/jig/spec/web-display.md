@@ -362,7 +362,10 @@ It presents any admitted application outcome separately from lifecycle state.
 It uses admitted configuration labels only for exact matches and counts reported views by exact child attribution.
 Missing or conflicting correspondence and relevant omissions remain explicit.
 
-The brief gives an inventory inspection command. It does not derive a selector from a label or opaque identity.
+The brief gives a read-only topology command focused on the visible Run root when it is an exact selector safe to paste as is.
+Otherwise the command opens the complete configured inventory.
+The brief uses caller and slot as lookup cues. It does not derive a selector from a label or opaque identity.
+
 It excludes view bodies, raw payloads, journals, captured file paths, and access capabilities.
 Clipboard writes require current observations and explicit activation.
 Feedback belongs to the selected invocation and observation revision. Losing the selection closes its details.
