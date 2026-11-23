@@ -193,6 +193,7 @@ remain supported and are not rewritten by a review default.
 
 - `add-use` inserts one metadata member and keeps every other value and spelling intact.
   A bare slot writes an empty object. A supplied source uses offline capture to copy one identified invocation agreement.
+  `--optional` adds `"optional": true` to the named entry in the same source edit.
 
 - `import-contract` copies a validated local invocation/channel bundle into a
   new directory, preserving bytes and relative paths. A direct descriptor path

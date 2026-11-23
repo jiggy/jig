@@ -46,7 +46,8 @@ Project commands:
 ```text
 jig init [--bare] <directory> [--agent [codex|claude]]
 jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
-jig add-use <package-path> <slot>[=<source>]
+jig add-use <package-path> <slot>
+jig add-use <package-path> <slot>=<source> [--optional]
 jig types <package-path>
 jig types --project
 jig specialize-slot binding:<caller> --slot <slot> --as <name> --select <child-slot>=<target>
@@ -112,6 +113,7 @@ descriptors and licenses as local snapshots; implementations and grants remain
 separately selected and reviewed. Channel agreements belong under `channels`.
 Use `jig add-use flows/worker review` to declare an uncontracted slot in an existing code Flow.
 Supply `review=./flows/editor/FLOW.contract.json` to require and copy a named agreement.
+Add `--optional` to the named form when the caller can run with the slot unbound.
 Edit the caller, configure its target, and use ordinary check and review.
 
 Interactive `jig run` can offer an explicit choice of ready approved targets;
