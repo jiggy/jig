@@ -98,6 +98,9 @@ All selected domain requirements still apply.
 - `src/cli-call-evidence.ts` captures opted-in call observations for the exact Run.
   Reuse live attribution and retain only closed route and result fields.
   Include bounded evidence directly for result-only Runs with no packet.
+  If the combined terminal frame exceeds JSON limits, report the requested evidence omission through `JIG_REPORT_LIMIT` on stderr.
+  Preserve the valid ordinary result and its exit status, including when no omission field fits.
+
   With packet delivery, emit only the acknowledged evidence.
   A host protocol marker excludes artifact release without filtering authored slot names.
   `inspect --result --calls` checks the saved record without loading the project.

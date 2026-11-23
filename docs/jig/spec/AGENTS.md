@@ -124,6 +124,7 @@ execution evidence.
 
   Terminal Run presentation and `--json` selection must stay synchronized with
   channel output, project policy, help, and the results guide.
+  Packetless call-evidence overflow reports omission on stderr while preserving the ordinary result, framing, and exit status.
 
   Combined operation and session-close diagnostics preserve bounded phase classifications and cleanup uncertainty.
   Their recovery guidance must match the troubleshooting guide without authorizing replay or introducing a review JSON envelope.
