@@ -12,7 +12,8 @@ import {
   validateWorkflowRun,
   verifyArtifactMetadata,
 } from './candidate-transfer.mjs'
-import { readMacApiJson, readMacDecisionArtifact, selectMacPrDecisions } from './macos-pr-race.mjs'
+import { readGitHubApiJson } from './github-read.mjs'
+import { readMacDecisionArtifact, selectMacPrDecisions } from './macos-pr-race.mjs'
 import {
   MACOS_COMPATIBILITY_MAJORS,
   macJobName,
@@ -287,7 +288,7 @@ export function requireMacDecisionBinding(binding, { decision, decisionArtifact 
 
 export async function collectMacHost({
   env = process.env,
-  client = githubClient(env.GITHUB_REPOSITORY, { readApiJson: readMacApiJson }),
+  client = githubClient(env.GITHUB_REPOSITORY, { readApiJson: readGitHubApiJson }),
   extract,
 } = {}) {
   let state = await snapshot(env, client)

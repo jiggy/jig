@@ -12,6 +12,7 @@ import {
   validateWorkflowRun,
   verifyArtifactMetadata,
 } from './candidate-transfer.mjs'
+import { readGitHubApiJson, transientGitHubRead } from './github-read.mjs'
 import { retainedMacBudget } from './mac-command-budget.mjs'
 import { readFrozenMacPlan } from './macos-host-test-shards.mjs'
 import { MACOS_COMPATIBILITY_MAJORS, macJobName } from './macos-qualification.mjs'
@@ -212,48 +213,6 @@ function boundedRead(path, maximum) {
     closeSync(fd)
   }
 }
-function transientRead(error, allow404 = false) {
-  const detail = `${error?.stderr ?? ''} ${error?.message ?? ''}`
-  const observed = /HTTP[ /:](\d{3})\b/i.exec(detail)
-  const status = observed ? Number(observed[1]) : Number(error?.statusCode ?? error?.status)
-  if (status >= 400 && status <= 599) return status >= 500 || (allow404 && status === 404)
-  return (
-    [
-      'ECONNRESET',
-      'ETIMEDOUT',
-      'ECONNREFUSED',
-      'EHOSTUNREACH',
-      'ENETUNREACH',
-      'EAI_AGAIN',
-      'ENOTFOUND',
-      'EPIPE',
-    ].includes(error?.code) ||
-    /TLS handshake timeout|i\/o timeout|connection reset by peer|unexpected EOF|temporary failure in name resolution|stream error: stream ID \d+; CANCEL; received from peer/i.test(
-      detail,
-    )
-  )
-}
-export async function readMacApiJson(
-  read,
-  { sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {},
-) {
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    let response
-    try {
-      response = await read()
-      return JSON.parse(response)
-    } catch (error) {
-      const position = /position (\d+)/.exec(error.message ?? '')
-      const truncated =
-        typeof response === 'string' &&
-        error instanceof SyntaxError &&
-        (/Unexpected end of JSON input|Unterminated string in JSON/.test(error.message) ||
-          (position !== null && Number(position[1]) >= response.trimEnd().length))
-      if (attempt === 3 || (!truncated && !transientRead(error))) throw error
-      await sleep(1000)
-    }
-  }
-}
 async function readRecord(client, artifact, context, name, file, now) {
   verifyArtifactMetadata(artifact, { name, runId: context.runId, headSha: context.headSha, now })
   if (
@@ -272,7 +231,7 @@ async function readRecord(client, artifact, context, name, file, now) {
         try {
           return await client.download(...args)
         } catch (error) {
-          if (transientRead(error, true))
+          if (transientGitHubRead(error, true))
             throw pending('GitHub artifact archive is not readable yet')
           throw error
         }
@@ -415,7 +374,7 @@ export async function readMacDecisionArtifact(
       `repos/${context.repository}/actions/artifacts/${decision.offerArtifactId}`,
     )
   } catch (error) {
-    if (transientRead(error, true))
+    if (transientGitHubRead(error, true))
       throw pending('Referenced Mac readiness metadata is not readable yet')
     throw error
   }
@@ -611,7 +570,7 @@ export function bindMacDecisionPreparation({ jobs, artifacts, run, context, now 
 function apiClient(repository) {
   return {
     api: (path) =>
-      readMacApiJson(() =>
+      readGitHubApiJson(() =>
         execFileSync('gh', ['api', path], {
           encoding: 'utf8',
           timeout: 15000,

@@ -395,6 +395,9 @@ They consume frozen package exports with tracked test helpers and installed
   acquisition and per-job evidence across attempts within one original run.
   It downloads immutable artifact IDs and verifies ZIP transport hashes before
   extraction.
+  PR CI metadata and archive reads reuse the bounded GitHub transport policy of
+  three attempts with one-second backoff. Validation of artifact identity,
+  digest, receipt and coverage remains fail-closed.
 
   Native PR acquisition may retain that run's original successful canonical
   producer. Newly executing native shards always use fresh fixtures. Main/manual
@@ -581,6 +584,8 @@ They consume frozen package exports with tracked test helpers and installed
   failures, expired or foreign artifacts, transport changes, incomplete
   inventories and attempt races. Candidate-transfer tests retain strict main
   behavior and exercise native PR acquisition after a CI-only retry.
+  The PR CI CLI test retries transient metadata and ZIP reads and refuses
+  persistent transport errors and corrupt archive bytes.
 - `node --test scripts/ci/source-stages.test.mjs` checks serial order, failure
   propagation, canonical-input reuse and protocol-only prerequisites through the
   actual source shell with controlled tools on Bash and POSIX sh.

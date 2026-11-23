@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { digest } from './candidate-provenance.mjs'
+import { readGitHubApiJson } from './github-read.mjs'
 import {
   bindMacDecisionPreparation,
   chooseMacOffer,
@@ -12,7 +13,6 @@ import {
   decisionName,
   NOOP_STEP_NAMES,
   offerName,
-  readMacApiJson,
   readMacDecisionArtifact,
   readMacOfferArtifact,
   retainedMacPrDecision,
@@ -843,7 +843,7 @@ test('API JSON reads retry only known transient transport,5xx or truncated API r
   const backoffs = []
   let calls = 0
   assert.deepEqual(
-    await readMacApiJson(
+    await readGitHubApiJson(
       async () => {
         calls++
         if (calls === 1) throw githubReadError(502)
@@ -863,7 +863,7 @@ test('API JSON reads retry only known transient transport,5xx or truncated API r
   ]) {
     let calls = 0
     await assert.rejects(
-      readMacApiJson(
+      readGitHubApiJson(
         async () => {
           calls++
           throw error
@@ -875,7 +875,7 @@ test('API JSON reads retry only known transient transport,5xx or truncated API r
   }
   calls = 0
   await assert.rejects(
-    readMacApiJson(
+    readGitHubApiJson(
       async () => {
         calls++
         throw Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' })
@@ -887,7 +887,7 @@ test('API JSON reads retry only known transient transport,5xx or truncated API r
   assert.equal(calls, 3)
   calls = 0
   await assert.rejects(
-    readMacApiJson(
+    readGitHubApiJson(
       async () => {
         calls++
         return '{bad json} '
@@ -899,7 +899,7 @@ test('API JSON reads retry only known transient transport,5xx or truncated API r
   assert.equal(calls, 1)
   calls = 0
   await assert.rejects(
-    readMacApiJson(
+    readGitHubApiJson(
       async () => {
         calls++
         return '{"jobs":['
