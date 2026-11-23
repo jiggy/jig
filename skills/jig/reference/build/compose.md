@@ -332,6 +332,55 @@ Record what each check establishes.
 - For file results, use `--out` with a fresh directory. Use `jig inspect --result` to verify the packet.
   Compare the relevant files with your expected output.
 
+#### Get focused feedback on a route change
+
+Run one changed entrypoint and one that should keep its behavior before you
+run the full suite. For example, make a disposable copy of the `project/`
+directory in the [publishing fixture](https://github.com/jiggy/jig/tree/main/packages/jig/test/fixtures/shared-binding-wiring).
+Save `"resumed"` as `fixtures/manuscript.json` and commit it with your test
+project. From that project, prepare its lock with `bun install --lockfile-only`,
+then inspect and approve the initial project with `jig review`.
+
+Give the offer sample its own post-edit reviewer and check the working diff.
+
+```sh
+jig specialize-slot binding:develop-offer --slot sample --as offer-producer \
+  --select post-edit=binding:specialist
+jig check --diff
+```
+
+Check that the offer selects the new producer and the book still selects the
+shared producer. Run `jig review` and approve the intended revision before
+running these two cases with the same fixture.
+
+```sh
+packets=$(mktemp -d)
+jig run binding:develop-offer --input @fixtures/manuscript.json \
+  --record-calls --out "$packets/offer" --json
+jig run binding:coordinate-book --input @fixtures/manuscript.json \
+  --record-calls --out "$packets/book" --json
+jig inspect --result "$packets/offer" --calls --json
+jig inspect --result "$packets/book" --calls --json
+```
+
+Check for successful execution and outcome `done` on both Runs. Open
+`files/review/report.json` in each packet. The offer's `Epilogue` review
+should be `specialist` with decision `revise`. The book's `Epilogue` review
+should be `standard` with decision `accept`. Both whole-manuscript reviews
+should stay `standard`.
+
+Require `complete` coverage before checking the exact retained calls. The
+offer calls `binding:offer-producer` through `sample`, then the producer
+calls `binding:specialist` through `post-edit`. The book calls
+`binding:shared-producer` through `production`, then the producer calls
+`binding:standard` through `post-edit`. All four calls should have state
+`returned` and outcome `done`.
+
+An equivalent reviewer can produce identical files, so check the caller,
+slot, target, and returned outcome in the saved evidence. Run your full
+native suite for the other entrypoints and cases before accepting the change.
+The publishing fixture's README gives the commands for its standalone suite.
+
 ## Watch invalid input stop
 
 ```sh
