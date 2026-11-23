@@ -9,6 +9,7 @@ import {
   type DisplayFact,
   type DisplayIncompleteSnapshot,
   type DisplayPreviewReply,
+  type DisplayRecordedComparison,
   type DisplaySnapshot,
   recordReferences as privateRecordReferences,
 } from '@jigging/display-model'
@@ -40,6 +41,7 @@ function allowance(value: unknown, maximum: number): void {
 export class PrivateDisplayProjection {
   readonly #identityKey: Buffer
   #previewBusy = false
+  recordedComparison?: DisplayRecordedComparison
   constructor(
     readonly model: PrivateRunModel,
     identityKey: Uint8Array = randomBytes(32),
@@ -395,7 +397,9 @@ export class PrivateDisplayProjection {
       journal,
       attention,
       artifacts,
-      inputs: this.#inputs(),
+      ...(this.recordedComparison === undefined
+        ? { inputs: this.#inputs() }
+        : { recordedComparison: this.recordedComparison }),
     }
     allowance(
       {

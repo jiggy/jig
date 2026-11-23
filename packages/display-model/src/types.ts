@@ -157,6 +157,22 @@ export type DisplayProjectRun =
       targetId: string
       reason: string
     }>
+/** Inert, bounded claims from two explicitly selected saved result packets. */
+export type DisplayRecordedRun = Readonly<{
+  runId?: string
+  revision?: string
+  root?: string
+  status: 'succeeded' | 'failed' | 'lost'
+  outcome?: string
+  filesComplete: boolean
+  invalidCalls: boolean
+}> &
+  Pick<DisplayProjectRunEvidence, 'calls' | 'callCoverage' | 'callsOmitted'>
+export type DisplayRecordedComparison = Readonly<{
+  earlier: DisplayRecordedRun
+  later: DisplayRecordedRun
+  submittedIdentity: 'same' | 'different' | 'unknown'
+}>
 export type RecordedViewRole = 'recorded-report' | 'recorded-files' | 'recorded-diagnostics'
 export type DisplayFact = Readonly<{
   value: string
@@ -218,6 +234,7 @@ export type DisplaySnapshot = Immutable<{
     }
   }
   context: string
+  recordedComparison?: DisplayRecordedComparison
   incomplete?: string
   omissions: { calls: number; journal: { flow: number; host: number; diagnostic: number } }
   composition?: DisplayComposition
