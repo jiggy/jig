@@ -23,7 +23,8 @@ recipe keeps caller wiring in the authored source and selects local peers at the
 external boundaries of an isolated test project.
 
 Its focused checks verify delivered files and exact retained calls on changed
-and preserved routes before full native qualification.
+and preserved routes, including both whole-manuscript handoffs.
+Run these checks before full native qualification.
 
 `results.md` explains live application maps, bounded child-call evidence, and comparison of two saved packets.
 It distinguishes omitted requested evidence from an empty call list and explains the packetless stderr diagnostic.
