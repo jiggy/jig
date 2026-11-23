@@ -10,7 +10,7 @@ Task guides own composition, Agent setup, dependencies, effects, files,
 conversations, progress, project design, collaboration, and result interpretation.
 
 `contracts.md` teaches collaborator declarations with `jig add-use`, including optional named requirements.
-`contracts.md` owns type projection limits, compiler minimums, and authoring for Flow contexts and project Binding declarations.
+`contracts.md` owns type projection limits, compiler minimums, and authoring for Flow inputs, returned outcomes, contexts, and project Binding declarations.
 
 `design.md` owns source-grounded route-change guidance, including decision ownership, preserved alternatives, and affected evidence consumers.
 `design.md` also teaches the scoped slot specialization, literal membership, and source review.
