@@ -257,6 +257,112 @@ test('Explorer reloads compatible input across approvals and compares retained c
   }
 })
 
+for (const limit of ['count', 'bytes']) {
+  test(`Explorer refuses reused uploads above the ${limit} limit without changing the current draft`, async () => {
+    let revision = 'earlier'
+    let run = { state: 'idle' }
+    let submissions = 0
+    const host = await startBrowserFixture({
+      async explorer(request) {
+        if (request.url.startsWith('/api/project'))
+          return {
+            value: {
+              kind: 'project',
+              revision,
+              state: 'approved',
+              targets: [{ id: 'review', label: 'Review', kind: 'binding', availability: 'ready' }],
+              selected: {
+                targetId: 'review',
+                attachments: (revision === 'earlier' ? ['source'] : ['source', 'new']).map(
+                  (name) => ({ name, mode: 'read', bound: false }),
+                ),
+                receives: [],
+                input: { state: 'unconstrained' },
+                composition: { state: 'unavailable', reason: 'unavailable' },
+                launch: { state: 'available' },
+              },
+            },
+          }
+        if (request.url === '/api/run' && request.method === 'GET') return { value: run }
+        if (request.url === '/api/run' && request.method === 'POST') {
+          const chunks = []
+          for await (const chunk of request) chunks.push(chunk)
+          const form = await new Response(Buffer.concat(chunks), {
+            headers: { 'Content-Type': request.headers['content-type'] },
+          }).formData()
+          const intent = JSON.parse(await form.get('_intent').text())
+          assert.equal(form.getAll('source').length, limit === 'count' ? 64 : 1)
+          submissions++
+          run = { state: 'settled', requestId: intent.requestId, targetId: intent.targetId }
+          return { value: run }
+        }
+        return { value: {}, status: 404 }
+      },
+    })
+    const page = await browser.newPage()
+    page.setDefaultTimeout(5000)
+    const errors = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    const file = (name, bytes) => ({
+      name,
+      mimeType: 'text/plain',
+      buffer: Buffer.alloc(bytes, 97),
+    })
+    const source = page.getByLabel('Choose files for source')
+    const added = page.getByLabel('Choose files for new')
+    const input = page.getByRole('textbox', { name: 'Input JSON', exact: true })
+    const reuse = page.getByRole('button', { name: 'Reuse previous input' })
+    try {
+      await page.goto(host.url)
+      await page.getByRole('button', { name: 'Run with input', exact: true }).click()
+      await input.fill('{"message":"previous"}')
+      await source.setInputFiles(
+        Array.from({ length: limit === 'count' ? 64 : 1 }, (_, index) =>
+          file(`previous-${index}.txt`, limit === 'count' ? 1 : 8 * 1024 * 1024),
+        ),
+      )
+      await page.getByRole('button', { name: 'Run workflow', exact: true }).click()
+      await page.getByText('Run settled', { exact: false }).first().waitFor()
+      revision = 'later'
+      await page.getByRole('button', { name: 'Refresh approved project' }).click()
+      await added.waitFor()
+      await input.fill('{"message":"keep this draft"}')
+      await source.setInputFiles(file('current-source.txt', 1))
+      await added.setInputFiles(file('new-port.txt', limit === 'count' ? 1 : 8 * 1024 * 1024 + 1))
+      await reuse.click()
+      const refusal = page.getByText(
+        limit === 'count'
+          ? /Previous input was not loaded.*64 files.*Clear another selection/
+          : /Previous input was not loaded.*16 MiB.*fewer or smaller files/,
+      )
+      await refusal.waitFor()
+      assert.equal(await input.inputValue(), '{"message":"keep this draft"}')
+      assert.equal(await page.getByText('current-source.txt', { exact: true }).count(), 1)
+      assert.equal(await page.getByText('new-port.txt', { exact: true }).count(), 1)
+      assert.equal(await page.getByText('previous-0.txt', { exact: true }).count(), 0)
+      assert.equal(submissions, 1, 'refused reuse never submits work')
+      assert.equal(await reuse.isEnabled(), true)
+      await page.getByRole('button', { name: 'Clear files for new', exact: true }).click()
+      await reuse.click()
+      await page
+        .getByText('Previous input loaded. Choose files for the remaining attachments.')
+        .waitFor()
+      assert.equal(await input.inputValue(), '{"message":"previous"}')
+      assert.equal(await page.getByText('previous-0.txt', { exact: true }).count(), 1)
+      assert.equal(await page.getByText('current-source.txt', { exact: true }).count(), 0)
+      assert.equal(await refusal.count(), 0)
+      assert.equal(submissions, 1, 'successful reuse also waits for explicit Run')
+      assert.deepEqual(errors, [])
+    } catch (error) {
+      error.message += `\nMounted page: ${await page.locator('body').innerText()}`
+      throw error
+    } finally {
+      await page.close()
+      await host.close()
+    }
+  })
+}
+
 async function readableTextContrast(page, applicationMaterial = true) {
   const result = await page.evaluate(() => {
     const rgb = (value) => {
