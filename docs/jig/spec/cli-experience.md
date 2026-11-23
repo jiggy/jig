@@ -1494,8 +1494,9 @@ The recorded call view does not infer a configuration graph or branch conditions
 
 `jig inspect --result EARLIER --compare LATER` reads two explicitly selected
 local packets through the same saved inspection boundary.
-It prints a bounded plain comparison, including with redirected stdout.
-Omit `--calls`, `--display` and `--json` for a comparison.
+It prints a bounded plain comparison by default and with redirected stdout.
+With terminal stdout, `--display web` opens the private browser inspector and
+prints the plain comparison after it closes. Omit `--calls` and `--json`.
 Each side retains its recorded Run identity, root selector, approved revision,
 root result, file verification and call coverage when available.
 

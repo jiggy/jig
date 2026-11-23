@@ -327,7 +327,7 @@ Example:
        jig inspect --flow --snapshot
        jig inspect --flow --compare BASELINE [--all]
        jig inspect --result DIRECTORY [--display plain|tui|web | --calls] [--json]
-       jig inspect --result EARLIER --compare LATER
+       jig inspect --result EARLIER --compare LATER [--display web]
 
 List the current project's approved targets, or show one target's retained
 input/result schemas, settings, child slots, capabilities, files and channels.
@@ -1494,8 +1494,12 @@ function parseInspect(arguments_: readonly string[]) {
   if (all && !flow) usage('inspect', '--all requires --flow.')
   if (topology && !flow) usage('inspect', '--topology requires --flow.')
   if (packagePath !== undefined && !flow) usage('inspect', '--package requires --flow.')
-  if (resultDirectory !== undefined && comparison !== undefined && (json || calls || display))
-    usage('inspect', 'Use --result EARLIER --compare LATER for a plain saved call comparison.')
+  if (
+    resultDirectory !== undefined &&
+    comparison !== undefined &&
+    (json || calls || (display !== undefined && display !== 'web'))
+  )
+    usage('inspect', 'Use --result EARLIER --compare LATER with optional --display web.')
   if (
     (snapshot || (comparison !== undefined && resultDirectory === undefined)) &&
     (!flow ||
@@ -1555,7 +1559,10 @@ async function executeSavedResultInspect(
     packet = await privateCaptureSavedResult(
       resolve(runtime.currentDirectory, parsed.resultDirectory!),
       runtime.signal,
-      !parsed.json && runtime.humanOutput && (parsed.display === 'tui' || parsed.display === 'web'),
+      parsed.comparison === undefined &&
+        !parsed.json &&
+        runtime.humanOutput &&
+        (parsed.display === 'tui' || parsed.display === 'web'),
     )
     if (parsed.comparison !== undefined)
       later = await privateCaptureSavedResult(
@@ -1576,6 +1583,13 @@ async function executeSavedResultInspect(
     if (later) {
       runtime.signal?.throwIfAborted()
       const comparison = privateSavedCallComparison(packet, later)
+      if (parsed.display === 'web' && runtime.humanOutput)
+        await runtime.progress.inspectSavedComparison(
+          comparison.browser,
+          runtime.dashboardInput,
+          runtime.dashboardInputStream,
+        )
+      runtime.signal?.throwIfAborted()
       await runtime.writeRecord(comparison.text)
       return comparison.complete ? 0 : 1
     }

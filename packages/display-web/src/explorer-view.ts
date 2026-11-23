@@ -5,7 +5,7 @@ import type {
 } from '@jigging/display-model'
 import { type ComponentChildren, h } from 'preact'
 import { CompositionPage } from './composition-view.js'
-import { ExplorerCallComparison } from './explorer-call-comparison.js'
+import { ObservedCallComparison } from './explorer-call-comparison.js'
 import { type PrivateExplorerConnection, privateExplorerInput } from './explorer-client.js'
 import { privateBrowserLiteral } from './navigation.js'
 
@@ -154,7 +154,7 @@ function RunComparison(
         ),
       ),
     ),
-    h(ExplorerCallComparison, { earlier: first, later: second }),
+    h(ObservedCallComparison, { earlier: first, later: second }),
   )
 }
 

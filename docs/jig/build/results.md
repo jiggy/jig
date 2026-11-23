@@ -282,13 +282,17 @@ Save each Run with `--record-calls` and its own fresh `--out` directory.
 After both Runs exit, pass the two packets in order from any directory, including outside the project.
 
 ```sh
-jig inspect --result ./before --compare ./after
+jig inspect --result ./before --compare ./after --display web
 ```
+
+Use **Close inspection** to end the local browser session and print the comparison in the terminal.
+Omit `--display web` for the plain comparison. Both displays read the same recorded claims.
 
 The comparison shows each recorded Run and approved revision.
 For the same root, caller and slot, it matches the full recorded chain of ancestor slots and targets.
 It shows differing observations first, then matching observations, with counts by target, state and outcome.
 With incomplete coverage, a missing row says “No retained match.”
+The browser discloses any observations outside its bounded call excerpt.
 
 The comparison uses the recorded JSON input identity and submitted attachment manifest.
 It reports whether the recorded identity is the same, different, or unknown when either record is missing or malformed.

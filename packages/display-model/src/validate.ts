@@ -373,6 +373,7 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
     'attention',
     'artifacts',
     'inputs',
+    'recordedComparison',
     'lastCompleteRevision',
     'reason',
     'diagnostics',
@@ -428,6 +429,7 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
       'inputs',
       'incomplete',
       'composition',
+      'recordedComparison',
     ])
       if (data[name] !== undefined) fail()
   } else {
@@ -537,6 +539,25 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
         if (ids.has(file.id)) fail()
         ids.add(file.id)
       }
+    if (data.recordedComparison !== undefined) {
+      if (
+        data.mode !== 'recorded-packet' ||
+        workspace.phase !== 'settled' ||
+        workspace.facts !== undefined ||
+        data.inputs !== undefined ||
+        ids.size ||
+        ((data.artifacts as Data).permittedAttachments as unknown[]).length ||
+        (data.views as unknown[]).length ||
+        calls.length ||
+        (data.activities as unknown[]).length ||
+        (data.journal as unknown[]).length
+      )
+        fail()
+      const comparison = record(data.recordedComparison, ['earlier', 'later', 'submittedIdentity'])
+      choice(comparison.submittedIdentity, ['same', 'different', 'unknown'])
+      recordedRun(comparison.earlier)
+      recordedRun(comparison.later)
+    }
     if (
       data.mode === 'retained-views' &&
       (calls.length ||
@@ -699,26 +720,38 @@ export function validateDisplayProjectRunRequest(value: unknown): DisplayProject
   }
 }
 
-function runEvidence(value: unknown, root?: string): void {
+function recordedRun(value: unknown): void {
   const data = record(value, [
-    'execution',
+    'runId',
+    'revision',
+    'root',
+    'status',
     'outcome',
-    'progress',
+    'filesComplete',
+    'invalidCalls',
     'calls',
     'callCoverage',
     'callsOmitted',
-    'delivery',
-    'files',
   ])
-  for (const key of ['execution', 'outcome', 'delivery']) text(data[key], 128, 1)
-  optional(data.progress, (value) => {
-    const progress = record(value, ['completed', 'total'])
-    for (const key of ['completed', 'total']) {
-      const quantity = progress[key]
-      if (key === 'total' && quantity === undefined) continue
-      if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity < 0) fail()
-    }
-  })
+  const root = data.root === undefined ? undefined : text(data.root, 1029, 1)
+  for (const key of ['runId', 'revision']) {
+    if (data[key] !== undefined && !/^sha256:[0-9a-f]{64}$/.test(text(data[key], 71, 71))) fail()
+  }
+  choice(data.status, ['succeeded', 'failed', 'lost'])
+  optional(data.outcome, (value) => text(value, 64, 1))
+  flag(data.filesComplete)
+  flag(data.invalidCalls)
+  if (
+    (data.callCoverage !== 'unavailable' &&
+      (!root || data.runId === undefined || data.revision === undefined)) ||
+    (data.callCoverage === 'unavailable' && data.revision !== undefined) ||
+    (data.invalidCalls && data.callCoverage !== 'unavailable')
+  )
+    fail()
+  comparisonCalls(data, root)
+}
+
+function comparisonCalls(data: Data, root?: string): void {
   const calls = list(data.calls, 8)
   const coverage = choice(data.callCoverage, ['complete', 'incomplete', 'unavailable'])
   const omitted = count(data.callsOmitted)
@@ -752,6 +785,29 @@ function runEvidence(value: unknown, root?: string): void {
         fail()
     }
   }
+}
+
+function runEvidence(value: unknown, root?: string): void {
+  const data = record(value, [
+    'execution',
+    'outcome',
+    'progress',
+    'calls',
+    'callCoverage',
+    'callsOmitted',
+    'delivery',
+    'files',
+  ])
+  for (const key of ['execution', 'outcome', 'delivery']) text(data[key], 128, 1)
+  optional(data.progress, (value) => {
+    const progress = record(value, ['completed', 'total'])
+    for (const key of ['completed', 'total']) {
+      const quantity = progress[key]
+      if (key === 'total' && quantity === undefined) continue
+      if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity < 0) fail()
+    }
+  })
+  comparisonCalls(data, root)
   optional(data.files, (value) => {
     const files = record(value, ['total', 'paths'])
     const paths = list(files.paths, 8)

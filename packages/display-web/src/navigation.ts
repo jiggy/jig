@@ -49,6 +49,8 @@ export function privateBrowserTabs(
   icon: string
   application?: boolean
 }[] {
+  if (snapshot?.recordedComparison)
+    return [{ id: 'recorded-comparison', title: 'Saved Run comparison', source: '', icon: 'table' }]
   const tabs = displayDestinations(
     mode,
     (snapshot?.views ?? []).map((view) => ({

@@ -468,6 +468,24 @@ names or diagnostic path strings.
 
 The saved browser inspector renders fixed recorded fields, captured files and recorded diagnostics.
 Use [saved child calls](cli-experience.md#saved-child-calls) for opt-in call evidence in a packet.
+
+`jig inspect --result EARLIER --compare LATER --display web` opens two explicit
+local packets in the same private inspector. The browser receives recorded Run
+and revision identities, the submitted identity relation, verification status
+and a bounded call excerpt. Match the exact retained root and ancestor path,
+caller and slot, with counts by target, state and outcome.
+
+Keep a prefix of at most eight calls and 5 KiB per side so retained children
+keep their parent indexes. Count omitted observations and mark capped evidence
+incomplete. Display unavailable recording, unmatched paths and stale bodies
+explicitly. A missing observation does not establish a skipped call.
+
+The capability authenticates access to the local inspection session.
+Saved observations remain unauthenticated local claims.
+
+The comparison projects no packet directory, manifest, input digest, payload or
+file reference. It exposes no project selection, execution, or approval action.
+Close inspection stops the local viewer and releases both packet captures.
 The separately selected application archive retains explicit display bundles under its own contract.
 Manifest consistency is not authentication of the report.
 
