@@ -165,18 +165,24 @@ Failures emit a bounded diagnostic on stderr and no success record.
 `jig types <package-path>` selects one exact project-relative package directory containing a `FLOW.ts` entrypoint.
 Jig captures and validates that package through the ordinary source boundary.
 It uses portable `FLOW.meta.json` slot declarations and their referenced package-local contract bundles.
-It also uses the package's validated `settings.schema.json` when present.
+It also uses the package's validated `FLOW.contract.json` and `settings.schema.json` when present.
 
 It emits one deterministic TypeScript declaration to stdout for unchanged inputs.
 It acquires no execution host, evaluates no source, installs no dependencies, and writes no project files or approval.
 Validation failures report a diagnostic without emitting a declaration.
 
-The declaration uses the public FLOW SDK types with declared slot names and a bounded schema projection on `call` and `settings`.
+The declaration exports `RunContext` and `FlowResult` using the public FLOW SDK types.
+The package's single-operation descriptor supplies a bounded projection of `RunContext.input` and the `FlowResult` outcome and output.
+Without that descriptor, `RunContext.input` and `FlowResult` retain the SDK types.
+The SDK's root result artifact field remains available.
+
+Declared slot names constrain `call`, and their contracts supply a bounded payload projection.
 Settings project direct property declarations and required names at the schema root.
 Settings retain the broad SDK type without projected fields.
 Other Run context members retain their SDK types.
 Uncontracted declared slots retain the broad SDK payloads.
-The [authoring guide](../build/contracts.md#type-check-child-calls) owns the projection limits and operator workflow.
+
+The [authoring guide](../build/contracts.md#type-check-a-flow) owns the projection limits and operator workflow.
 
 ### Binding type declarations
 

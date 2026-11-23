@@ -57,6 +57,7 @@ execution evidence.
 - The CLI composition check contract owns the read-only check, the comparable topology fields, and the diff output.
   Plain check and review share the bounded Binding split context. Its retained rows establish configured selections only.
 - The CLI type declaration contract owns package and project source selection, output, and evaluation permissions.
+  Package declarations project the Flow's own input and return, declared child calls, and settings from validated source.
 - Mac admission requires native ARM macOS 15+ mechanisms, with observed OS builds
   retained as identity rather than an allowlist. Release evidence covers complete
   native and installed suites on macOS 15 and 26, including genuine Codex session

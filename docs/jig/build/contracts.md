@@ -101,46 +101,50 @@ accepted. Review identifies the affected file and field and gives a correction.
 See [FLOW schema files](https://flow.jig.md/spec/schema-files) for the supported
 keywords, local references and limits.
 
-## Type-check child calls
+## Type-check a Flow
 
-Use `jig types` to check settings reads and declared child calls in a TypeScript Flow.
-The command reads `uses` in the caller's `FLOW.meta.json` and the exact package-local bundles it references.
-It also uses the validated `settings.schema.json` beside `FLOW.ts`.
-Handwritten JSON and compatible TypeSpec-generated JSON use the same path.
-Run the command from the project root with the caller's package directory.
+Use `jig types` to check a TypeScript Flow's own input and return, settings reads, and declared child calls.
+The command reads the package's `FLOW.contract.json`, `settings.schema.json`, and contract bundles referenced by `uses` in `FLOW.meta.json`.
+It accepts handwritten JSON and compatible TypeSpec-generated JSON.
+Run the command from the project root with the Flow's package directory.
 
 ```sh
 jig types flows/worker > flows/worker/FLOW.calls.d.ts
 ```
 
-Save the declaration separately from `FLOW.contract.d.ts`, which describes the implementation's own interface.
+If you use TypeSpec, keep its generated `FLOW.contract.d.ts` as a separate file.
 The command emits only to stdout and reads the selected package as data.
 Use TypeScript 4.7 or newer to check the declaration with `NodeNext` module resolution.
-Import its `RunContext` as a type and apply it once inside the ordinary FLOW SDK handler.
-This assertion relies on the declaration matching the Flow's current contracts and its validated settings.
+Assert the generated `RunContext` once inside the ordinary FLOW SDK handler.
+Annotate the handler's return as `Promise<FlowResult>` to check each returned value.
+The assertion relies on the declaration matching the Flow's current contracts and settings schema.
 
 ```typescript
 import { handle } from '@jigging/flow'
-import type { RunContext } from './FLOW.calls.js'
+import type { FlowResult, RunContext } from './FLOW.calls.js'
 
-await handle(async (context) => {
+await handle(async (context): Promise<FlowResult> => {
   const run = context as RunContext
   const result = await run.call({
     operationId: 'review',
     slot: 'review',
-    input: { text: 'Draft' },
+    input: { text: run.input.text },
   })
   if (result.outcome === 'done') {
-    return { outcome: 'done', output: result.output.summary }
+    return { outcome: 'done', output: { message: result.output.summary } }
   }
-  return { outcome: 'done', output: result.output.request }
+  return { outcome: 'needs-evidence', output: { request: result.output.request } }
 })
 ```
 
-This example assumes the `review` contract defines a `done` result with `summary` and a `needs-evidence` result with `request`.
-Regenerate after changes to `uses`, its contract bundles, or `settings.schema.json`.
+The worker accepts an object with `text` and declares the two returned outcomes and their output fields.
+The `review` slot accepts `text` and returns `summary` for `done` or `request` for `needs-evidence`.
+Regenerate after changes to `FLOW.contract.json`, `uses`, its contract bundles, or `settings.schema.json`.
 If you need to preserve the previous declaration, redirect to a temporary file and move it after successful generation.
-TypeScript checks the code that uses the declaration. Review still checks implementation selection, and the runtime validates input and results.
+
+TypeScript checks declared field types and returned outcome and output combinations.
+Open object types may still accept extra fields or expose unknown fields as JSON values.
+Review checks implementation selection. At Run time, Jig validates actual inputs and results against the complete contracts.
 
 For dynamic slot selection, narrow the slot before calling or build a union of complete requests.
 Each request must pair its slot with valid input for that slot.
@@ -149,9 +153,10 @@ The result type covers the slots in that union.
 An explicit `never` check can flag an added outcome after regeneration.
 A catch-all can continue to handle that outcome when it uses fields common to the results it handles.
 
-The declaration keeps the SDK's call options, channels, attachments, and artifact handles.
+The declaration keeps the SDK's call options, channels, attachments, and artifact fields.
 Each uncontracted slot keeps the SDK's broad input and result types.
 Without declared slots, `call` keeps its SDK type.
+Without a single-operation invocation contract, `input` and `FlowResult` use the ordinary SDK types.
 
 Read settings through the same context. For example, a required `route` with
 `"enum": ["summary", "detail"]` gives `run.settings.route` that string union.
@@ -159,14 +164,14 @@ Optional properties can be `undefined`. Settings without projectable fields
 keep the SDK's broad object type.
 `jig check` and review still validate the actual settings in each Binding.
 
-The projection covers these shapes for settings fields and single-operation contracts.
+The projection covers these shapes for settings fields and single-operation invocation contracts, including child calls.
 
 - It projects scalar `const` and `enum`, explicit scalar types, object properties and required names, and homogeneous array `items`.
 - It includes `done` and the contract's named outcomes. Direct `outcome` and `output` properties can distinguish result shapes across up to 32 root `oneOf` or `anyOf` alternatives.
 - It widens integers to `number` and tuple arrays to arrays of JSON values. It keeps objects open and leaves bounds, references, and other schema constraints to runtime validation.
 - Unprojected values and fields beyond 12 schema levels stay broad. Slots with named-operation contracts retain broad SDK input and result types.
 
-The command refuses declarations over 256 KiB. You can always use the ordinary FLOW SDK context.
+The command refuses declarations over 256 KiB. You can always use the ordinary FLOW SDK types.
 
 ## Type-check Binding declarations
 
