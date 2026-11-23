@@ -75,10 +75,9 @@ Code returns `needs_mapping`. The Agent is asked to interpret `Organisation`,
 Mixed recognizes the known format in code and invokes the Agent only for
 unfamiliar headings. Its **Columns** view now reports the condition it evaluated
 (exactly `Customer`, `Email address`, and `Company`, in any order), its match,
-and the code or Agent-proposal branch it selected. This is an application-authored
-choice, not evidence that the Agent request started or succeeded. Inspect the
-corresponding observed child request in the Run map for execution evidence. Try `binding:mixed` with `fixtures/known` to take
-the direct code path. Each invocation receives its own temporary packet unless
+and the code or Agent-proposal branch it selected.
+Try `binding:mixed` with `fixtures/known` to take the direct code path.
+Each invocation receives its own temporary packet unless
 you choose a new destination with `--out DIR`.
 
 ## Follow the work
@@ -90,9 +89,15 @@ as the work advances. Lists show up to twelve whole records with explicit totals
 Selected records keep their complete values. The complete output and
 `files/preview/preview.json` preserve every record.
 
-The complete preview reference opens the delivered file. Child Flow views
-remain available through Inspector and when invoked independently.
+The complete preview reference opens the delivered file.
+Independently invoked Flows show their own views.
 `needs_mapping` asks for clarification. A completed preview never means contacts were imported into a database.
+
+For a mixed Run, open **Mapper decision** in **Contact preview**.
+The importer takes the match and choice from the mapper's optional Reporting port.
+Follow the mapper link to open the exact `map-columns` invocation.
+Expand its branch in **Execution** to check observed child requests.
+The standalone mapper shows the same decision in **Columns**.
 
 Add `--display tui` for a terminal workspace or `--display web` for the same
 views in a browser. Open the private link printed after execution starts. The completed inspector
