@@ -787,6 +787,61 @@ test('configured topology retains literal framing and refuses oversized graphs w
   expect((flowContextRecord(oversized, {}) as TopologyView).targets).toHaveLength(257)
 })
 
+test('working-tree topology links each visible captured Binding at its first mention', () => {
+  const snapshot = {
+    basis: 'working-tree',
+    revision: 'x',
+    entrypoint: 'binding:book',
+    targets: [
+      {
+        target: 'binding:book',
+        package: 'flows/book',
+        flow: { routes: [{ slot: 'production', target: 'binding:shared' }] },
+      },
+      {
+        target: 'binding:offer',
+        package: 'flows/offer',
+        flow: { routes: [{ slot: 'sample', target: 'binding:shared' }] },
+      },
+      {
+        target: 'binding:shared',
+        package: 'flows/producer',
+        flow: { routes: [{ slot: 'review', target: 'binding:standard' }] },
+      },
+      { target: 'binding:standard', package: 'flows/reviewer', flow: { routes: [] } },
+      { target: 'binding:specialist', package: 'flows/reviewer', flow: { routes: [] } },
+      { target: 'flow:flows/direct', package: 'flows/direct', flow: { routes: [] } },
+    ],
+  } satisfies JsonValue
+  const bindingDeclarations = new Map([
+    ['binding:book', 'setup/book.ts'],
+    ['binding:offer', 'setup/offer.ts'],
+    ['binding:shared', 'setup/different (shared).ts'],
+    ['binding:standard', 'setup/policy-a.ts'],
+    ['binding:specialist', 'setup/policy-b.ts'],
+  ])
+  const options = { target: 'binding:shared', bindingDeclarations }
+  const focused = renderFlowContext(snapshot, options)
+  expect(focused).toContain(
+    '[binding:shared](./setup/different%20%28shared%29.ts) uses flows/producer.',
+  )
+  expect(focused).toContain('- [binding:book](./setup/book.ts) · production')
+  expect(focused).toContain('- [binding:offer](./setup/offer.ts) · sample')
+  expect(focused).toContain('- review → [binding:standard](./setup/policy-a.ts)')
+  expect(focused).not.toContain('policy-b.ts')
+  expect(focused.match(/\]\(\.\/setup\//g)).toHaveLength(4)
+  expect(focused.replace(/\[([^\]]+)\]\(\.\/[^)]+\)/g, '$1')).toBe(
+    renderFlowContext(snapshot, { target: options.target }),
+  )
+  const full = renderFlowContext(snapshot, { all: true, bindingDeclarations })
+  expect(full).toContain('[binding:specialist](./setup/policy-b.ts) uses flows/reviewer.')
+  expect(full.match(/\]\(\.\/setup\//g)).toHaveLength(5)
+  const retained: JsonValue = { ...snapshot, basis: 'approved' }
+  expect(renderFlowContext(retained, options)).toBe(
+    renderFlowContext(retained, { target: options.target }),
+  )
+})
+
 test('working-tree topology remains unreviewed even when the project has no targets', () => {
   for (const targets of [
     [],

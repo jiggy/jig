@@ -1,5 +1,6 @@
 import {
   type ConfiguredConnection,
+  flowSourceLink,
   renderFlowNavigationIndex,
   renderFlowNavigationMatches,
   renderFlowOrientation,
@@ -69,7 +70,10 @@ function diagramIds(snapshot: Record<string, JsonValue>) {
 /** Configured topology only. No method interpretation or invocation history. */
 export function renderFlowContext(
   value: JsonValue,
-  options: FlowContextOptions & { indexDeclarations?: ReadonlyMap<string, string> } = {},
+  options: FlowContextOptions & {
+    indexDeclarations?: ReadonlyMap<string, string>
+    bindingDeclarations?: ReadonlyMap<string, string> | undefined
+  } = {},
 ): string {
   const snapshot = record(value)
   if (snapshot.state === 'unreviewed' && snapshot.basis !== 'working-tree')
@@ -152,9 +156,19 @@ export function renderFlowContext(
       `Environment: ${markdown(state)}. Source freshness and execution readiness remain unchecked.`,
       '',
     )
+  const declarations = working ? options.bindingDeclarations : undefined
+  const linkedTargets = new Set<string>()
+  // The prose and implementation list can mention the same Binding several times.
+  const targetLabel = (id: string) => {
+    const path = declarations?.get(id)
+    if (path === undefined || linkedTargets.has(id)) return markdown(id)
+    linkedTargets.add(id)
+    return flowSourceLink(path, markdown(id))
+  }
   lines.push(
     ...renderFlowOrientation(configuredTargets, configuredConnections, focus ?? entrypoint, {
       text: markdown,
+      target: targetLabel,
       includeCallers: options.target !== undefined,
     }),
   )
@@ -182,7 +196,7 @@ export function renderFlowContext(
     const settings = record(flow.settings)
     const implementation =
       typeof item.package === 'string' && String(item.target).startsWith('binding:')
-        ? `${markdown(String(item.target))} uses ${markdown(item.package)}.`
+        ? `${targetLabel(String(item.target))} uses ${markdown(item.package)}.`
         : undefined
     if (Object.keys(settings).length) {
       const text = JSON.stringify(settings)
