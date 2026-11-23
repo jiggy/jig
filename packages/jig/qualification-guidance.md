@@ -54,6 +54,9 @@ These links locate module rules. All selected domain requirements still apply.
   build. Do not repeat those prerequisite requests directly in Jig.
 
   Standalone package recipes keep their complete dependencies.
+  The Claude Agent bundle uses the exact Anthropic SDK peer pinned in Jig's
+  development dependencies. Check its registry archive and rebuild the bundle
+  when updating either version.
 
 - Jig's manifest omits `sideEffects: false`: Bun 1.3.13 incorrectly drops the
   authoring exports from both bundles when it is set. The built authoring
