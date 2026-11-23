@@ -109,9 +109,11 @@ All selected domain requirements still apply.
   `inspect --result --calls` checks the saved record without loading the project.
 
 - `src/cli-saved-call-comparison.ts` shares the Explorer observation grouping
-  and stays within both captured packets. Keep submitted input and
-  attachment identity unknown, unmatched observations explicit and the plain
-  excerpt bounded. Do not copy session-only matching identities into packets.
+  and stays within both captured packets. Compare the recorded JSON input digest
+  and normalized submitted attachment manifest. Display only their relation and
+  leave it unknown when either record is absent or malformed.
+  Keep unmatched observations explicit, the plain excerpt bounded, and live
+  session identities out of the saved record.
 
 ### Command grammar and review
 
