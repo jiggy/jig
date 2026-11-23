@@ -9,7 +9,7 @@ import { createTui, prepareTui, type TuiDisplay, type TuiTheme } from '@jigging/
 import { createInlineDisplay, type InlineDisplay } from '@jigging/display-tui/inline'
 import { webAssets } from '@jigging/display-web/assets'
 import type { Reference } from '@jigging/reporting'
-import { privateCallExcerpt } from './cli-call-evidence.js'
+import { privateExplorerCallEvidence } from './cli-call-evidence.js'
 import type { PrivateRunComposition } from './cli-composition.js'
 import { PrivateDisplayProjection } from './cli-display-projection.js'
 import {
@@ -1223,7 +1223,7 @@ export class PrivateCliProgress {
                 ...(progress.total === undefined ? {} : { total: progress.total }),
               },
             }),
-        ...privateCallExcerpt(recordedCalls),
+        ...privateExplorerCallEvidence(recordedCalls),
         delivery: facts.delivery.value,
         ...(artifacts.phase === 'ready' && artifacts.provenance === 'verified-delivery'
           ? {

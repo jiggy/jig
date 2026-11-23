@@ -61,7 +61,7 @@ with their producer. This package owns readonly display data and pure meaning.
   It provides the submitted identity relation and bounded grouped rows without
   carrying views, original bodies, input or artifact references. Each displayed
   path keeps both sides’ exact counts. Source coverage and row omissions remain
-  separate. Live Explorer continues to carry a call prefix.
+  separate. Live Explorer uses the same row bound after comparing the two retained trees.
 - Composition bounds have one canonical owner in `src/types.ts`.
   Validation enforces node, edge and encoded UTF-8 byte capacities.
   Valid configuration does not guarantee executability or observed execution.
