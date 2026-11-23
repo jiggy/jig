@@ -369,16 +369,21 @@ should be `specialist` with decision `revise`. The book's `Epilogue` review
 should be `standard` with decision `accept`. Both whole-manuscript reviews
 should stay `standard`.
 
-Require `complete` coverage before checking the exact retained calls. The
-offer calls `binding:offer-producer` through `sample`, then the producer
-calls `binding:specialist` through `post-edit`. The book calls
-`binding:shared-producer` through `production`, then the producer calls
-`binding:standard` through `post-edit`. All four calls should have state
-`returned` and outcome `done`.
+Require `complete` coverage before checking these exact retained calls.
 
-An equivalent reviewer can produce identical files, so check the caller,
-slot, target, and returned outcome in the saved evidence. Run your full
-native suite for the other entrypoints and cases before accepting the change.
+| Packet | Caller | Slot | Target | State | Outcome |
+| --- | --- | --- | --- | --- | --- |
+| Offer | `binding:develop-offer` | `sample` | `binding:offer-producer` | `returned` | `done` |
+| Offer | `binding:offer-producer` | `post-edit` | `binding:specialist` | `returned` | `done` |
+| Offer | `binding:offer-producer` | `review` | `binding:standard` | `returned` | `done` |
+| Book | `binding:coordinate-book` | `production` | `binding:shared-producer` | `returned` | `done` |
+| Book | `binding:shared-producer` | `post-edit` | `binding:standard` | `returned` | `done` |
+| Book | `binding:shared-producer` | `review` | `binding:standard` | `returned` | `done` |
+
+In the fixture's producer source, the `whole-book` operation uses `review` for both whole-manuscript handoffs.
+Equivalent reviewers can produce identical files.
+Check each caller, slot, target, state, and outcome in the saved evidence.
+Run your full native suite for the other entrypoints and cases before accepting the change.
 The publishing fixture's README gives the commands for its standalone suite.
 
 ## Watch invalid input stop
