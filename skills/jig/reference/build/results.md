@@ -321,6 +321,7 @@ The target and its shared uses retain their downstream connections.
 Caller paths remain visible up to independent roots, so another entrypoint into a shared method is not lost.
 Other caller targets are shown without recursively expanding their entire subgraphs.
 Connections crossing the view boundary are counted beside each affected target.
+In working-tree topology, follow a Binding selector's link to its captured declaration.
 
 For example, focusing on the factory's checked-correction Binding also shows factory, router, and single-pass.
 This reveals the caller and other configured routes to investigate before redirecting work.
