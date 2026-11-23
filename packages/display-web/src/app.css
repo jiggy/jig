@@ -1164,7 +1164,7 @@
 .composition-route-list code {
   font-size: 11px;
 }
-.composition-route-list button {
+.composition-route-list li > button {
   width: 100%;
   padding: 0;
   border: 0;
@@ -1232,6 +1232,10 @@
   flex-wrap: wrap;
   gap: 8px;
   margin: 12px 0;
+}
+.composition-route-list .call-brief {
+  margin: 0;
+  font-size: 11px;
 }
 .call-views {
   margin-top: 20px;

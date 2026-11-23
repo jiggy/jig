@@ -887,7 +887,7 @@ function Composition(): ComponentChildren {
     snapshot,
     selectedNodeId: compositionSelection.nodeId,
     detailOpen: currentLocal().detailOpen,
-    referencesEnabled: client?.referencesEnabled ?? false,
+    referencesEnabled: !!client?.referencesEnabled && !closing,
     scale: compositionScale,
     requestFocus: compositionRequestFocus,
     onRequestFocus: (focus: PrivateCompositionRequestFocus) => {
