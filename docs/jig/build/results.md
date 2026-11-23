@@ -347,6 +347,9 @@ jig inspect --flow --find export
 ```
 
 The lookup matches configured slot names, destination selectors, package paths, and Flow descriptions.
+Spaces can stand for hyphens or underscores in configured names. Results show the exact configured names.
+If there are no matches, retry with one word from the request.
+
 Find the caller and slot in **Configured handoffs**.
 Check the shared destinations for other caller slots and independent Runs that use them.
 Open the caller's source links to read its decision, or run the focused inspection command.
