@@ -925,6 +925,21 @@ test('saved comparison groups exact paths and keeps missing observations uncerta
     expect(result.stdout).toContain('Later: None observed')
     expect(result.stdout).not.toContain('/forged/historical/destination')
     expect(result.stdout).not.toContain('#1')
+    expect(
+      privateCliSavedResultInspection([
+        'inspect',
+        '--result',
+        first,
+        '--compare',
+        second,
+        '--display',
+        'web',
+      ]),
+    ).toBeTrue()
+    const redirectedWeb = await inspect(first, ['--compare', second, '--display', 'web'])
+    expect(redirectedWeb.code, redirectedWeb.stderr).toBe(0)
+    expect(redirectedWeb.stdout).toBe(result.stdout)
+    expect(redirectedWeb.stderr).not.toContain('#cap=')
 
     await packet(
       second,

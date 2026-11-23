@@ -23,6 +23,7 @@ import {
 } from './composition.js'
 import { CompositionPage } from './composition-view.js'
 import { startPrivateExplorer } from './explorer-app.js'
+import { SavedRunComparison } from './explorer-call-comparison.js'
 import { InvestigationBrief } from './investigation-brief.js'
 import {
   PrivateBrowserClock,
@@ -2957,6 +2958,7 @@ function App(): ComponentChildren {
           : 'Waiting for a readable host snapshot…',
       ),
     )
+  const savedComparison = client?.body?.recordedComparison
   const live = current.workspace.phase === 'live'
   const elapsed = elapsedClock.read(performance.now())
   const seconds = Math.floor(elapsed / 1000)
@@ -3005,7 +3007,9 @@ function App(): ComponentChildren {
             : current.mode === 'retained-views'
               ? 'Retained views · currency unknown'
               : current.mode === 'recorded-packet'
-                ? 'Recorded result'
+                ? savedComparison
+                  ? 'Recorded comparison'
+                  : 'Recorded result'
                 : 'Settled run',
         ),
         h(
@@ -3184,22 +3188,27 @@ function App(): ComponentChildren {
                     h('h2', {}, 'No application views'),
                     h('p', {}, 'No retained application views match this selection.'),
                   )
-                : destinationKey === 'activity'
-                  ? h(Activity, {})
-                  : destinationKey === 'composition'
-                    ? h(Composition, {})
-                    : destinationKey === 'overview'
-                      ? h(Overview, {})
-                      : destinationKey === 'files'
-                        ? h(Files, {})
-                        : h(
-                            'div',
-                            {
-                              class: `application-workspace ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
-                            },
-                            h(ApplicationList, {}),
-                            state.detailOpen ? h(SelectedDetail, {}) : null,
-                          ),
+                : destinationKey === 'recorded-comparison' && savedComparison
+                  ? h(SavedRunComparison, {
+                      comparison: savedComparison,
+                      stale: client?.connection !== 'current' || client.bodyStale,
+                    })
+                  : destinationKey === 'activity'
+                    ? h(Activity, {})
+                    : destinationKey === 'composition'
+                      ? h(Composition, {})
+                      : destinationKey === 'overview'
+                        ? h(Overview, {})
+                        : destinationKey === 'files'
+                          ? h(Files, {})
+                          : h(
+                              'div',
+                              {
+                                class: `application-workspace ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
+                              },
+                              h(ApplicationList, {}),
+                              state.detailOpen ? h(SelectedDetail, {}) : null,
+                            ),
         ),
       ),
     ),
@@ -3210,7 +3219,9 @@ function App(): ComponentChildren {
         'span',
         {},
         current.mode === 'recorded-packet'
-          ? 'Recorded result'
+          ? savedComparison
+            ? 'Recorded comparison'
+            : 'Recorded result'
           : current.mode === 'retained-views'
             ? 'Retained application projection'
             : live
