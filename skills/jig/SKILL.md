@@ -80,7 +80,7 @@ Select the following references according to the task before implementing their 
 | HTTP requests or command execution | [HTTP guidance](reference/build/http.md), [HTTP Request](reference/spec/http-request.md), or [Project Command](reference/spec/project-command.md) |
 | Resource authority or named policy reuse | [Grants](reference/spec/grants.md) |
 | Managed contract generation | [Contract authoring](reference/build/contracts.md) and its [exact contract](reference/spec/contract-authoring.md) |
-| Type-check method settings and declared child calls | [Flow type declarations](reference/build/contracts.md#type-check-child-calls) |
+| Type-check Flow inputs, returns, settings and declared child calls | [Flow type declarations](reference/build/contracts.md#type-check-a-flow) |
 | Type-check project Bindings | [Binding type declarations](reference/build/contracts.md#type-check-binding-declarations) |
 | Live progress, semantic views, or channel composition | [Progress](reference/build/channels.md), [Channels](reference/spec/channels.md), and [Reporting](reference/spec/reporting.md) |
 | Multi-turn Agent work | [Conversations](reference/build/conversations.md), [control](reference/build/conversation-control.md), and [Finite ACP](reference/spec/finite-acp.md) |
