@@ -145,7 +145,7 @@ export function renderFlowNavigationMatches(
   if (!matches.length && !independent.length)
     return [
       ...lines,
-      'No matches. Use a shorter phrase or run `jig inspect --flow --topology --all` to list targets.',
+      'No matches. Try `jig inspect --flow --find WORD` with one word from the request.',
       '',
     ]
   const configured = handoffs.map((edge) => ({ ...edge, from: edge.caller.id, to: edge.target.id }))
