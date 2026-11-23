@@ -70,7 +70,7 @@ export function inspectWorkingFlowReport(
       if (options.find !== undefined)
         return {
           kind: 'search',
-          search: await findFlowNavigation(topology, linked, members, options.find, signal),
+          search: await findFlowNavigation(topology, options.find, { linked, members }, signal),
         }
       const selection = selectFlowContext(topology, scope)
       if (selection.focus === undefined && scope.packagePath === undefined && !scope.all)

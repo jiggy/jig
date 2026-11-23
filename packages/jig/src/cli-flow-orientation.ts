@@ -133,10 +133,15 @@ export function renderFlowNavigationMatches(
   search: FlowNavigationSearch,
   text: (value: string) => string,
 ): string[] {
+  const approved = search.basis === 'approved'
+  const basis = approved
+    ? 'last locally approved configuration'
+    : 'captured working tree (unapproved)'
   const lines = [
     '# Flow navigation',
     '',
-    'Basis: captured working tree (unapproved). Revision ' + text(search.revision) + '.',
+    'Basis: ' + basis + '. Revision ' + text(search.revision) + '.',
+    ...(approved ? ['Current source and environment are unchecked.'] : []),
     '',
     'Matches for ' + text(JSON.stringify(search.phrase)) + '.',
     '',
@@ -145,7 +150,9 @@ export function renderFlowNavigationMatches(
   if (!matches.length && !independent.length)
     return [
       ...lines,
-      'No matches. Try `jig inspect --flow --find WORD` with one word from the request.',
+      'No matches. Try `jig inspect --flow --find WORD' +
+        (approved ? ' --approved' : '') +
+        '` with one word from the request.',
       '',
     ]
   const configured = handoffs.map((edge) => ({ ...edge, from: edge.caller.id, to: edge.target.id }))
@@ -173,7 +180,7 @@ export function renderFlowNavigationMatches(
       const selected = matches.filter((edge) => edge.caller === caller)
       lines.push('### ' + text(caller.id), '')
       if (caller.declaration) lines.push('Binding wiring · ' + link(caller.declaration) + '.', '')
-      const command = targetInspectionCommand(caller.id)
+      const command = targetInspectionCommand(caller.id, approved)
       if (command) lines.push('    ' + command, '')
       const shared = new Map(
         configured
@@ -200,6 +207,7 @@ export function renderFlowNavigationMatches(
         if (shared.size > 6) lines.push(`- ${shared.size - 6} more shared destinations.`)
         lines.push('')
       }
+      if (approved) continue
       lines.push('**Caller source**', '')
       if (caller.entrySource) lines.push('- Captured entry · ' + link(caller.entrySource))
       else lines.push('- Local entry source is unavailable.')
@@ -214,17 +222,18 @@ export function renderFlowNavigationMatches(
       }
       lines.push('')
     }
-    lines.push(
-      'Quoted references are source text matches. Read the caller’s code to establish conditions and call order.',
-      'Run results supply observed execution.',
-      '',
-    )
+    if (!approved)
+      lines.push(
+        'Quoted references are source text matches. Read the caller’s code to establish conditions and call order.',
+        'Run results supply observed execution.',
+        '',
+      )
   }
   if (independent.length) {
     lines.push('## Targets with no configured callers', '')
     for (const target of independent) {
       lines.push('- ' + text(target.id) + describe(target.description))
-      const command = targetInspectionCommand(target.id)
+      const command = targetInspectionCommand(target.id, approved)
       if (command) lines.push('  - ' + text(command))
     }
     lines.push('')

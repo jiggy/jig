@@ -38,6 +38,10 @@ test('usage mistakes show one correction, not the entire manual', async () => {
     [['inspect', '--flow', '--find'], 'Specify --find with one search phrase'],
     [['inspect', '--flow', '--find', 'release', '--json'], 'Use --flow --find TEXT'],
     [['inspect', '--flow', '--find', 'release', 'binding:book'], 'Use --flow --find TEXT'],
+    [
+      ['inspect', '--flow', '--find', 'release', '--approved', '--topology'],
+      'Use --flow --find TEXT',
+    ],
   ] as const) {
     let text = ''
     expect(
@@ -82,8 +86,8 @@ test('phrase lookup preserves literal matches when separator matches fill the re
       ...literalRoutes.map(({ target, packagePath }) => ({ target, package: packagePath })),
     ],
   }
-  const linked = { flows: [], bindings: [] }
-  const found = await findFlowNavigation(topology, linked, [], 'FACT_CHECK')
+  const capture = { linked: { flows: [], bindings: [] }, members: [] }
+  const found = await findFlowNavigation(topology, 'FACT_CHECK', capture)
   expect(found.matches.map(({ slot }) => slot)).toEqual([
     ...literalRoutes.map(({ slot }) => slot),
     ...alternateSlots.slice(0, 9),
@@ -94,14 +98,22 @@ test('phrase lookup preserves literal matches when separator matches fill the re
   })
   expect(found.independent.map(({ id }) => id)).toEqual([independent])
   expect(found.omitted).toBe(4)
+  const retained = await findFlowNavigation(topology, 'FACT_CHECK')
+  expect(retained).toEqual({ ...found, basis: 'approved' })
+  const retainedText = renderFlowSearch(retained)
+  expect(retainedText).toContain('Basis: last locally approved configuration. Revision test.')
+  expect(retainedText).toContain('Current source and environment are unchecked.')
+  expect(retainedText).toContain('jig inspect --flow --approved binding:weekday')
+  expect(retainedText).toContain('4 additional matches omitted.')
+  expect(retainedText).not.toContain('**Caller source**')
 
-  const spaced = await findFlowNavigation(topology, linked, [], 'fact   check')
+  const spaced = await findFlowNavigation(topology, 'fact   check', capture)
   expect(spaced.matches[0]?.target.id).toBe(target)
-  expect(await findFlowNavigation(topology, linked, [], '__')).toMatchObject({
+  expect(await findFlowNavigation(topology, '__', capture)).toMatchObject({
     matches: [],
     independent: [],
   })
-  const noMatch = await findFlowNavigation(topology, linked, [], 'request a budget estimate')
+  const noMatch = await findFlowNavigation(topology, 'request a budget estimate', capture)
   expect(noMatch).toMatchObject({ matches: [], independent: [], omitted: 0 })
   expect(renderFlowSearch(noMatch)).toContain(
     'No matches. Try `jig inspect --flow --find WORD` with one word from the request.',
