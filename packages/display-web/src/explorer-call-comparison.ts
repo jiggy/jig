@@ -1,19 +1,24 @@
 import {
+  boundDisplayCallComparison,
   compareObservedCalls,
   type DisplayCallPathComparison,
   type DisplayProjectRunEvidence,
   type DisplayRecordedComparison,
-  displayCallPathComparison,
 } from '@jigging/display-model'
 import { type ComponentChildren, h } from 'preact'
 import { privateBrowserLiteral } from './navigation.js'
 
 type Call = DisplayProjectRunEvidence['calls'][number]
-type CallEvidence = Pick<DisplayProjectRunEvidence, 'calls' | 'callCoverage' | 'callsOmitted'>
+type CallEvidence = Pick<
+  DisplayProjectRunEvidence,
+  'calls' | 'callCoverage' | 'callsOmitted' | 'callPathsOmitted'
+>
 type CallSide = Readonly<{ root?: string | undefined; evidence: CallEvidence }>
 const literal = (value: string) => h('bdi', { class: 'literal' }, privateBrowserLiteral(value))
 
-type Coverage = Pick<CallEvidence, 'callCoverage' | 'callsOmitted'> & { callsRecorded: number }
+type Coverage = Pick<CallEvidence, 'callCoverage' | 'callsOmitted' | 'callPathsOmitted'> & {
+  callsRecorded: number
+}
 type ComparisonSide = Readonly<{
   root?: string | undefined
   callCoverage: CallEvidence['callCoverage']
@@ -28,6 +33,10 @@ function coverage(evidence: Coverage, unplaced: number): string {
     }[evidence.callCoverage],
   ]
   if (evidence.callsOmitted) parts.push(`${evidence.callsOmitted} omitted observations`)
+  if (evidence.callPathsOmitted !== undefined)
+    parts.push(
+      `${evidence.callPathsOmitted} call paths withheld before comparison (settlement limit)`,
+    )
   if (unplaced)
     parts.push(`${unplaced} ${unplaced === 1 ? 'call' : 'calls'} without a matched path`)
   if (evidence.callCoverage === 'complete' && !evidence.callsRecorded)
@@ -61,7 +70,7 @@ function variants(
 
 function unplacedCalls(label: string, calls: readonly Call[]): ComponentChildren {
   if (!calls.length) return null
-  const rows = calls.map((call) => ({
+  const rows = calls.slice(0, 8).map((call) => ({
     call,
     key: JSON.stringify([call.slot, call.caller, call.target, call.state, call.outcome]),
   }))
@@ -70,6 +79,7 @@ function unplacedCalls(label: string, calls: readonly Call[]): ComponentChildren
     'details',
     {},
     h('summary', {}, label, ' calls without a matched path'),
+    calls.length > 8 ? h('p', {}, 'Showing eight of ', calls.length, ' observations.') : null,
     h(
       'ul',
       {},
@@ -97,11 +107,16 @@ export function ObservedCallComparison({
   later: CallSide
   stale?: boolean
 }>): ComponentChildren {
-  const { rows, beforeUnplaced, afterUnplaced } = compareObservedCalls(
+  const {
+    rows: compared,
+    beforeUnplaced,
+    afterUnplaced,
+  } = compareObservedCalls(
     { root: earlier.root, calls: earlier.evidence.calls },
     { root: later.root, calls: later.evidence.calls },
   )
 
+  const { rows, rowsOmitted, nonmatchingOmitted } = boundDisplayCallComparison(compared)
   return h(
     'section',
     { class: 'explorer-call-comparison' },
@@ -124,15 +139,29 @@ export function ObservedCallComparison({
         afterUnplaced.length,
       ),
     ),
+    omittedPaths(rowsOmitted, nonmatchingOmitted),
     comparisonTable(
-      rows.map(displayCallPathComparison),
+      rows,
       { root: earlier.root, callCoverage: earlier.evidence.callCoverage },
       { root: later.root, callCoverage: later.evidence.callCoverage },
       stale,
+      rowsOmitted,
     ),
     unplacedCalls('Earlier', beforeUnplaced),
     unplacedCalls('Later', afterUnplaced),
   )
+}
+
+function omittedPaths(total: number, nonmatching: number, guidance = ''): ComponentChildren {
+  return total
+    ? h(
+        'p',
+        { class: 'secondary' },
+        `${total} call paths omitted from this browser comparison.`,
+        nonmatching ? ` ${nonmatching} omitted paths lacked matching observations.` : '',
+        guidance,
+      )
+    : null
 }
 
 function comparisonTable(
@@ -294,17 +323,11 @@ export function SavedRunComparison({
       h('h3', {}, 'Observed calls'),
       h('p', { class: 'secondary' }, 'Earlier · ', coverage(earlier, earlier.callsUnplaced)),
       h('p', { class: 'secondary' }, 'Later · ', coverage(later, later.callsUnplaced)),
-      comparison.rowsOmitted
-        ? h(
-            'p',
-            { class: 'secondary' },
-            `${comparison.rowsOmitted} call paths omitted from this browser comparison.`,
-            comparison.nonmatchingOmitted
-              ? ` ${comparison.nonmatchingOmitted} omitted paths lacked matching observations.`
-              : '',
-            ' See the plain comparison for more recorded paths.',
-          )
-        : null,
+      omittedPaths(
+        comparison.rowsOmitted,
+        comparison.nonmatchingOmitted,
+        ' See the plain comparison for more recorded paths.',
+      ),
       comparisonTable(comparison.rows, earlier, later, stale, comparison.rowsOmitted),
     ),
   )

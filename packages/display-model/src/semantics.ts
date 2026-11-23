@@ -1,4 +1,9 @@
 import type { Reference } from '@jigging/reporting'
+import {
+  DISPLAY_COMPARISON_CALL_ANCESTORS,
+  DISPLAY_COMPARISON_CALL_BYTES,
+  DISPLAY_COMPARISON_CALL_ROWS,
+} from './types.js'
 import type {
   DisplayCallPathComparison,
   DisplayProjectRunEvidence,
@@ -257,7 +262,7 @@ export function compareObservedCalls(earlier: ObservedCallTree, later: ObservedC
 }
 
 /** One complete retained path with both sides' full variant counts. */
-export function displayCallPathComparison({
+function displayCallPathComparison({
   group: { root, caller, slot, ancestors },
   previous,
   current,
@@ -276,4 +281,32 @@ export function displayCallPathComparison({
     later: variants(current),
     matches,
   }
+}
+
+const comparisonEncoder = new TextEncoder()
+
+/** Bound whole rows after comparison. A rejected row contributes no partial counts. */
+export function boundDisplayCallComparison(
+  compared: ReturnType<typeof compareObservedCalls>['rows'],
+) {
+  const rows: DisplayCallPathComparison[] = []
+  let bytes = 2 // List delimiters.
+  let nonmatchingOmitted = 0
+  for (const row of compared) {
+    if (
+      rows.length < DISPLAY_COMPARISON_CALL_ROWS &&
+      row.group.ancestors.length <= DISPLAY_COMPARISON_CALL_ANCESTORS
+    ) {
+      const projected = displayCallPathComparison(row)
+      const size =
+        comparisonEncoder.encode(JSON.stringify(projected)).byteLength + (rows.length ? 1 : 0)
+      if (bytes + size <= DISPLAY_COMPARISON_CALL_BYTES) {
+        rows.push(projected)
+        bytes += size
+        continue
+      }
+    }
+    if (!row.matches) nonmatchingOmitted += 1
+  }
+  return { rows, rowsOmitted: compared.length - rows.length, nonmatchingOmitted }
 }
