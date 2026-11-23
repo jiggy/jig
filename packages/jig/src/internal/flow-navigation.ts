@@ -15,6 +15,7 @@ type Handoff = { caller: NavigationTarget; slot: string; target: NavigationTarge
 type Location = { path: string; line: number }
 
 export type FlowNavigationSearch = {
+  basis: 'working-tree' | 'approved'
   revision: string
   phrase: string
   matches: readonly (Handoff & { locations: readonly Location[] })[]
@@ -26,21 +27,32 @@ export type FlowNavigationSearch = {
 /** Search the same exact targets and routes as the configured navigation index. */
 export async function findFlowNavigation(
   topology: JsonValue,
-  linked: PackageProjectInspection,
-  members: readonly CapturedFlowMember[],
   phrase: string,
+  capture?: {
+    linked: PackageProjectInspection
+    members: readonly CapturedFlowMember[]
+  },
   signal?: AbortSignal,
 ): Promise<FlowNavigationSearch> {
   const { snapshot, included, edges } = selectFlowContext(topology, { all: true })
-  const flows = new Map(linked.flows.map((flow) => [flow.provenance.projectPath, flow]))
-  const bindings = new Map(linked.bindings.map((binding) => ['binding:' + binding.id, binding]))
-  const byPackage = new Map(members.map((member) => [member.provenance.projectPath, member]))
+  const flows = new Map(capture?.linked.flows.map((flow) => [flow.provenance.projectPath, flow]))
+  const bindings = new Map(
+    capture?.linked.bindings.map((binding) => ['binding:' + binding.id, binding]),
+  )
+  const byPackage = new Map(
+    capture?.members.map((member) => [member.provenance.projectPath, member]),
+  )
   const targets = new Map(
     included.map((item) => {
       const id = String(item.target)
       const packagePath = String(item.package)
       const entry = byPackage.get(packagePath)?.inspected.entrypoint.path
-      const description = flows.get(packagePath)?.metadata.description
+      const description =
+        capture === undefined
+          ? typeof item.description === 'string' && item.description !== ''
+            ? item.description
+            : undefined
+          : flows.get(packagePath)?.metadata.description
       const declaration = bindings.get(id)?.declarationPath
       const target: NavigationTarget = {
         id,
@@ -126,6 +138,7 @@ export async function findFlowNavigation(
     matches.push({ ...edge, locations })
   }
   return {
+    basis: capture === undefined ? 'approved' : 'working-tree',
     revision: String(snapshot.revision),
     phrase,
     matches,

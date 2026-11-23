@@ -82,6 +82,7 @@ import {
   type FlowInspectionOptions,
   record,
 } from './internal/flow-inspection-scope.js'
+import { findFlowNavigation } from './internal/flow-navigation.js'
 import { PrivateInputInspectionCapture } from './internal/input-inspection.js'
 import { PRIVATE_FLOW_NAVIGATION_LIMITS } from './internal/inspection-policy.js'
 import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
@@ -325,7 +326,7 @@ Example:
   jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
        jig inspect --flow [target | path | --package PATH | --all] [--topology] [--approved] [--json]
-       jig inspect --flow --find TEXT
+       jig inspect --flow --find TEXT [--approved]
        jig inspect --flow --snapshot
        jig inspect --flow --compare BASELINE [--all]
        jig inspect --result DIRECTORY [--display plain|tui|web | --calls] [--json]
@@ -348,9 +349,9 @@ Launch readiness and remote provider availability remain unchecked.
              A target retains callers, their other slots and shared package uses
   --all      With --flow: include every target, or every changed path in a comparison
   --package PATH  With --flow: find configured uses and callers. A bare package path also works.
-  --find TEXT     With --flow: find working-tree handoffs by name, slot or Flow description
+  --find TEXT     With --flow: find handoffs by name, slot or Flow description
   --topology With --flow: emit configured connections
-  --approved With --flow: emit retained approved topology
+  --approved With --flow: use the last locally approved configuration
   --snapshot With --flow: emit a machine baseline for the complete application
   --compare BASELINE  With --flow: show current behavior changes from that baseline
   --compare LATER     With --result: compare recorded calls in two saved packets
@@ -1515,7 +1516,6 @@ function parseInspect(arguments_: readonly string[]) {
   if (
     find !== undefined &&
     (!flow ||
-      approved ||
       topology ||
       json ||
       snapshot ||
@@ -1525,7 +1525,7 @@ function parseInspect(arguments_: readonly string[]) {
       targetOperand !== undefined ||
       resultDirectory !== undefined)
   )
-    usage('inspect', 'Use --flow --find TEXT to search the working-tree navigation index.')
+    usage('inspect', 'Use --flow --find TEXT, optionally with --approved.')
   if (
     (snapshot || (comparison !== undefined && resultDirectory === undefined)) &&
     (!flow ||
@@ -1715,6 +1715,28 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
   let snapshot: JsonValue
   runtime.signal?.throwIfAborted()
   try {
+    if (parsed.flow && parsed.approved && parsed.find !== undefined) {
+      const approved = await inspectPrivateApprovedProject(
+        runtime.currentDirectory,
+        undefined,
+        undefined,
+        true,
+        undefined,
+        undefined,
+        { all: true },
+      )
+      if (typeof record(approved).revision !== 'string')
+        throw new CliDiagnostic(
+          'JIG_APPROVAL_REQUIRED',
+          'No locally approved revision to search. Use this command to search current source.\n\n  $ jig inspect --flow --find TEXT',
+          1,
+        )
+      runtime.signal?.throwIfAborted()
+      const search = await findFlowNavigation(approved, parsed.find)
+      runtime.signal?.throwIfAborted()
+      await runtime.writeRecord(renderFlowSearch(search))
+      return 0
+    }
     if (parsed.flow && !parsed.approved && !parsed.topology && !json) {
       if (runtime.host.inspectFlowReport === undefined)
         throw new CliDiagnostic(

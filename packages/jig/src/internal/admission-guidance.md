@@ -21,6 +21,8 @@ It supplies behavior inspection with the already linked routes and captured pack
 
 `flow-navigation.ts` searches those linked routes and captured descriptions before source behavior analysis.
 It reads bounded text from the same caller package descriptors for quoted slot references.
+Explicit approved lookup reuses the read-only approved topology and package description projection.
+It keeps source and environment unchecked and renders focused approved commands.
 
 Package scope matches captured package identities before projecting their configured uses.
 Behavior analysis borrows this capture until rendering data is ready for disposal.

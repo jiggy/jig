@@ -400,6 +400,16 @@ Open the caller's source links to read its decision, or run the focused inspecti
 Quoted slot references give text locations. Read the caller's code to determine which conditions reach the call.
 Use Run results to verify observed behavior.
 
+To look up a phrase in the last locally approved configuration, add `--approved`.
+
+```sh
+jig inspect --flow --find export --approved
+```
+
+This view shows retained descriptions and configured routes without evaluating current declarations.
+It identifies the approved revision and leaves current source and environment unchecked.
+Its focused commands also select the last locally approved configuration. Use the working-tree lookup above for current source links and quoted slot references.
+
 Prepare the application map before changing a conditional route.
 
 ```sh
