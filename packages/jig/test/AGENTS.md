@@ -116,6 +116,8 @@ inspectors and explicit close during held execution. The host suite joins the
 installed command and retains its existing native residue assertions. Python
 emits only closed scenario labels. Capabilities and raw transcripts stay private.
 
+The greeting comparison has complete empty call evidence. Its terminal output omits the evidence field.
+
 The PTY helper additionally supports a controlling terminal for actual VINTR
 Ctrl-C checks during active execution and after settlement. Its default piped
 input behavior remains unchanged. A terminal interruption must join ordinary
@@ -392,6 +394,8 @@ It verifies the preview and unchanged project definition. A separate reviewed
 operator configuration checks Agent-contract and mixed mapping with a deterministic
 header task, without claiming model quality.
 The direct code mapper records complete empty call evidence in the Run result without a packet.
+The Agent-contract mapper records its exact returned child in a packetless result.
+The mixed mapper's terminal result omits evidence when the command uses the default options.
 
 The packed Explorer compares real Contact Import Runs across two local approvals.
 The proof checks equal submitted JSON and CSV bytes, stale refusal, and duplicate intent without execution.
