@@ -129,6 +129,36 @@ test('planner selects the fewest useful workers meeting the estimate and reports
   assert.equal(tiny.withinTarget, false)
 })
 
+test('a fourth Mac shard is used only when the first three exceed the target', () => {
+  const groups = [...ordinary, 'packages/jig/test/host/fourth.test.ts']
+  const options = {
+    weights: new Map(groups.map((file) => [file, { arm64: 100 }])),
+    nativePrerequisiteSeconds: 10,
+    installedConsumerSeconds: 40,
+  }
+  const plan = (targetSeconds, maxShards) =>
+    planMacHostTests([...required, ...groups], 'arm64', {
+      ...options,
+      policy: { targetSeconds, minShards: 1, maxShards },
+    })
+  assert.deepEqual(plan(210, 4), plan(210, 3))
+  assert.ok(Math.max(...plan(150, 3).map((shard) => shard.estimatedSeconds)) > 150)
+  const overflow = plan(150, 4)
+  assert.equal(overflow.length, 4)
+  assert.ok(overflow.every((shard) => shard.estimatedSeconds <= 150))
+  assert.deepEqual(
+    overflow.flatMap((shard) => shard.groups.map(({ file }) => file)).sort(),
+    [...groups].sort(),
+  )
+  assert.ok(
+    overflow.every((shard) => shard.nativeFiles.length === NATIVE_PREREQUISITE_TESTS.length),
+  )
+  assert.deepEqual(
+    overflow.filter((shard) => shard.installed).map(({ index }) => index),
+    [3],
+  )
+})
+
 test('frozen plans bind source, complete inventory, policy and exact deterministic assignments', async () => {
   const root = await mkdtemp(resolve(tmpdir(), 'jig-mac-plan-'))
   const file = resolve(root, 'PLAN.json')

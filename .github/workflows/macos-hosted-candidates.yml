@@ -44,6 +44,9 @@ jobs:
       - name: Freeze the complete source-bound useful-shard plan
         id: plan
         run: |-
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            export JIG_MACOS_MAX_SHARDS=4
+          fi
           node scripts/ci/macos-host-test-shards.mjs freeze arm64 "$RUNNER_TEMP/PLAN.json"
           node scripts/ci/macos-host-collect.mjs matrix "$RUNNER_TEMP/PLAN.json"
       - id: plan-artifact
