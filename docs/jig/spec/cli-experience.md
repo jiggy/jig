@@ -1104,6 +1104,7 @@ With `--approved`, file lookup uses the retained package inventory.
 An unknown package, file, or target reports how to list the complete topology for the selected basis.
 
 Markdown identifies each Binding's implementing package even when its settings are empty.
+Working-tree topology links visible Binding selectors to their captured declarations once per Binding.
 Bidirectional controls in rendered labels and values are shown as visible code points.
 
 Current working-tree capture is the default. It uses the ordinary contained declaration evaluator and linker.

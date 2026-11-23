@@ -275,6 +275,9 @@ Source retrieval, reference integrity, and graph rendering checks establish only
   Graph and inline-value bounds disclose unavailable or omitted presentation.
   Topology supplies configured routes. Source behavior has a separate view.
 
+  In Markdown topology, link each visible Binding once beside its selector in the prose or implementation list.
+  Use the exact declaration path from the working capture.
+
   Contained evaluator failures use closed cause-specific guidance and disclose the retained topology option.
 
 - `src/cli-flow-behavior.ts` renders conditional source routes as literal Markdown.

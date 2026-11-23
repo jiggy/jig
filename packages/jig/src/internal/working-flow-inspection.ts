@@ -34,18 +34,32 @@ import {
 import { privateDomainDigest } from './identity.js'
 import { PRIVATE_FLOW_CONTEXT_LIMITS } from './inspection-policy.js'
 
+function bindingDeclarationPaths(linked: PackageProjectInspection): ReadonlyMap<string, string> {
+  return new Map(
+    linked.bindings.map(({ id, declarationPath }) => ['binding:' + id, declarationPath]),
+  )
+}
+
 /** Capture and link current authoring with the ordinary resolver. Never opens admission state. */
 export function inspectWorkingFlow(
   project: string,
   evaluator: PrivateAuthorEvaluatorOptions,
   options: FlowInspectionOptions = {},
   signal?: AbortSignal,
-): Promise<{ topology: JsonValue; scope: FlowContextOptions }> {
+): Promise<{
+  topology: JsonValue
+  scope: FlowContextOptions
+  bindingDeclarations: ReadonlyMap<string, string>
+}> {
   return captureWorkingFlow(
     project,
     evaluator,
     options,
-    (topology, scope) => ({ topology, scope }),
+    (topology, scope, linked) => ({
+      topology,
+      scope,
+      bindingDeclarations: bindingDeclarationPaths(linked),
+    }),
     signal,
   )
 }
@@ -70,9 +84,7 @@ export function inspectWorkingFlowReport(
         return {
           kind: 'index',
           topology,
-          bindingDeclarations: new Map(
-            linked.bindings.map((binding) => ['binding:' + binding.id, binding.declarationPath]),
-          ),
+          bindingDeclarations: bindingDeclarationPaths(linked),
         }
 
       const behavior = await inspectBehavior(project, scope, selection, linked, members, signal)
