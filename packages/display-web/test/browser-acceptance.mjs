@@ -115,22 +115,27 @@ test('Explorer reloads compatible input across approvals and compares retained c
   const secondary = returned(root, 'secondary', worker)
   const check = returned(worker, 'check', 'flow:flows/check')
   const kept = returned(root, 'preserved', 'flow:flows/preserved')
+  const repeated = returned(root, 'draft', 'binding:draft')
+  const padding = Array.from({ length: 12 }, () => repeated)
   const earlierCalls = [
+    ...padding,
     primary,
-    { ...check, parent: 1 },
-    { ...check, parent: 1 },
+    { ...check, parent: 13 },
+    { ...check, parent: 13 },
     secondary,
-    { ...check, parent: 4 },
+    { ...check, parent: 16 },
     kept,
     returned(root, 'earlier-only', 'flow:flows/old'),
   ]
   const laterCalls = [
+    ...padding,
     kept,
     secondary,
-    { ...check, parent: 2 },
+    { ...check, parent: 14 },
     primary,
-    { ...check, parent: 4, target: 'flow:flows/new', outcome: 'warned' },
+    { ...check, parent: 16, target: 'flow:flows/new', outcome: 'warned' },
     { slot: 'unplaced', state: 'failed' },
+    returned(root, 'later-only', 'flow:flows/new'),
   ]
   let approval = earlier
   let run = { state: 'idle' }
@@ -226,12 +231,28 @@ test('Explorer reloads compatible input across approvals and compares retained c
     )
     const secondaryCheck = calls.getByRole('row').filter({ hasText: /check.*Via secondary/s })
     assert.match(await secondaryCheck.innerText(), /Matching retained observations/)
+    const pathRows = await calls.locator('tbody tr').allTextContents()
+    assert(
+      pathRows.findIndex((row) => /Via primary/.test(row)) <
+        pathRows.findIndex((row) => /Via secondary/.test(row)),
+    )
+    assert.match(
+      await calls.getByRole('row').filter({ hasText: 'draft' }).innerText(),
+      /×12[\s\S]*×12/,
+    )
     assert.match(
       await calls.getByRole('row').filter({ hasText: 'earlier-only' }).innerText(),
       /No retained match/,
     )
     await page.getByText('Later calls without a matched path', { exact: true }).click()
     await page.getByText('unplaced', { exact: true }).waitFor()
+    const laterOnly = calls.getByRole('row').filter({ hasText: 'later-only' })
+    assert.match(await laterOnly.innerText(), /None observed/)
+    await page.route(/\/api\/run$/, (route) => route.abort())
+    await page.getByText(/Run status is unavailable/).waitFor({ timeout: 10000 })
+    assert.match(await laterOnly.innerText(), /No retained match/)
+    assert.doesNotMatch(await laterOnly.innerText(), /None observed/)
+    await page.unroute(/\/api\/run$/)
     assert.equal(submissions.length, 2)
     assert.deepEqual(
       submissions.map(({ intent }) => [intent.revision, intent.targetId, intent.input]),
