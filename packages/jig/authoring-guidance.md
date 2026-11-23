@@ -224,6 +224,11 @@ remain supported and are not rewritten by a review default.
   Generated READMEs recommend FLOW and Jig authoring skills through the agent guide.
   Keep installation commands in that guide and initialization free of installation.
 
+  `--starter scoped-greeting` generates the composed exercise owned by
+  [the composition guide](../../docs/jig/build/compose.md#test-a-scoped-route).
+  Its test uses a shared fixture and checks exact child calls through installed Jig.
+  The operator reviews and approves the intended revision before running the test.
+
   Check generated package versions against their manifests. The greeting names
   the exact tested SDK version. Its regression checks the SDK manifest so a
   moving npm tag cannot silently select a different wire contract.

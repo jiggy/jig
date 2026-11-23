@@ -165,6 +165,8 @@ export function completionScript(shell: string): string | undefined {
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W '${commands} --help --version' -- "$cur")
   elif [[ "$prev" == --agent && ( "$command" == review || "$command" == init ) ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'codex claude' -- "$cur")
+  elif [[ "$prev" == --starter && "$command" == init ]]; then
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'scoped-greeting' -- "$cur")
   elif [[ "$prev" == --source-root && "$command" == review ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -d -- "$cur")
   elif [[ "$prev" == --verification ]]; then
@@ -183,7 +185,7 @@ export function completionScript(shell: string): string | undefined {
       review) opts='--help --allow-resolution-network --source-root --allow-authority-changes --generate-contracts --yes --details --verification --agent';;
       inspect) opts='--help --json --verification --result --calls --display --flow --approved --all --package --topology --find --snapshot --compare';;
       views) opts='list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision';;
-      init) opts='--help --bare --agent';;
+      init) opts='--help --bare --agent --starter';;
       specialize-slot) opts='--help --slot --as --select';;
       check) opts='--help --diff --json';;
       import-contract) opts='--help --list';;
@@ -212,6 +214,8 @@ _jig() {
     choices=(${commands} --help --version)
   elif [[ "$words[CURRENT-1]" == --agent && ( "$words[2]" == review || "$words[2]" == init ) ]]; then
     choices=(codex claude)
+  elif [[ "$words[CURRENT-1]" == --starter && "$words[2]" == init ]]; then
+    choices=(scoped-greeting)
   elif [[ "$words[CURRENT-1]" == --source-root && "$words[2]" == review ]]; then
     _files -/; return
   elif [[ "$words[CURRENT-1]" == --verification ]]; then
@@ -229,7 +233,7 @@ _jig() {
       review) choices=(--help --allow-resolution-network --source-root --allow-authority-changes --generate-contracts --yes --details --verification --agent);;
       inspect) choices=(--help --json --verification --result --calls --display --flow --approved --all --package --topology --find --snapshot --compare);;
       views) choices=(list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision);;
-      init) choices=(--help --bare --agent);;
+      init) choices=(--help --bare --agent --starter);;
       specialize-slot) choices=(--help --slot --as --select);;
       check) choices=(--help --diff --json);;
       import-contract) choices=(--help --list);;
@@ -267,6 +271,7 @@ complete -c jig -n '__fish_seen_subcommand_from run' -l record-calls
 complete -c jig -n '__fish_seen_subcommand_from run' -l updates -r -a off
 complete -c jig -n '__fish_seen_subcommand_from init' -l bare
 complete -c jig -n '__fish_seen_subcommand_from init' -l agent -r -a 'codex claude'
+complete -c jig -n '__fish_seen_subcommand_from init' -l starter -r -a scoped-greeting
 ${['input', 'attach', 'select', 'out', 'receive', 'timeout'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from run' -l ${flag} -r`).join('\n')}
 complete -c jig -n '__fish_seen_subcommand_from review' -l agent -r -a 'codex claude'
 complete -c jig -n '__fish_seen_subcommand_from review' -l source-root -r -a '(__fish_complete_directories)'

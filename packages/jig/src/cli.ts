@@ -126,6 +126,7 @@ import {
   createProject,
   type ProjectInitAgent,
   ProjectInitError,
+  type ProjectInitStarter,
 } from './project-init.js'
 import { parseRun, parseTarget, parseVerification, privateRunDisplay } from './run-arguments.js'
 import { SCHEMA_1_URI, schemaTypeMismatchText } from './schema/types.js'
@@ -384,14 +385,19 @@ Examples:
 
 ${VERIFICATION_HELP}`,
   init: `Usage: jig init [--bare] <directory> [--agent [codex|claude]]
+       jig init <directory> --starter scoped-greeting
 
 Create a new editable project and greeting Flow. No installation, network
 requests, approval, or execution happens during initialization.
 
   --bare     Omit the greeting; an explicit --agent still creates its starter
+  --starter scoped-greeting  Teach a scoped route change with two Bindings and a test
 
 Example:
   $ jig init hello-jig
+
+For a composed greeting:
+  $ jig init welcome-project --starter scoped-greeting
 
 With an ordinary Agent:
   $ jig init my-app --agent codex
@@ -1942,6 +1948,7 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
   let bare = false
   let destination: string | undefined
   let agent: ProjectInitAgent | 'choose' | undefined
+  let starter: ProjectInitStarter | undefined
   for (let index = 1; index < arguments_.length; index++) {
     const value = arguments_[index]!
     if (value === '--bare' && !bare) bare = true
@@ -1951,10 +1958,16 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
         agent = next as ProjectInitAgent
         index++
       } else agent = 'choose'
+    } else if (value === '--starter' && starter === undefined) {
+      const next = arguments_[++index]
+      if (next !== 'scoped-greeting') usage('init', 'Use --starter scoped-greeting.')
+      starter = next
     } else if (!value.startsWith('-') && destination === undefined) destination = value
     else usage('init', 'Specify one new directory and an optional supported Agent client.')
   }
   if (destination === undefined) usage('init', 'Specify a new project directory.')
+  if (starter !== undefined && (bare || agent !== undefined))
+    usage('init', 'Choose --starter scoped-greeting on its own, or use --bare or --agent.')
   if (agent === 'choose') {
     if (!runtime.interactive)
       usage(
@@ -1978,13 +1991,21 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
   }
   try {
     runtime.signal?.throwIfAborted()
-    await createProject(resolve(runtime.currentDirectory, destination), undefined, bare, agent)
+    await createProject(
+      resolve(runtime.currentDirectory, destination),
+      undefined,
+      bare,
+      agent,
+      starter,
+    )
     runtime.writeOutput(
-      agent !== undefined
-        ? `Created Jig project ${asciiJsonString(destination)} with ${agent} selected.\n\nNext:\n  Open the project README for native client prerequisites and the first Run.\n  Review bindings/agent.ts for the requested authority, then:\n\n  $ jig review --allow-resolution-network\n\nNo client installed, credentials copied or execution approved.\n`
-        : bare
-          ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig check\n  $ jig review\n`
-          : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig check\n  jig review --allow-resolution-network\n  jig run flow:flows/hello --input @fixtures/greeting.json\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
+      starter !== undefined
+        ? `Created Jig project ${asciiJsonString(destination)} with the scoped greeting starter.\n\nOpen its README.md to check, review, and test both routes.\n`
+        : agent !== undefined
+          ? `Created Jig project ${asciiJsonString(destination)} with ${agent} selected.\n\nNext:\n  Open the project README for native client prerequisites and the first Run.\n  Review bindings/agent.ts for the requested authority, then:\n\n  $ jig review --allow-resolution-network\n\nNo client installed, credentials copied or execution approved.\n`
+          : bare
+            ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig check\n  $ jig review\n`
+            : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig check\n  jig review --allow-resolution-network\n  jig run flow:flows/hello --input @fixtures/greeting.json\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
     )
     return 0
   } catch (error) {

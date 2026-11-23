@@ -42,10 +42,13 @@ to that same project. Read the [first Flow guide](https://jig.md/start/#1-create
 local source becomes a reviewable patch with executed checks, while the original
 repository stays unchanged.
 
+Use `jig init scoped-greetings --starter scoped-greeting` to try the [scoped route exercise](https://jig.md/build/compose#test-a-scoped-route).
+
 Project commands:
 
 ```text
 jig init [--bare] <directory> [--agent [codex|claude]]
+jig init <directory> --starter scoped-greeting
 jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
 jig add-use <package-path> <slot>
 jig add-use <package-path> <slot>=<source> [--optional]

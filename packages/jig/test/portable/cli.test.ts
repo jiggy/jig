@@ -88,7 +88,10 @@ test('installed help is focused and version matches the installed manifest', asy
       expect(result.stdout).toContain('supported range is 1-256')
       expect(result.stdout).toContain('Exported environment values take precedence')
     }
-    if (args[0] === 'init') expect(result.stdout).toContain('--bare')
+    if (args[0] === 'init') {
+      expect(result.stdout).toContain('--bare')
+      expect(result.stdout).toContain('--starter scoped-greeting')
+    }
     if (args[0] === 'types') expect(result.stdout).toContain('jig types --project')
     if (args[0] !== 'init' && args[0] !== 'types') {
       expect(result.stdout).toContain('--verification MODE')
@@ -292,6 +295,48 @@ test('installed greeting and Agent initialization create ordinary editable files
     }
     for (const path of ['.jig', 'jig.lock', 'node_modules', 'bun.lock'])
       await expect(lstat(join(project, path))).rejects.toMatchObject({ code: 'ENOENT' })
+  }
+  passed++
+})
+
+test('installed scoped greeting starter writes both routes and a shared test fixture', async () => {
+  const project = join(root, 'scoped-greeting')
+  const initialized = await invoke(['init', project, '--starter', 'scoped-greeting'])
+  expect(initialized.code).toBe(0)
+  expect(initialized.stderr).toBe('')
+  expect(initialized.stdout).toContain('scoped greeting starter')
+  expect((await readdir(join(project, 'flows'))).sort()).toEqual([
+    'brief-hello',
+    'hello',
+    'welcome-group',
+  ])
+  const guidance = await readFile(join(project, 'AGENTS.md'), 'utf8')
+  for (const flow of ['brief-hello', 'hello', 'welcome-group']) {
+    const path = `flows/${flow}/AGENTS.md`
+    expect(guidance).toContain(`[${path}](./${path})`)
+    expect((await lstat(join(project, path))).isFile()).toBe(true)
+  }
+  expect(JSON.parse(await readFile(join(project, 'fixtures/group.json'), 'utf8'))).toEqual([
+    'Ada',
+    'Grace',
+  ])
+  const testSource = await readFile(join(project, 'test/wiring.test.mjs'), 'utf8')
+  expect(testSource).toContain('@fixtures/group.json')
+  expect(testSource).toContain('--record-calls')
+  const readme = await readFile(join(project, 'README.md'), 'utf8')
+  expect(readme).toContain('node --test test/wiring.test.mjs')
+  for (const path of ['.jig', 'jig.lock', 'node_modules', 'bun.lock'])
+    await expect(lstat(join(project, path))).rejects.toMatchObject({ code: 'ENOENT' })
+
+  const invalid = join(root, 'invalid-starter')
+  for (const args of [
+    ['--starter'],
+    ['--starter', 'unknown'],
+    ['--starter', 'scoped-greeting', '--bare'],
+    ['--starter', 'scoped-greeting', '--agent', 'codex'],
+  ]) {
+    expect((await invoke(['init', invalid, ...args])).code).toBe(2)
+    await expect(lstat(invalid)).rejects.toMatchObject({ code: 'ENOENT' })
   }
   passed++
 })
@@ -713,6 +758,6 @@ test('installed attempt help and malformed requests retain exact private-safe fr
 })
 
 afterAll(async () => {
-  if (passed === 9) await rm(root, { recursive: true, force: true })
+  if (passed === 10) await rm(root, { recursive: true, force: true })
   else if (root) console.error(`Installed CLI portable evidence retained at ${root}`)
 })

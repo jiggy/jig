@@ -62,6 +62,12 @@ Normal initialization writes a private root `package.json` with its build’s ex
 This metadata records the required host without installing it.
 Bare initialization retains the smaller skeleton below unless Agent selection already requires a manifest.
 
+`jig init <directory> --starter scoped-greeting` creates a composed greeting
+project with two group Bindings, compatible greeters, a shared JSON input, and
+an application test that uses the installed CLI. The starter is an alternative
+to `--bare` and `--agent`. It has the same source-only initialization and
+explicit review requirements as the default project.
+
 `jig init --bare <directory>` creates only:
 
 ```text
