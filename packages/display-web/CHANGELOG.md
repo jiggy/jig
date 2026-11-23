@@ -1,5 +1,30 @@
 # @jigging/display-web
 
+## 0.1.0-alpha.12
+
+### Minor Changes
+
+- 1d5d13a: Open a comparison of two saved Run packets in the local browser inspector with `jig inspect --result EARLIER --compare LATER --display web`.
+- 9b5bed9: Reload the last accepted input and compatible uploads after reviewing a new approval. Compare retained call paths, targets, outcomes, and counts for the last two Explorer Runs.
+- 08ad6b5: Load a local JSON file into Explorer's input editor. Inspect or edit the draft before choosing **Run workflow**.
+
+### Patch Changes
+
+- 3251352: Compare two saved Run packets with `jig inspect --result EARLIER --compare LATER`. Reopen the recorded call paths after the Runs exit and see differences, matches, and gaps in observation.
+- bea5d03: Copy a configured route from the Run map even when it has zero matching retained requests. Include its slot path, retained evidence, and focused topology command.
+- 8a4f345: Copy an investigation brief from a live Run invocation. It identifies the caller, slot, observed state and any application outcome. It includes exact configuration matches and a source inventory command.
+- d09d779: Start copied Run investigation briefs with a topology command focused on the exact Run root. Keep the caller and slot as source lookup cues.
+- b135057: Include the visible Run root in copied invocation briefs so a coding agent can narrow source inspection to the application it came from.
+- bbe2243: Show late changes first in Explorer's comparison of two settled Runs when the retained call trees fit the current settlement allowance.
+- 8abb2d0: Prioritize nonmatching paths in browser comparisons of saved Runs, retaining full counts on every displayed path.
+- Updated dependencies [1d5d13a]
+- Updated dependencies [3251352]
+- Updated dependencies [9b5bed9]
+- Updated dependencies [bbe2243]
+- Updated dependencies [2b67583]
+- Updated dependencies [8abb2d0]
+  - @jigging/display-model@0.1.0-alpha.11
+
 ## 0.1.0-alpha.11
 
 ### Patch Changes
