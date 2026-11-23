@@ -1,5 +1,6 @@
 import type { Reference } from '@jigging/reporting'
 import type {
+  DisplayCallPathComparison,
   DisplayProjectRunEvidence,
   DisplayReferenceRecord,
   DisplaySnapshot,
@@ -253,4 +254,26 @@ export function compareObservedCalls(earlier: ObservedCallTree, later: ObservedC
     })
   rows.sort((a, b) => Number(a.matches) - Number(b.matches))
   return { rows, beforeUnplaced: before.unplaced, afterUnplaced: after.unplaced }
+}
+
+/** One complete retained path with both sides' full variant counts. */
+export function displayCallPathComparison({
+  group: { root, caller, slot, ancestors },
+  previous,
+  current,
+  matches,
+}: ReturnType<typeof compareObservedCalls>['rows'][number]): DisplayCallPathComparison {
+  const variants = (group: Group | undefined) =>
+    group === undefined
+      ? []
+      : [...group.variants].sort(([a], [b]) => a.localeCompare(b)).map(([, variant]) => variant)
+  return {
+    root,
+    caller,
+    slot,
+    ancestors,
+    earlier: variants(previous),
+    later: variants(current),
+    matches,
+  }
 }

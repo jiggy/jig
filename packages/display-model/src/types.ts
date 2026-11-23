@@ -166,12 +166,33 @@ export type DisplayRecordedRun = Readonly<{
   outcome?: string
   filesComplete: boolean
   invalidCalls: boolean
-}> &
-  Pick<DisplayProjectRunEvidence, 'calls' | 'callCoverage' | 'callsOmitted'>
+  callCoverage: DisplayProjectRunEvidence['callCoverage']
+  callsOmitted: number
+  callsRecorded: number
+  callsUnplaced: number
+}>
+type DisplayComparedCallVariant = Readonly<{
+  target: string
+  state: DisplayCallState
+  outcome?: string
+  count: number
+}>
+export type DisplayCallPathComparison = Readonly<{
+  root: string
+  caller: string
+  slot: string
+  ancestors: readonly Readonly<{ slot: string; target: string }>[]
+  earlier: readonly DisplayComparedCallVariant[]
+  later: readonly DisplayComparedCallVariant[]
+  matches: boolean
+}>
 export type DisplayRecordedComparison = Readonly<{
   earlier: DisplayRecordedRun
   later: DisplayRecordedRun
   submittedIdentity: 'same' | 'different' | 'unknown'
+  rows: readonly DisplayCallPathComparison[]
+  rowsOmitted: number
+  nonmatchingOmitted: number
 }>
 export type RecordedViewRole = 'recorded-report' | 'recorded-files' | 'recorded-diagnostics'
 export type DisplayFact = Readonly<{
@@ -332,6 +353,9 @@ export type DisplayIncompleteSnapshot = Readonly<{
 export type DisplaySnapshotEnvelope = DisplaySnapshot | DisplayIncompleteSnapshot
 export type WebAssets = Readonly<Record<string, Readonly<{ body: string; contentType: string }>>>
 
+export const DISPLAY_RECORDED_CALL_ROWS = 8
+export const DISPLAY_RECORDED_CALL_BYTES = 5 * 1024
+export const DISPLAY_RECORDED_CALL_ANCESTORS = 7
 export const DISPLAY_SNAPSHOT_LIMIT = 16 * 1024 * 1024
 export const DISPLAY_INCOMPLETE_LIMIT = 2 * 1024 * 1024
 export const DISPLAY_COMPOSITION_NODE_LIMIT = 256

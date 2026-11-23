@@ -10,6 +10,7 @@ export {
   attentionImportance,
   callObservationSpans,
   compareObservedCalls,
+  displayCallPathComparison,
   displayDestinations,
   displayDuration,
   displayViewKey,
@@ -20,6 +21,7 @@ export type { DisplayTextFormat, DisplayTextToken } from './text.js'
 export { detectDisplayTextFormat, displayDelimitedRows, displayTextTokens } from './text.js'
 export type {
   DisplayAttribution,
+  DisplayCallPathComparison,
   DisplayCallState,
   DisplayComposition,
   DisplayCompositionEdge,
@@ -57,6 +59,9 @@ export {
   DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT,
   DISPLAY_PROJECT_SCHEMA_BYTE_LIMIT,
   DISPLAY_PROJECT_TARGET_LIMIT,
+  DISPLAY_RECORDED_CALL_ANCESTORS,
+  DISPLAY_RECORDED_CALL_BYTES,
+  DISPLAY_RECORDED_CALL_ROWS,
   DISPLAY_SNAPSHOT_LIMIT,
 } from './types.js'
 export {
