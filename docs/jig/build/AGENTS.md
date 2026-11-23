@@ -11,6 +11,7 @@ conversations, progress, project design, collaboration, and result interpretatio
 
 `contracts.md` teaches how to declare an agreement in an existing code Flow with `jig add-use`.
 `contracts.md` owns type projection limits, compiler minimums, and authoring for Flow inputs, returned outcomes, contexts, and project Binding declarations.
+It teaches how to check committed type declarations against fresh generator output in CI.
 
 `design.md` owns source-grounded route-change guidance, including decision ownership, preserved alternatives, and affected evidence consumers.
 `design.md` also teaches the scoped slot specialization, literal membership, and source review.
