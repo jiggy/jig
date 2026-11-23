@@ -1,5 +1,10 @@
 import type { Reference } from '@jigging/reporting'
-import type { DisplayReferenceRecord, DisplaySnapshot, RecordedViewRole } from './types.js'
+import type {
+  DisplayProjectRunEvidence,
+  DisplayReferenceRecord,
+  DisplaySnapshot,
+  RecordedViewRole,
+} from './types.js'
 
 export type DisplayDestination = {
   key: string
@@ -175,4 +180,77 @@ export function attentionImportance(priority: number): string {
       : priority === 2
         ? 'Flow-reported error'
         : 'Flow-reported warning'
+}
+
+type Call = DisplayProjectRunEvidence['calls'][number]
+type Step = Readonly<{ slot: string; target: string }>
+type Variant = Pick<Call, 'state' | 'outcome'> & Readonly<{ target: string; count: number }>
+type Group = {
+  root: string
+  caller: string
+  slot: string
+  ancestors: readonly Step[]
+  variants: Map<string, Variant>
+}
+
+type ObservedCallTree = Readonly<{ root?: string | undefined; calls: readonly Call[] }>
+
+function groupCalls({ root, calls }: ObservedCallTree) {
+  const groups = new Map<string, Group>()
+  const paths: (readonly Step[] | undefined)[] = []
+  const unplaced: Call[] = []
+
+  for (const call of calls) {
+    const ancestors = call.parent === undefined ? [] : paths[call.parent - 1]
+    if (
+      root === undefined ||
+      !ancestors ||
+      call.caller !== (ancestors.at(-1)?.target ?? root) ||
+      call.target === undefined
+    ) {
+      paths.push(undefined)
+      unplaced.push(call)
+      continue
+    }
+
+    const { caller, slot, target, state, outcome } = call
+    paths.push([...ancestors, { slot, target }])
+    const key = JSON.stringify([root, ancestors, caller, slot])
+    let group = groups.get(key)
+    if (!group) {
+      group = { root, caller, slot, ancestors, variants: new Map() }
+      groups.set(key, group)
+    }
+    const variant = JSON.stringify([target, state, outcome])
+    group.variants.set(variant, {
+      target,
+      state,
+      ...(outcome === undefined ? {} : { outcome }),
+      count: (group.variants.get(variant)?.count ?? 0) + 1,
+    })
+  }
+  return { groups, unplaced }
+}
+
+/** Compare retained observations at exact root, ancestor and caller paths. */
+export function compareObservedCalls(earlier: ObservedCallTree, later: ObservedCallTree) {
+  const before = groupCalls(earlier)
+  const after = groupCalls(later)
+  const groups = new Map([...before.groups, ...after.groups])
+  const rows = [...groups]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, group]) => {
+      const previous = before.groups.get(key)
+      const current = after.groups.get(key)
+      const matches =
+        previous !== undefined &&
+        current !== undefined &&
+        previous.variants.size === current.variants.size &&
+        [...previous.variants].every(
+          ([id, value]) => current.variants.get(id)?.count === value.count,
+        )
+      return { key, previous, current, group, matches }
+    })
+  rows.sort((a, b) => Number(a.matches) - Number(b.matches))
+  return { rows, beforeUnplaced: before.unplaced, afterUnplaced: after.unplaced }
 }

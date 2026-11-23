@@ -1,51 +1,12 @@
-import type { DisplayProjectRunComparison, DisplayProjectRunEvidence } from '@jigging/display-model'
+import {
+  compareObservedCalls,
+  type DisplayProjectRunComparison,
+  type DisplayProjectRunEvidence,
+} from '@jigging/display-model'
 import { type ComponentChildren, h } from 'preact'
 import { privateBrowserLiteral } from './navigation.js'
 
 type Call = DisplayProjectRunEvidence['calls'][number]
-type Step = Readonly<{ slot: string; target: string }>
-type Variant = Pick<Call, 'state' | 'outcome'> & Readonly<{ target: string; count: number }>
-type Group = {
-  root: string
-  caller: string
-  slot: string
-  ancestors: readonly Step[]
-  variants: Map<string, Variant>
-}
-
-function groupCalls({ root, evidence }: DisplayProjectRunComparison) {
-  const groups = new Map<string, Group>()
-  const paths: (readonly Step[] | undefined)[] = []
-  const unplaced: Call[] = []
-
-  for (const call of evidence.calls) {
-    const ancestors = call.parent === undefined ? [] : paths[call.parent - 1]
-    const caller = ancestors?.at(-1)?.target ?? root
-    if (!ancestors || call.caller !== caller || call.target === undefined) {
-      paths.push(undefined)
-      unplaced.push(call)
-      continue
-    }
-
-    const { slot, target, state, outcome } = call
-    paths.push([...ancestors, { slot, target }])
-    const key = JSON.stringify([root, ancestors, caller, slot])
-    let group = groups.get(key)
-    if (!group) {
-      group = { root, caller, slot, ancestors, variants: new Map() }
-      groups.set(key, group)
-    }
-    const variant = JSON.stringify([target, state, outcome])
-    group.variants.set(variant, {
-      target,
-      state,
-      ...(outcome === undefined ? {} : { outcome }),
-      count: (group.variants.get(variant)?.count ?? 0) + 1,
-    })
-  }
-  return { groups, unplaced }
-}
-
 const literal = (value: string) => h('bdi', { class: 'literal' }, privateBrowserLiteral(value))
 
 function coverage(evidence: DisplayProjectRunEvidence, unplaced: number): string {
@@ -69,7 +30,7 @@ function outcome(call: Pick<Call, 'state' | 'outcome'>): ComponentChildren {
 }
 
 function variants(
-  group: Group | undefined,
+  group: ReturnType<typeof compareObservedCalls>['rows'][number]['previous'],
   evidence: DisplayProjectRunEvidence,
 ): ComponentChildren {
   if (!group) {
@@ -123,36 +84,17 @@ export function ExplorerCallComparison({
   earlier: DisplayProjectRunComparison
   later: DisplayProjectRunComparison
 }>): ComponentChildren {
-  const before = groupCalls(earlier)
-  const after = groupCalls(later)
-  const groups = new Map([...before.groups, ...after.groups])
-  const rows = [...groups]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, group]) => {
-      const previous = before.groups.get(key)
-      const current = after.groups.get(key)
-      const matches =
-        previous !== undefined &&
-        current !== undefined &&
-        previous.variants.size === current.variants.size &&
-        [...previous.variants].every(
-          ([id, value]) => current.variants.get(id)?.count === value.count,
-        )
-      return { key, previous, current, group, matches }
-    })
-  rows.sort((a, b) => Number(a.matches) - Number(b.matches))
+  const { rows, beforeUnplaced, afterUnplaced } = compareObservedCalls(
+    { root: earlier.root, calls: earlier.evidence.calls },
+    { root: later.root, calls: later.evidence.calls },
+  )
 
   return h(
     'section',
     { class: 'explorer-call-comparison' },
     h('h3', {}, 'Observed calls'),
-    h(
-      'p',
-      { class: 'secondary' },
-      'Earlier · ',
-      coverage(earlier.evidence, before.unplaced.length),
-    ),
-    h('p', { class: 'secondary' }, 'Later · ', coverage(later.evidence, after.unplaced.length)),
+    h('p', { class: 'secondary' }, 'Earlier · ', coverage(earlier.evidence, beforeUnplaced.length)),
+    h('p', { class: 'secondary' }, 'Later · ', coverage(later.evidence, afterUnplaced.length)),
     rows.length === 0
       ? null
       : h(
@@ -214,7 +156,7 @@ export function ExplorerCallComparison({
             ),
           ),
         ),
-    unplacedCalls('Earlier', before.unplaced),
-    unplacedCalls('Later', after.unplaced),
+    unplacedCalls('Earlier', beforeUnplaced),
+    unplacedCalls('Later', afterUnplaced),
   )
 }
