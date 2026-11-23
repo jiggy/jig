@@ -1,5 +1,10 @@
-import type { DisplayProjectRunEvidence } from '@jigging/display-model'
-import { compositionObservations, type DisplayComposition } from '@jigging/display-model'
+import {
+  compareObservedCalls,
+  compositionObservations,
+  DISPLAY_EXPLORER_CALL_BYTES,
+  type DisplayComposition,
+  type DisplayProjectRunEvidence,
+} from '@jigging/display-model'
 import type { PrivateCallEvent, PrivateCallState } from './cli-run-model.js'
 import { PrivateRunModel } from './cli-run-model.js'
 import {
@@ -10,22 +15,26 @@ import {
 } from './internal/saved-call-evidence.js'
 import { flowSelector } from './project/package-selector.js'
 
-/** Browser comparisons keep a prefix so a retained child keeps its parent index. */
-export function privateCallExcerpt(recorded?: PrivateSavedCalls) {
-  const calls: DisplayProjectRunEvidence['calls'][number][] = []
-  for (const { id: _id, ...call } of recorded?.calls.slice(0, 8) ?? []) {
-    // Reserve space for the settlement facts and any separately projected live file paths.
-    if (Buffer.byteLength(JSON.stringify([...calls, call])) > 5 * 1024) break
-    calls.push(call)
+/** A settlement carries the whole retained tree whenever it fits. */
+export function privateExplorerCallEvidence(
+  recorded?: PrivateSavedCalls,
+): Pick<DisplayProjectRunEvidence, 'calls' | 'callCoverage' | 'callsOmitted' | 'callPathsOmitted'> {
+  const calls = recorded?.calls.map(({ id: _id, ...call }) => call) ?? []
+  if (Buffer.byteLength(JSON.stringify(calls)) <= DISPLAY_EXPLORER_CALL_BYTES) {
+    return {
+      calls,
+      callCoverage: recorded?.coverage ?? 'unavailable',
+      callsOmitted: recorded?.omittedEvents ?? 0,
+    }
   }
-  const callsOmitted = Math.min(
-    Number.MAX_SAFE_INTEGER,
-    (recorded?.omittedEvents ?? 0) + ((recorded?.calls.length ?? 0) - calls.length),
-  )
+
+  // A prefix could undercount a path or omit a later changed route entirely.
+  const { rows } = compareObservedCalls({ root: recorded?.root, calls }, { calls: [] })
   return {
-    calls,
-    callCoverage: callsOmitted ? ('incomplete' as const) : (recorded?.coverage ?? 'unavailable'),
-    callsOmitted,
+    calls: [],
+    callCoverage: 'incomplete',
+    callsOmitted: Math.min(Number.MAX_SAFE_INTEGER, (recorded?.omittedEvents ?? 0) + calls.length),
+    callPathsOmitted: rows.length,
   }
 }
 

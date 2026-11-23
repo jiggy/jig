@@ -3,14 +3,15 @@ import {
   DISPLAY_COMPOSITION_BYTE_LIMIT,
   DISPLAY_COMPOSITION_EDGE_LIMIT,
   DISPLAY_COMPOSITION_NODE_LIMIT,
+  DISPLAY_EXPLORER_CALL_BYTES,
   DISPLAY_INCOMPLETE_LIMIT,
   DISPLAY_PROJECT_BYTE_LIMIT,
   DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT,
   DISPLAY_PROJECT_SCHEMA_BYTE_LIMIT,
   DISPLAY_PROJECT_TARGET_LIMIT,
-  DISPLAY_RECORDED_CALL_ANCESTORS,
-  DISPLAY_RECORDED_CALL_BYTES,
-  DISPLAY_RECORDED_CALL_ROWS,
+  DISPLAY_COMPARISON_CALL_ANCESTORS,
+  DISPLAY_COMPARISON_CALL_BYTES,
+  DISPLAY_COMPARISON_CALL_ROWS,
   DISPLAY_SNAPSHOT_LIMIT,
   type DisplayProjectRun,
   type DisplayProjectRunEvidence,
@@ -802,8 +803,8 @@ function recordedComparison(value: unknown): void {
   choice(data.submittedIdentity, ['same', 'different', 'unknown'])
   const earlier = recordedRun(data.earlier)
   const later = recordedRun(data.later)
-  const rows = list(data.rows, DISPLAY_RECORDED_CALL_ROWS)
-  copy(rows, DISPLAY_RECORDED_CALL_BYTES)
+  const rows = list(data.rows, DISPLAY_COMPARISON_CALL_ROWS)
+  copy(rows, DISPLAY_COMPARISON_CALL_BYTES)
   const omitted = count(data.rowsOmitted)
   if (
     rows.length + omitted > earlier.placed + later.placed ||
@@ -828,7 +829,7 @@ function recordedComparison(value: unknown): void {
     const root = text(row.root, 1029, 1)
     const caller = text(row.caller, 1029, 1)
     const slot = text(row.slot, 128, 1)
-    const ancestors = list(row.ancestors, DISPLAY_RECORDED_CALL_ANCESTORS).map((value) => {
+    const ancestors = list(row.ancestors, DISPLAY_COMPARISON_CALL_ANCESTORS).map((value) => {
       const step = record(value, ['slot', 'target'])
       return [text(step.slot, 128, 1), text(step.target, 1029, 1)] as const
     })
@@ -862,11 +863,17 @@ function recordedComparison(value: unknown): void {
 }
 
 function comparisonCalls(data: Data, root?: string): void {
-  const calls = list(data.calls, 8)
+  const calls = list(data.calls, 256)
+  copy(calls, DISPLAY_EXPLORER_CALL_BYTES)
   const coverage = choice(data.callCoverage, ['complete', 'incomplete', 'unavailable'])
   const omitted = count(data.callsOmitted)
   if (coverage === 'unavailable' && (calls.length || omitted)) fail()
   if (coverage === 'complete' && omitted) fail()
+  optional(data.callPathsOmitted, (value) => {
+    const paths = count(value)
+    if (coverage !== 'incomplete' || calls.length || !omitted || paths > 256 || paths > omitted)
+      fail()
+  })
   const targets: (string | undefined)[] = []
   for (const [index, value] of calls.entries()) {
     const call = record(value, ['parent', 'caller', 'slot', 'target', 'state', 'outcome'])
@@ -905,6 +912,7 @@ function runEvidence(value: unknown, root?: string): void {
     'calls',
     'callCoverage',
     'callsOmitted',
+    'callPathsOmitted',
     'delivery',
     'files',
   ])
