@@ -1563,8 +1563,10 @@ and unavailable evidence are distinct. Disclose omitted events, observations
 without an exact path and clipped output. Packet-local call numbers are used
 only to resolve ancestry and stay out of comparison output.
 
-Exit 0 requires complete call coverage, consistent file verification for both
-packets and an unclipped comparison, regardless of observed differences.
+The exit status describes the final plain comparison. The browser can show
+fewer observations than that summary. Exit 0 requires complete call coverage,
+consistent file verification for both packets and an unclipped plain comparison,
+regardless of observed differences.
 Exit 1 covers unavailable or incomplete evidence and output failure.
 Exit 2 indicates external interruption. Comparison confers no authority and
 retains no new data.
