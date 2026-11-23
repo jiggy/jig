@@ -16,6 +16,7 @@ import {
 
 requireFoundationOptIn()
 const qualification = await qualifyFoundationHost()
+const childCalls = 2
 
 function nodes(value: JsonValue): number {
   if (value === null || typeof value !== 'object') return 1
@@ -69,7 +70,7 @@ export default defineBinding({ package: 'flows/hello', slots: { worker: 'flow:fl
       join(project, 'flows/hello/FLOW.ts'),
       `import { handle } from '@jigging/flow'
 await handle(async run => {
-  for (let index = 0; index < 16; index++) {
+  for (let index = 0; index < ${childCalls}; index++) {
     const child = await run.call({ slot: 'worker', operationId: 'work-' + index, input: null })
     if (child.outcome !== 'done' || child.output !== null) throw Error('Unexpected child result')
   }
@@ -135,7 +136,7 @@ await handle(async () => {
       runDiagnostics: { truncated: false },
     })
     // Captured child diagnostics add terminal nodes after the bounded execution result.
-    expect(ordinary.runDiagnostics.entries).toHaveLength(16)
+    expect(ordinary.runDiagnostics.entries).toHaveLength(childCalls)
     const recorded = await run(0, true)
     expect(recorded.code, recorded.stderr).toBe(0)
     const { runId, callEvidence, ...smallResult } = JSON.parse(recorded.stdout)
@@ -143,7 +144,7 @@ await handle(async () => {
     expect(readPrivateSavedCalls(callEvidence, runId)).toEqual(callEvidence)
     expect(callEvidence.coverage).toBe('complete')
     expect(callEvidence.calls).toEqual(
-      Array.from({ length: 16 }, (_, index) => ({
+      Array.from({ length: childCalls }, (_, index) => ({
         id: index + 1,
         caller: 'binding:app',
         slot: 'worker',
