@@ -1492,8 +1492,16 @@ It prints a bounded plain comparison, including with redirected stdout.
 Omit `--calls`, `--display` and `--json` for a comparison.
 Each side retains its recorded Run identity, root selector, approved revision,
 root result, file verification and call coverage when available.
-Saved packets lack submitted input and attachment identity, so both remain
-unknown. Explorer comparison identities stay private to its live session.
+
+Compare the recorded canonical JSON input digest and the normalized submitted
+attachment manifest. Match each port and each relative file path, byte count
+and digest within the existing supplied-input limits.
+Report “same recorded identity” or “different recorded identity” for two valid
+records. If either record is missing or malformed, report “unknown.”
+
+The comparison displays no submitted digests, paths or contents. It draws
+no conclusions about configured Binding files or other Run conditions.
+Explorer comparison identities stay private to its live session.
 
 Compare only calls with an exact retained root, ancestor slot and target chain,
 caller and slot. Compare counts by target, state and observed outcome within

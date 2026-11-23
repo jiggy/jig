@@ -284,7 +284,11 @@ The comparison shows each recorded Run and approved revision.
 For the same root, caller and slot, it matches the full recorded chain of ancestor slots and targets.
 It shows differing observations first, then matching observations, with counts by target, state and outcome.
 With incomplete coverage, a missing row says “No retained match.”
-Saved packets leave submitted input and attachment identity unknown.
+
+The comparison uses the recorded JSON input identity and submitted attachment manifest.
+It reports whether the recorded identity is the same, different, or unknown when either record is missing or malformed.
+The match covers submitted data only. Configured Binding files and other Run conditions are outside the comparison.
+
 Use `jig inspect --result DIR --calls` for the full call record of either Run.
 The comparison only reads the two saved packets.
 
