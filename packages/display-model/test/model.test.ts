@@ -202,7 +202,7 @@ test('ambiguous source-scoped reference joins fail atomically while other source
   ])
 })
 
-test('a saved comparison is a closed recorded snapshot without a file or launch surface', () => {
+test('a saved comparison admits only bounded whole rows of recorded call claims', () => {
   const source = fixture()
   const earlier = {
     runId: `sha256:${'a'.repeat(64)}`,
@@ -213,15 +213,8 @@ test('a saved comparison is a closed recorded snapshot without a file or launch 
     invalidCalls: false,
     callCoverage: 'complete',
     callsOmitted: 0,
-    calls: [
-      {
-        slot: 'review',
-        state: 'returned',
-        caller: 'binding:desk',
-        target: 'binding:review',
-        outcome: 'done',
-      },
-    ],
+    callsRecorded: 1,
+    callsUnplaced: 0,
   }
   const later = {
     status: 'failed',
@@ -229,9 +222,26 @@ test('a saved comparison is a closed recorded snapshot without a file or launch 
     invalidCalls: false,
     callCoverage: 'unavailable',
     callsOmitted: 0,
-    calls: [],
+    callsRecorded: 0,
+    callsUnplaced: 0,
   }
-  const comparison = { earlier, later, submittedIdentity: 'same' }
+  const row = {
+    root: 'binding:desk',
+    caller: 'binding:desk',
+    slot: 'review',
+    ancestors: [] as { slot: string; target: string }[],
+    earlier: [{ target: 'binding:review', state: 'returned', outcome: 'done', count: 1 }],
+    later: [],
+    matches: false,
+  }
+  const comparison = {
+    earlier,
+    later,
+    submittedIdentity: 'same',
+    rows: [row],
+    rowsOmitted: 0,
+    nonmatchingOmitted: 0,
+  }
   const input = {
     ...source,
     mode: 'recorded-packet',
@@ -243,6 +253,24 @@ test('a saved comparison is a closed recorded snapshot without a file or launch 
     artifacts: { ...source.artifacts, permittedAttachments: [], files: [] },
   }
   expect(validateDisplaySnapshot(input)).toEqual(input)
+  const withTwoRows = (second: typeof row) => ({
+    ...input,
+    recordedComparison: {
+      ...comparison,
+      earlier: { ...earlier, callsRecorded: 2 },
+      rows: [row, second],
+    },
+  })
+  const twoPaths = withTwoRows({
+    ...row,
+    caller: 'binding:' + 'a'.repeat(256),
+    ancestors: [{ slot: 'draft', target: 'binding:' + 'a'.repeat(256) }],
+  })
+  expect(validateDisplaySnapshot(twoPaths)).toEqual(twoPaths)
+  expect(() => validateDisplaySnapshot(withTwoRows(row))).toThrow()
+  const withRow = (change: Partial<typeof row>) => ({
+    recordedComparison: { ...comparison, rows: [{ ...row, ...change }] },
+  })
   const invalid = [
     { mode: 'live-run' },
     { workspace: source.workspace },
@@ -251,14 +279,28 @@ test('a saved comparison is a closed recorded snapshot without a file or launch 
     { calls: source.calls },
     { recordedComparison: { ...comparison, submittedIdentity: 'sha256:private' } },
     { recordedComparison: { ...comparison, earlier: { ...earlier, input: { digest: 'secret' } } } },
+    { recordedComparison: { ...comparison, earlier: { ...earlier, callsUnplaced: 1 } } },
+    { recordedComparison: { ...comparison, rowsOmitted: 0, nonmatchingOmitted: 1 } },
+    { recordedComparison: { ...comparison, rows: [] } },
+    withRow({ matches: true }),
+    withRow({ caller: 'binding:other' }),
+    withRow({
+      earlier: [{ target: 'binding:review', state: 'returned', outcome: 'done', count: 2 }],
+    }),
+    withRow({
+      ancestors: Array.from({ length: 8 }, () => ({ slot: 'review', target: 'binding:desk' })),
+    }),
     {
       recordedComparison: {
         ...comparison,
-        earlier: { ...earlier, calls: [{ ...earlier.calls[0]!, parent: 1 }] },
+        earlier: { ...earlier, callsRecorded: 8 },
+        rows: Array.from({ length: 8 }, (_, i) => ({
+          ...row,
+          slot: 'long-' + i,
+          earlier: [{ ...row.earlier[0], target: 'flow:' + 'a'.repeat(1000) }],
+        })),
       },
     },
-    { recordedComparison: { ...comparison, earlier: { ...earlier, callsOmitted: 1 } } },
-    { recordedComparison: { ...comparison, later: { ...later, calls: earlier.calls } } },
   ]
   for (const change of invalid)
     expect(() => validateDisplaySnapshot({ ...input, ...change })).toThrow()
