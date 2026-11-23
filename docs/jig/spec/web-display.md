@@ -487,13 +487,19 @@ Use [saved child calls](cli-experience.md#saved-child-calls) for opt-in call evi
 `jig inspect --result EARLIER --compare LATER --display web` opens two explicit
 local packets in the same private inspector. The browser receives recorded Run
 and revision identities, the submitted identity relation, verification status
-and a bounded call excerpt. Match the exact retained root and ancestor path,
-caller and slot, with counts by target, state and outcome.
+and bounded call comparison rows. Compare all validated retained observations
+before selection. Match the exact root, ancestor path, caller and slot, with
+both sides’ exact retained counts by target, state and outcome.
 
-Keep a prefix of at most eight calls and 5 KiB per side so retained children
-keep their parent indexes. Count omitted observations and mark capped evidence
-incomplete. Display unavailable recording, unmatched paths and stale bodies
-explicitly. A missing observation does not establish a skipped call.
+Select nonmatching paths before matching paths. Keep at most eight complete
+rows within 5 KiB encoded as JSON. Omit a row in full if it exceeds the remaining
+bytes or has more than seven ancestors. Count omitted paths and any nonmatching
+paths among them.
+
+Report packet recording coverage, omitted events and unplaced observations
+separately from the browser limit. Matching displayed rows describe only their
+own retained observations. Label unavailable records and stale bodies. A
+missing observation does not establish a skipped call.
 
 The capability authenticates access to the local inspection session.
 Saved observations remain unauthenticated local claims.
