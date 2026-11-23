@@ -357,6 +357,18 @@ It excludes view bodies, raw payloads, journals, captured file paths, and access
 Clipboard writes require current observations and explicit activation.
 Feedback belongs to the selected invocation and observation revision. Losing the selection closes its details.
 
+In the live Run map, a selected caller offers **Copy route brief** for each configured outgoing connection.
+The brief uses admitted caller and target labels, their kinds, and the slot names along one configured path from the Run root.
+It uses the same visible root and read-only topology command as the invocation brief.
+It gives the matching retained request count and any state counts across those requests.
+The text reports omissions, incomplete evidence, and unmatched calls when present.
+
+Zero describes matching retained requests only.
+The route brief excludes individual invocation identities, outcomes, and causes.
+An unavailable composition has no route brief. Stale observations disable copying.
+Project exploration before a Run offers configured wiring alone.
+Clipboard activation, feedback, and excluded private content follow the invocation brief's rules.
+
 The Run map supplies no editing, test submission, replay, or execution controls.
 Project exploration places explicit input and launch controls beside its approved map.
 Saved result packets and retained application views contain no admitted composition.

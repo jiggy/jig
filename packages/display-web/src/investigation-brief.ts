@@ -1,4 +1,8 @@
-import { compositionObservations, type DisplaySnapshot } from '@jigging/display-model'
+import {
+  compositionObservations,
+  type DisplayCompositionNode,
+  type DisplaySnapshot,
+} from '@jigging/display-model'
 import { h } from 'preact'
 import { useRef, useState } from 'preact/hooks'
 import { type privateBrowserInvocationViews, privateBrowserLiteral } from './navigation.js'
@@ -40,6 +44,16 @@ function canInspectRoot(root: string): boolean {
   )
 }
 
+function topologyCommand(root: string): string {
+  return canInspectRoot(root)
+    ? `Run \`jig inspect --flow --topology ${root}\` in the project.`
+    : 'The exact target selector is unavailable here. Run `jig inspect --flow --topology --all` in the project.'
+}
+
+function component(node: DisplayCompositionNode): string {
+  return `${quote(node.label)} (${node.kind === 'resource' ? node.resourceKind : node.kind})`
+}
+
 function investigationBrief(snapshot: DisplaySnapshot, call: Call, childViews: ChildViews): string {
   const root = snapshot.workspace.target
   const observations = compositionObservations(snapshot)
@@ -62,12 +76,10 @@ function investigationBrief(snapshot: DisplaySnapshot, call: Call, childViews: C
   return [
     'Investigate this observed Jig invocation.',
     `Run root: ${quote(root)}`,
-    caller ? `Configured caller: ${quote(caller.label)} (${caller.kind})` : undefined,
+    caller ? `Configured caller: ${component(caller)}` : undefined,
     `Observed caller: ${quote(call.sourceLabel)}`,
     `Slot: ${quote(call.slot)}`,
-    target
-      ? `Configured target: ${quote(target.label)} (${target.kind === 'resource' ? target.resourceKind : target.kind})`
-      : undefined,
+    target ? `Configured target: ${component(target)}` : undefined,
     `Operation: ${quote(call.operationId)} (caller-local)`,
     `First observed: ${privateBrowserObservationTime(call.firstObservedAt)}`,
     `Observed state: ${call.state}`,
@@ -77,17 +89,12 @@ function investigationBrief(snapshot: DisplaySnapshot, call: Call, childViews: C
       ? `Reported views retained: ${childViews.views.length}`
       : undefined,
     `Coverage: Retained Run observations only.${coverage.length ? ` ${coverage.join(' ')}` : ''}`,
-    canInspectRoot(root)
-      ? `Run \`jig inspect --flow --topology ${root}\` in the project.`
-      : 'The exact target selector is unavailable here. Run `jig inspect --flow --topology --all` in the project.',
+    topologyCommand(root),
     'Find the caller and slot in the topology. Check the caller source to confirm that the current wiring matches the observed Run.',
   ]
     .filter((line) => line !== undefined)
     .join('\n')
 }
-
-// Serialize clipboard writes even if the owner moves to another invocation during a write.
-let writing = false
 
 export function InvestigationBrief({
   snapshot,
@@ -100,10 +107,96 @@ export function InvestigationBrief({
   childViews: ChildViews
   enabled: boolean
 }) {
-  const scope = useRef({ revision: snapshot.revision, enabled })
+  return h(CopyBrief, {
+    revision: snapshot.revision,
+    enabled,
+    label: 'Copy investigation brief',
+    name: 'investigation brief',
+    unavailableId: 'brief-unavailable',
+    showUnavailable: true,
+    text: () => investigationBrief(snapshot, call, childViews),
+  })
+}
+
+export function ConfiguredRouteBrief({
+  snapshot,
+  caller,
+  target,
+  slot,
+  callerSlots,
+  count,
+  states,
+  unmatchedCount,
+  enabled,
+}: {
+  snapshot: DisplaySnapshot
+  caller: DisplayCompositionNode
+  target: DisplayCompositionNode
+  slot: string
+  callerSlots: readonly string[]
+  count: number
+  states: string
+  unmatchedCount: number
+  enabled: boolean
+}) {
+  const root = snapshot.workspace.target
+  const text = () => {
+    const coverage = [
+      'Counts cover matching retained requests only.',
+      snapshot.omissions.calls > 0 && `Omitted call observations: ${snapshot.omissions.calls}.`,
+      snapshot.incomplete && 'Run observations are incomplete.',
+      unmatchedCount > 0 && `Unmatched retained call observations: ${unmatchedCount}.`,
+    ].filter(Boolean)
+    return [
+      'Investigate this configured Jig route.',
+      `Run root: ${quote(root)}`,
+      `Configured caller: ${component(caller)}`,
+      `Slot: ${quote(slot)}`,
+      `Configured target: ${component(target)}`,
+      `Configured slots from Run root: ${[...callerSlots, slot].map(quote).join(' → ')}`,
+      `Matching retained requests: ${count}${states ? ` (${states})` : ''}.`,
+      `Coverage: ${coverage.join(' ')}`,
+      topologyCommand(root),
+      'Follow the configured slots in the topology. Check the caller source to understand when it makes this call.',
+    ].join('\n')
+  }
+  return h(CopyBrief, {
+    revision: snapshot.revision,
+    enabled,
+    label: 'Copy route brief',
+    name: 'route brief',
+    ariaLabel: `Copy route brief for ${privateBrowserLiteral(slot)}`,
+    unavailableId: 'route-brief-unavailable',
+    text,
+  })
+}
+
+// Serialize writes across both kinds of brief and across changes in selection.
+let writing = false
+
+function CopyBrief({
+  revision,
+  enabled,
+  label,
+  name,
+  ariaLabel,
+  unavailableId,
+  showUnavailable,
+  text,
+}: {
+  revision: number
+  enabled: boolean
+  label: string
+  name: 'investigation brief' | 'route brief'
+  ariaLabel?: string
+  unavailableId: string
+  showUnavailable?: boolean
+  text: () => string
+}) {
+  const scope = useRef({ revision, enabled })
   const [result, setResult] = useState<{ scope: typeof scope.current; message: string }>()
-  if (scope.current.revision !== snapshot.revision || scope.current.enabled !== enabled)
-    scope.current = { revision: snapshot.revision, enabled }
+  if (scope.current.revision !== revision || scope.current.enabled !== enabled)
+    scope.current = { revision, enabled }
 
   async function copy(): Promise<void> {
     if (!enabled) return
@@ -116,10 +209,10 @@ export function InvestigationBrief({
     setResult({ scope: selected, message: 'Copying…' })
     let message: string
     try {
-      await navigator.clipboard.writeText(investigationBrief(snapshot, call, childViews))
-      message = 'Investigation brief copied.'
+      await navigator.clipboard.writeText(text())
+      message = name === 'route brief' ? 'Route brief copied.' : 'Investigation brief copied.'
     } catch {
-      message = 'Could not copy the investigation brief.'
+      message = `Could not copy the ${name}.`
     } finally {
       writing = false
     }
@@ -133,11 +226,12 @@ export function InvestigationBrief({
       'button',
       {
         type: 'button',
+        'aria-label': ariaLabel,
         'aria-disabled': !enabled,
-        'aria-describedby': enabled ? undefined : 'brief-unavailable',
+        'aria-describedby': enabled ? undefined : unavailableId,
         onClick: copy,
       },
-      'Copy investigation brief',
+      label,
     ),
     h(
       'span',
@@ -147,8 +241,8 @@ export function InvestigationBrief({
         { role: 'status' },
         enabled && result?.scope === scope.current ? result.message : '',
       ),
-      !enabled
-        ? h('span', { id: 'brief-unavailable' }, 'Copy requires a current observation.')
+      !enabled && showUnavailable
+        ? h('span', { id: unavailableId }, 'Copy requires a current observation.')
         : null,
     ),
   )

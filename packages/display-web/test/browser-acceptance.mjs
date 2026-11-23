@@ -714,6 +714,151 @@ test('child-view return is fenced by incomplete observations and by loss of its 
 })
 
 for (const width of [1440, 390]) {
+  test(`configured route briefs copy exact slots and retained counts at ${width}px`, async () => {
+    const fixture = compositionFixture()
+    fixture.snapshot.composition.nodes[4] = {
+      id: 'checkpoint',
+      label: 'Embargo desk',
+      kind: 'flow',
+    }
+    fixture.snapshot.composition.edges[4].slot = 'embargo'
+    fixture.snapshot.calls.find((call) => call.id === 'prepare-two').outcome = 'needs-review'
+    await withPage(fixture, { viewport: { width, height: 900 } }, async (page, host) => {
+      await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], {
+        origin: host.origin,
+      })
+      const copy = (slot) =>
+        page.getByRole('button', { name: `Copy route brief for ${slot}`, exact: true })
+      const clipboard = () => page.evaluate(() => navigator.clipboard.readText())
+      await page.evaluate(() => navigator.clipboard.writeText('unchanged'))
+      await openTab(page, 'Application map')
+      assert.equal(await copy('embargo').count(), 0)
+      await page.locator('[data-component="application"]').click()
+      assert.equal(await clipboard(), 'unchanged')
+      await copy('embargo').press('Enter')
+      await copy('embargo').locator('..').getByText('Route brief copied.').waitFor()
+      assert(await copy('embargo').evaluate((node) => node === document.activeElement))
+      const zero = await clipboard()
+      assert.equal(
+        zero,
+        [
+          'Investigate this configured Jig route.',
+          'Run root: "binding:review"',
+          'Configured caller: "Review" (binding)',
+          'Slot: "embargo"',
+          'Configured target: "Embargo desk" (flow)',
+          'Configured slots from Run root: "embargo"',
+          'Matching retained requests: 0.',
+          'Coverage: Counts cover matching retained requests only. Omitted call observations: 4. Unmatched retained call observations: 2.',
+          'Run `jig inspect --flow --topology binding:review` in the project.',
+          'Follow the configured slots in the topology. Check the caller source to understand when it makes this call.',
+        ].join('\n'),
+      )
+
+      await copy('approve').press('Space')
+      await copy('approve').locator('..').getByText('Route brief copied.').waitFor()
+      assert.match(
+        await clipboard(),
+        /Configured target: "Worker" \(binding\)[\s\S]*Matching retained requests: 1 \(1 returned\)\./,
+      )
+      await copy('prepare').press('Enter')
+      await copy('prepare').locator('..').getByText('Route brief copied.').waitFor()
+      const repeated = await clipboard()
+      assert.match(repeated, /Matching retained requests: 4 \(1 active, 1 failed, 2 returned\)\./)
+      assert.doesNotMatch(
+        repeated,
+        /needs-review|prepare-two|prepare-route|worker-one|Operation:|Outcome:|#cap=/i,
+      )
+      await noPageOverflow(page)
+
+      const detail = page.getByRole('complementary', { name: 'Selected component' })
+      if (width === 390) await detail.getByRole('button', { name: '← Back to map' }).click()
+      await page.locator('[data-component="worker"]').click()
+      await copy('fetch').press('Enter')
+      await copy('fetch').locator('..').getByText('Route brief copied.').waitFor()
+      const nested = await clipboard()
+      assert.match(nested, /Configured caller: "Worker" \(binding\)/)
+      assert.match(nested, /Configured slots from Run root: "prepare" → "fetch"/)
+      assert.match(nested, /Matching retained requests: 1 \(1 active\)/)
+      await noPageOverflow(page)
+    })
+  })
+}
+
+test('configured route copy fences stale snapshots and discloses current observation gaps', async () => {
+  const fixture = compositionFixture()
+  const original = structuredClone(fixture.snapshot)
+  await withPage(fixture, {}, async (page, host) => {
+    await openTab(page, 'Application map')
+    await page.locator('[data-component="application"]').click()
+    const copy = page.getByRole('button', { name: 'Copy route brief for checkpoint', exact: true })
+    const status = copy.locator('..').getByRole('status')
+    await page.evaluate(() => {
+      window.routeWrites = []
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: (text) => {
+            window.routeWrites.push(text)
+            return new Promise((resolve, reject) => {
+              window.finishRouteWrite = (ok) =>
+                ok ? resolve() : reject(new Error('Clipboard denied'))
+            })
+          },
+        },
+      })
+    })
+    await copy.click()
+    await status.getByText('Copying…').waitFor()
+    await page.evaluate(() => window.finishRouteWrite(false))
+    await status.getByText('Could not copy the route brief.').waitFor()
+    await copy.press('Enter')
+    await status.getByText('Copying…').waitFor()
+    host.update({
+      kind: 'incomplete',
+      revision: 2,
+      lastCompleteRevision: 1,
+      mode: original.mode,
+      rootSourceId: original.rootSourceId,
+      reason: 'The current observation could not be projected.',
+      workspace: original.workspace,
+      context: '',
+      omissions: original.omissions,
+      attention: [],
+      diagnostics: [],
+    })
+    await page.getByText('Copy requires a current observation.').waitFor()
+    assert(!(await copy.isEnabled()))
+    assert(await copy.evaluate((node) => node === document.activeElement))
+    await page.keyboard.press('Enter')
+    assert.equal(await page.evaluate(() => window.routeWrites.length), 2)
+    await page.evaluate(() => window.finishRouteWrite(true))
+    host.update({
+      ...original,
+      revision: 3,
+      incomplete: 'Some call observations could not be retained.',
+      workspace: { ...original.workspace, target: 'flow:./flows/unsafe' },
+    })
+    await page.getByText('Connected', { exact: true }).waitFor()
+    assert.equal(await status.textContent(), '')
+    await copy.press('Enter')
+    const current = await page.evaluate(() => window.routeWrites.at(-1))
+    assert.match(current, /Run observations are incomplete\./)
+    assert.match(current, /Matching retained requests: 0\./)
+    assert.deepEqual(current.match(/`jig [^`]+`/g), ['`jig inspect --flow --topology --all`'])
+    await page.evaluate(() => window.finishRouteWrite(true))
+    await status.getByText('Route brief copied.').waitFor()
+    host.update({
+      ...original,
+      revision: 4,
+      composition: { state: 'unavailable', reason: 'unavailable' },
+    })
+    await page.getByRole('heading', { name: 'Application map unavailable' }).waitFor()
+    assert.equal(await copy.count(), 0)
+  })
+})
+
+for (const width of [1440, 390]) {
   test(`investigation brief copies the exact invocation at ${width}px`, async () => {
     const fixture = compositionFixture()
     const calls = fixture.snapshot.calls

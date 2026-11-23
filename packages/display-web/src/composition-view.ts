@@ -16,6 +16,7 @@ import {
   privateCompositionRequestStateLabel,
   privateCompositionRequestSummary,
 } from './composition.js'
+import { ConfiguredRouteBrief } from './investigation-brief.js'
 import { privateBrowserLiteral } from './navigation.js'
 
 type Props = (
@@ -40,6 +41,21 @@ type Props = (
 
 const literal = (value: string): ComponentChildren =>
   h('bdi', { class: 'literal' }, privateBrowserLiteral(value))
+
+function configuredCallerSlots(
+  composition: Extract<DisplayComposition, { state: 'available' }>,
+  callerId: string,
+): readonly string[] | undefined {
+  // Walk in breadth-first order to give one exact configured path to the caller.
+  const paths = new Map<string, readonly string[]>([[composition.rootId, []]])
+  for (const [id, path] of paths) {
+    if (id === callerId) return path
+    for (const edge of composition.edges) {
+      if (edge.source === id && !paths.has(edge.target))
+        paths.set(edge.target, [...path, edge.slot])
+    }
+  }
+}
 
 function sourcePaths(behavior: DisplaySourceBehavior | undefined): ComponentChildren {
   return h(
@@ -289,6 +305,10 @@ export function CompositionPage(props: Props): ComponentChildren {
   const incoming = selected ? composition.edges.filter((edge) => edge.target === selected.id) : []
   const outgoing = selected ? composition.edges.filter((edge) => edge.source === selected.id) : []
   const outgoingRequests = outgoing.flatMap((edge) => edgeRequests.get(edge.id) ?? [])
+  const callerSlots =
+    snapshot?.mode === 'live-run' && selected && props.detailOpen && outgoing.length
+      ? configuredCallerSlots(composition, selected.id)
+      : undefined
   const layout = privateCompositionLayout(
     {
       ...composition,
@@ -1177,6 +1197,13 @@ export function CompositionPage(props: Props): ComponentChildren {
               'Configured calls',
               h('span', { class: 'composition-section-count' }, outgoing.length),
             ),
+            callerSlots && !props.referencesEnabled
+              ? h(
+                  'p',
+                  { class: 'unavailable-note', id: 'route-brief-unavailable' },
+                  'Copy requires a current observation.',
+                )
+              : null,
             outgoing.length
               ? h(
                   'ul',
@@ -1192,6 +1219,20 @@ export function CompositionPage(props: Props): ComponentChildren {
                       ),
                       snapshot ? h('small', { class: 'secondary' }, edgeCountLabel(edge.id)) : null,
                       snapshot ? requestSummary(edgeSummaries.get(edge.id)!) : null,
+                      snapshot && callerSlots
+                        ? h(ConfiguredRouteBrief, {
+                            key: JSON.stringify([snapshot.rootSourceId, edge.id]),
+                            snapshot,
+                            caller: selected,
+                            target: nodes.get(edge.target)!,
+                            slot: edge.slot,
+                            callerSlots,
+                            count: edgeRequests.get(edge.id)?.length ?? 0,
+                            states: requestSummaryText(edgeSummaries.get(edge.id)!),
+                            unmatchedCount: attribution?.unmatched.length ?? 0,
+                            enabled: props.referencesEnabled === true,
+                          })
+                        : null,
                     ),
                   ),
                 )
