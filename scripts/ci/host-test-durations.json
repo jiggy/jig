@@ -43,6 +43,14 @@
         "jobs": {
           "arm64": [136883517696]
         }
+      },
+      {
+        "run": 45247449712,
+        "attempt": 1,
+        "source": "b89f85b405d5794b413868197be68ea5cfa3124c",
+        "jobs": {
+          "arm64": [137968931201]
+        }
       }
     ]
   },
@@ -145,6 +153,7 @@
       "packages/jig/test/host/http-request-lifecycle.test.ts": 83,
       "packages/jig/test/host/installed-attachments.test.ts": 12,
       "packages/jig/test/host/installed-attempt-export.test.ts": 31,
+      "packages/jig/test/host/installed-call-evidence.test.ts": 325,
       "packages/jig/test/host/installed-cli-lifecycle.test.ts": 294,
       "packages/jig/test/host/installed-contact-import.test.ts": 80,
       "packages/jig/test/host/installed-host-foundation.test.ts": 167,
@@ -158,20 +167,20 @@
       "packages/jig/test/host/installed-software-factory-blocked.test.ts": 49,
       "packages/jig/test/host/installed-software-factory.test.ts": 112,
       "packages/jig/test/host/installed-support-case.test.ts": 50,
-      "packages/jig/test/host/installed-workspace-provider.test.ts": 151,
+      "packages/jig/test/host/installed-workspace-provider.test.ts": 197,
       "packages/jig/test/host/markdown-worker.test.ts": 44,
       "packages/jig/test/host/package-provider-observation.test.ts": 41,
       "packages/jig/test/host/project-author-evaluator.test.ts": 46,
       "packages/jig/test/host/project-command-lifecycle.test.ts": 83,
       "packages/jig/test/host/project-feature-admission.test.ts": 4,
-      "packages/jig/test/host/root-agent-composition.test.ts": 83,
+      "packages/jig/test/host/root-agent-composition.test.ts": 172,
       "packages/jig/test/host/root-agent-fences-run.test.ts": 59,
       "packages/jig/test/host/root-agent-fences-specialist.test.ts": 93,
-      "packages/jig/test/host/root-agent-http-composition.test.ts": 90,
+      "packages/jig/test/host/root-agent-http-composition.test.ts": 143,
       "packages/jig/test/host/root-agent-repair-batch.test.ts": 115,
       "packages/jig/test/host/root-agent-repair-unsuccessful.test.ts": 85,
       "packages/jig/test/host/root-agent-repair.test.ts": 60,
-      "packages/jig/test/host/run-checkpoint-lifecycle.test.ts": 211,
+      "packages/jig/test/host/run-checkpoint-lifecycle.test.ts": 290,
       "packages/jig/test/macos/file-delivery.test.ts": 10,
       "packages/jig/test/macos/file-input.test.ts": 1,
       "packages/jig/test/macos/macos-agent-runtime.test.ts": 1,
