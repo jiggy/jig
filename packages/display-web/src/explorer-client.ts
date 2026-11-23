@@ -104,7 +104,6 @@ export class PrivateExplorerClient {
   run: DisplayProjectRun | undefined
   runCurrent = false
   runError = ''
-  recent: readonly Readonly<{ requestId: string; comparison: DisplayProjectRunComparison }>[] = []
   requestError = ''
   sending = false
   closing = false
@@ -113,7 +112,15 @@ export class PrivateExplorerClient {
   #changed: () => void
   #base: string
   #selected: string | undefined
-  #submitted: { requestId: string; targetId: string; onAccepted?: () => void } | undefined
+  #submitted:
+    | { requestId: string; targetId: string; order: number; onAccepted?: () => void }
+    | undefined
+  #comparisonOrder = 0
+  #recent: readonly Readonly<{
+    requestId: string
+    comparison: DisplayProjectRunComparison
+    order: number
+  }>[] = []
   #stopped = false
   #closeRequested = false
   #projectRequest: AbortController | undefined
@@ -128,6 +135,13 @@ export class PrivateExplorerClient {
     this.#capability = capability
     this.#changed = changed
     this.#base = base
+  }
+
+  get recent(): readonly Readonly<{
+    requestId: string
+    comparison: DisplayProjectRunComparison
+  }>[] {
+    return this.#recent
   }
 
   get canLaunch(): boolean {
@@ -263,6 +277,7 @@ export class PrivateExplorerClient {
     const run = validateDisplayProjectRun(value)
     if (run.state === 'idle' || run.requestId !== requestId || run.targetId !== targetId)
       throw new Error('Request status does not match its identity')
+    this.#retainComparison(run)
     this.#acknowledgeSubmission(run)
     if (run.state === 'refused') this.requestError = run.reason
     return run
@@ -280,10 +295,19 @@ export class PrivateExplorerClient {
 
   #retainComparison(run: DisplayProjectRun): void {
     if (run.state !== 'settled' || !run.comparison) return
-    const finished = { requestId: run.requestId, comparison: run.comparison }
-    const prior = this.recent.findIndex((item) => item.requestId === run.requestId)
-    if (prior === -1) this.recent = [...this.recent.slice(-1), finished]
-    else this.recent = this.recent.map((item, index) => (index === prior ? finished : item))
+    const prior = this.#recent.find((item) => item.requestId === run.requestId)
+    // Recovery can arrive after newer global settlements. Keep the submitted request's position.
+    const order =
+      prior?.order ??
+      (run.requestId === this.#submitted?.requestId && run.targetId === this.#submitted.targetId
+        ? this.#submitted.order
+        : ++this.#comparisonOrder)
+    this.#recent = [
+      ...this.#recent.filter((item) => item.requestId !== run.requestId),
+      { requestId: run.requestId, comparison: run.comparison, order },
+    ]
+      .sort((a, b) => a.order - b.order)
+      .slice(-2)
   }
 
   async refreshRun(): Promise<void> {
@@ -402,6 +426,7 @@ export class PrivateExplorerClient {
     this.#submitted = {
       requestId,
       targetId: selected.targetId,
+      order: ++this.#comparisonOrder,
       ...(onAccepted === undefined ? {} : { onAccepted }),
     }
     this.unresolvedRequest = requestId
@@ -508,7 +533,7 @@ export class PrivateExplorerClient {
     this.#capability = undefined
     this.project = undefined
     this.run = undefined
-    this.recent = []
+    this.#recent = []
     this.#submitted = undefined
     this.runCurrent = false
   }

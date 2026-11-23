@@ -44,6 +44,26 @@ const project = (targetId = 'review') => ({
   },
 })
 
+const settledRun = (requestId, targetId = 'review') => ({
+  state: 'settled',
+  requestId,
+  targetId,
+  comparison: {
+    revision: 'approval-' + requestId,
+    inputId: 'a'.repeat(64),
+    label: requestId,
+    root: 'binding:review',
+    evidence: {
+      execution: 'succeeded',
+      outcome: 'done',
+      delivery: 'none',
+      calls: [],
+      callCoverage: 'complete',
+      callsOmitted: 0,
+    },
+  },
+})
+
 async function serverFor(handler) {
   const server = createServer(handler)
   await new Promise((resolve, reject) => {
@@ -120,6 +140,126 @@ test('real HTTP client reconciles a lost launch reply without submitting the Run
     await client.refreshRun()
     assert.equal(accepted, 1)
     assert(requests >= 5)
+  } finally {
+    client.stop()
+    await server.close()
+  }
+})
+
+for (const state of ['running', 'settled']) {
+  test(`recovered settlement retains comparison order behind a newer ${state} Run`, async () => {
+    let status = settledRun('earliest')
+    let posts = 0
+    let accepted = 0
+    const reads = []
+    const server = await serverFor(async (request, response) => {
+      if (request.url === '/api/project') return send(response, project())
+      if (request.url === '/api/run' && request.method === 'GET') {
+        reads.push('global')
+        return send(response, status)
+      }
+      if (request.url === '/api/run?requestId=recovered') {
+        reads.push('request')
+        return send(response, settledRun('recovered'))
+      }
+      if (request.url === '/api/run' && request.method === 'POST') {
+        await read(request)
+        posts++
+        status =
+          state === 'settled'
+            ? settledRun('newer', 'draft')
+            : { state, requestId: 'newer', targetId: 'draft' }
+        response.destroy()
+        return
+      }
+      send(response, {}, 404)
+    })
+    const client = new PrivateExplorerClient('a'.repeat(43), () => {}, server.origin)
+    const history = () => client.recent.map(({ requestId }) => requestId)
+    try {
+      await client.refreshProject()
+      await client.refreshRun()
+      await client.launch('{}', 'recovered', new Map(), () => accepted++)
+      await until(() => !client.unresolvedRequest && client.runCurrent)
+      assert.deepEqual(
+        history(),
+        state === 'settled' ? ['recovered', 'newer'] : ['earliest', 'recovered'],
+      )
+      assert.equal(client.run.requestId, 'newer')
+      assert.equal(client.run.state, state)
+      assert.equal(client.canLaunch, state === 'settled')
+      assert.deepEqual(reads.slice(-2), ['global', 'request'])
+      assert.equal(accepted, 1)
+      status = settledRun('newer', 'draft')
+      await client.refreshRun()
+      assert.deepEqual(history(), ['recovered', 'newer'])
+      status.comparison.evidence.outcome = 'updated'
+      await client.refreshRun()
+      assert.deepEqual(history(), ['recovered', 'newer'], 'duplicate evidence keeps its position')
+      assert.equal(client.recent[1].comparison.evidence.outcome, 'updated')
+      status = settledRun('latest')
+      await client.refreshRun()
+      assert.deepEqual(history(), ['newer', 'latest'], 'retention discards the oldest Run')
+      assert.equal(accepted, 1)
+      assert.equal(posts, 1, 'recovery never resubmits')
+      client.stop()
+      assert.deepEqual(client.recent, [])
+    } finally {
+      client.stop()
+      await server.close()
+    }
+  })
+}
+
+test('invalid recovery preserves uncertainty and late recovery cannot displace two newer comparisons', async () => {
+  let status = { state: 'idle' }
+  let retained
+  let accepted = 0
+  let posts = 0
+  const server = await serverFor(async (request, response) => {
+    if (request.url === '/api/project') return send(response, project())
+    if (request.url === '/api/run' && request.method === 'GET') return send(response, status)
+    if (request.url === '/api/run?requestId=recovered')
+      return retained ? send(response, retained) : send(response, { code: 'REQUEST_UNKNOWN' }, 404)
+    if (request.url === '/api/run' && request.method === 'POST') {
+      await read(request)
+      posts++
+      status = settledRun('newer')
+      response.destroy()
+      return
+    }
+    send(response, {}, 404)
+  })
+  const client = new PrivateExplorerClient('a'.repeat(43), () => {}, server.origin)
+  const history = () => client.recent.map(({ requestId }) => requestId)
+  try {
+    await client.refreshProject()
+    await client.refreshRun()
+    await client.launch('{}', 'recovered', new Map(), () => accepted++)
+    await until(() => client.runCurrent && client.runError.includes('No retained result'))
+    for (const invalid of [
+      settledRun('wrong-request'),
+      settledRun('recovered', 'wrong-target'),
+      { ...settledRun('recovered'), comparison: {} },
+    ]) {
+      retained = invalid
+      await client.refreshRun()
+      assert.equal(client.unresolvedRequest, 'recovered')
+      assert.equal(client.canLaunch, false)
+      assert.equal(accepted, 0)
+      assert.deepEqual(history(), ['newer'])
+    }
+    status = settledRun('latest')
+    retained = settledRun('recovered')
+    await client.refreshRun()
+    assert.equal(client.unresolvedRequest, undefined)
+    assert.equal(client.run.requestId, 'latest')
+    assert.equal(client.canLaunch, true)
+    assert.deepEqual(history(), ['newer', 'latest'], 'older recovery cannot evict a newer Run')
+    await client.refreshRun()
+    assert.deepEqual(history(), ['newer', 'latest'])
+    assert.equal(accepted, 1)
+    assert.equal(posts, 1)
   } finally {
     client.stop()
     await server.close()
