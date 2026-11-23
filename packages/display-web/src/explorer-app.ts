@@ -19,6 +19,15 @@ type Draft = {
   top: number
 }
 
+function fileSelectionError(selection: ReadonlyMap<string, readonly File[]>): string {
+  const files = [...selection.values()].flat()
+  if (files.length > 64)
+    return 'Select up to 64 files for this approval. Clear another selection to make room.'
+  if (files.reduce((sum, file) => sum + file.size, 0) > DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT)
+    return 'Selected files exceed 16 MiB. Choose fewer or smaller files.'
+  return ''
+}
+
 /** The explorer owns project intent. Each launched Run keeps its ordinary readonly viewer. */
 export function startPrivateExplorer(root: HTMLElement, capability: string | undefined): void {
   document.title = 'Jig · Explore'
@@ -323,13 +332,22 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
         },
         onReuse() {
           if (!previous) return
+          const next = new Map(files)
+          for (const { name } of readPorts) {
+            const selected = previous.files.get(name)
+            if (selected) next.set(name, selected)
+          }
+          const error = fileSelectionError(next)
+          if (error) {
+            draftNotice = 'Previous input was not loaded. ' + error
+            redraw()
+            return
+          }
           clearInputFile()
           writeInput(draft, previous.input)
           draft.touched = true
-          for (const { name } of readPorts) {
-            const selected = previous.files.get(name)
-            if (selected) files.set(name, selected)
-          }
+          for (const [name, selected] of next) files.set(name, selected)
+          draftNotice = ''
           inputFileStatus = readPorts.some(({ name }) => !files.has(name))
             ? 'Previous input loaded. Choose files for the remaining attachments.'
             : 'Previous input loaded.'
@@ -342,20 +360,11 @@ export function startPrivateExplorer(root: HTMLElement, capability: string | und
         },
         onFiles(port: string, selected: readonly File[]) {
           const next = new Map(files)
-          next.delete(port)
-          const retained = [...next.values()].flat()
-          const size = retained.reduce((sum, file) => sum + file.size, 0)
-          if (retained.length + selected.length > 64) {
-            draftNotice =
-              'Select up to 64 files for this approval. Clear another selection to make room.'
-            redraw()
-            return
-          }
-          if (
-            size + selected.reduce((sum, file) => sum + file.size, 0) >
-            DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT
-          ) {
-            draftNotice = 'Selected files exceed 16 MiB. Choose fewer or smaller files.'
+          if (selected.length) next.set(port, selected)
+          else next.delete(port)
+          const error = fileSelectionError(next)
+          if (error) {
+            draftNotice = error
             redraw()
             return
           }

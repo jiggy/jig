@@ -56,8 +56,12 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   Send the draft only through explicit submission.
 - File selections use browser File values shared by attachment name within one approval.
   Explicit reuse restores the last accepted JSON and its uploads for unbound read ports with matching names.
+  Validate the complete proposed selection against the picker's count and byte limits before applying reuse.
+  Refused reuse preserves the current draft and files, with actionable feedback.
   File bytes travel only on explicit launch.
 - Keep comparison evidence for two settled Runs in tab memory.
+  Retain identity-validated request settlements without replacing global launch state.
+  Preserve request order through delayed recovery and duplicate evidence, discarding older comparisons before newer ones.
   Group calls by exact root, ancestor path, caller and slot, with counts by target, state and outcome.
   Keep both approvals, unmatched observations and incomplete recording visible. Equality covers submitted JSON and uploads.
 - Retain one snapshot task, bounded SSE reader/retry owner and active preview.
