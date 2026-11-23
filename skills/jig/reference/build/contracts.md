@@ -87,7 +87,7 @@ rules; ordinary projects do not need a compiler for handwritten schemas.
 
 The supported single-file language, complete drafter example and resource bounds
 are documented in the
-[authoring package](https://github.com/jiggy/jig/tree/main/packages/flow-authoring).
+[authoring package](https://github.com/jiggy/flow/blob/main/packages/flow-authoring/README.md).
 This profile supports input, complete result, custom outcomes, named invocation
 identity, optional feature catalogs, channel agreements, and explicit Agent projections—not every TypeSpec
 feature or arbitrary FLOW contract field. Settings and attachments remain
@@ -214,6 +214,22 @@ Use ordinary `defineBinding` by itself for declarations that do not opt in.
 TypeScript's structural checks can accept extra fields on values supplied through variables.
 The declaration contains no Binding settings values or active slot targets.
 Flow-local call types continue to come from the caller's declared contracts.
+
+## Check committed declarations in CI
+
+If you commit declarations from `jig types`, compare them with fresh output before running TypeScript.
+Run the commands for the files you keep in source control from the project root in Bash.
+
+```bash
+set -e -o pipefail
+jig types flows/worker | diff -u -- flows/worker/FLOW.calls.d.ts -
+jig types --project | diff -u -- jig.types.d.ts -
+```
+
+These checks leave the files in place and print any differences.
+They fail when a file differs, a file is missing, or generation fails.
+Regenerate stale declarations and review the changes alongside the source edits.
+Source edits outside the type projection may produce identical declarations.
 
 ## Named methods with progress
 
