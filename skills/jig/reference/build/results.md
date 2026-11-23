@@ -130,8 +130,9 @@ The brief includes the Run root, caller, slot, original operation, observed stat
 It includes the configured target only when Jig matches the invocation to the admitted configuration.
 It states when correspondence is unavailable or the Run omitted observations.
 
-The brief gives you `jig inspect --flow --topology --all` as a source lookup starting point.
-Use the caller and slot to locate the configuration, then confirm it against your current project.
+The brief gives you a topology command focused on the exact Run root when it can copy that selector safely.
+If it cannot, use the supplied `jig inspect --flow --topology --all` command.
+Find the caller and slot in the topology, then check the corresponding source in your current project.
 The brief does not derive a target selector from a label or opaque identity.
 Copy requires a current observation and clipboard access in your browser.
 
