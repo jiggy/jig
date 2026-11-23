@@ -1,15 +1,17 @@
 import {
   compareObservedCalls,
-  type DisplayProjectRunComparison,
   type DisplayProjectRunEvidence,
+  type DisplayRecordedComparison,
 } from '@jigging/display-model'
 import { type ComponentChildren, h } from 'preact'
 import { privateBrowserLiteral } from './navigation.js'
 
 type Call = DisplayProjectRunEvidence['calls'][number]
+type CallEvidence = Pick<DisplayProjectRunEvidence, 'calls' | 'callCoverage' | 'callsOmitted'>
+type CallSide = Readonly<{ root?: string | undefined; evidence: CallEvidence }>
 const literal = (value: string) => h('bdi', { class: 'literal' }, privateBrowserLiteral(value))
 
-function coverage(evidence: DisplayProjectRunEvidence, unplaced: number): string {
+function coverage(evidence: CallEvidence, unplaced: number): string {
   const parts: string[] = [
     {
       complete: 'Complete recording',
@@ -31,11 +33,15 @@ function outcome(call: Pick<Call, 'state' | 'outcome'>): ComponentChildren {
 
 function variants(
   group: ReturnType<typeof compareObservedCalls>['rows'][number]['previous'],
-  evidence: DisplayProjectRunEvidence,
+  side: CallSide,
+  root: string,
+  stale: boolean,
 ): ComponentChildren {
   if (!group) {
+    const { evidence } = side
     if (evidence.callCoverage === 'unavailable') return 'Unavailable'
-    return evidence.callCoverage === 'complete' ? 'None observed' : 'No retained match'
+    if (side.root !== root) return 'Different root'
+    return !stale && evidence.callCoverage === 'complete' ? 'None observed' : 'No retained match'
   }
   return h(
     'ul',
@@ -77,12 +83,14 @@ function unplacedCalls(label: string, calls: readonly Call[]): ComponentChildren
   )
 }
 
-export function ExplorerCallComparison({
+export function ObservedCallComparison({
   earlier,
   later,
+  stale = false,
 }: Readonly<{
-  earlier: DisplayProjectRunComparison
-  later: DisplayProjectRunComparison
+  earlier: CallSide
+  later: CallSide
+  stale?: boolean
 }>): ComponentChildren {
   const { rows, beforeUnplaced, afterUnplaced } = compareObservedCalls(
     { root: earlier.root, calls: earlier.evidence.calls },
@@ -96,7 +104,7 @@ export function ExplorerCallComparison({
     h('p', { class: 'secondary' }, 'Earlier · ', coverage(earlier.evidence, beforeUnplaced.length)),
     h('p', { class: 'secondary' }, 'Later · ', coverage(later.evidence, afterUnplaced.length)),
     rows.length === 0
-      ? null
+      ? h('p', { class: 'secondary' }, 'No calls with matched paths were retained.')
       : h(
           'table',
           { 'aria-label': 'Compare observed calls' },
@@ -124,9 +132,7 @@ export function ExplorerCallComparison({
                   literal(group.caller),
                   ' · ',
                   literal(group.slot),
-                  earlier.root === later.root || group.ancestors.length === 0
-                    ? null
-                    : h('small', {}, 'Root ', literal(group.root)),
+                  earlier.root === later.root ? null : h('small', {}, 'Root ', literal(group.root)),
                   group.ancestors.length === 0
                     ? null
                     : h(
@@ -150,13 +156,100 @@ export function ExplorerCallComparison({
                       ? h('small', {}, 'Different retained observations')
                       : null,
                 ),
-                h('td', {}, variants(previous, earlier.evidence)),
-                h('td', {}, variants(current, later.evidence)),
+                h('td', {}, variants(previous, earlier, group.root, stale)),
+                h('td', {}, variants(current, later, group.root, stale)),
               ),
             ),
           ),
         ),
     unplacedCalls('Earlier', beforeUnplaced),
     unplacedCalls('Later', afterUnplaced),
+  )
+}
+
+export function SavedRunComparison({
+  comparison,
+  stale,
+}: {
+  comparison: DisplayRecordedComparison
+  stale: boolean
+}): ComponentChildren {
+  const { earlier, later, submittedIdentity } = comparison
+  const runs = [earlier, later]
+  const rows = [
+    { label: 'Run', cells: runs.map((run) => run.runId ?? 'Unknown') },
+    { label: 'Root', cells: runs.map((run) => run.root ?? 'Unknown') },
+    { label: 'Approved revision', cells: runs.map((run) => run.revision ?? 'Unknown') },
+    {
+      label: 'Recorded result',
+      cells: runs.map((run) => [run.status, run.outcome].filter(Boolean).join(' · ')),
+    },
+    {
+      label: 'File verification',
+      cells: runs.map((run) => (run.filesComplete ? 'Consistent' : 'Incomplete')),
+    },
+  ]
+  return h(
+    'section',
+    { class: 'explorer-comparison saved-run-comparison' },
+    h(
+      'p',
+      {},
+      'These packets contain local recorded claims. File consistency does not authenticate them.',
+    ),
+    h(
+      'p',
+      {},
+      'Submitted input and attachments: ',
+      h(
+        'strong',
+        {},
+        submittedIdentity === 'unknown' ? 'unknown' : `${submittedIdentity} recorded identity`,
+      ),
+    ),
+    h(
+      'table',
+      { 'aria-label': 'Saved Run identities' },
+      h(
+        'thead',
+        {},
+        h(
+          'tr',
+          {},
+          h('th', { scope: 'col' }, 'Evidence'),
+          h('th', { scope: 'col' }, 'Earlier'),
+          h('th', { scope: 'col' }, 'Later'),
+        ),
+      ),
+      h(
+        'tbody',
+        {},
+        rows.map(({ label, cells }) =>
+          h(
+            'tr',
+            { key: label },
+            h('th', { scope: 'row' }, label),
+            cells.map((cell, index) => h('td', { key: index }, literal(cell))),
+          ),
+        ),
+      ),
+    ),
+    ...runs.flatMap((run, index) =>
+      run.invalidCalls
+        ? [
+            h(
+              'p',
+              { class: 'secondary', key: index },
+              index ? 'Later' : 'Earlier',
+              ' call record is invalid or belongs to a different Run.',
+            ),
+          ]
+        : [],
+    ),
+    h(ObservedCallComparison, {
+      earlier: { root: earlier.root, evidence: earlier },
+      later: { root: later.root, evidence: later },
+      stale,
+    }),
   )
 }
