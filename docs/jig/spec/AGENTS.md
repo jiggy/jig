@@ -64,8 +64,9 @@ execution evidence.
 - Browser composition maps project the exact admitted Run generation without source evaluation or new execution authority.
   Available connections remain distinct from observed invocations and application decisions.
   Missing or conflicting correspondence stays explicit.
-- The live invocation clipboard brief uses those same matches and accepted
-  child-publisher attribution. It discloses observation gaps and uses a fixed CLI inventory command.
+- Live clipboard briefs disclose observation gaps and focus inspection on the visible Run root when possible.
+  Invocation briefs use accepted matches and child attribution.
+  Route briefs use configured slot paths and summarize matching requests, including zero.
 - Project exploration reads approved configuration before execution, with separate project and Run observation capabilities.
   Explicit launch rechecks approval and input through the ordinary installed Run path.
   Reconnection never resubmits work, and unknown execution blocks further launch.
