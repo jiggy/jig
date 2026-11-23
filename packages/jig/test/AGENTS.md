@@ -6,6 +6,9 @@
 It checks that an optional declaration copies a named agreement and that a bare optional declaration leaves source untouched.
 It covers exact bundle and metadata preservation, collision refusal, concurrent edits, and recoverable source publication failure.
 
+`portable/cli.test.ts` checks the installed Flow type projection with ordinary TypeScript.
+It covers package input and returned outcomes, broad SDK fallbacks, settings, and declared child calls.
+
 `portable/cli-discovery.test.ts` covers configured-topology grammar, readable collision-safe identities, contextual focus, complete inventories including disconnected targets, shared package uses, cycles, explicit boundary omissions, and graph bounds.
 Package scope preserves independent uses, distinct caller slots, and settings differences without expanding the caller's callers.
 Package-path diagnostics supply a copyable command without treating source paths as shell code.
