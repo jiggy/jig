@@ -292,6 +292,10 @@ Jig copies the named agreement and adds `"optional": true` to `uses.review`.
 Optional ordinary slots stay unbound unless explicitly selected. Any selected target must match the exact agreement.
 Handle the unbound case in the caller before invoking the slot.
 
+A Binding can run with this optional slot unbound.
+A direct Flow target such as `flow:flows/worker` requires every slot to resolve.
+Run `jig check --diff` before approval to see whether the declaration removes that target.
+
 Edit the caller to call `review` for the intended conditions.
 Set its target in the caller's Binding.
 Run `jig check`, then use `jig review` to decide whether to approve the changed project.
