@@ -51,12 +51,12 @@ This requirement does not authorize execution or change an approved Run.
 The current prerelease policy requires the exact tested version and makes no broader compatibility promise.
 
 `jig init <directory>` creates an ordinary editable greeting package under
-`flows/hello`, a short project README, and the project skeleton below. Its
-package-local manifest names the exact `@jigging/flow` revision tested with the
-Jig build, rather than a moving registry tag. It uses
-the same explicit missing-lock resolution permission and review as any other
-package; initialization performs no installation, network requests, approval,
-or execution. A destination must not exist. Initialization never replaces files.
+`flows/hello`, a sample input in `fixtures/greeting.json`, a short project
+README, and the project skeleton below. Its package-local manifest names the
+exact `@jigging/flow` revision tested with the Jig build. It uses the same
+explicit missing-lock resolution permission and review as any other package.
+Initialization writes source files without installing dependencies, using the
+network, approving changes, or executing a Flow. The destination must be new.
 
 Normal initialization writes a private root `package.json` with its build’s exact Jig version in `engines.jig`.
 This metadata records the required host without installing it.
@@ -73,8 +73,9 @@ project/
 └── bindings/
 ```
 
-The project-owned `AGENTS.md` points coding agents to read-only Flow inspection for changes that cross workflow steps.
-It includes inspection from a Flow source path.
+The project-owned `AGENTS.md` points coding agents to read-only inspection for
+cross-Flow edits and checks for changed and preserved routes. When initialization
+creates child guidance files, it links to them from the root guidance.
 
 The generated `jig.ts` makes its conventional membership explicit:
 

@@ -215,11 +215,13 @@ remain supported and are not rewritten by a review default.
   contract-keyed default. It chooses no client implicitly and does not inspect
   installations or authentication.
 
-  Every scaffold includes a project-owned `AGENTS.md` with inspection guidance for requests, Flow files, and Binding declarations.
+  Every scaffold includes a project-owned `AGENTS.md` for scoped inspection, composition checks, and verified route changes.
+  Link the child guidance created by that scaffold.
   The [agent guide](../../docs/jig/for-agents.md) gives existing projects the same text for their local launcher.
   The greeting and each `jig new` Flow have their own editable `AGENTS.md` beside `FLOW.ts`.
 
-  Generated READMEs recommend FLOW and Jig authoring skills through that guide.
+  The greeting's README and CLI instructions use the same generated JSON fixture.
+  Generated READMEs recommend FLOW and Jig authoring skills through the agent guide.
   Keep installation commands in that guide and initialization free of installation.
 
   Check generated package versions against their manifests. The greeting names

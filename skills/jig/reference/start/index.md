@@ -37,8 +37,8 @@ jig init hello-jig
 cd hello-jig
 ```
 
-`init` creates ordinary editable source, including `jig.ts`, a greeting Flow, and an empty Bindings directory.
-Its root [`AGENTS.md`](../for-agents.md#find-where-to-change-a-workflow) tells coding agents how to find a workflow decision and its other callers.
+`init` creates `jig.ts`, a greeting Flow, an empty Bindings directory, and `fixtures/greeting.json`.
+Its root [`AGENTS.md`](../for-agents.md#find-where-to-change-a-workflow) guides coding agents through scoped edits and verification.
 It installs nothing, makes no network requests, and approves nothing.
 
 Open `flows/hello/FLOW.ts`:
@@ -59,9 +59,11 @@ An application-root dependency does not replace the Flow's declaration.
 ## 2. Review and approve
 
 ```sh
+jig check
 jig review --allow-resolution-network
 ```
 
+`jig check` links the working project and reports configuration problems.
 Inspect the generated source with your editor.
 Read the displayed package changes, execution policy, and available targets.
 The summary does not replace source review.
@@ -86,7 +88,7 @@ Review prepares and retains dependencies privately, so this tutorial needs no pe
 After approval:
 
 ```sh
-jig run flow:flows/hello --input '"Ada"'
+jig run flow:flows/hello --input @fixtures/greeting.json
 ```
 
 Expect these fields in the result:
@@ -117,7 +119,7 @@ Review the change and run again:
 
 ```sh
 jig review --allow-resolution-network
-jig run flow:flows/hello --input '"Ada"'
+jig run flow:flows/hello --input @fixtures/greeting.json
 ```
 
 Approve only after inspecting the source change.

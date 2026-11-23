@@ -14,12 +14,18 @@ These public files require no account, API key, or JavaScript execution.
 `jig init` writes a root `AGENTS.md` for coding agents. For an existing project, add this guidance to its own `AGENTS.md`.
 Use the project's usual Jig command if it has a local launcher.
 
-> When changing which Flow runs next or how one caller uses a shared Flow,
-> run `jig inspect --flow` from the project root. Find the caller that owns
-> the decision and the other routes that use it. To inspect a known Flow source
-> file or Binding declaration, pass its project-relative path to the same command.
+> Read the nearest `AGENTS.md` for the files you edit. For a change within one
+> Flow, work from its source and tests.
 >
-> For a wording change or another edit within one Flow, use its source and tests directly.
+> For a routing or shared Binding change, run `jig inspect --flow` from the
+> project root. Pass a known Flow file or Binding declaration by its relative
+> path. Find the caller, its slot, and the routes to preserve. Give a caller
+> its own Binding when it needs a different collaborator.
+>
+> Check configuration changes with `jig check` before review. Use
+> `jig check --diff` when a prior approval exists. After authorized review,
+> replay the changed and preserved routes with the same fixture. When routing
+> matters, verify the exact caller, slot, and target in the Run evidence.
 
 For example, `jig inspect --flow flows/import/FLOW.ts` opens the configured use or lists the uses of that package.
 `jig inspect --flow bindings/code.ts` opens that exact Binding.

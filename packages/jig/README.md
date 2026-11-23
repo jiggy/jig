@@ -25,11 +25,12 @@ Create an editable first Flow:
 ```sh
 jig init hello-jig
 cd hello-jig
+jig check
 jig review --allow-resolution-network
-jig run flow:flows/hello --input '"Ada"'
+jig run flow:flows/hello --input @fixtures/greeting.json
 ```
 
-The generated project includes an `AGENTS.md` that directs coding agents to `jig inspect --flow` for cross-Flow edits.
+The generated `AGENTS.md` guides coding agents through scoped edits and verification.
 Initialization installs nothing and approves nothing. Review prepares the SDK
 privately and asks for approval. The resolution flag allows dependency-selected
 network requests before approval; declining cannot undo those requests. Runs

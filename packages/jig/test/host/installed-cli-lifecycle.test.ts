@@ -85,6 +85,7 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
       '.gitignore',
       'AGENTS.md',
       'README.md',
+      'fixtures/greeting.json',
       'jig.ts',
       'package.json',
       'flows/hello/AGENTS.md',
@@ -95,6 +96,8 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
     const authoredBytes = await Promise.all(
       authoredPaths.map((path) => readFile(join(project, path))),
     )
+    const checked = await command([cli, 'check', '--json'], project)
+    expect(JSON.parse(checked.stdout)).toMatchObject({ basis: 'working-tree', status: 'linked' })
     const beforeApproval = await command(
       [cli, 'inspect', '--flow', 'flow:./flows/hello', '--json'],
       project,
@@ -193,7 +196,7 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
 
     for (const display of [[], ['--display', 'plain'], ['--json']]) {
       const result = await command(
-        [cli, 'run', 'flow:flows/hello', '--input', JSON.stringify('Ada'), ...display],
+        [cli, 'run', 'flow:flows/hello', '--input', '@fixtures/greeting.json', ...display],
         project,
       )
       expect(JSON.parse(result.stdout)).toEqual({
