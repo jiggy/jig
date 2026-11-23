@@ -2723,7 +2723,11 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     if (cleanupFailed) await runtime.progress.closeWorkspace().catch(() => undefined)
     const includeFiles =
       !cleanupFailed && !runtime.signal?.aborted && status.terminal.status === 'succeeded'
-    const recordedCalls = callEvidence?.finish(status.runId, rootTarget, includeFiles)
+    // Packet publication needs its evidence before command finalization.
+    const packetCalls =
+      parsed.output === undefined
+        ? undefined
+        : callEvidence?.finish(status.runId, rootTarget, includeFiles)
     let delivery: PrivateDeliveryReceipt | undefined
     if (parsed.output !== undefined) {
       record = {
@@ -2733,7 +2737,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         input: { digest: sha256(canonicalJson(input)), attachments: files.identity.attachments },
       } as unknown as JsonValue
       knownTerminal = record
-      const savedCalls = parsed.recordCalls ? recordedCalls : undefined
+      const savedCalls = parsed.recordCalls ? packetCalls : undefined
       try {
         runtime.progress.stage('Publishing the result packet')
         delivery = await runtime.host.delivery!.publish(
@@ -2796,16 +2800,19 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       reportDeliveryCleanupFailure()
       reportLocalFileCleanupFailure()
     }
-    if (parsed.output === undefined && callEvidence !== undefined) {
-      const observed = callEvidence.finish(
-        status.runId,
-        rootTarget,
-        !cleanupFailed && !runtime.signal?.aborted && status.terminal.status === 'succeeded',
-      )
+    const recordedCalls =
+      parsed.output === undefined
+        ? callEvidence?.finish(
+            status.runId,
+            rootTarget,
+            !cleanupFailed && !runtime.signal?.aborted && status.terminal.status === 'succeeded',
+          )
+        : packetCalls
+    if (parsed.output === undefined && parsed.recordCalls && recordedCalls !== undefined) {
       const extended = {
         ...(record as Record<string, JsonValue>),
         runId: status.runId,
-        callEvidence: observed,
+        callEvidence: recordedCalls,
       }
       try {
         validateJson1(terminalFrame(extended))
