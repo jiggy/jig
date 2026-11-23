@@ -202,7 +202,14 @@ def main():
             require(source_cases(request("/api/project")["selected"]["composition"]) == approved_cases)
         finally:
             source_path.write_text(approved_source)
-        require(state_until({"settled"})["requestId"] == "first-run")
+        first_settled = state_until({"settled"})
+        require(first_settled["requestId"] == "first-run")
+        comparison = first_settled["comparison"]
+        require(comparison["root"] == "flow:flows/hello")
+        require(comparison["revision"] == current["revision"])
+        evidence = comparison["evidence"]
+        require(evidence["callCoverage"] == "complete" and evidence["callsOmitted"] == 0)
+        require(evidence["calls"] == [])
 
         phase = "duplicate-request-no-replay"
         duplicate = request("/api/run", "POST", first_request)
@@ -249,6 +256,7 @@ def main():
         require(stdout.count(b"Hello, Ada!") == 1)
         require(stdout.count(b"Hello, Grace!") == 1)
         require(b"Hello, Changed!" not in stdout and b"Hello, Hold!" not in stdout)
+        require(b'"callEvidence"' not in stdout)
         require(b"CANCELLED" in stdout + bytes(owner.output["stderr"]))
         owner.close()
         owner = None

@@ -88,9 +88,12 @@ All selected domain requirements still apply.
   Project Binding declarations reuse the contained evaluator, working-tree linker, and the same captured schemas.
   They project canonical package selections and declared slots without copying active targets or Binding settings values.
 
-- `src/cli-call-evidence.ts` captures opted-in call observations for the exact Run.
+- `src/cli-call-evidence.ts` captures call observations for `--record-calls` and Explorer comparison.
   Reuse live attribution and retain only closed route and result fields.
-  Include bounded evidence directly for result-only Runs with no packet.
+  Finalize the recorder once. Packet publication needs evidence before writing.
+  For a packetless result, check cleanup and interruption before assessing coverage.
+
+  Explorer uses the same evidence. Only `--record-calls` exposes it in terminal results or packets.
   With packet delivery, emit only the acknowledged evidence.
   A host protocol marker excludes artifact release without filtering authored slot names.
   `inspect --result --calls` checks the saved record without loading the project.
