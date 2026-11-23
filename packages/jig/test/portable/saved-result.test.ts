@@ -12,6 +12,7 @@ import { PrivateCallEvidence } from '../../src/cli-call-evidence.js'
 import { projectPrivateRunComposition } from '../../src/cli-composition.js'
 import { PrivateCliProgress } from '../../src/cli-progress.js'
 import { PrivateRunModel } from '../../src/cli-run-model.js'
+import { privateSavedCallComparison } from '../../src/cli-saved-call-comparison.js'
 import {
   privateSavedResultPlain,
   privateSavedResultViews,
@@ -965,4 +966,91 @@ test('saved comparison groups exact paths and keeps missing observations uncerta
         '--json',
       ]),
     ).toBeFalse()
+  }))
+
+test('saved comparison uses closed normalized submitted identities without displaying their data', async () =>
+  fixture(async (root) => {
+    const first = join(root, 'first')
+    const second = join(root, 'second')
+    const digest = sha256(canonicalJson({ draft: 'example' }))
+    const file = { path: 'nested/private-name.txt', bytes: 4, digest: sha256(Buffer.from('test')) }
+    const companion = { path: 'another.txt', bytes: 0, digest: sha256(Buffer.alloc(0)) }
+    const source = { name: 'source', files: [file, companion] }
+    const empty = { name: 'empty', files: [] }
+    const input = { digest, attachments: [source, empty] }
+    await packet(first, {}, { input })
+    const earlier = await privateCaptureSavedResult(first, undefined, false)
+    try {
+      const cases: [string, JsonValue | undefined, string][] = [
+        [
+          'reordered manifest',
+          { digest, attachments: [empty, { ...source, files: [companion, file] }] },
+          'same recorded identity',
+        ],
+        [
+          'different JSON digest',
+          { ...input, digest: sha256(canonicalJson({ draft: 'different' })) },
+          'different recorded identity',
+        ],
+        [
+          'same-sized file changed',
+          {
+            digest,
+            attachments: [
+              { ...source, files: [{ ...file, digest: sha256(Buffer.from('edit')) }, companion] },
+              empty,
+            ],
+          },
+          'different recorded identity',
+        ],
+        ['missing record', undefined, 'unknown'],
+        ['missing attachments', { digest }, 'unknown'],
+        ['invalid digest', { ...input, digest: 'forged' }, 'unknown'],
+        ['unexpected field', { ...input, output: true }, 'unknown'],
+        ['duplicate ports', { digest, attachments: [source, source] }, 'unknown'],
+        [
+          'duplicate files',
+          { digest, attachments: [{ ...source, files: [file, file] }] },
+          'unknown',
+        ],
+        [
+          'absolute file path',
+          { digest, attachments: [{ ...source, files: [{ ...file, path: '/private/file' }] }] },
+          'unknown',
+        ],
+        [
+          'file budget exceeded',
+          {
+            digest,
+            attachments: [
+              {
+                ...source,
+                files: Array.from({ length: 65 }, (_, i) => ({ ...file, path: `file-${i}` })),
+              },
+            ],
+          },
+          'unknown',
+        ],
+      ]
+      for (const [name, otherInput, expected] of cases) {
+        await packet(second, {}, otherInput === undefined ? {} : { input: otherInput })
+        const later = await privateCaptureSavedResult(second, undefined, false)
+        try {
+          for (const text of [
+            privateSavedCallComparison(earlier, later).text,
+            privateSavedCallComparison(later, earlier).text,
+          ]) {
+            expect(text, name).toContain(`Submitted input and attachments: ${expected}\n`)
+            expect(text, name).not.toContain(digest)
+            expect(text, name).not.toContain(file.digest)
+            expect(text, name).not.toContain(file.path)
+            expect(text, name).not.toContain('/private/file')
+          }
+        } finally {
+          later.close()
+        }
+      }
+    } finally {
+      earlier.close()
+    }
   }))

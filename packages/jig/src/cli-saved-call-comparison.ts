@@ -1,7 +1,9 @@
 import { compareObservedCalls } from '@jigging/display-model'
 import { asciiJsonString } from './cli-usage.js'
+import { normalizePrivateRunFileIdentity } from './internal/root-run-files.js'
 import { localName, readPrivateSavedCalls } from './internal/saved-call-evidence.js'
 import type { PrivateSavedResult } from './internal/saved-result.js'
+import type { JsonValue } from './json.js'
 
 type Group = NonNullable<ReturnType<typeof compareObservedCalls>['rows'][number]['previous']>
 
@@ -57,15 +59,47 @@ function variants(group: Group | undefined, run: Recorded, root: string): string
   return run.coverage === 'complete' ? 'None observed' : 'No retained match'
 }
 
+function recordedSubmittedIdentity(value: JsonValue | undefined): string | undefined {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.keys(value).length !== 2 ||
+    !('digest' in value) ||
+    !('attachments' in value) ||
+    typeof value.digest !== 'string' ||
+    !/^sha256:[0-9a-f]{64}$/.test(value.digest)
+  )
+    return
+  try {
+    // Packet input contains submitted read attachments only. Output intent is outside the identity.
+    const { attachments } = normalizePrivateRunFileIdentity({
+      attachments: value.attachments,
+      output: false,
+    })
+    return JSON.stringify([value.digest, attachments])
+  } catch {
+    return undefined
+  }
+}
+
 /** Plain literal comparison of already captured local claims. */
 export function privateSavedCallComparison(earlier: PrivateSavedResult, later: PrivateSavedResult) {
   const before = recorded(earlier)
   const after = recorded(later)
   const { rows, beforeUnplaced, afterUnplaced } = compareObservedCalls(before, after)
+  const beforeInput = recordedSubmittedIdentity(earlier.record.input)
+  const afterInput = recordedSubmittedIdentity(later.record.input)
+  const submittedIdentity =
+    beforeInput === undefined || afterInput === undefined
+      ? 'unknown'
+      : beforeInput === afterInput
+        ? 'same recorded identity'
+        : 'different recorded identity'
   let text = [
     'Saved Run call comparison',
     'Local recorded claims. No work was started.',
-    'Submitted input and attachments: unknown (their identity is not recorded in saved packets).',
+    `Submitted input and attachments: ${submittedIdentity}`,
     '',
     heading('Earlier', before, beforeUnplaced.length),
     heading('Later', after, afterUnplaced.length),
