@@ -201,3 +201,65 @@ test('ambiguous source-scoped reference joins fail atomically while other source
     call.operationId,
   ])
 })
+
+test('a saved comparison is a closed recorded snapshot without a file or launch surface', () => {
+  const source = fixture()
+  const earlier = {
+    runId: `sha256:${'a'.repeat(64)}`,
+    revision: `sha256:${'b'.repeat(64)}`,
+    root: 'binding:desk',
+    status: 'succeeded',
+    filesComplete: true,
+    invalidCalls: false,
+    callCoverage: 'complete',
+    callsOmitted: 0,
+    calls: [
+      {
+        slot: 'review',
+        state: 'returned',
+        caller: 'binding:desk',
+        target: 'binding:review',
+        outcome: 'done',
+      },
+    ],
+  }
+  const later = {
+    status: 'failed',
+    filesComplete: true,
+    invalidCalls: false,
+    callCoverage: 'unavailable',
+    callsOmitted: 0,
+    calls: [],
+  }
+  const comparison = { earlier, later, submittedIdentity: 'same' }
+  const input = {
+    ...source,
+    mode: 'recorded-packet',
+    workspace: { target: 'Saved Runs', phase: 'settled', hostStage: 'Recorded', elapsedMs: 0 },
+    recordedComparison: comparison,
+    views: [],
+    calls: [],
+    attention: [],
+    artifacts: { ...source.artifacts, permittedAttachments: [], files: [] },
+  }
+  expect(validateDisplaySnapshot(input)).toEqual(input)
+  const invalid = [
+    { mode: 'live-run' },
+    { workspace: source.workspace },
+    { artifacts: source.artifacts },
+    { views: source.views },
+    { calls: source.calls },
+    { recordedComparison: { ...comparison, submittedIdentity: 'sha256:private' } },
+    { recordedComparison: { ...comparison, earlier: { ...earlier, input: { digest: 'secret' } } } },
+    {
+      recordedComparison: {
+        ...comparison,
+        earlier: { ...earlier, calls: [{ ...earlier.calls[0]!, parent: 1 }] },
+      },
+    },
+    { recordedComparison: { ...comparison, earlier: { ...earlier, callsOmitted: 1 } } },
+    { recordedComparison: { ...comparison, later: { ...later, calls: earlier.calls } } },
+  ]
+  for (const change of invalid)
+    expect(() => validateDisplaySnapshot({ ...input, ...change })).toThrow()
+})

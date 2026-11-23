@@ -365,6 +365,20 @@
   margin: 0;
   padding-inline-start: 15px;
 }
+.saved-run-comparison {
+  max-width: 72rem;
+  margin: 0 auto;
+}
+.saved-run-comparison table {
+  table-layout: fixed;
+  font-size: 0.875rem;
+}
+.saved-run-comparison th:first-child {
+  width: 28%;
+}
+.saved-run-comparison h3 {
+  margin-bottom: 0.5rem;
+}
 .explorer-input-requirements li {
   display: flex;
   flex-direction: column;

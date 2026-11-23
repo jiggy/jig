@@ -218,6 +218,7 @@ Run with `--record-calls --json` to read child-call evidence directly.
 Add `--out DIR` to keep it in a result packet.
 Use `jig inspect --result DIR --calls` to read it. From any directory, use
 `jig inspect --result EARLIER --compare LATER` to compare two saved call records.
+Add `--display web` to open the comparison in the private browser inspector.
 These are recorded local claims, not a new execution verdict. File previews use
 captured bytes checked against the packet manifest. See [results](https://jig.md/build/results).
 

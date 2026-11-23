@@ -115,6 +115,10 @@ All selected domain requirements still apply.
   Keep unmatched observations explicit, the plain excerpt bounded, and live
   session identities out of the saved record.
 
+  Browser comparison reuses the recorded inspector lifetime and the Explorer
+  call excerpt. Project only comparison fields. The two captures supply no
+  browser file references or raw report.
+
 ### Command grammar and review
 
 - Child composition refusals identify the caller slot and preserve a closed diagnostic.
