@@ -5,6 +5,7 @@ import {
   type ViewOptions,
   type ViewSnapshot,
 } from '@jigging/reporting'
+import { type MapperDecision, mapperOperation } from './mapper-decision.ts'
 
 export type ContactPreview = {
   status: 'ready' | 'needs_mapping'
@@ -30,6 +31,7 @@ export type ImportState = {
   file?: string
   reason?: string
   completedStages?: number
+  mapperDecision?: MapperDecision
 }
 const stages = {
   reading: ['Reading the contact CSV', 0],
@@ -187,6 +189,24 @@ export function contactPreviewView(state: ImportState): ViewSnapshot {
       ],
     },
   ]
+  if (state.mapperDecision)
+    sections.push({
+      title: 'Mapper decision',
+      blocks: [
+        {
+          kind: 'facts',
+          items: [
+            { label: 'Known-format condition matched', value: state.mapperDecision.matched },
+            { label: 'Reported choice', value: state.mapperDecision.choice },
+          ],
+        },
+        {
+          kind: 'report',
+          text: 'The mapper reported this choice. Open its call to check the execution evidence.',
+          references: [{ kind: 'call', operationId: mapperOperation }],
+        },
+      ],
+    })
   if (state.headers) sections.push(mappingSection(state))
   if (preview?.status === 'ready')
     sections.unshift(acceptedSection(preview), rejectedSection(preview))

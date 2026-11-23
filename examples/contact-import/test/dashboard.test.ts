@@ -6,6 +6,7 @@ import {
   contactPreviewOptions,
   contactPreviewView,
 } from '../flows/import/dashboard.ts'
+import { readMapperDecision } from '../flows/import/mapper-decision.ts'
 import { columnsView as agent } from '../flows/map-agent/dashboard.ts'
 import { columnsView as code } from '../flows/map-code/dashboard.ts'
 import { columnsView as mixed } from '../flows/map-mixed/dashboard.ts'
@@ -72,6 +73,66 @@ test('mixed mapper reports the actual rule and choice without claiming an observ
       .toContain(item.choice === 'agent-proposal' ? 'Inspect observed calls' : 'No Agent invocation')
     expect(JSON.stringify(initial)).not.toContain('Agent request returned')
   }
+})
+
+test('the parent projects only the authored mapper choice and links its own invocation', () => {
+  for (const [decision, matched, choice] of [
+    ['known-format-code', 'yes', 'Use code to select known columns'],
+    ['agent-proposal', 'no', 'Select the Agent-proposal branch'],
+  ] as const) {
+    const snapshot = {
+      kind: 'view',
+      id: 'columns',
+      title: 'Columns',
+      ...mixed(['Private heading'], 'No copied body', undefined, decision),
+    }
+    const reported = readMapperDecision(snapshot)
+    expect(reported).toEqual({ matched, choice })
+    const parent = checked(
+      contactPreviewView({ phase: 'mapping', ...(reported && { mapperDecision: reported }) }),
+    )
+    const section = parent.sections.find(
+      ({ title }: { title: string }) => title === 'Mapper decision',
+    )
+    expect(section.blocks[0].items.map(({ value }: { value: string }) => value)).toEqual([
+      matched,
+      choice,
+    ])
+    expect(section.blocks[1].references).toEqual([{ kind: 'call', operationId: 'map-columns' }])
+    expect(JSON.stringify(parent)).not.toContain('Private heading')
+    expect(JSON.stringify(parent)).not.toContain('No copied body')
+    expect(readMapperDecision({ ...snapshot, id: 'unrelated' })).toBeUndefined()
+  }
+  for (const standalone of [code, agent])
+    expect(
+      readMapperDecision({
+        kind: 'view',
+        id: 'columns',
+        title: 'Columns',
+        ...standalone([], 'No decision report'),
+      }),
+    ).toBeUndefined()
+  expect(
+    readMapperDecision({
+      kind: 'view',
+      id: 'columns',
+      title: 'Columns',
+      summary: 'Unrecognized value',
+      sections: [
+        {
+          blocks: [
+            {
+              kind: 'facts',
+              items: [
+                { label: 'Condition matched', value: 'yes' },
+                { label: 'Reported choice', value: 'Private unbounded report' },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+  ).toBeUndefined()
 })
 
 test('the complete contact page previews whole records and discloses omitted records', () => {
