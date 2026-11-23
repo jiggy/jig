@@ -43,7 +43,7 @@ async function macScopePlan(workflow, event) {
     })
     assert.ifError(child.error)
     assert.equal(child.status, 0, child.stderr)
-    return Object.fromEntries(
+    const outputs = Object.fromEntries(
       (await readFile(output, 'utf8'))
         .trim()
         .split('\n')
@@ -53,6 +53,8 @@ async function macScopePlan(workflow, event) {
           return [line.slice(0, equals), line.slice(equals + 1)]
         }),
     )
+    const plan = JSON.parse(await readFile(join(directory, 'PLAN.json'), 'utf8'))
+    return { outputs, plan }
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -144,12 +146,21 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
   assert.match(baseline.run, /after-native/)
   assert.match(baseline.run, /diff -u/)
   assert.doesNotMatch(JSON.stringify(workflow), /cohort|allocator|spare|pr-time-budget/)
+  const strict = (await macScopePlan(workflow, 'push')).plan
   for (const event of ['pull_request', 'push', 'workflow_dispatch', 'schedule']) {
-    const output = await macScopePlan(workflow, event)
+    const { outputs: output, plan } = await macScopePlan(workflow, event)
+    const pr = event === 'pull_request'
     const rows = JSON.parse(output.workers).include
     const count = Number(output.shard_count)
-    assert.equal(Number(output.max_parallel), event === 'pull_request' ? 6 : 3)
-    assert.ok(count >= 1 && count <= 3)
+    assert.equal(plan.policy.maxShards, pr ? 4 : 3)
+    assert.equal(Number(output.max_parallel), pr ? 8 : 3)
+    assert.equal(count, pr && !strict.withinTarget ? 4 : strict.shards.length)
+    assert.equal(plan.policy.targetSeconds, strict.policy.targetSeconds)
+    assert.equal(plan.inventoryDigest, strict.inventoryDigest)
+    assert.deepEqual(
+      JSON.parse(output.selectors).include,
+      plan.shards.map(({ index }) => ({ shard: index })),
+    )
     assert.deepEqual([...new Set(rows.map((row) => row.major))], [15, 26])
     for (const major of new Set(rows.map((row) => row.major))) {
       const selected = rows.filter((row) => row.major === major)

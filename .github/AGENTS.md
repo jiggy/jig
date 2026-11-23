@@ -389,7 +389,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Scope freezes a source-bound plan before requesting Macs. Measured durations choose useful shards within the checked-in capacity limit.
   Each selected worker runs the complete native enforcement and Codex preference-boundary baseline, then its sequential assigned files. The installed owner also runs genuine offline-client checks.
 
-  The default plan permits three useful workers and six PR candidates. Strict runs permit three concurrent workers.
+  The PR planner tries up to three useful workers first. When their estimate
+  exceeds the target, it can assign a fourth worker. Each planned PR shard
+  has two candidates. Strict runs permit three concurrent workers.
   Worker count and runner labels remain separate from test membership.
 
   Before native work, each candidate publishes a uniquely named readiness offer.
@@ -403,7 +405,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   PR candidate jobs permit job-level errors. The independent required collector validates the selected jobs' original steps, complete reports and cleanup.
   No native or test step permits errors. Strict main and release jobs remain mandatory.
 
-  Three independent Ubuntu selectors avoid a barrier between shards.
+  Independent Ubuntu selectors avoid a barrier between shards.
   The collector starts after preparation and waits only for selected PR workers and their selectors.
   Its gate does not depend on unused queued candidates. Those jobs may remain pending or cancelled in the overall workflow.
   GitHub does not supply individual queued-job cancellation here.

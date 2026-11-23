@@ -127,8 +127,10 @@ This check publishes nothing and does not establish provenance or release readin
 ## Mac qualification
 
 The hosted Mac workflow generates a complete shard plan within a bounded capacity setting.
-Whole files run sequentially on isolated Mac workers. The current cap is three useful workers.
-PRs may queue six candidates to obtain those workers. Nightly and release qualification run every shard on both majors with three concurrent workers.
+Whole files run sequentially on isolated Mac workers.
+The PR planner can assign a fourth worker when three workers exceed the planning target.
+Each planned PR shard may queue two candidates.
+Nightly and release qualification run every shard on both majors with three concurrent workers.
 This cap can grow with measured workload and available concurrency. It does not change test membership.
 
 Nightly diagnostics test both supported qualification majors against fresh scheduled canonical inputs.
