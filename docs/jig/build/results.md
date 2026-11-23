@@ -136,6 +136,11 @@ Find the caller and slot in the topology, then check the corresponding source in
 The brief does not derive a target selector from a label or opaque identity.
 Copy requires a current observation and clipboard access in your browser.
 
+To hand off a configured route, select its caller in **Application map**.
+Under **Configured calls**, select **Copy route brief** beside the slot.
+The brief gives the configured route from the Run root and the count of matching retained requests, including zero.
+It describes gaps in the retained observations. Check the caller source to learn when it makes the call.
+
 Counts cover retained observations only.
 A component without observed calls may still have executed when observations are incomplete.
 Missing ancestry and conflicting identities remain unmatched rather than being assigned by name.

@@ -12,8 +12,8 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
 - `src/explorer-client.ts` owns bounded project reads, Run status and explicit submission through a separately authorized explorer session.
   `src/explorer-app.ts` and `src/explorer-view.ts` own workflow selection, input drafts and the explorer shell.
 - `src/observations.ts` owns quiet synchronization and actual observation spans.
-- `src/investigation-brief.ts` owns the live invocation's plain-text clipboard
-  handoff and local write feedback.
+- `src/investigation-brief.ts` owns the live Run's plain-text invocation and
+  configured route briefs, with shared clipboard feedback.
 - `src/composition.ts` owns pure map layout and exact Run/component selection.
   `src/composition-view.ts` renders approved calls, with matching observations only when a Run snapshot is supplied.
   Both views show the selected component's possible source paths when available.
@@ -85,7 +85,11 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   when it is an exact selector that fits one unquoted shell word. Otherwise give the
   inventory command. Keep caller and slot cues and exclude opaque IDs, view bodies,
   journal entries and authority values.
-- Scope clipboard feedback to the selected invocation and current observation revision.
+- A configured route brief belongs to one outgoing edge in the selected caller's detail.
+  Use a configured slot path from the Run root for disambiguation.
+  Report matching retained request counts and evidence gaps even when the count is zero.
+  Keep project-only maps and unavailable observations distinct.
+- Scope clipboard feedback to the selected invocation or route and current observation revision.
   If the invocation is no longer retained, close its details and restore list focus.
 - Empty retained snapshots show an explicit empty state without synthetic destinations.
   Diagnostics, Help and Close remain available. Only an existing selected tab labels a tabpanel.
