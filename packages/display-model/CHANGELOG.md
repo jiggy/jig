@@ -1,5 +1,19 @@
 # @jigging/display-model
 
+## 0.1.0-alpha.11
+
+### Minor Changes
+
+- 1d5d13a: Open a comparison of two saved Run packets in the local browser inspector with `jig inspect --result EARLIER --compare LATER --display web`.
+- 3251352: Compare two saved Run packets with `jig inspect --result EARLIER --compare LATER`. Reopen the recorded call paths after the Runs exit and see differences, matches, and gaps in observation.
+- 9b5bed9: Reload the last accepted input and compatible uploads after reviewing a new approval. Compare retained call paths, targets, outcomes, and counts for the last two Explorer Runs.
+- bbe2243: Show late changes first in Explorer's comparison of two settled Runs when the retained call trees fit the current settlement allowance.
+- 8abb2d0: Prioritize nonmatching paths in browser comparisons of saved Runs, retaining full counts on every displayed path.
+
+### Patch Changes
+
+- 2b67583: Save bounded child call evidence with `jig run --record-calls --out DIR`. Reopen and verify it with `jig inspect --result DIR --calls`.
+
 ## 0.1.0-alpha.10
 
 ### Patch Changes
