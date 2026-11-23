@@ -22,6 +22,9 @@ assertions, and forwarded child evidence in the runnable example. Its applicatio
 recipe keeps caller wiring in the authored source and selects local peers at the
 external boundaries of an isolated test project.
 
+Its focused checks verify delivered files and exact retained calls on changed
+and preserved routes before full native qualification.
+
 `results.md` explains live application maps, bounded child-call evidence and comparison of two saved packets.
 It teaches the selected invocation's clipboard handoff and its source lookup limits.
 It teaches how to reuse submitted input and compare observed calls after approving another revision.
