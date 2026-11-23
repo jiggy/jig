@@ -22,6 +22,7 @@ recipe keeps caller wiring in the authored source and selects local peers at the
 external boundaries of an isolated test project.
 
 `results.md` explains live application maps and bounded child-call evidence in Run results and saved packets.
+It distinguishes omitted requested evidence from an empty call list and explains the packetless stderr diagnostic.
 It teaches the selected invocation's clipboard handoff and its source lookup limits.
 It also owns configured-topology inspection of current source or retained approval.
 It explains checking working composition and comparing it to retained approval before review.

@@ -1477,6 +1477,12 @@ Coverage is `unavailable` when the host cannot produce the bounded observation.
 Evidence that exceeds packet or transport capacity may be absent.
 Publication preserves the ordinary execution and delivery record.
 
+For packetless Runs, omitted requested evidence MUST produce a `JIG_REPORT_LIMIT` diagnostic on writable stderr.
+This applies when the combined terminal frame exceeds JSON/0 limits, even without room for an omission field.
+Preserve the valid ordinary terminal result, framing, and normal exit status.
+The diagnostic explains the omission and that repeating the command starts new work.
+Runs without `--record-calls` retain their existing output.
+
 Use `jig inspect --result DIRECTORY --calls` for a plain list.
 Redirect stdout or add `--json` for the exact saved call record.
 Exit 0 requires complete observation and consistent file capture.

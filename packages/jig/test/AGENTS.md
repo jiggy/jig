@@ -393,6 +393,10 @@ operator configuration checks Agent-contract and mixed mapping with a determinis
 header task, without claiming model quality.
 The direct code mapper records complete empty call evidence in the Run result without a packet.
 
+`host/installed-call-evidence.test.ts` checks a packetless result exactly at the JSON frame node limit through the installed CLI.
+It verifies valid child-call evidence, combined overflow, and stderr omission diagnostics without changing the ordinary result or successful exit.
+An extra omission field must also exceed the bound. Unflagged Runs remain unchanged.
+
 `linux-host/example-smoke.test.ts` registers one first-run case for every
 discovered example. Its fresh projects retain all original source and manifests.
 Ordinary workspace installation supplies the frozen public packages.

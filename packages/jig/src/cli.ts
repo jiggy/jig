@@ -2812,6 +2812,12 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       } catch (error) {
         // Optional observations must fit alongside the ordinary terminal frame.
         if (!(error instanceof Json1Error)) throw error
+        runtime.writeError(
+          renderDiagnostic(
+            'JIG_REPORT_LIMIT',
+            'Requested child-call evidence was omitted because the combined result exceeds JSON/0 limits. The ordinary execution result and exit status are unchanged. Missing evidence does not prove that no child calls occurred. Repeating the command starts new work.',
+          ),
+        )
       }
     }
     const artifact = inspectionCapture

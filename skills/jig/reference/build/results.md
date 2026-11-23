@@ -249,6 +249,11 @@ Use `jig run ... --record-calls --json` to read observed calls in the result's `
 The field is optional. Check its coverage before using it in a test.
 For a result-only target, you can read this evidence without creating a packet directory.
 
+If the combined result exceeds JSON limits, Jig omits the requested evidence and reports `JIG_REPORT_LIMIT` on stderr.
+The ordinary result and exit status stay unchanged.
+Missing evidence does not prove that no child calls occurred.
+Repeating the command starts new work.
+
 To keep evidence for later inspection, select a fresh result packet.
 
 ```sh
