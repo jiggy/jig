@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
 import { parse } from 'yaml'
 import { digest } from './candidate-provenance.mjs'
@@ -199,6 +199,88 @@ async function fixture(t) {
   await pack()
   return { root, env, snapshot, jobs, artifacts, client, reports, pack, downloaded }
 }
+
+test('merge input CLI retries GitHub reads before validating and binding an artifact', async (t) => {
+  const { root, env, snapshot, artifacts } = await fixture(t)
+  const archive = join(root, 'quick.zip')
+  const reporting = artifacts.find((item) => item.id === 3)
+  reporting.digest = 'sha256:' + digest(await readFile(archive))
+  const config = join(root, 'github.json')
+  await writeFile(config, JSON.stringify({ ...snapshot, archive }))
+  await writeFile(
+    join(root, 'gh'),
+    `#!/usr/bin/env node
+const fs = require('node:fs')
+const url = new URL('https://api.github.com/' + process.argv[3])
+const kind = url.pathname.split('/').pop()
+const fixture = JSON.parse(fs.readFileSync(process.env.FIXTURE))
+const counter = process.env.COUNTERS + '/' + kind
+const count = fs.existsSync(counter) ? Number(fs.readFileSync(counter)) + 1 : 1
+fs.writeFileSync(counter, String(count))
+const mode = process.env.RESPONSE_MODE
+if ((kind === 'jobs' && (mode === 'persistent' || (mode === 'recover' && count === 1))) ||
+    (kind === 'zip' && mode === 'recover' && count === 1)) {
+  console.error('gh: Server Error (HTTP ' + (kind === 'zip' ? '503' : '502') + ')')
+  process.exit(1)
+}
+if (kind === 'zip') process.stdout.write(mode === 'corrupt' ? 'unexpected bytes' : fs.readFileSync(fixture.archive))
+else if (kind === 'jobs' || kind === 'artifacts') console.log(JSON.stringify({ [kind]: fixture[kind] }))
+else if (kind === '100') console.log(JSON.stringify(fixture.run))
+else throw Error('Unexpected API path ' + url.pathname)
+`,
+    { mode: 0o755 },
+  )
+
+  for (const mode of ['recover', 'persistent', 'corrupt']) {
+    const counters = join(root, mode)
+    await mkdir(counters)
+    const destination = join(counters, 'input')
+    const inputs = join(counters, 'binding.json')
+    const input = () =>
+      execFileSync(
+        process.execPath,
+        [
+          'scripts/ci/merge-retry.mjs',
+          'input',
+          'python-reporting',
+          '--destination',
+          destination,
+          '--inputs',
+          inputs,
+        ],
+        {
+          env: {
+            ...process.env,
+            ...env,
+            PATH: root + delimiter + process.env.PATH,
+            FIXTURE: config,
+            COUNTERS: counters,
+            RESPONSE_MODE: mode,
+          },
+          stdio: 'pipe',
+        },
+      )
+    const reads = async (kind) => Number(await readFile(join(counters, kind), 'utf8'))
+    if (mode === 'recover') {
+      input()
+      assert.deepEqual(JSON.parse(await readFile(inputs, 'utf8')), [
+        inputArtifact(snapshot, 'python-reporting'),
+      ])
+      assert.equal(await reads('jobs'), 3)
+      assert.equal(await reads('zip'), 2)
+      continue
+    }
+    assert.throws(input, mode === 'persistent' ? /HTTP 502/ : /transport digest mismatch/)
+    await assert.rejects(stat(inputs), { code: 'ENOENT' })
+    await assert.rejects(stat(destination), { code: 'ENOENT' })
+    if (mode === 'persistent') {
+      assert.equal(await reads('jobs'), 3)
+      await assert.rejects(reads('zip'), { code: 'ENOENT' })
+    } else {
+      assert.equal(await reads('zip'), 1)
+    }
+  }
+})
 
 test('merge retry uses latest execution and never falls back from a later failure', () => {
   const jobs = [job(1, 'test', 1), job(2, 'test', 2, { conclusion: 'failure' })]
