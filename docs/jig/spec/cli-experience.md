@@ -1539,7 +1539,9 @@ The recorded call view does not infer a configuration graph or branch conditions
 local packets through the same saved inspection boundary.
 It prints a bounded plain comparison by default and with redirected stdout.
 With terminal stdout, `--display web` opens the private browser inspector and
-prints the plain comparison after it closes. Omit `--calls` and `--json`.
+prints the plain comparison after it closes. Omit `--calls`.
+Use `--json` for a machine comparison. It cannot be combined with `--display`.
+
 Each side retains its recorded Run identity, root selector, approved revision,
 root result, file verification and call coverage when available.
 
@@ -1563,10 +1565,26 @@ and unavailable evidence are distinct. Disclose omitted events, observations
 without an exact path and clipped output. Packet-local call numbers are used
 only to resolve ancestry and stay out of comparison output.
 
-The exit status describes the final plain comparison. The browser can show
-fewer observations than that summary. Exit 0 requires complete call coverage,
-consistent file verification for both packets and an unclipped plain comparison,
-regardless of observed differences.
+JSON writes one object with `provenance: "recorded-claim"`, `earlier`, `later`,
+`submittedIdentity`, `approvedRevision`, `rows`, `rowsOmitted` and `nonmatchingOmitted`.
+The input and approved revision relations report `same`, `different` or `unknown` independently.
+Each side gives the root if known, terminal `status` and observed `outcome` if available,
+`filesComplete`, `invalidCalls`, `callCoverage`, `callsRecorded`, `callsOmitted` and `callsUnplaced`.
+Run IDs, revision digests, payloads and manifest paths stay outside the JSON comparison.
+
+Each row uses `root`, ordered `ancestors` of slot and target pairs, `caller` and `slot`
+as its exact path. The `earlier` and `later` arrays give target, state, optional outcome
+and count for every retained variant on that path. `matches` compares those observations.
+An empty array means none were retained for that path on that side.
+Only complete coverage under the same root establishes that none were observed.
+
+Use the shared browser bounds of eight whole rows, seven ancestors per row and
+5 KiB for the row list. Prefer nonmatching rows. Report all omitted paths and how
+many of them are nonmatching. Never return part of a row.
+
+Exit 0 requires complete call coverage and consistent file verification for both packets,
+with no omissions from the selected output. Observed differences do not change this status.
+With `--display web`, the status still describes the final plain comparison.
 Exit 1 covers unavailable or incomplete evidence and output failure.
 Exit 2 indicates external interruption. Comparison confers no authority and
 retains no new data.

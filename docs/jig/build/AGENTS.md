@@ -26,7 +26,7 @@ Its focused checks verify delivered files and exact retained calls on changed
 and preserved routes, including both whole-manuscript handoffs.
 Run these checks before full native qualification.
 
-`results.md` explains live application maps, bounded child-call evidence, and comparison of two saved packets.
+`results.md` explains live application maps, bounded child-call evidence, and plain, browser, and JSON comparison of two saved packets.
 It distinguishes omitted requested evidence from an empty call list and explains the packetless stderr diagnostic.
 It teaches the selected invocation's clipboard handoff and its source lookup limits.
 It teaches how to reuse submitted input and compare observed calls after approving another revision.
