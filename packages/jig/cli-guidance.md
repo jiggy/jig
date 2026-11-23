@@ -100,6 +100,10 @@ All selected domain requirements still apply.
   With packet delivery, emit only the acknowledged evidence.
   A host protocol marker excludes artifact release without filtering authored slot names.
   `inspect --result --calls` checks the saved record without loading the project.
+  `inspect --result EARLIER --compare LATER` shares the Explorer observation
+  grouping and stays within both captured packets. Keep submitted input and
+  attachment identity unknown, unmatched observations explicit and the plain
+  excerpt bounded. Do not copy session-only matching identities into packets.
 
 ### Command grammar and review
 

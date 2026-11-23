@@ -1492,6 +1492,30 @@ Incomplete or unavailable records that pass validation remain visible.
 Standard saved inspection retains its existing exit behavior.
 The recorded call view does not infer a configuration graph or branch conditions.
 
+`jig inspect --result EARLIER --compare LATER` reads two explicitly selected
+local packets through the same saved inspection boundary.
+It prints a bounded plain comparison, including with redirected stdout.
+Omit `--calls`, `--display` and `--json` for a comparison.
+Each side retains its recorded Run identity, root selector, approved revision,
+root result, file verification and call coverage when available.
+Saved packets lack submitted input and attachment identity, so both remain
+unknown. Explorer comparison identities stay private to its live session.
+
+Compare only calls with an exact retained root, ancestor slot and target chain,
+caller and slot. Compare counts by target, state and observed outcome within
+each path. Matching observations describe retained evidence only. A path without
+a counterpart can say “None observed” only with complete coverage under the
+same root. An incomplete record can say “No retained match.” A different root
+and unavailable evidence are distinct. Disclose omitted events, observations
+without an exact path and clipped output. Packet-local call numbers are used
+only to resolve ancestry and stay out of comparison output.
+
+Exit 0 requires complete call coverage, consistent file verification for both
+packets and an unclipped comparison, regardless of observed differences.
+Exit 1 covers unavailable or incomplete evidence and output failure.
+Exit 2 indicates external interruption. Comparison confers no authority and
+retains no new data.
+
 Capture holds a descriptor-confined packet root and opens `files/` as its child.
 Public relative file paths retain their own path profile before that prefix is
 applied. Refuse links, multiple-link files, special files, traversal, duplicate

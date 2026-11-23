@@ -276,6 +276,23 @@ Check that `coverage` is `complete` before asserting that Jig observed no call t
 An earlier branch or a missing observation can both leave a slot absent.
 See the [saved call contract](https://jig.md/spec/cli-experience.md#saved-child-calls) for coverage and exit codes.
 
+### Compare two saved Runs
+
+Save each Run with `--record-calls` and its own fresh `--out` directory.
+After both Runs exit, pass the two packets in order from any directory, including outside the project.
+
+```sh
+jig inspect --result ./before --compare ./after
+```
+
+The comparison shows each recorded Run and approved revision.
+For the same root, caller and slot, it matches the full recorded chain of ancestor slots and targets.
+It shows differing observations first, then matching observations, with counts by target, state and outcome.
+With incomplete coverage, a missing row says “No retained match.”
+Saved packets leave submitted input and attachment identity unknown.
+Use `jig inspect --result DIR --calls` for the full call record of either Run.
+The comparison only reads the two saved packets.
+
 ## Reopen application views
 
 An application can explicitly deliver a final display bundle for local retention.

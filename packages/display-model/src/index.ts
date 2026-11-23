@@ -9,6 +9,7 @@ export type { DisplayDestination } from './semantics.js'
 export {
   attentionImportance,
   callObservationSpans,
+  compareObservedCalls,
   displayDestinations,
   displayDuration,
   displayViewKey,
