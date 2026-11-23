@@ -1,5 +1,6 @@
 import {
   type DisplayProjectRunEvidence,
+  type DisplayRecordedComparison,
   type DisplaySnapshotEnvelope,
   validateDisplayProjectRunEvidence,
   type WebAssets,
@@ -8,6 +9,7 @@ import { createTui, prepareTui, type TuiDisplay, type TuiTheme } from '@jigging/
 import { createInlineDisplay, type InlineDisplay } from '@jigging/display-tui/inline'
 import { webAssets } from '@jigging/display-web/assets'
 import type { Reference } from '@jigging/reporting'
+import { privateCallExcerpt } from './cli-call-evidence.js'
 import type { PrivateRunComposition } from './cli-composition.js'
 import { PrivateDisplayProjection } from './cli-display-projection.js'
 import {
@@ -622,6 +624,33 @@ export class PrivateCliProgress {
       this.model.workspace.now = this.#now()
       this.model.setWorkspacePhase('settled')
     })
+    await this.#inspectRecorded(display, usableInput, input)
+  }
+
+  async inspectSavedComparison(
+    comparison: DisplayRecordedComparison,
+    usableInput: boolean,
+    input = process.stdin,
+  ): Promise<void> {
+    this.#settled = true
+    this.#projection.recordedComparison = comparison
+    this.model.transaction(() => {
+      this.model.configureWorkspace({
+        target: 'Saved Runs',
+        startedAt: this.#now(),
+        recorded: true,
+      })
+      this.model.workspace.now = this.#now()
+      this.model.setWorkspacePhase('settled')
+    })
+    await this.#inspectRecorded('web', usableInput, input)
+  }
+
+  async #inspectRecorded(
+    display: 'tui' | 'web',
+    usableInput: boolean,
+    input: typeof process.stdin,
+  ): Promise<void> {
     if (display === 'web') this.prepareWeb()
     await this.configureDisplay(display, usableInput, input)
     if (this.#web?.active) await this.#web.closed()
@@ -1182,17 +1211,6 @@ export class PrivateCliProgress {
       .flatMap((view) => view.value.sections.flatMap((section) => section.blocks))
       .find((block) => block.kind === 'progress')
     const artifacts = snapshot.artifacts
-    // Keep a prefix so a retained nested call always keeps its parent index.
-    const calls: DisplayProjectRunEvidence['calls'][number][] = []
-    for (const { id: _id, ...call } of recordedCalls?.calls.slice(0, 8) ?? []) {
-      // Reserve space for the settlement facts and eight escaped file paths.
-      if (Buffer.byteLength(JSON.stringify([...calls, call])) > 5 * 1024) break
-      calls.push(call)
-    }
-    const callsOmitted = Math.min(
-      Number.MAX_SAFE_INTEGER,
-      (recordedCalls?.omittedEvents ?? 0) + ((recordedCalls?.calls.length ?? 0) - calls.length),
-    )
     try {
       return validateDisplayProjectRunEvidence({
         execution: facts.execution.value,
@@ -1205,9 +1223,7 @@ export class PrivateCliProgress {
                 ...(progress.total === undefined ? {} : { total: progress.total }),
               },
             }),
-        calls,
-        callCoverage: callsOmitted ? 'incomplete' : (recordedCalls?.coverage ?? 'unavailable'),
-        callsOmitted,
+        ...privateCallExcerpt(recordedCalls),
         delivery: facts.delivery.value,
         ...(artifacts.phase === 'ready' && artifacts.provenance === 'verified-delivery'
           ? {
