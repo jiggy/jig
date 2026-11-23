@@ -8,6 +8,9 @@ import {
   DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT,
   DISPLAY_PROJECT_SCHEMA_BYTE_LIMIT,
   DISPLAY_PROJECT_TARGET_LIMIT,
+  DISPLAY_RECORDED_CALL_ANCESTORS,
+  DISPLAY_RECORDED_CALL_BYTES,
+  DISPLAY_RECORDED_CALL_ROWS,
   DISPLAY_SNAPSHOT_LIMIT,
   type DisplayProjectRun,
   type DisplayProjectRunEvidence,
@@ -553,10 +556,7 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
         (data.journal as unknown[]).length
       )
         fail()
-      const comparison = record(data.recordedComparison, ['earlier', 'later', 'submittedIdentity'])
-      choice(comparison.submittedIdentity, ['same', 'different', 'unknown'])
-      recordedRun(comparison.earlier)
-      recordedRun(comparison.later)
+      recordedComparison(data.recordedComparison)
     }
     if (
       data.mode === 'retained-views' &&
@@ -720,7 +720,7 @@ export function validateDisplayProjectRunRequest(value: unknown): DisplayProject
   }
 }
 
-function recordedRun(value: unknown): void {
+function recordedRun(value: unknown) {
   const data = record(value, [
     'runId',
     'revision',
@@ -729,9 +729,10 @@ function recordedRun(value: unknown): void {
     'outcome',
     'filesComplete',
     'invalidCalls',
-    'calls',
     'callCoverage',
     'callsOmitted',
+    'callsRecorded',
+    'callsUnplaced',
   ])
   const root = data.root === undefined ? undefined : text(data.root, 1029, 1)
   for (const key of ['runId', 'revision']) {
@@ -748,7 +749,116 @@ function recordedRun(value: unknown): void {
     (data.invalidCalls && data.callCoverage !== 'unavailable')
   )
     fail()
-  comparisonCalls(data, root)
+  const coverage = choice(data.callCoverage, ['complete', 'incomplete', 'unavailable'])
+  const recorded = count(data.callsRecorded)
+  const unplaced = count(data.callsUnplaced)
+  const omitted = count(data.callsOmitted)
+  if (
+    recorded > 256 ||
+    unplaced > recorded ||
+    (coverage === 'complete' && (unplaced || omitted)) ||
+    (coverage === 'unavailable' && (recorded || omitted))
+  )
+    fail()
+  return { root, coverage, placed: recorded - unplaced }
+}
+
+function recordedVariants(value: unknown, settled: boolean) {
+  const variants = new Map<string, number>()
+  let observations = 0
+  for (const item of list(value, 256)) {
+    const variant = record(item, ['target', 'state', 'outcome', 'count'])
+    text(variant.target, 1029, 1)
+    const state = choice(variant.state, [
+      'requested',
+      'active',
+      'cancel-requested',
+      'returned',
+      'failed',
+      'uncertain',
+    ])
+    if (settled && state !== 'returned' && state !== 'failed') fail()
+    if (state === 'returned') text(variant.outcome, 64, 1)
+    else if (variant.outcome !== undefined) fail()
+    const occurrences = count(variant.count)
+    const key = JSON.stringify([variant.target, variant.state, variant.outcome])
+    if (!occurrences || variants.has(key)) fail()
+    observations += occurrences
+    if (observations > 256) fail()
+    variants.set(key, occurrences)
+  }
+  return { variants, observations }
+}
+
+function recordedComparison(value: unknown): void {
+  const data = record(value, [
+    'earlier',
+    'later',
+    'submittedIdentity',
+    'rows',
+    'rowsOmitted',
+    'nonmatchingOmitted',
+  ])
+  choice(data.submittedIdentity, ['same', 'different', 'unknown'])
+  const earlier = recordedRun(data.earlier)
+  const later = recordedRun(data.later)
+  const rows = list(data.rows, DISPLAY_RECORDED_CALL_ROWS)
+  copy(rows, DISPLAY_RECORDED_CALL_BYTES)
+  const omitted = count(data.rowsOmitted)
+  if (
+    rows.length + omitted > earlier.placed + later.placed ||
+    count(data.nonmatchingOmitted) > omitted
+  )
+    fail()
+
+  let completeMatchSeen = false,
+    earlierShown = 0,
+    laterShown = 0
+  const paths = new Set<string>()
+  for (const value of rows) {
+    const row = record(value, [
+      'root',
+      'caller',
+      'slot',
+      'ancestors',
+      'earlier',
+      'later',
+      'matches',
+    ])
+    const root = text(row.root, 1029, 1)
+    const caller = text(row.caller, 1029, 1)
+    const slot = text(row.slot, 128, 1)
+    const ancestors = list(row.ancestors, DISPLAY_RECORDED_CALL_ANCESTORS).map((value) => {
+      const step = record(value, ['slot', 'target'])
+      return [text(step.slot, 128, 1), text(step.target, 1029, 1)] as const
+    })
+    if (caller !== (ancestors.at(-1)?.[1] ?? root)) fail()
+    const before = recordedVariants(row.earlier, earlier.coverage === 'complete')
+    const after = recordedVariants(row.later, later.coverage === 'complete')
+    if (
+      !(before.observations || after.observations) ||
+      (before.observations && root !== earlier.root) ||
+      (after.observations && root !== later.root)
+    )
+      fail()
+    earlierShown += before.observations
+    laterShown += after.observations
+    const matches =
+      before.variants.size > 0 &&
+      before.variants.size === after.variants.size &&
+      [...before.variants].every(([id, occurrences]) => after.variants.get(id) === occurrences)
+    if (flag(row.matches) !== matches || (!matches && completeMatchSeen)) fail()
+    completeMatchSeen ||= matches
+    const path = JSON.stringify([root, ancestors, caller, slot])
+    if (paths.has(path)) fail()
+    paths.add(path)
+  }
+  if (
+    earlierShown > earlier.placed ||
+    laterShown > later.placed ||
+    (!omitted && (earlierShown !== earlier.placed || laterShown !== later.placed))
+  )
+    fail()
 }
 
 function comparisonCalls(data: Data, root?: string): void {
