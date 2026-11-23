@@ -13,12 +13,15 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 import {
   checkInstalledMemoryProofWithDiagnostics,
   selectFreshInstalledRun,
 } from './installed-memory-proof.js'
-import { finishOperationalBaseline } from './operational-baseline-checks.js'
+import {
+  finishOperationalBaseline,
+  withFixedDeadlineDiagnostics,
+} from './operational-baseline-checks.js'
 
 const systemctl = await fixedSystemctl()
 const startedUnixMs = Date.now()
@@ -319,15 +322,28 @@ try {
   }
 
   process.stdout.write('Installed hostile case: fixed wall-clock deadline\n')
-  const deadlineStartedUnixMs = Date.now()
-  const deadline = await run([jig, 'run', 'flow:flows/fixed-deadline'], project, [1], 75_000)
-  const deadlineElapsedMs = Date.now() - deadlineStartedUnixMs
-  assert.match(deadline.stderr, /Diagnostic code: DEADLINE_EXCEEDED/)
-  const deadlineTerminal = requireRecord(JSON.parse(deadline.stdout))
-  assert.equal(deadlineTerminal.status, 'failed')
-  assert.equal(deadlineTerminal.code, 'DEADLINE_EXCEEDED')
-  assert.ok(deadlineElapsedMs >= 25_000 && deadlineElapsedMs < 55_000)
-  await eventuallyNoJigResidue()
+  const deadlineProfile = resolve(temporary, 'fixed-deadline-profile.jsonl')
+  await withFixedDeadlineDiagnostics(
+    deadlineProfile,
+    async () => {
+      const deadlineStartedUnixMs = Date.now()
+      const deadline = await run(
+        [jig, 'run', 'flow:flows/fixed-deadline'],
+        project,
+        [1],
+        75_000,
+        deadlineProfile,
+      )
+      const deadlineElapsedMs = Date.now() - deadlineStartedUnixMs
+      assert.match(deadline.stderr, /Diagnostic code: DEADLINE_EXCEEDED/)
+      const deadlineTerminal = requireRecord(JSON.parse(deadline.stdout))
+      assert.equal(deadlineTerminal.status, 'failed')
+      assert.equal(deadlineTerminal.code, 'DEADLINE_EXCEEDED')
+      assert.ok(deadlineElapsedMs >= 25_000 && deadlineElapsedMs < 55_000)
+      await eventuallyNoJigResidue()
+    },
+    (text) => process.stderr.write(text),
+  )
 } catch (error) {
   failure = error
 }
@@ -473,10 +489,14 @@ async function run(
   cwd: string,
   acceptedExitCodes: readonly number[] = [0],
   timeoutMs = 60_000,
+  profile?: string,
 ): Promise<CommandResult> {
+  const env: NodeJS.ProcessEnv = { ...process.env, TMPDIR: runtimeTemporary }
+  delete env.JIG_PRIVATE_PROFILE_FILE
+  if (profile !== undefined) env.JIG_PRIVATE_PROFILE_FILE = profile
   const child = Bun.spawn([...command], {
     cwd,
-    env: { ...process.env, TMPDIR: runtimeTemporary },
+    env,
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',

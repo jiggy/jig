@@ -3,12 +3,19 @@ import { createHash } from 'node:crypto'
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { RootAdministrationError } from '../packages/jig/src/administration/root.js'
+import { CheckError } from '../packages/jig/src/diagnostics.js'
+import { PrivateProfileCapture } from '../packages/jig/src/internal/private-profile.js'
 import {
   checkInstalledMemoryProof,
   checkInstalledMemoryProofWithDiagnostics,
   selectFreshInstalledRun,
 } from './installed-memory-proof.js'
-import { checkInvalidRunTarget, finishOperationalBaseline } from './operational-baseline-checks.js'
+import {
+  checkInvalidRunTarget,
+  finishOperationalBaseline,
+  withFixedDeadlineDiagnostics,
+} from './operational-baseline-checks.js'
 
 test('invalid target assertion requires every current selector and the closed diagnostic', () => {
   const stderr =
@@ -22,6 +29,97 @@ test('invalid target assertion requires every current selector and the closed di
     expect(() => checkInvalidRunTarget({ stdout: '', stderr: changed })).toThrow()
   }
   expect(() => checkInvalidRunTarget({ stdout: 'unexpected', stderr })).toThrow()
+})
+
+test('deadline failure evidence distinguishes settlement health and admission contention', async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'jig-deadline-profile-check-'))
+  const original = new Error('original deadline assertion')
+  try {
+    for (const [phase, error] of [
+      ['root-status-health', new RootAdministrationError('PROJECT_BUSY', 'PRIVATE_CANARY')],
+      ['root-status-load', new CheckError('unavailable', 'ADMISSION_STATE_BUSY', 'PRIVATE_CANARY')],
+    ] as const) {
+      const path = join(temporary, phase)
+      const capture = new PrivateProfileCapture(path)
+      capture.end(capture.start('root-fence')!, 'returned')
+      capture.end(capture.start('root-owner-release')!, 'failed')
+      capture.error(phase, error)
+      capture.end(capture.start('project-session-close')!, 'failed')
+      capture.finish()
+
+      const lines: string[] = []
+      await expect(
+        withFixedDeadlineDiagnostics(
+          path,
+          async () => {
+            throw original
+          },
+          (line) => {
+            lines.push(line)
+          },
+        ),
+      ).rejects.toBe(original)
+      expect(lines).toHaveLength(1)
+      expect(lines[0]).toStartWith('Fixed wall-clock deadline phases: ')
+      expect(lines[0]).not.toMatch(/PRIVATE_CANARY|"header"|"pid"|"spanId"|"timeOriginMs"/)
+      expect(lines[0]).not.toContain(temporary)
+      const summary = JSON.parse(lines[0]!.slice('Fixed wall-clock deadline phases: '.length))
+      expect(summary).toMatchObject({
+        status: 'captured',
+        events: expect.arrayContaining([
+          { phase: 'root-fence', kind: 'end', outcome: 'returned', timeMs: expect.any(Number) },
+          {
+            phase: 'root-owner-release',
+            kind: 'end',
+            outcome: 'failed',
+            timeMs: expect.any(Number),
+          },
+          { phase, kind: 'failure', cause: error.code, timeMs: expect.any(Number) },
+          {
+            phase: 'project-session-close',
+            kind: 'end',
+            outcome: 'failed',
+            timeMs: expect.any(Number),
+          },
+        ]),
+      })
+    }
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+})
+
+test('optional deadline evidence stays silent on success and preserves failure without a profile', async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'jig-deadline-profile-unavailable-'))
+  const path = join(temporary, 'missing-profile')
+  const original = new Error('original deadline assertion')
+  const check = async () => {
+    throw original
+  }
+  const lines: string[] = []
+  const report = (line: string) => {
+    lines.push(line)
+  }
+  try {
+    await withFixedDeadlineDiagnostics(path, async () => {}, report)
+    expect(lines).toEqual([])
+    for (const input of [undefined, '{"kind":', 'x'.repeat(256 * 1024 + 1)]) {
+      if (input !== undefined) await writeFile(path, input)
+      await expect(withFixedDeadlineDiagnostics(path, check, report)).rejects.toBe(original)
+    }
+    expect(lines).toEqual([
+      'Fixed wall-clock deadline phases: {"status":"unavailable","events":[]}\n',
+      'Fixed wall-clock deadline phases: {"status":"unavailable","events":[]}\n',
+      'Fixed wall-clock deadline phases: {"status":"truncated","events":[]}\n',
+    ])
+    await expect(
+      withFixedDeadlineDiagnostics(path, check, () => {
+        throw new Error('evidence sink could not write')
+      }),
+    ).rejects.toBe(original)
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
 })
 
 for (const [mainFailed, residueFailed] of [
