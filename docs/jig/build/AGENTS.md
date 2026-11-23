@@ -30,6 +30,7 @@ Run these checks before full native qualification.
 It distinguishes omitted requested evidence from an empty call list and explains the packetless stderr diagnostic.
 It teaches the selected invocation's clipboard handoff and its source lookup limits.
 It teaches how to reuse submitted input and compare observed calls after approving another revision.
+
 It also owns configured-topology inspection of current source or retained approval.
 It teaches phrase lookup on either basis and the limits of retained lookup.
 It explains checking working composition and comparing it to retained approval before review.
