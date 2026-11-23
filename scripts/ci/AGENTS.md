@@ -343,11 +343,13 @@ They consume frozen package exports with tracked test helpers and installed
 - The Mac planner freezes complete inventory, source, policy, balanced groups, and digest before execution.
   Target duration and minimum/maximum capacity determine useful shard count. New files enter discovery automatically.
 
-  The checked-in default caps native concurrency at three useful workers. Timing observations affect placement, never required coverage.
+  The default permits up to three useful workers. The PR workflow permits a
+  fourth when the three-worker plan exceeds the target. Timing observations
+  affect placement, never required coverage.
   Every worker and collector independently validate the frozen plan against source inventory.
   Frozen plans are bounded regular files read through one no-follow, nonblocking descriptor.
 
-  The default planning target is 1,200 estimated seconds, with one to three shards.
+  The default planning target is 1,200 estimated seconds.
   Every worker reserves 59 estimated seconds for native checks. One installed owner reserves 315 estimated seconds for consumer work.
   These placement estimates establish no measured turnaround guarantee.
 - `mac-command-budget.mjs` bounds worker commands and reserves cleanup and evidence time before the GitHub job backstop.
