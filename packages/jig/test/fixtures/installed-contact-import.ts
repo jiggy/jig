@@ -274,6 +274,7 @@ defaultProviders:{'https://jig.md/contracts/agent-run':'binding:model'}})
           JSON.stringify({ headers }),
           '--timeout',
           '2m',
+          ...(method === 'map-agent' ? ['--record-calls'] : []),
           '--json',
         ],
         project,
@@ -283,6 +284,27 @@ defaultProviders:{'https://jig.md/contracts/agent-run':'binding:model'}})
       assert.equal(actual.outcome, 'done')
       assert.equal(actual.cleanup, undefined)
       assert.deepEqual(actual.output, { mapping })
+      assert.equal(actual.delivery, undefined)
+      if (method === 'map-agent') {
+        const evidence = actual.callEvidence
+        assert.match(actual.runId, /^sha256:[0-9a-f]{64}$/)
+        assert.equal(evidence.runId, actual.runId)
+        assert.equal(evidence.root, 'flow:flows/map-agent')
+        assert.equal(evidence.coverage, 'complete')
+        assert.equal(evidence.omittedEvents, 0)
+        assert.deepEqual(evidence.calls, [
+          {
+            id: 1,
+            caller: 'flow:flows/map-agent',
+            slot: 'agent',
+            target: 'binding:model',
+            state: 'returned',
+            outcome: 'done',
+          },
+        ])
+      } else {
+        assert.equal(actual.callEvidence, undefined)
+      }
     }
   assert.deepEqual(
     await readFile(join(project, 'fixtures/known/contacts.csv')),
