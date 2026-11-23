@@ -17,7 +17,7 @@ import { LINUX_QUALIFICATION_JOBS, requireJobs, verifyQualification } from './re
 
 export function githubClient(
   repository = process.env.GITHUB_REPOSITORY,
-  { readApiJson = (read) => JSON.parse(read()) } = {},
+  { readApiJson = (read) => JSON.parse(read()), readArchive = (read) => read() } = {},
 ) {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? ''))
     throw new Error('Invalid GitHub repository')
@@ -33,10 +33,11 @@ export function githubClient(
     download: async (artifactId, destination) => {
       if (!Number.isSafeInteger(artifactId) || artifactId <= 0)
         throw new Error('Invalid artifact ID')
-      const bytes = execFileSync(
-        'gh',
-        ['api', `repos/${repository}/actions/artifacts/${artifactId}/zip`],
-        { timeout: 120_000, maxBuffer: 256 * 1024 * 1024 },
+      const bytes = await readArchive(() =>
+        execFileSync('gh', ['api', `repos/${repository}/actions/artifacts/${artifactId}/zip`], {
+          timeout: 120_000,
+          maxBuffer: 256 * 1024 * 1024,
+        }),
       )
       await writeFile(destination, bytes, { flag: 'wx' })
     },

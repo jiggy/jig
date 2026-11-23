@@ -18,9 +18,12 @@ import {
   validateWorkflowRun,
   verifyArtifactMetadata,
 } from './candidate-transfer.mjs'
+import { readGitHubApiJson, retryGitHubRead } from './github-read.mjs'
 import { allRunJobs, latestJob } from './merge-attempts.mjs'
 
 const WORKFLOW = '.github/workflows/ci.yml'
+const mergeGitHubClient = (repository) =>
+  githubClient(repository, { readApiJson: readGitHubApiJson, readArchive: retryGitHubRead })
 const SOURCE_TARGETS = [
   'source-portable',
   'source-protocol',
@@ -130,7 +133,7 @@ export function validateMergeRuntime(spec, runtime) {
 
 export async function mergeContext({
   env = process.env,
-  client = githubClient(),
+  client = mergeGitHubClient(env.GITHUB_REPOSITORY),
   source = env.GITHUB_SHA,
 } = {}) {
   requireRevision(source)
@@ -195,7 +198,7 @@ export async function acquireMergeInput({
   destination,
   inputsPath,
   env = process.env,
-  client = githubClient(),
+  client = mergeGitHubClient(env.GITHUB_REPOSITORY),
   extract,
 }) {
   const snapshot = await mergeContext({ env, client })
@@ -265,7 +268,7 @@ export async function recordMergeEvidence({
   path,
   inputsPath,
   env = process.env,
-  client = githubClient(),
+  client = mergeGitHubClient(env.GITHUB_REPOSITORY),
 }) {
   const spec = mergeJobSpec(name)
   const snapshot = await mergeContext({ env, client })
@@ -365,7 +368,7 @@ export async function acquireMergeEvidence({
   directory,
   output,
   env = process.env,
-  client = githubClient(),
+  client = mergeGitHubClient(env.GITHUB_REPOSITORY),
   extract,
 }) {
   const snapshot = await mergeContext({ env, client })
