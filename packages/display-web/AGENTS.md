@@ -81,9 +81,10 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   Missing identity remains unavailable. Stale or incomplete observations disable these links.
 - Copy investigation brief uses the same exact composition and child-publisher
   matches as the invocation inspector. Copy only on explicit activation.
-  Disclose omissions and unavailable correspondence. Use a fixed source
-  inventory command with the visible Run root, labels, and slot. Keep opaque IDs, view bodies,
-  journal entries and authority values out of the brief.
+  Disclose omissions and unavailable correspondence. Focus topology on the visible Run root
+  when it is an exact selector that fits one unquoted shell word. Otherwise give the
+  inventory command. Keep caller and slot cues and exclude opaque IDs, view bodies,
+  journal entries and authority values.
 - Scope clipboard feedback to the selected invocation and current observation revision.
   If the invocation is no longer retained, close its details and restore list focus.
 - Empty retained snapshots show an explicit empty state without synthetic destinations.
