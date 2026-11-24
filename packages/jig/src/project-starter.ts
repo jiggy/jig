@@ -1,217 +1,255 @@
+import { SCHEMA_1_URI } from './schema/types.js'
+
 const contractSchema = 'https://flow.jig.md/schemas/invocation-contract-0.schema.json'
 
-function json(value: unknown): string {
-  return JSON.stringify(value, null, 2) + '\n'
+const text = { type: 'string', minLength: 1 }
+const object = (properties: Record<string, object>, required = Object.keys(properties)) => ({
+  type: 'object',
+  properties,
+  required,
+  additionalProperties: false,
+})
+const submission = object({ title: text, summary: text, source: text }, ['title', 'summary'])
+const issues = { type: 'array', items: text }
+const assessment = {
+  $schema: contractSchema,
+  id: 'https://jig.md/contracts/starter/publication-assessment',
+  version: '1.0.0',
+  outcomes: { blocked: 'Editorial requirements are missing.' },
+  input: submission,
+  result: object({
+    outcome: { enum: ['done', 'blocked'] },
+    output: object({ issues }),
+  }),
 }
 
-const greetingContract = json({
-  $schema: contractSchema,
-  id: 'https://jig.md/contracts/starter/greeting',
-  version: '1.0.0',
-  input: { type: 'string' },
-  result: {
-    type: 'object',
-    properties: {
-      outcome: { const: 'done' },
-      output: {
-        type: 'object',
-        properties: { message: { type: 'string' } },
-        required: ['message'],
-        additionalProperties: false,
-      },
-    },
-    required: ['outcome', 'output'],
-    additionalProperties: false,
-  },
-})
-
-const groupContract = json({
-  $schema: contractSchema,
-  input: { type: 'array', items: { type: 'string', maxLength: 80 }, minItems: 1, maxItems: 3 },
-  result: {
-    type: 'object',
-    properties: {
-      outcome: { const: 'done' },
-      output: {
-        type: 'object',
-        properties: { messages: { type: 'array', items: { type: 'string' } } },
-        required: ['messages'],
-        additionalProperties: false,
-      },
-    },
-    required: ['outcome', 'output'],
-    additionalProperties: false,
-  },
-})
-
-const welcomeGroup = `import { handle } from '@jigging/flow'
+const prepare = `import { handle } from '@jigging/flow'
 
 await handle(async run => {
-  const names = run.input
-  if (!Array.isArray(names)) throw new TypeError('Supply an array of names.')
+  const submission = run.input as { title: string }
+  const assessment = await run.call({
+    operationId: 'assess', slot: 'assess', intent: 'Check editorial requirements', input: run.input,
+  })
+  if (assessment.outcome === 'done') return { outcome: 'done', output: run.input }
+  if (assessment.outcome !== 'blocked') throw new Error('Assessment did not settle')
 
-  const messages: string[] = []
-  for (const [index, name] of names.entries()) {
-    const greeting = await run.call({
-      operationId: 'greeting-' + index,
-      slot: 'greeting',
-      intent: 'Create one welcome message',
-      input: name,
-    })
-    const output = greeting.output
-    if (greeting.outcome !== 'done' || !output || typeof output !== 'object' ||
-        Array.isArray(output) || !('message' in output) || typeof output.message !== 'string') {
-      throw new TypeError('The greeting returned an unexpected result.')
-    }
-    messages.push(output.message)
-  }
-  return { outcome: 'done', output: { messages } }
+  const { issues } = assessment.output as { issues: string[] }
+  const brief = await run.call({
+    operationId: 'review', slot: 'review', intent: 'Prepare an editorial handoff',
+    input: { title: submission.title, issues },
+  })
+  if (brief.outcome !== 'done') throw new Error('Review brief did not settle')
+  return { outcome: 'needs-review', output: brief.output }
 })
 `
 
-const wiringTest = `import assert from 'node:assert/strict'
+const assess = `import { handle } from '@jigging/flow'
+
+await handle(run => {
+  const { summary, source } = run.input as { summary: string; source?: string }
+  const settings = run.settings as { requireSource: boolean }
+  const issues: string[] = []
+  if (summary.trim().length < 30) issues.push('Expand the summary before publication')
+  if (settings.requireSource && !source?.trim()) issues.push('Add a source for the claim')
+  return { outcome: issues.length ? 'blocked' : 'done', output: { issues } }
+})
+`
+
+const review = `import { handle } from '@jigging/flow'
+
+await handle(run => {
+  const { title, issues } = run.input as { title: string; issues: string[] }
+  return { outcome: 'done', output: { title, queue: 'editorial', nextActions: issues } }
+})
+`
+
+const routeTest = `import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
 const project = new URL('../', import.meta.url)
+const title = 'Weekend library hours'
+const summary = 'The library will open on Saturday mornings from next month.'
+const reviewOutput = { title, queue: 'editorial', nextActions: ['Add a source for the claim'] }
 
-test('each group uses its configured greeter', async t => {
-  const cases = [
-    {
-      target: 'binding:brief-welcome-group',
-      greeter: 'flow:flows/brief-hello',
-      messages: ['Hi, Ada.', 'Hi, Grace.'],
-    },
-    {
-      target: 'binding:welcome-group',
-      greeter: 'flow:flows/hello',
-      messages: ['Welcome, Ada!', 'Welcome, Grace!'],
-    },
-  ]
-  for (const { target, greeter, messages } of cases) {
-    await t.test(target, subtest => {
-      const args = ['run', target, '--input', '@fixtures/group.json', '--timeout', '45s', '--json', '--record-calls']
-      const stdout = execFileSync('jig', args, {
-        cwd: project,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'inherit'],
-      })
-      const result = JSON.parse(stdout)
+const cases = [
+  {
+    name: 'public submission without a source goes to editorial review',
+    target: 'binding:public', fixture: 'unattributed', policy: 'binding:public-policy',
+    outcome: 'needs-review', output: reviewOutput,
+  },
+  {
+    name: 'internal bulletin accepts the same submission',
+    target: 'binding:internal', fixture: 'unattributed', policy: 'binding:internal-policy',
+    outcome: 'done', output: { title, summary },
+  },
+  {
+    name: 'attributed public submission is ready',
+    target: 'binding:public', fixture: 'attributed', policy: 'binding:public-policy',
+    outcome: 'done', output: { title, summary, source: 'Library board meeting minutes' },
+  },
+]
+
+function jig(args) {
+  return JSON.parse(execFileSync('jig', args, { cwd: project, encoding: 'utf8' }))
+}
+
+for (const { name, target, fixture, policy, outcome, output } of cases) {
+  test(name, t => {
+    const temporary = mkdtempSync(join(tmpdir(), 'jig-publication-test-'))
+    const packet = join(temporary, 'result')
+    const needsReview = outcome === 'needs-review'
+    try {
+      const result = jig([
+        'run', target, '--input', '@test/fixtures/' + fixture + '.json',
+        '--timeout', '45s', '--out', packet, '--record-calls', '--json',
+      ])
       assert.equal(result.status, 'succeeded')
-      assert.equal(result.outcome, 'done')
-      assert.deepEqual(result.output, { messages })
-      const evidence = result.callEvidence
-      assert.equal(evidence?.coverage, 'complete', 'Expected complete call evidence')
+      assert.equal(result.outcome, outcome)
+      assert.deepEqual(result.output, output)
+
+      const evidence = jig(['inspect', '--result', packet, '--calls', '--json'])
+      assert.equal(evidence.coverage, 'complete')
       assert.equal(evidence.runId, result.runId)
+      const expected = [[target, 'assess', policy, 'returned', needsReview ? 'blocked' : 'done']]
+      if (needsReview) expected.push([target, 'review', 'flow:flows/review', 'returned', 'done'])
       assert.deepEqual(
         evidence.calls.map(call => [call.caller, call.slot, call.target, call.state, call.outcome]),
-        messages.map(() => [target, 'greeting', greeter, 'returned', 'done']),
-        'Expected exact greeter calls',
+        expected,
       )
-      subtest.diagnostic('Approved revision ' + evidence.revision)
-    })
-  }
-})
+    } catch (error) {
+      t.diagnostic('Run evidence directory ' + temporary)
+      throw error
+    }
+    rmSync(temporary, { recursive: true, force: true })
+  })
+}
 `
 
 const readme = [
-  '# Scoped greetings',
+  '# Publication review',
   '',
-  'Both group Bindings use the same caller Flow. Each selects its greeter through the',
-  '`greeting` slot. The test covers both routes with a shared input.',
+  'Prepare submissions for a public newsletter or an internal bulletin.',
+  'Both routes assess editorial requirements. Public submissions need a source.',
+  'When requirements are missing, the workflow prepares a brief for an editor.',
+  'The Run returns the draft or brief for a person to act on.',
   '',
-  'Use this Jig installation on a supported host and Node.js 22 or newer for the test.',
-  'From the project directory:',
+  'Use installed Jig on a supported host and Node.js 22 or later.',
   '',
   '```sh',
   'jig check',
   'jig review --allow-resolution-network',
   '```',
   '',
-  'Inspect the source and approve its exact revision before testing.',
-  'The flag permits package resolution before approval.',
+  'Inspect the source and approve the exact revision before running the tests.',
+  'The flag permits dependency resolution before approval.',
   'See [dependency preparation](https://jig.md/build/dependencies#fresh-resolution-and-network-access).',
   '',
   '```sh',
-  'node --test test/wiring.test.mjs',
+  'node --test test/publication.test.mjs',
   '```',
   '',
-  'Both cases should pass. The test checks execution, outcome, messages, and exact',
-  'call destinations. It names the approved revision it ran.',
-  'You can also open `jig explore` and load `fixtures/group.json` for either group.',
+  'The suite runs both Bindings and verifies their exact calls from saved Run packets.',
+  'Open `jig explore` and load `test/fixtures/unattributed.json` to compare',
+  '`binding:public` and `binding:internal` with the same input.',
   '',
   '## Change one route',
   '',
-  'Select `flow:flows/hello` in `bindings/brief-welcome-group.ts`.',
-  'Update only the brief case in the test to expect the standard greeter and messages.',
-  'Run `jig check --diff` and look for the change to the brief Binding’s `greeting` slot.',
-  'Review and approve the changed revision before running the same test.',
-  'The standard case should still pass with its original destination and messages.',
+  'Suppose the internal bulletin now also needs attribution.',
+  'Find its assessment slot with `jig inspect --flow bindings/internal.ts`.',
+  'Select `binding:public-policy` in that slot and update the internal test case.',
+  'Use `jig check --diff` to verify the scoped change before asking for approval.',
+  'After review, run the suite again. Both public cases should still pass.',
   '',
-  'See [Test a scoped route](https://jig.md/build/compose#test-a-scoped-route) for an',
-  'exercise that detects a wrong target even when the messages stay identical.',
-  '',
-].join('\n')
+]
 
-function binding(greeter: string): string {
-  return [
-    "import { defineBinding } from '@jigging/jig'",
-    '',
-    'export default defineBinding({',
-    "  package: 'flows/welcome-group',",
-    `  slots: { greeting: 'flow:flows/${greeter}' },`,
-    '})',
-    '',
-  ].join('\n')
-}
-
-export function scopedGreetingFiles(
+export function publicationReviewFiles(
   sdkVersion: string,
-  guide: (name: string) => string,
+  guide: (name: string, purpose?: string) => string,
+  skillsReadme: readonly string[],
 ): readonly (readonly [string, string])[] {
+  const json = (value: unknown) => JSON.stringify(value, null, 2) + '\n'
   const manifest = json({ private: true, dependencies: { '@jigging/flow': sdkVersion } })
-  return [
-    ['README.md', readme],
-    ['fixtures/group.json', '["Ada", "Grace"]\n'],
-    ['bindings/welcome-group.ts', binding('hello')],
-    ['bindings/brief-welcome-group.ts', binding('brief-hello')],
-    ['test/wiring.test.mjs', wiringTest],
-    ['flows/welcome-group/AGENTS.md', guide('welcome-group')],
-    ['flows/welcome-group/package.json', manifest],
+  const draft = {
+    title: 'Weekend library hours',
+    summary: 'The library will open on Saturday mornings from next month.',
+  }
+  const flows = [
+    {
+      name: 'prepare',
+      description: 'Prepare a submission or hand its issues to editorial review.',
+      source: prepare,
+      uses: { assess: { contract: './contracts/assessment.json' }, review: {} },
+      contract: {
+        $schema: contractSchema,
+        input: submission,
+        outcomes: { 'needs-review': 'Editorial changes are needed.' },
+      },
+    },
+    {
+      name: 'assess',
+      description: 'Check a submission against the selected editorial policy.',
+      source: assess,
+      contract: assessment,
+    },
+    {
+      name: 'review',
+      description: 'Turn editorial findings into a brief an editor can act on.',
+      source: review,
+      contract: { $schema: contractSchema, input: object({ title: text, issues }) },
+    },
+  ]
+  const bindings = [
     [
-      'flows/welcome-group/FLOW.meta.json',
+      'public',
+      {
+        package: 'flows/prepare',
+        slots: { assess: 'binding:public-policy', review: 'flow:flows/review' },
+      },
+    ],
+    [
+      'internal',
+      {
+        package: 'flows/prepare',
+        slots: { assess: 'binding:internal-policy', review: 'flow:flows/review' },
+      },
+    ],
+    ['public-policy', { package: 'flows/assess', settings: { requireSource: true } }],
+    ['internal-policy', { package: 'flows/assess', settings: { requireSource: false } }],
+  ] as const
+  return [
+    ['README.md', [...readme, ...skillsReadme].join('\n')],
+    ['test/fixtures/unattributed.json', json(draft)],
+    ['test/fixtures/attributed.json', json({ ...draft, source: 'Library board meeting minutes' })],
+    ['test/publication.test.mjs', routeTest],
+    [
+      'test/AGENTS.md',
+      '# Publication tests\n\nUse `node --test test/publication.test.mjs` after the operator approves the edited revision.\nKeep the fixtures reusable from Explorer. Cover the changed route and the routes that should stay intact.\nRequire complete saved call evidence before asserting that a path was unused.\n',
+    ],
+    ['flows/prepare/contracts/assessment.json', json(assessment)],
+    [
+      'flows/assess/settings.schema.json',
       json({
-        name: 'welcome-group',
-        description: 'Welcome a group through a configured greeter.',
-        uses: { greeting: { contract: './contracts/greeting.json' } },
+        $schema: SCHEMA_1_URI,
+        ...object({ requireSource: { type: 'boolean' } }),
       }),
     ],
-    ['flows/welcome-group/FLOW.ts', welcomeGroup],
-    ['flows/welcome-group/FLOW.contract.json', groupContract],
-    ['flows/welcome-group/contracts/greeting.json', greetingContract],
-    ...[
-      { name: 'hello', description: 'Welcome one person.', prefix: 'Welcome, ', suffix: '!' },
-      {
-        name: 'brief-hello',
-        description: 'Greet one person briefly.',
-        prefix: 'Hi, ',
-        suffix: '.',
-      },
-    ].flatMap(({ name, description, prefix, suffix }) => [
-      [`flows/${name}/AGENTS.md`, guide(name)] as const,
+    ...flows.flatMap(({ name, description, source, uses, contract }) => [
+      [`flows/${name}/AGENTS.md`, guide(name, description)] as const,
       [`flows/${name}/package.json`, manifest] as const,
-      [`flows/${name}/FLOW.meta.json`, json({ name, description })] as const,
-      [`flows/${name}/FLOW.contract.json`, greetingContract] as const,
-      [
-        `flows/${name}/FLOW.ts`,
-        `import { handle } from '@jigging/flow'
-
-await handle(run => ({
-  outcome: 'done',
-  output: { message: ${JSON.stringify(prefix)} + run.input + ${JSON.stringify(suffix)} },
-}))
-`,
-      ] as const,
+      [`flows/${name}/FLOW.meta.json`, json({ name, description, uses })] as const,
+      [`flows/${name}/FLOW.contract.json`, json(contract)] as const,
+      [`flows/${name}/FLOW.ts`, source] as const,
     ]),
+    ...bindings.map(
+      ([name, options]) =>
+        [
+          `bindings/${name}.ts`,
+          `import { defineBinding } from '@jigging/jig'\n\nexport default defineBinding(${json(options).trimEnd()})\n`,
+        ] as const,
+    ),
   ]
 }

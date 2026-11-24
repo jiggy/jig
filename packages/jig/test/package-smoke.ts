@@ -227,6 +227,10 @@ try {
   const initializedGreeting = await run([command, 'init', greeting], consumer)
   assert.match(initializedGreeting.stdout, /jig review --allow-resolution-network/)
   assert.match(await readFile(join(greeting, 'flows/hello/FLOW.ts'), 'utf8'), /@jigging\/flow/)
+  for (const name of ['jig', 'flow']) {
+    const path = join(greeting, '.agents/skills', name, 'SKILL.md')
+    assert.ok((await readFile(path, 'utf8')).includes(`name: ${name}\n`))
+  }
   await assert.rejects(stat(join(greeting, '.jig')), { code: 'ENOENT' })
   await assert.rejects(stat(join(greeting, 'flows/hello/node_modules')), { code: 'ENOENT' })
   const added = await run([command, 'new', 'summarize'], greeting)

@@ -196,7 +196,7 @@ test('new wires selected complete contract closures as ordinary source without e
   expect((await checkPackageDirectory(flow)).entrypoint.path).toBe('FLOW.ts')
   expect((await readdir(project)).filter((name) => name.startsWith('.jig-new-'))).toEqual([])
   expect(await readFile(join(project, 'jig.ts'), 'utf8')).toContain('must not evaluate')
-  expect(await readdir(join(project, 'flows'))).toEqual(['workshop'])
+  expect((await readdir(join(project, 'flows'))).sort()).toEqual(['AGENTS.md', 'workshop'])
 })
 test('new removes unpublished source if a later contract fails; collisions preserve existing source', async () => {
   const root = await fixture()
@@ -208,7 +208,7 @@ test('new removes unpublished source if a later contract fails; collisions prese
       { slot: 'review', source: 'missing.json' },
     ]),
   ).rejects.toThrow('package has no missing.json')
-  expect(await readdir(join(project, 'flows'))).toEqual([])
+  expect(await readdir(join(project, 'flows'))).toEqual(['AGENTS.md'])
   expect((await readdir(project)).filter((name) => name.startsWith('.jig-new-'))).toEqual([])
   await createFlow(project, 'workshop')
   const before = await readFile(join(project, 'flows/workshop/FLOW.meta.json'), 'utf8')
@@ -244,7 +244,7 @@ for (const [suiteCaseIndex, suiteCaseValue] of [
             },
           }),
         ).toBe(exit)
-        expect(await readdir(join(project, 'flows'))).toEqual([])
+        expect(await readdir(join(project, 'flows'))).toEqual(['AGENTS.md'])
         expect((await readdir(project)).filter((name) => name.startsWith('.jig-new-'))).toEqual([])
       },
       undefined,
@@ -264,7 +264,7 @@ test('new pre-cancellation creates nothing and does not acquire execution author
       AbortSignal.abort(),
     ),
   ).rejects.toThrow()
-  expect(await readdir(join(project, 'flows'))).toEqual([])
+  expect(await readdir(join(project, 'flows'))).toEqual(['AGENTS.md'])
   expect(privateCliRequiresHost(['new', 'worker', '--use', 'agent=source.json'])).toBe(false)
 })
 test('concurrent new publication never replaces the winning complete Flow', async () => {

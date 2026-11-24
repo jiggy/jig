@@ -16,7 +16,9 @@ import { privateJigVersion } from './installation-version.js'
 import { importContract } from './internal/contract-import.js'
 import { openPrivateChild } from './internal/descriptor-files.js'
 import { privatePublishDirectory } from './internal/file-input.js'
-import { scopedGreetingFiles } from './project-starter.js'
+import { validateLogicalPath } from './package/paths.js'
+import { doxFramework, doxLicense } from './project-dox.js'
+import { publicationReviewFiles } from './project-starter.js'
 
 /** @internal Not exported from the package. */
 export interface ProjectInitFileSystem {
@@ -39,13 +41,12 @@ const AGENT_ACP_VERSION = '0.1.0-alpha.16'
 const AUTHORING_SKILLS_README = [
   '## Develop with an Agent',
   '',
-  'Install the FLOW and Jig authoring skills for your development assistant.',
-  'FLOW teaches reusable method design. Jig teaches project creation, configuration and use.',
-  'See [Install authoring skills](https://jig.md/for-agents#install-authoring-skills).',
+  'Follow [AGENTS.md](./AGENTS.md) and the bundled',
+  '[FLOW](./.agents/skills/flow/SKILL.md) and [Jig](./.agents/skills/jig/SKILL.md) authoring skills.',
   '',
 ] as const
 export type ProjectInitAgent = 'codex' | 'claude'
-export type ProjectInitStarter = 'scoped-greeting'
+export type ProjectInitStarter = 'publication-review'
 
 export type ProjectInitErrorCode =
   | 'JIG_NEW_INVALID'
@@ -283,8 +284,8 @@ export async function createProject(
       ...(!bare && agent === undefined
         ? ([['package.json', renderProjectManifest()]] as const)
         : []),
-      ...(starter === 'scoped-greeting'
-        ? scopedGreetingFiles(GREETING_SDK_VERSION, flowAgentGuidance)
+      ...(starter === 'publication-review'
+        ? publicationReviewFiles(GREETING_SDK_VERSION, flowAgentGuidance, AUTHORING_SKILLS_README)
         : !bare
           ? greetingFiles().filter(([path]) => agent === undefined || path !== 'README.md')
           : []),
@@ -292,7 +293,14 @@ export async function createProject(
     ]
     const files: readonly (readonly [string, string])[] = [
       ['.gitignore', '.jig/\n'],
-      ['AGENTS.md', projectAgentGuidance(sourceFiles)],
+      ['AGENTS.md', projectAgentGuidance(starter !== undefined)],
+      ['flows/AGENTS.md', flowsAgentGuidance(sourceFiles)],
+      [
+        'bindings/AGENTS.md',
+        '# Bindings\n\nBindings select collaborators and settings for an application.\nUse `jig inspect --flow` to identify shared uses before changing a selection.\nCheck the changed caller and its preserved neighbors after approval.\n',
+      ],
+      ['.agents/DOX.LICENSE', doxLicense],
+      ...(await readAuthoringSkills()),
       ...sourceFiles,
     ]
     const directories = new Set(['flows', 'bindings'])
@@ -340,16 +348,36 @@ export async function createProject(
   }
 }
 
-function projectAgentGuidance(files: readonly (readonly [string, string])[]): string {
-  const childGuides = files.map(([path]) => path).filter((path) => path.endsWith('/AGENTS.md'))
+async function readAuthoringSkills(): Promise<readonly (readonly [string, string])[]> {
+  const files: unknown = JSON.parse(
+    await readFile(new URL('../libexec/init-skills.json', import.meta.url), 'utf8'),
+  )
+  if (!Array.isArray(files)) throw Error('Invalid packaged authoring skills')
+  return files.map((entry: unknown) => {
+    if (
+      !Array.isArray(entry) ||
+      entry.length !== 2 ||
+      typeof entry[0] !== 'string' ||
+      !/^(flow|jig)\//.test(entry[0]) ||
+      typeof entry[1] !== 'string'
+    )
+      throw Error('Invalid packaged authoring skill file')
+    return [`.agents/skills/${validateLogicalPath(entry[0])}`, entry[1]] as const
+  })
+}
+
+function projectAgentGuidance(hasTests: boolean): string {
   return [
     '# Workflow edits',
     '',
-    'Read the nearest `AGENTS.md` for the files you edit. For a change within one',
-    'Flow, work from its source and tests.',
+    'Follow the DOX chain below. Read the bundled [Jig skill](./.agents/skills/jig/SKILL.md)',
+    'for project wiring, review, Runs, and tests. Read the bundled',
+    '[FLOW skill](./.agents/skills/flow/SKILL.md) for method design and contracts.',
+    'For a change within one Flow, work from its own guidance, source, and tests.',
     '',
     'For a routing or shared Binding change, run `jig inspect --flow` from the',
-    'project root. Pass a known Flow file or Binding declaration by its relative',
+    'project root. Use `jig inspect --flow --find TEXT` to search for a task phrase.',
+    'Pass a known Flow file or Binding declaration by its relative',
     'path. Find the caller, its slot, and the routes to preserve. Give a caller',
     'its own Binding when it needs a different collaborator.',
     '',
@@ -358,11 +386,37 @@ function projectAgentGuidance(files: readonly (readonly [string, string])[]): st
     'replay the changed and preserved routes with the same fixture. When routing',
     'matters, verify the exact caller, slot, and target in the Run evidence.',
     '',
-    'See [Jig and FLOW authoring guidance](https://jig.md/for-agents) for setup and focused guides.',
+    'Follow the [composition testing guide](./.agents/skills/jig/reference/build/compose.md#test-callers-in-your-application) for route changes.',
     '',
-    ...(childGuides.length === 0
-      ? []
-      : ['## Local guidance', '', ...childGuides.map((path) => `- [${path}](./${path})`), '']),
+    doxFramework.trimEnd(),
+    '',
+    '## Child DOX Index',
+    '',
+    '- [Flows](./flows/AGENTS.md) — portable methods and their packages.',
+    '- [Bindings](./bindings/AGENTS.md) — project-owned settings and selections.',
+    ...(hasTests
+      ? ['- [Tests](./test/AGENTS.md) — input fixtures and native route assertions.']
+      : []),
+    '',
+  ].join('\n')
+}
+
+function flowsAgentGuidance(files: readonly (readonly [string, string])[]): string {
+  const guides = files.flatMap(([path]) => {
+    const match = /^flows\/([^/]+)\/AGENTS\.md$/.exec(path)
+    return match ? [`- [${match[1]}](./${match[1]}/AGENTS.md)`] : []
+  })
+  return [
+    '# Flows',
+    '',
+    'Each package owns its method, invocation contract, and local `AGENTS.md`.',
+    'Keep methods reusable. Leave project-specific policy selections to Bindings.',
+    'When adding a Flow, add its guide to the index.',
+    '',
+    '## Child DOX Index',
+    '',
+    ...(guides.length ? guides : ['Add package guides here as you create Flows.']),
+    '',
   ].join('\n')
 }
 
@@ -450,13 +504,16 @@ function renderProjectManifest(dependencies?: Readonly<Record<string, string>>):
   )
 }
 
-function flowAgentGuidance(name: string): string {
+function flowAgentGuidance(
+  name: string,
+  purpose = 'See the method description in [FLOW.meta.json](./FLOW.meta.json).',
+): string {
   return [
     `# ${name} Flow`,
     '',
     '## Purpose',
     '',
-    'See the method description in [FLOW.meta.json](./FLOW.meta.json).',
+    purpose,
     '',
     '## Ownership',
     '',

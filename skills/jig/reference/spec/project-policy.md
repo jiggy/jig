@@ -62,26 +62,28 @@ Normal initialization writes a private root `package.json` with its build’s ex
 This metadata records the required host without installing it.
 Bare initialization retains the smaller skeleton below unless Agent selection already requires a manifest.
 
-`jig init <directory> --starter scoped-greeting` creates a composed greeting
-project with two group Bindings, compatible greeters, a shared JSON input, and
-an application test that uses the installed CLI. The starter is an alternative
+`jig init <directory> --starter publication-review` creates a publication
+workflow with two editorial policies, JSON fixtures, and application tests
+that replay the configured routes through installed Jig. The starter is an alternative
 to `--bare` and `--agent`. It has the same source-only initialization and
 explicit review requirements as the default project.
 
-`jig init --bare <directory>` creates only:
+`jig init --bare <directory>` creates the project definition and guidance without an example Flow.
 
 ```text
 project/
+├── .agents/skills/{flow,jig}/
 ├── .gitignore       contains `.jig/`
 ├── AGENTS.md
 ├── jig.ts
-├── flows/
-└── bindings/
+├── flows/AGENTS.md
+└── bindings/AGENTS.md
 ```
 
-The project-owned `AGENTS.md` points coding agents to read-only inspection for
-cross-Flow edits and checks for changed and preserved routes. When initialization
-creates child guidance files, it links to them from the root guidance.
+Each scaffold includes the FLOW and Jig authoring skills and their reference files.
+The root `AGENTS.md` establishes the DOX hierarchy and points agents to both skills.
+The nearest `AGENTS.md` owns local work guidance. Each generated Flow has its own.
+The root directs cross-Flow edits to read-only inspection and checks for changed and preserved routes.
 
 The generated `jig.ts` makes its conventional membership explicit:
 

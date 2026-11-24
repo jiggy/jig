@@ -23,6 +23,7 @@ beforeAll(async () => {
     'scripts/jig-development-build.ts',
     'docs/jig/spec/contracts',
     'docs/jig/spec/machine/project-authoring-1.schema.json',
+    'skills/jig',
   ]
   for (const name of [
     'jig',
@@ -185,6 +186,7 @@ for (const input of [
     'display-tui',
   ].map((name) => 'packages/' + name + '/tsconfig.json'),
   'packages/display-web/scripts/build-assets.ts',
+  'skills/jig/SKILL.md',
 ]) {
   test(`changed build input ${input} refuses launch until rebuilt`, async () => {
     const path = join(root, input)
