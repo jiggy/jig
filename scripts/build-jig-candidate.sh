@@ -164,7 +164,7 @@ if [ "$runtime_version" != "1.4.4" ] ||
 fi
 "$npm_jig" --help > "$temporary/npm-help"
 for expected in \
-  "  jig init <directory>       Create a project with a small greeting Flow" \
+  "  jig init [directory]       Create a project with a small greeting Flow" \
   "  jig review [project]       Review changes and approve an exact revision" \
   "  jig run [target]           Choose or run a reviewed Flow or Binding" \
   "  jig --version             Print the installed version"

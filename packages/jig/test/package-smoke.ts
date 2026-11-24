@@ -207,7 +207,7 @@ try {
     await writeFile(manifestPath, manifestBytes)
   }
   assert.equal(help.stderr, '')
-  assert.match(help.stdout, /^ {2}jig init <directory> +Create/m)
+  assert.match(help.stdout, /^ {2}jig init \[directory\] +Create/m)
   assert.match(help.stdout, /^ {2}jig review \[project\] +Review/m)
   assert.match(help.stdout, /^ {2}jig --version +Print/m)
   assert.match(help.stdout, /^ {2}jig run \[target\] +Choose or run/m)
@@ -225,7 +225,11 @@ try {
   assert.match(reviewHelp.stdout, /--yes alone does not approve new resource authority/)
   const greeting = join(consumer, 'greeting')
   const initializedGreeting = await run([command, 'init', greeting], consumer)
-  assert.match(initializedGreeting.stdout, /jig review --allow-resolution-network/)
+  assert.match(initializedGreeting.stdout, /Open README\.md in the project directory/)
+  assert.match(
+    await readFile(join(greeting, 'README.md'), 'utf8'),
+    /jig review --allow-resolution-network/,
+  )
   assert.match(await readFile(join(greeting, 'flows/hello/FLOW.ts'), 'utf8'), /@jigging\/flow/)
   for (const name of ['jig', 'flow']) {
     const path = join(greeting, '.agents/skills', name, 'SKILL.md')
@@ -420,18 +424,21 @@ using FLOW;
   const initialized = await run([command, 'init', '--bare', bareProject], consumer)
   assert.equal(
     initialized.stdout,
-    `Created bare Jig project ${JSON.stringify(bareProject)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig check\n  $ jig review\n`,
+    `Created Jig project ${JSON.stringify(bareProject)}.\n\nOpen README.md in the project directory to get started.\n`,
   )
   assert.equal(initialized.stderr, '')
   assert.deepEqual((await readdir(bareProject)).sort(), [
+    '.agents',
     '.gitignore',
     'AGENTS.md',
+    'README.md',
     'bindings',
     'flows',
     'jig.ts',
+    'skills-lock.json',
   ])
-  assert.deepEqual(await readdir(join(bareProject, 'bindings')), [])
-  assert.deepEqual(await readdir(join(bareProject, 'flows')), [])
+  assert.deepEqual(await readdir(join(bareProject, 'bindings')), ['AGENTS.md'])
+  assert.deepEqual(await readdir(join(bareProject, 'flows')), ['AGENTS.md'])
 
   for (const relative of [
     'libexec/linux-rootless-supervisor.js',

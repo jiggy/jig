@@ -28,14 +28,24 @@ const prepare = `import { handle } from '@jigging/flow'
 await handle(async run => {
   const submission = run.input as { title: string }
   const assessment = await run.call({
-    operationId: 'assess', slot: 'assess', intent: 'Check editorial requirements', input: run.input,
+    operationId: 'assess',
+    slot: 'assess',
+    intent: 'Check editorial requirements',
+    input: run.input,
   })
-  if (assessment.outcome === 'done') return { outcome: 'done', output: run.input }
-  if (assessment.outcome !== 'blocked') throw new Error('Assessment did not settle')
+
+  if (assessment.outcome === 'done') {
+    return { outcome: 'done', output: run.input }
+  }
+  if (assessment.outcome !== 'blocked') {
+    throw new Error('Assessment did not return an editorial decision')
+  }
 
   const { issues } = assessment.output as { issues: string[] }
   const brief = await run.call({
-    operationId: 'review', slot: 'review', intent: 'Prepare an editorial handoff',
+    operationId: 'review',
+    slot: 'review',
+    intent: 'Prepare an editorial handoff',
     input: { title: submission.title, issues },
   })
   if (brief.outcome !== 'done') throw new Error('Review brief did not settle')
@@ -64,105 +74,143 @@ await handle(run => {
 `
 
 const routeTest = `import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import test from 'node:test'
+import { test } from 'bun:test'
 
-const project = new URL('../', import.meta.url)
-const title = 'Weekend library hours'
-const summary = 'The library will open on Saturday mornings from next month.'
-const reviewOutput = { title, queue: 'editorial', nextActions: ['Add a source for the claim'] }
+const project = join(import.meta.dir, '..')
 
-const cases = [
-  {
-    name: 'public submission without a source goes to editorial review',
-    target: 'binding:public', fixture: 'unattributed', policy: 'binding:public-policy',
-    outcome: 'needs-review', output: reviewOutput,
-  },
-  {
-    name: 'internal bulletin accepts the same submission',
-    target: 'binding:internal', fixture: 'unattributed', policy: 'binding:internal-policy',
-    outcome: 'done', output: { title, summary },
-  },
-  {
-    name: 'attributed public submission is ready',
-    target: 'binding:public', fixture: 'attributed', policy: 'binding:public-policy',
-    outcome: 'done', output: { title, summary, source: 'Library board meeting minutes' },
-  },
-]
+test('The newsletter asks for a source', () => {
+  checkSubmission({
+    target: 'binding:public',
+    fixture: 'unattributed',
+    policy: 'binding:public-policy',
+    nextActions: ['Add a source for the claim'],
+  })
+}, 60_000)
 
-function jig(args) {
-  return JSON.parse(execFileSync('jig', args, { cwd: project, encoding: 'utf8' }))
+test('The internal bulletin accepts the same draft', () => {
+  checkSubmission({
+    target: 'binding:internal',
+    fixture: 'unattributed',
+    policy: 'binding:internal-policy',
+  })
+}, 60_000)
+
+test('The newsletter accepts a draft with a source', () => {
+  checkSubmission({
+    target: 'binding:public',
+    fixture: 'attributed',
+    policy: 'binding:public-policy',
+  })
+}, 60_000)
+
+function checkSubmission({ target, fixture, policy, nextActions }) {
+  const path = 'test/fixtures/' + fixture + '.json'
+  const draft = JSON.parse(readFileSync(join(project, path), 'utf8'))
+  const temporary = mkdtempSync(join(tmpdir(), 'jig-publication-test-'))
+  const packet = join(temporary, 'result')
+  const needsReview = nextActions !== undefined
+
+  try {
+    const result = jig([
+      'run', target,
+      '--input', '@' + path,
+      '--out', packet,
+      '--timeout', '45s',
+      '--record-calls',
+      '--json',
+    ])
+    assert.equal(result.status, 'succeeded')
+    assert.equal(result.outcome, needsReview ? 'needs-review' : 'done')
+    assert.deepEqual(result.output, needsReview
+      ? { title: draft.title, queue: 'editorial', nextActions }
+      : draft)
+
+    const evidence = jig(['inspect', '--result', packet, '--calls', '--json'])
+    assert.equal(evidence.coverage, 'complete')
+    assert.equal(evidence.runId, result.runId)
+
+    const calls = evidence.calls.map(({ caller, slot, target, state, outcome }) => ({
+      caller, slot, target, state, outcome,
+    }))
+    const expected = [{
+      caller: target,
+      slot: 'assess',
+      target: policy,
+      state: 'returned',
+      outcome: needsReview ? 'blocked' : 'done',
+    }]
+    if (needsReview) {
+      expected.push({
+        caller: target,
+        slot: 'review',
+        target: 'flow:flows/review',
+        state: 'returned',
+        outcome: 'done',
+      })
+    }
+    assert.deepEqual(calls, expected)
+  } catch (error) {
+    console.error('Run evidence directory: ' + temporary)
+    throw error
+  }
+  rmSync(temporary, { recursive: true, force: true })
 }
 
-for (const { name, target, fixture, policy, outcome, output } of cases) {
-  test(name, t => {
-    const temporary = mkdtempSync(join(tmpdir(), 'jig-publication-test-'))
-    const packet = join(temporary, 'result')
-    const needsReview = outcome === 'needs-review'
-    try {
-      const result = jig([
-        'run', target, '--input', '@test/fixtures/' + fixture + '.json',
-        '--timeout', '45s', '--out', packet, '--record-calls', '--json',
-      ])
-      assert.equal(result.status, 'succeeded')
-      assert.equal(result.outcome, outcome)
-      assert.deepEqual(result.output, output)
-
-      const evidence = jig(['inspect', '--result', packet, '--calls', '--json'])
-      assert.equal(evidence.coverage, 'complete')
-      assert.equal(evidence.runId, result.runId)
-      const expected = [[target, 'assess', policy, 'returned', needsReview ? 'blocked' : 'done']]
-      if (needsReview) expected.push([target, 'review', 'flow:flows/review', 'returned', 'done'])
-      assert.deepEqual(
-        evidence.calls.map(call => [call.caller, call.slot, call.target, call.state, call.outcome]),
-        expected,
-      )
-    } catch (error) {
-      t.diagnostic('Run evidence directory ' + temporary)
-      throw error
-    }
-    rmSync(temporary, { recursive: true, force: true })
-  })
+function jig(args) {
+  const result = Bun.spawnSync(['jig', ...args], { cwd: project })
+  assert.equal(result.exitCode, 0, result.stderr.toString())
+  return JSON.parse(result.stdout.toString())
 }
 `
 
 const readme = [
   '# Publication review',
   '',
-  'Prepare submissions for a public newsletter or an internal bulletin.',
-  'Both routes assess editorial requirements. Public submissions need a source.',
-  'When requirements are missing, the workflow prepares a brief for an editor.',
-  'The Run returns the draft or brief for a person to act on.',
+  'Try the same draft in two places. The public newsletter asks an editor for a',
+  'source. The internal bulletin accepts the draft as written.',
   '',
-  'Use installed Jig on a supported host and Node.js 22 or later.',
+  '## Try it',
   '',
   '```sh',
-  'jig check',
   'jig review --allow-resolution-network',
   '```',
   '',
-  'Inspect the source and approve the exact revision before running the tests.',
-  'The flag permits dependency resolution before approval.',
-  'See [dependency preparation](https://jig.md/build/dependencies#fresh-resolution-and-network-access).',
+  'Approve the revision at the prompt. The flag permits dependency resolution before approval.',
   '',
   '```sh',
-  'node --test test/publication.test.mjs',
+  'jig run binding:public --input @test/fixtures/unattributed.json',
+  'jig run binding:internal --input @test/fixtures/unattributed.json',
   '```',
   '',
-  'The suite runs both Bindings and verifies their exact calls from saved Run packets.',
-  'Open `jig explore` and load `test/fixtures/unattributed.json` to compare',
-  '`binding:public` and `binding:internal` with the same input.',
+  'The first Run returns `needs-review` with “Add a source for the claim.”',
+  'The second returns `done` with the draft. You can also load the fixture in `jig explore`.',
   '',
-  '## Change one route',
+  '## Follow the decision',
   '',
-  'Suppose the internal bulletin now also needs attribution.',
-  'Find its assessment slot with `jig inspect --flow bindings/internal.ts`.',
-  'Select `binding:public-policy` in that slot and update the internal test case.',
-  'Use `jig check --diff` to verify the scoped change before asking for approval.',
-  'After review, run the suite again. Both public cases should still pass.',
+  '- [Public](./bindings/public.ts) and [internal](./bindings/internal.ts) select the policy for each route.',
+  '- [Assess](./flows/assess/FLOW.ts) applies the selected policy to the draft.',
+  '- [Prepare](./flows/prepare/FLOW.ts) sends drafts with findings to [editorial review](./flows/review/FLOW.ts).',
+  '',
+  '## Test the routes',
+  '',
+  'With Bun on your PATH, run the examples as tests.',
+  '',
+  '```sh',
+  'bun test',
+  '```',
+  '',
+  'The tests verify the outcome and the exact Flows called in each Run.',
+  '',
+  '## Change one rule',
+  '',
+  '1. Set `assess` to `binding:public-policy` in [bindings/internal.ts](./bindings/internal.ts).',
+  '2. In [publication.test.mjs](./test/publication.test.mjs), update the internal case to expect that policy and the same editorial action as the first case.',
+  '3. Run `jig check --diff`, review the edit, and run `bun test` after approval.',
+  '',
+  'The internal bulletin now requires a source. Both public cases should still pass.',
   '',
 ]
 
@@ -227,7 +275,7 @@ export function publicationReviewFiles(
     ['test/publication.test.mjs', routeTest],
     [
       'test/AGENTS.md',
-      '# Publication tests\n\nUse `node --test test/publication.test.mjs` after the operator approves the edited revision.\nKeep the fixtures reusable from Explorer. Cover the changed route and the routes that should stay intact.\nRequire complete saved call evidence before asserting that a path was unused.\n',
+      '# Publication tests\n\nUse `bun test` after the operator approves the edited revision.\nKeep the fixtures reusable from Explorer. Cover the changed route and the routes that should stay intact.\nRequire complete saved call evidence before asserting that a path was unused.\n',
     ],
     ['flows/prepare/contracts/assessment.json', json(assessment)],
     [

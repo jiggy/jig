@@ -35,9 +35,9 @@ FLOW AUTHORING SKILL
 --------------------
 
 The initialization bundle includes the upstream FLOW authoring skill and its
-references from jiggy/flow at afc7337aff4a53a861e1a95284ec8d4db0d778f9.
-Its generated project copy retains the scope mapping, licenses, and source
-attribution under .agents/skills/flow/.
+references. The exact source revision is pinned in scripts/build-cli.ts.
+Its generated project copy retains the upstream scope mapping and licenses
+under .agents/skills/flow/.
 
 BUNDLED CONTRACT AUTHORING
 --------------------------

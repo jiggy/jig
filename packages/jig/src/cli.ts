@@ -143,7 +143,7 @@ sandbox requirements still apply. See https://jig.md/reference/configuration#sta
 const HELP = `Jig runs reusable methods with powers you approve.
 
 Usage:
-  jig init <directory>       Create a project with a small greeting Flow
+  jig init [directory]       Create a project with a small greeting Flow
   jig new <name>             Add an editable Flow to the current project
   jig types <package-path>   Print types for a Flow's invocation, settings and child calls
   jig types --project        Print TypeScript types for project Binding declarations
@@ -384,16 +384,18 @@ Examples:
   jig inspect --result ./result-packet --display web
 
 ${VERIFICATION_HELP}`,
-  init: `Usage: jig init [--bare] <directory> [--agent [codex|claude]]
-       jig init <directory> --starter publication-review
+  init: `Usage: jig init [directory] [--bare] [--agent [codex|claude]]
+       jig init [directory] --starter publication-review
 
-Create a new editable project and greeting Flow. No installation, network
+Create an editable project and greeting Flow in the current directory by default.
+A named destination creates a new directory. No installation, network
 requests, approval, or execution happens during initialization.
 
   --bare     Omit the greeting; an explicit --agent still creates its starter
   --starter publication-review  Prepare submissions using two editorial policies
 
-Example:
+Examples:
+  $ jig init
   $ jig init hello-jig
 
 For a composed publication workflow:
@@ -404,7 +406,7 @@ With an ordinary Agent:
 Use --agent without a client for an interactive choice. It writes a visible
 dependency, Binding and default selection; client installation and authority
 approval remain separate. Without --agent the greeting needs no Agent.
-The destination must not exist; existing files are never replaced.`,
+In-place initialization requires the scaffold paths to be available.`,
   review: `Usage: jig review [project] [--source-root DIRECTORY]... [--agent codex|claude] [--generate-contracts] [--allow-resolution-network] [--yes] [--allow-authority-changes] [--details]
 
 Capture source, prepare dependencies, show changes, then ask for approval.
@@ -1963,9 +1965,10 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
       if (next !== 'publication-review') usage('init', 'Use --starter publication-review.')
       starter = next
     } else if (!value.startsWith('-') && destination === undefined) destination = value
-    else usage('init', 'Specify one new directory and an optional supported Agent client.')
+    else usage('init', 'Specify at most one directory and one initialization mode.')
   }
-  if (destination === undefined) usage('init', 'Specify a new project directory.')
+  const directory = destination ?? '.'
+  const inPlace = directory === '.'
   if (starter !== undefined && (bare || agent !== undefined))
     usage('init', 'Choose --starter publication-review on its own, or use --bare or --agent.')
   if (agent === 'choose') {
@@ -1992,20 +1995,15 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
   try {
     runtime.signal?.throwIfAborted()
     await createProject(
-      resolve(runtime.currentDirectory, destination),
+      resolve(runtime.currentDirectory, directory),
       undefined,
       bare,
       agent,
       starter,
+      inPlace,
     )
     runtime.writeOutput(
-      starter !== undefined
-        ? `Created Jig project ${asciiJsonString(destination)} with the publication review starter.\n\nOpen its README.md to check, review, and test the publication routes.\n`
-        : agent !== undefined
-          ? `Created Jig project ${asciiJsonString(destination)} with ${agent} selected.\n\nNext:\n  Open the project README for native client prerequisites and the first Run.\n  Review bindings/agent.ts for the requested authority, then:\n\n  $ jig review --allow-resolution-network\n\nNo client installed, credentials copied or execution approved.\n`
-          : bare
-            ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig check\n  $ jig review\n`
-            : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig check\n  jig review --allow-resolution-network\n  jig run flow:flows/hello --input @fixtures/greeting.json\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
+      `Created Jig project ${asciiJsonString(directory)}.\n\nOpen README.md in the project directory to get started.\n`,
     )
     return 0
   } catch (error) {
@@ -2013,7 +2011,7 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
       runtime.writeError(
         renderDiagnostic(
           error.code,
-          `${error.message}.\nNext step: ${error.code === 'JIG_INIT_DESTINATION_EXISTS' ? 'Choose a new directory; existing files are never replaced.' : error.code === 'JIG_INIT_CLEANUP_FAILED' ? 'Inspect the incomplete destination and preserve unfamiliar files before removing it; see jig init --help.' : 'Check the destination parent directory and its write permissions; see jig init --help.'}`,
+          `${error.message}.\nNext step: ${error.code === 'JIG_INIT_DESTINATION_EXISTS' || error.code === 'JIG_INIT_PATH_EXISTS' ? 'Run jig init with a new directory name.' : error.code === 'JIG_INIT_CLEANUP_FAILED' ? 'Inspect the incomplete destination and preserve unfamiliar files before removing it; see jig init --help.' : 'Check the destination parent directory and its write permissions; see jig init --help.'}`,
         ),
       )
       return error.kind === 'invalid' ? 1 : 2

@@ -36,6 +36,8 @@ The [publication review starter](./build/compose.md#test-a-scoped-route) shows h
 
 `jig init` writes both authoring skills under `.agents/skills/` with their references.
 The generated `AGENTS.md` points agents to them and to the relevant child guidance.
+Run `npx skills update --project` to refresh the skills and `skills-lock.json` from their upstream sources.
+
 For a hand-authored project, run these commands from its directory.
 
 ```sh

@@ -43,6 +43,7 @@ const AUTHORING_SKILLS_README = [
   '',
   'Follow [AGENTS.md](./AGENTS.md) and the bundled',
   '[FLOW](./.agents/skills/flow/SKILL.md) and [Jig](./.agents/skills/jig/SKILL.md) authoring skills.',
+  'Refresh the project skills and their lock with `npx skills update --project`.',
   '',
 ] as const
 export type ProjectInitAgent = 'codex' | 'claude'
@@ -54,6 +55,7 @@ export type ProjectInitErrorCode =
   | 'JIG_NEW_UNAVAILABLE'
   | 'JIG_INIT_CLEANUP_FAILED'
   | 'JIG_INIT_DESTINATION_EXISTS'
+  | 'JIG_INIT_PATH_EXISTS'
   | 'JIG_INIT_UNAVAILABLE'
 
 export class ProjectInitError extends Error {
@@ -261,23 +263,28 @@ export async function createProject(
   bare = false,
   agent?: ProjectInitAgent,
   starter?: ProjectInitStarter,
+  inPlace = false,
 ): Promise<void> {
   const target = resolve(destination)
   const created: Array<{ readonly kind: 'directory' | 'file'; readonly path: string }> = []
   try {
-    try {
-      await fileSystem.mkdir(target)
-    } catch (error) {
-      if (errorCode(error) === 'EEXIST') {
-        throw new ProjectInitError(
-          'invalid',
-          'JIG_INIT_DESTINATION_EXISTS',
-          'the destination already exists',
-        )
+    if (inPlace) {
+      if (!(await lstat(target)).isDirectory()) throw Error('Invalid project directory')
+    } else {
+      try {
+        await fileSystem.mkdir(target)
+      } catch (error) {
+        if (errorCode(error) === 'EEXIST') {
+          throw new ProjectInitError(
+            'invalid',
+            'JIG_INIT_DESTINATION_EXISTS',
+            'the destination already exists',
+          )
+        }
+        throw error
       }
-      throw error
+      created.push({ kind: 'directory', path: target })
     }
-    created.push({ kind: 'directory', path: target })
 
     const sourceFiles: readonly (readonly [string, string])[] = [
       ['jig.ts', renderJigModule(agent)],
@@ -288,7 +295,9 @@ export async function createProject(
         ? publicationReviewFiles(GREETING_SDK_VERSION, flowAgentGuidance, AUTHORING_SKILLS_README)
         : !bare
           ? greetingFiles().filter(([path]) => agent === undefined || path !== 'README.md')
-          : []),
+          : agent === undefined
+            ? ([['README.md', bareReadme]] as const)
+            : []),
       ...(agent === undefined ? [] : agentFiles(agent)),
     ]
     const files: readonly (readonly [string, string])[] = [
@@ -300,9 +309,22 @@ export async function createProject(
         '# Bindings\n\nBindings select collaborators and settings for an application.\nUse `jig inspect --flow` to identify shared uses before changing a selection.\nCheck the changed caller and its preserved neighbors after approval.\n',
       ],
       ['.agents/DOX.LICENSE', doxLicense],
+      ['skills-lock.json', authoringSkillsLock()],
       ...(await readAuthoringSkills()),
       ...sourceFiles,
     ]
+    if (inPlace) {
+      const names = new Set(['.jig', 'jig.lock', ...files.map(([path]) => path.split('/')[0]!)])
+      for (const name of names) {
+        try {
+          await lstat(join(target, name))
+        } catch (error) {
+          if (errorCode(error) === 'ENOENT') continue
+          throw error
+        }
+        throw new ProjectInitError('invalid', 'JIG_INIT_PATH_EXISTS', `${name} already exists`)
+      }
+    }
     const directories = new Set(['flows', 'bindings'])
     for (const [name] of files) {
       const parts = name.split('/')
@@ -340,12 +362,58 @@ export async function createProject(
       )
     }
     if (error instanceof ProjectInitError) throw error
+    if (errorCode(error) === 'EEXIST')
+      throw new ProjectInitError(
+        'invalid',
+        'JIG_INIT_PATH_EXISTS',
+        'a scaffold path already exists',
+      )
     throw new ProjectInitError(
       'unavailable',
       'JIG_INIT_UNAVAILABLE',
       'the destination cannot be initialized',
     )
   }
+}
+
+const bareReadme = [
+  '# Your Jig project',
+  '',
+  'Create a Flow and edit its method in `flows/first-flow/FLOW.ts`.',
+  '',
+  '```sh',
+  'jig new first-flow',
+  '```',
+  '',
+  'Check the project and review the source when you are ready to run it.',
+  '',
+  '```sh',
+  'jig check',
+  'jig review --allow-resolution-network',
+  'jig run flow:flows/first-flow',
+  '```',
+  '',
+  'Approve the exact revision at the review prompt. The flag permits dependency resolution before approval.',
+  '',
+  ...AUTHORING_SKILLS_README,
+].join('\n')
+
+function authoringSkillsLock(): string {
+  const skills = Object.fromEntries(
+    ['flow', 'jig'].map((name) => [
+      name,
+      {
+        source: `jiggy/${name}`,
+        sourceType: 'github',
+        sourceUrl: `https://github.com/jiggy/${name}.git`,
+        skillPath: `skills/${name}/SKILL.md`,
+        // The first skills update records its upstream commit and content hash.
+        computedHash: '',
+        installMode: 'copy',
+      },
+    ]),
+  )
+  return JSON.stringify({ version: 2, skills }, null, 2) + '\n'
 }
 
 async function readAuthoringSkills(): Promise<readonly (readonly [string, string])[]> {

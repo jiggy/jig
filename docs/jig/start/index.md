@@ -32,12 +32,14 @@ For source development, use the [development instructions](https://github.com/ji
 
 ## 1. Create the project
 
+Run `jig init` in your project directory. To create a new directory, give its name.
+
 ```sh
 jig init hello-jig
 cd hello-jig
 ```
 
-`init` creates `jig.ts`, a greeting Flow, an empty Bindings directory, and `fixtures/greeting.json`.
+`init` creates `jig.ts`, a greeting Flow, Binding guidance, and `fixtures/greeting.json`.
 Its root [`AGENTS.md`](../for-agents.md#find-where-to-change-a-workflow) guides coding agents through scoped edits and verification.
 It installs nothing, makes no network requests, and approves nothing.
 

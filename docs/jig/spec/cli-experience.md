@@ -886,7 +886,7 @@ These diagnostics do not add a review JSON envelope or change existing machine f
 
 ### Agent project initialization
 
-`jig init <directory> --agent codex|claude` optionally authors a declared
+`jig init [directory] --agent codex|claude` optionally authors a declared
 Agent dependency, `bindings/agent.ts` with an inline ACP grant, and a
 contract-keyed default in `jig.ts`. Bare `--agent` asks for an explicit choice
 on a terminal; empty input cancels. Noninteractive use requires the client

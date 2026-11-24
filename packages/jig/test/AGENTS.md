@@ -9,6 +9,7 @@ It covers exact bundle and metadata preservation, collision refusal, concurrent 
 `portable/cli.test.ts` checks the installed Flow type projection with ordinary TypeScript.
 It covers package input and returned outcomes, broad SDK fallbacks, settings, and declared child calls.
 It checks the generated DOX guidance, bundled skills, and fixtures for default and publication review initialization.
+It checks current-directory initialization, collision refusal, and the common success message.
 
 `portable/cli-discovery.test.ts` covers configured-topology grammar, readable collision-safe identities, contextual focus, complete inventories including disconnected targets, shared package uses, cycles, explicit boundary omissions, and graph bounds.
 Package scope preserves independent uses, distinct caller slots, and settings differences without expanding the caller's callers.

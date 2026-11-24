@@ -146,7 +146,7 @@ The operator must configure and review those differences.
 ## Test a scoped route
 
 Create a publication workflow with two editorial policies and a native test suite.
-Use a [supported host](../start/index.md#supported-host) and Node.js 22 or newer.
+Use a [supported host](../start/index.md#supported-host) and install Bun to run the tests.
 
 ```sh
 jig init bulletin --starter publication-review
@@ -160,7 +160,7 @@ The flag permits dependency resolution before approval.
 See [dependency preparation](./dependencies.md#fresh-resolution-and-network-access) for its scope.
 
 ```sh
-node --test test/publication.test.mjs
+bun test
 ```
 
 The public newsletter sends unattributed submissions to an editor with suggested next actions.

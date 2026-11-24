@@ -50,37 +50,44 @@ Project capture repeats the check beneath its held root descriptor and rechecks 
 This requirement does not authorize execution or change an approved Run.
 The current prerelease policy requires the exact tested version and makes no broader compatibility promise.
 
-`jig init <directory>` creates an ordinary editable greeting package under
+`jig init` creates an ordinary editable greeting package under
 `flows/hello`, a sample input in `fixtures/greeting.json`, a short project
 README, and the project skeleton below. Its package-local manifest names the
 exact `@jigging/flow` revision tested with the Jig build. It uses the same
 explicit missing-lock resolution permission and review as any other package.
 Initialization writes source files without installing dependencies, using the
-network, approving changes, or executing a Flow. The destination must be new.
+network, approving changes, or executing a Flow.
+
+With no destination or with `.`, it initializes the current directory.
+In-place initialization refuses occupied scaffold paths and existing Jig approval state.
+A named destination must be new.
 
 Normal initialization writes a private root `package.json` with its build’s exact Jig version in `engines.jig`.
 This metadata records the required host without installing it.
 Bare initialization retains the smaller skeleton below unless Agent selection already requires a manifest.
 
-`jig init <directory> --starter publication-review` creates a publication
+`jig init [directory] --starter publication-review` creates a publication
 workflow with two editorial policies, JSON fixtures, and application tests
 that replay the configured routes through installed Jig. The starter is an alternative
 to `--bare` and `--agent`. It has the same source-only initialization and
 explicit review requirements as the default project.
 
-`jig init --bare <directory>` creates the project definition and guidance without an example Flow.
+`jig init --bare [directory]` creates the project definition and guidance without an example Flow.
 
 ```text
 project/
 ├── .agents/skills/{flow,jig}/
 ├── .gitignore       contains `.jig/`
 ├── AGENTS.md
+├── README.md
 ├── jig.ts
+├── skills-lock.json
 ├── flows/AGENTS.md
 └── bindings/AGENTS.md
 ```
 
 Each scaffold includes the FLOW and Jig authoring skills and their reference files.
+It records their upstream sources in `skills-lock.json` for project skill updates.
 The root `AGENTS.md` establishes the DOX hierarchy and points agents to both skills.
 The nearest `AGENTS.md` owns local work guidance. Each generated Flow has its own.
 The root directs cross-Flow edits to read-only inspection and checks for changed and preserved routes.

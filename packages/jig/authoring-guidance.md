@@ -215,6 +215,9 @@ remain supported and are not rewritten by a review default.
   contract-keyed default. It chooses no client implicitly and does not inspect
   installations or authentication.
 
+  `init` without a directory or with `.` scaffolds the current directory.
+  Refuse collisions and retained approval state. Print the same README handoff for every mode.
+
   Every scaffold includes a project-owned `AGENTS.md` for scoped inspection, composition checks, and verified route changes.
   Keep the DOX chain and its indexes for Flow packages, Bindings, and tests.
   The [agent guide](../../docs/jig/for-agents.md) gives existing projects the same text for their local launcher.
@@ -222,12 +225,13 @@ remain supported and are not rewritten by a review default.
 
   The greeting's README and CLI instructions use the same generated JSON fixture.
   Every scaffold copies the packaged FLOW and Jig authoring skill trees into `.agents/skills/`.
-  Build the bundle from the canonical Jig skill and the pinned upstream FLOW skill.
+  Build from `skills/jig/` and the pinned upstream FLOW source without introducing another authored skill tree.
+  Record both upstream paths in `skills-lock.json` so the project can use `npx skills update --project`.
   Initialization reads the local bundle and writes editable project files offline.
 
   `--starter publication-review` generates the composed exercise owned by
   [the composition guide](../../docs/jig/build/compose.md#test-a-scoped-route).
-  Its tests reuse JSON fixtures and check complete saved child calls through installed Jig.
+  Its Bun tests reuse JSON fixtures and check complete saved child calls through installed Jig.
   The operator reviews and approves the intended revision before running the test.
 
   Check generated package versions against their manifests. The greeting names
