@@ -184,6 +184,7 @@ export async function waitForMacPrWinners({
           name: artifact.name,
           runId: context.runId,
           headSha: context.headSha,
+          now: now(),
         })
         let row = cache.get(artifact.id)
         if (
