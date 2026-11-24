@@ -603,7 +603,7 @@ function flowAgentGuidance(
 const testAgentGuidance = `# Application tests
 
 Run \`bun test\` from the project root after the operator approves the revision.
-Keep example inputs in \`tests/fixtures\` so tests and Explorer can use the same JSON.
+Keep fixture files in \`tests/fixtures\` so tests and Explorer can use the same JSON.
 After a route change, check the requested behavior and the routes that should still work.
 Require complete call evidence before asserting that a call did not occur.
 `
@@ -612,7 +612,7 @@ const greetingTest = `import { $ } from 'bun'
 import { expect, test } from 'bun:test'
 
 test('Greets Ada', async () => {
-  const result = await $\`jig run flow:flows/hello --input @tests/fixtures/greeting.json --json\`
+  const result = await $\`jig run flow:flows/hello --input '"Ada"' --json\`
     .cwd(\`\${import.meta.dir}/..\`).quiet().json()
 
   expect(result).toMatchObject({
@@ -625,7 +625,6 @@ test('Greets Ada', async () => {
 
 function greetingFiles(): readonly (readonly [string, string])[] {
   return [
-    ['tests/fixtures/greeting.json', '"Ada"\n'],
     ['tests/greeting.test.ts', greetingTest],
     ['flows/hello/AGENTS.md', flowAgentGuidance('hello')],
     [
@@ -658,10 +657,10 @@ function greetingFiles(): readonly (readonly [string, string])[] {
         '```sh',
         'jig check',
         'jig review --allow-resolution-network',
-        'jig run flow:flows/hello --input @tests/fixtures/greeting.json',
+        `jig run flow:flows/hello --input '"Ada"'`,
         '```',
         '',
-        'Expect `Hello, Ada!`. Use the same fixture in `jig explore` with Load input JSON file.',
+        'Expect `Hello, Ada!`. You can also enter `"Ada"` in `jig explore`.',
         '',
         'Review prepares dependencies privately, shows changes, and asks for approval.',
         'The resolution flag permits dependency-selected network requests before approval;',
@@ -669,12 +668,12 @@ function greetingFiles(): readonly (readonly [string, string])[] {
         'Initialization itself makes no network requests and approves nothing.',
         '',
         'Edit `flows/hello/FLOW.ts`, check the working project, and review the change.',
-        'Run the accepted revision with the same fixture. Code edits can require fresh dependency',
+        'Run the accepted revision with the same input. Code edits can require fresh dependency',
         'resolution until you add an authored lock; unchanged reviews reuse admitted bytes.',
         'This ordinary package names the exact SDK revision tested with this Jig build.',
         'Resolution retains exact versions privately; add an authored Bun lock when',
         'sharing reproducible dependencies.',
-        'With Bun on your PATH, run `bun test` after approval. The test runs Jig with the same fixture.',
+        'With Bun on your PATH, run `bun test` after approval. The test runs Jig with the same input.',
         '',
         'Help: `jig review --help`, `jig run --help`, https://jig.md/start/',
         '',

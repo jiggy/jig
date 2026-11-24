@@ -97,7 +97,6 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
       '.gitignore',
       'AGENTS.md',
       'README.md',
-      'tests/fixtures/greeting.json',
       'tests/AGENTS.md',
       'tests/greeting.test.ts',
       'jig.ts',
@@ -212,7 +211,7 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
 
     for (const display of [[], ['--display', 'plain'], ['--json']]) {
       const result = await command(
-        [cli, 'run', 'flow:flows/hello', '--input', '@tests/fixtures/greeting.json', ...display],
+        [cli, 'run', 'flow:flows/hello', '--input', JSON.stringify('Ada'), ...display],
         project,
       )
       expect(JSON.parse(result.stdout)).toEqual({
