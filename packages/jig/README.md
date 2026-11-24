@@ -27,7 +27,7 @@ jig init hello-jig
 cd hello-jig
 jig check
 jig review --allow-resolution-network
-jig run flow:flows/hello --input @fixtures/greeting.json
+jig run flow:flows/hello --input @tests/fixtures/greeting.json
 ```
 
 The generated DOX hierarchy and local FLOW and Jig skills guide scoped edits and verification.
@@ -42,13 +42,13 @@ to that same project. Read the [first Flow guide](https://jig.md/start/#1-create
 local source becomes a reviewable patch with executed checks, while the original
 repository stays unchanged.
 
-Use `jig init bulletin --starter publication-review` to try the [scoped route exercise](https://jig.md/build/compose#test-a-scoped-route).
+Use `jig init kitchen --starter kitchen-shifts` to try the [scoped route exercise](https://jig.md/build/compose#test-a-scoped-route).
 
 Project commands:
 
 ```text
 jig init [directory] [--bare] [--agent [codex|claude]]
-jig init [directory] --starter publication-review
+jig init [directory] --starter kitchen-shifts
 jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
 jig add-use <package-path> <slot>
 jig add-use <package-path> <slot>=<source> [--optional]

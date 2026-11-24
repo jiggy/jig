@@ -4,7 +4,7 @@ import { existsSync, realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { settleTestCommand } from '../fixtures/bounded-command.js'
 import {
   foundationCommands,
@@ -77,14 +77,19 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
     const command = foundationCommands(join(root, 'commands'))
     const { cli, tooling } = await installFixtureCli(root, command)
     const project = join(root, 'greeting')
+    const path = [join(tooling, 'node_modules/.bin'), process.env.PATH].join(delimiter)
+    const bunTest = ['env', `PATH=${path}`, process.execPath, 'test']
     const before = await foundationResidue(qualification, command, root)
-    const starter = join(root, 'publication-review')
-    await command([cli, 'init', starter, '--starter', 'publication-review'], root)
+    const starter = join(root, 'kitchen-shifts')
+    await command([cli, 'init', starter, '--starter', 'kitchen-shifts'], root)
     const checkedStarter = await command([cli, 'check', '--json'], starter)
     expect(JSON.parse(checkedStarter.stdout)).toMatchObject({
       basis: 'working-tree',
       status: 'linked',
     })
+    await command([cli, 'review', '--yes', '--allow-resolution-network'], starter)
+    const kitchenTests = await command([...bunTest, 'tests/shifts.test.ts'], starter)
+    expect(kitchenTests.stderr).toContain('2 pass')
     await command([cli, 'init', project], root)
     // The tutorial must work on the files init writes, outside the tooling
     // installation, without a workspace, a local dependency install or Git setup.
@@ -92,7 +97,9 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
       '.gitignore',
       'AGENTS.md',
       'README.md',
-      'fixtures/greeting.json',
+      'tests/fixtures/greeting.json',
+      'tests/AGENTS.md',
+      'tests/greeting.test.ts',
       'jig.ts',
       'package.json',
       'flows/hello/AGENTS.md',
@@ -131,6 +138,8 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
     expect(unreviewed.stderr).toContain('No locally approved revision to search.')
     expect(existsSync(join(project, '.jig'))).toBe(false)
     await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
+    const greetingTest = await command([...bunTest, 'tests/greeting.test.ts'], project)
+    expect(greetingTest.stderr).toContain('1 pass')
     const lock = await readFile(join(project, 'jig.lock'), 'utf8')
     const graph = await command([cli, 'inspect', '--flow', '--topology'], project)
     expect(graph.stdout).toContain('# Configured topology')
@@ -203,7 +212,7 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
 
     for (const display of [[], ['--display', 'plain'], ['--json']]) {
       const result = await command(
-        [cli, 'run', 'flow:flows/hello', '--input', '@fixtures/greeting.json', ...display],
+        [cli, 'run', 'flow:flows/hello', '--input', '@tests/fixtures/greeting.json', ...display],
         project,
       )
       expect(JSON.parse(result.stdout)).toEqual({

@@ -145,49 +145,31 @@ The operator must configure and review those differences.
 
 ## Test a scoped route
 
-Create a publication workflow with two editorial policies and a native test suite.
-Use a [supported host](../start/index.md#supported-host) and install Bun to run the tests.
+Create a small kitchen workflow that assigns a cook to a shift.
+When nobody is available, it calls a Flow that drafts a cover request.
 
 ```sh
-jig init bulletin --starter publication-review
-cd bulletin
-jig check
+jig init kitchen --starter kitchen-shifts
+cd kitchen
 jig review --allow-resolution-network
 ```
 
-Inspect the proposed source and approve its exact revision.
-The flag permits dependency resolution before approval.
-See [dependency preparation](dependencies.md#fresh-resolution-and-network-access) for its scope.
+Use a [supported host](../start/index.md#supported-host) and approve the revision at the prompt.
+The flag permits [dependency resolution](dependencies.md#fresh-resolution-and-network-access) before approval.
 
 ```sh
+jig run binding:kitchen --input @tests/fixtures/staffed.json
+jig run binding:kitchen --input @tests/fixtures/short-staffed.json
 bun test
 ```
 
-The public newsletter sends unattributed submissions to an editor with suggested next actions.
-The internal bulletin can accept the same submission. An attributed public submission needs no review brief.
-Load `test/fixtures/unattributed.json` in [Explorer](results.md#explore-before-starting-a-run) to compare both routes.
-The tests reopen the saved Run packets and require complete [call evidence](results.md#inspect-saved-child-calls).
-They check each exact caller, slot, target, state, and outcome.
+The first Run assigns Ada. The second returns `needs-cover` with a message.
+Use those same fixtures in [Explorer](results.md#explore-before-starting-a-run).
 
-To require attribution for internal bulletins, follow the project README.
-Use `jig check --diff` to verify the changed selection before approval.
-After review, run the suite again with the new internal expectation.
-Both public cases should still pass with their original outcomes and calls.
-
-#### Detect a wrong target with the same output
-
-In a disposable copy of the starter, add `bindings/alternate-policy.ts` using the same policy as `bindings/public-policy.ts`.
-
-```ts
-import { defineBinding } from '@jigging/jig'
-
-export default defineBinding({ package: 'flows/assess', settings: { requireSource: true } })
-```
-
-In `bindings/public.ts`, select `binding:alternate-policy` for the `assess` slot.
-Keep the original test, then review and approve that copy before running it.
-The public submissions return the same outcomes and output.
-Their tests fail on the exact target assertion because the public route called the alternate policy.
+The Bun tests call installed Jig and check the application result and [inline call evidence](results.md#inspect-saved-child-calls).
+They require complete coverage and verify that only the short-staffed case calls `request-cover`.
+Try editing the message in `flows/request-cover/FLOW.ts` and updating its expected value.
+Review the change and rerun both tests. The staffed shift should still assign Ada.
 
 ### Test callers in your application
 

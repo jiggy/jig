@@ -30,7 +30,7 @@ Use the project's usual Jig command if it has a local launcher.
 For example, `jig inspect --flow flows/import/FLOW.ts` opens the configured use or lists the uses of that package.
 `jig inspect --flow bindings/code.ts` opens that exact Binding.
 Follow the relevant Binding declaration or [focused inspection](./build/results.md#inspect-source-behavior) to the decision.
-The [publication review starter](./build/compose.md#test-a-scoped-route) shows how to test the changed route and its neighbors.
+The [kitchen shifts starter](./build/compose.md#test-a-scoped-route) shows how to test the changed route and its neighbors.
 
 ## Install authoring skills
 

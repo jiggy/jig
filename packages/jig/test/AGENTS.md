@@ -8,7 +8,7 @@ It covers exact bundle and metadata preservation, collision refusal, concurrent 
 
 `portable/cli.test.ts` checks the installed Flow type projection with ordinary TypeScript.
 It covers package input and returned outcomes, broad SDK fallbacks, settings, and declared child calls.
-It checks the generated DOX guidance, bundled skills, and fixtures for default and publication review initialization.
+It checks the generated DOX guidance, bundled skills, and fixtures for default and kitchen shifts initialization.
 It checks current-directory initialization, collision refusal, and the common success message.
 
 `portable/cli-discovery.test.ts` covers configured-topology grammar, readable collision-safe identities, contextual focus, complete inventories including disconnected targets, shared package uses, cycles, explicit boundary omissions, and graph bounds.
@@ -20,6 +20,7 @@ Phrase lookup checks that separator matches preserve literal matches under the r
 `host/installed-cli-lifecycle.test.ts` checks pre-approval topology and current versus approved source identity through the installed CLI.
 It checks approved phrase lookup against changed working descriptions and verifies the retained approval bytes.
 It reopens a saved greeting result and checks that the result-only invocation reserves no artifact bytes.
+It runs the generated greeting test and both kitchen shift tests using the installed CLI.
 
 `host/installed-shared-binding-wiring.test.ts` runs the standalone publishing consumer on its frozen Jig archive.
 The consumer reviews a shared producer, isolates the offer edit, and checks book and direct routes.
