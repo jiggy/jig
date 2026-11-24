@@ -45,8 +45,7 @@ async function sourceDigest(root: string): Promise<string> {
   ]) {
     await collect(root, directory, paths)
   }
-  for (const directory of ['skills/jig', 'packages/jig/support/flow-skill'])
-    await collect(root, directory, paths, true)
+  await collect(root, 'skills/jig', paths, true)
   paths.push('docs/jig/spec/machine/project-authoring-1.schema.json')
   return digestFiles(root, paths)
 }

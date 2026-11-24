@@ -1,5 +1,7 @@
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readdir, readFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -10,6 +12,43 @@ const IMAGE_ASSETS = [
     '22bf6e9f9a100d972da0411a69c5ba504367fc1fa87b3b64e3f35e53926d2d70',
   ],
 ] as const
+
+const FLOW_SKILL_REVISION = 'afc7337aff4a53a861e1a95284ec8d4db0d778f9'
+
+/** Read the upstream skill as data, without checking out or running the repository. */
+async function upstreamFlowSkill(): Promise<readonly (readonly [string, string])[]> {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-flow-skill-'))
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', directory, ...args], { encoding: 'utf8', timeout: 60_000 })
+  try {
+    git('init', '--bare', '--quiet')
+    git(
+      'fetch',
+      '--quiet',
+      '--no-tags',
+      '--depth=1',
+      'https://github.com/jiggy/flow.git',
+      FLOW_SKILL_REVISION,
+    )
+    if (git('rev-parse', 'FETCH_HEAD').trim() !== FLOW_SKILL_REVISION)
+      throw Error('The fetched FLOW skill revision does not match its pin')
+
+    const entries = git('ls-tree', '-r', '-z', FLOW_SKILL_REVISION, '--', 'skills/flow')
+    const files = entries
+      .split('\0')
+      .filter(Boolean)
+      .map((entry) => {
+        const match = /^100644 blob ([a-f0-9]{40})\tskills\/(flow\/.+)$/.exec(entry)
+        if (!match) throw Error('An upstream FLOW skill input is not a regular file')
+        return [match[2]!, git('cat-file', 'blob', match[1]!)] as const
+      })
+    if (!files.some(([path]) => path === 'flow/SKILL.md'))
+      throw Error('The upstream FLOW skill is missing')
+    return files
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+}
 
 async function skillFiles(
   directory: string,
@@ -47,7 +86,7 @@ export async function privateBuildCli(): Promise<void> {
   await Bun.write(resolve(root, 'libexec/installed-cli.js'), command)
   const [jig, flow] = await Promise.all([
     skillFiles(resolve(root, '../../skills/jig'), 'jig'),
-    skillFiles(resolve(root, 'support/flow-skill'), 'flow'),
+    upstreamFlowSkill(),
   ])
   await Bun.write(resolve(root, 'libexec/init-skills.json'), JSON.stringify([...jig, ...flow]))
   const parserNotices = new URL(

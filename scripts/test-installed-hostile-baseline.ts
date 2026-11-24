@@ -69,8 +69,8 @@ try {
   const project = join(consumer, 'hostile-project')
   const initialized = await run([jig, 'init', '--bare', project], consumer)
   assert.equal(initialized.exitCode, 0)
-  assert.match(initialized.stdout, /^Created bare Jig project /)
-  assert.match(initialized.stdout, /Add a Flow under flows\//)
+  assert.match(initialized.stdout, /^Created Jig project /)
+  assert.match(initialized.stdout, /Open README\.md in the project directory/)
   assert.equal(initialized.stderr, '')
 
   await writeHostileFlow(

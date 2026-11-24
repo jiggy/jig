@@ -16,7 +16,7 @@ const PACKAGE_KINDS = Object.freeze({
 })
 const RUNTIME_HASH = '10702245766b225e70bbf6235fd6b47214fd94b4760d00ffaed8ab0df57ac235'
 const HELP_LINES = [
-  '  jig init <directory>       Create a project with a small greeting Flow',
+  '  jig init [directory]       Create a project with a small greeting Flow',
   '  jig review [project]       Review changes and approve an exact revision',
   '  jig run [target]           Choose or run a reviewed Flow or Binding',
   '  jig --version             Print the installed version',

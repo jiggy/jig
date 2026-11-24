@@ -45,6 +45,7 @@ export const expectedInstalledFiles = [
   'libexec/installed-cli.js',
   'libexec/flow-behavior.typescript-notices.txt',
   'libexec/image-preview-worker.js',
+  'libexec/init-skills.json',
   'libexec/authoring/contract-authoring-worker.js',
   'libexec/markdown-runtime.js',
   'libexec/http-request-worker.js',

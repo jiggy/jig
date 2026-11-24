@@ -192,19 +192,45 @@ test('installed invalid grammar refuses without disclosing rejected private valu
   passed++
 }, 60_000)
 
+function initMessage(path: string): string {
+  return `Created Jig project ${JSON.stringify(path)}.\n\nOpen README.md in the project directory to get started.\n`
+}
+
+test('installed init defaults to the current directory and refuses existing scaffold paths', async () => {
+  const project = join(root, 'current')
+  await mkdir(project)
+  await writeFile(join(project, 'notes.txt'), 'keep\n')
+  const initialized = await invoke(['init'], project)
+  expect(initialized).toMatchObject({ code: 0, stdout: initMessage('.'), stderr: '' })
+  expect((await lstat(join(project, 'flows/hello/FLOW.ts'))).isFile()).toBe(true)
+  expect(await readFile(join(project, 'notes.txt'), 'utf8')).toBe('keep\n')
+
+  const occupied = join(root, 'occupied')
+  await mkdir(occupied)
+  await writeFile(join(occupied, 'skills-lock.json'), 'keep\n')
+  const refused = await invoke(['init', '.'], occupied)
+  expect(refused).toMatchObject({ code: 1, stdout: '' })
+  expect(refused.stderr).toContain('JIG_INIT_PATH_EXISTS')
+  expect(await readdir(occupied)).toEqual(['skills-lock.json'])
+  expect(await readFile(join(occupied, 'skills-lock.json'), 'utf8')).toBe('keep\n')
+  passed++
+})
+
 test('installed bare init writes only the inert envelope and preserves existing destinations', async () => {
   const project = join(root, 'bare')
   const initialized = await invoke(['init', '--bare', project])
   expect(initialized.code).toBe(0)
   expect(initialized.stderr).toBe('')
-  expect(initialized.stdout).toContain('Created bare Jig project')
+  expect(initialized.stdout).toBe(initMessage(project))
   expect((await readdir(project)).sort()).toEqual([
     '.agents',
     '.gitignore',
     'AGENTS.md',
+    'README.md',
     'bindings',
     'flows',
     'jig.ts',
+    'skills-lock.json',
   ])
   const guidance = await readFile(join(project, 'AGENTS.md'), 'utf8')
   expect(guidance.startsWith('# Workflow edits\n')).toBe(true)
@@ -224,6 +250,18 @@ test('installed bare init writes only the inert envelope and preserves existing 
     expect(guidance).toContain(`](./.agents/skills/${name}/SKILL.md)`)
     expect(await readFile(join(skill, 'SKILL.md'), 'utf8')).toContain(`name: ${name}\n`)
     expect((await lstat(join(skill, 'reference/build/design.md'))).isFile()).toBe(true)
+  }
+  const lock = JSON.parse(await readFile(join(project, 'skills-lock.json'), 'utf8'))
+  expect(lock.version).toBe(2)
+  expect(Object.keys(lock.skills)).toEqual(['flow', 'jig'])
+  for (const name of ['flow', 'jig']) {
+    expect(lock.skills[name]).toMatchObject({
+      source: `jiggy/${name}`,
+      sourceType: 'github',
+      sourceUrl: `https://github.com/jiggy/${name}.git`,
+      skillPath: `skills/${name}/SKILL.md`,
+      computedHash: '',
+    })
   }
   expect(await readFile(join(project, '.gitignore'), 'utf8')).toBe('.jig/\n')
   expect(await readFile(join(project, 'jig.ts'), 'utf8')).toBe(
@@ -262,9 +300,11 @@ test('concurrent installed bare initializers have exactly one winner', async () 
     '.agents',
     '.gitignore',
     'AGENTS.md',
+    'README.md',
     'bindings',
     'flows',
     'jig.ts',
+    'skills-lock.json',
   ])
   passed++
 })
@@ -278,6 +318,7 @@ test('installed greeting and Agent initialization create ordinary editable files
     const result = await invoke(['init', project, ...(client ? ['--agent', client] : [])])
     expect(result.code).toBe(0)
     expect(result.stderr).toBe('')
+    expect(result.stdout).toBe(initMessage(project))
     expect(result.stdout).not.toContain('\u001b')
     const guidance = await readFile(join(project, 'AGENTS.md'), 'utf8')
     expect(guidance).toContain('](./flows/AGENTS.md)')
@@ -300,12 +341,10 @@ test('installed greeting and Agent initialization create ordinary editable files
       )
       expect(await readFile(join(project, 'jig.ts'), 'utf8')).toContain('defaultProviders:')
     } else {
-      expect(result.stdout).toContain('jig check')
-      expect(result.stdout).toContain('jig review --allow-resolution-network')
-      expect(result.stdout).toContain('jig run flow:flows/hello --input @fixtures/greeting.json')
-      expect(await readFile(join(project, 'README.md'), 'utf8')).toContain(
-        '@fixtures/greeting.json',
-      )
+      const readme = await readFile(join(project, 'README.md'), 'utf8')
+      expect(readme).toContain('jig check')
+      expect(readme).toContain('jig review --allow-resolution-network')
+      expect(readme).toContain('jig run flow:flows/hello --input @fixtures/greeting.json')
     }
     for (const path of ['.jig', 'jig.lock', 'node_modules', 'bun.lock'])
       await expect(lstat(join(project, path))).rejects.toMatchObject({ code: 'ENOENT' })
@@ -318,7 +357,7 @@ test('installed publication starter writes scoped guidance, policies and native 
   const initialized = await invoke(['init', project, '--starter', 'publication-review'])
   expect(initialized.code).toBe(0)
   expect(initialized.stderr).toBe('')
-  expect(initialized.stdout).toContain('publication review starter')
+  expect(initialized.stdout).toBe(initMessage(project))
   expect((await readdir(join(project, 'flows'))).sort()).toEqual([
     'AGENTS.md',
     'assess',
@@ -337,12 +376,13 @@ test('installed publication starter writes scoped guidance, policies and native 
   expect(await readFixture('unattributed')).toMatchObject({ title: 'Weekend library hours' })
   expect(await readFixture('attributed')).toMatchObject({ source: 'Library board meeting minutes' })
   const testSource = await readFile(join(project, 'test/publication.test.mjs'), 'utf8')
+  expect(testSource).toContain("from 'bun:test'")
   expect(testSource).toContain('--record-calls')
   expect(testSource).toContain("'inspect', '--result', packet, '--calls'")
   const bindingGuide = await readFile(join(project, 'bindings/AGENTS.md'), 'utf8')
   expect(bindingGuide).toContain('jig inspect --flow')
   const readme = await readFile(join(project, 'README.md'), 'utf8')
-  expect(readme).toContain('node --test test/publication.test.mjs')
+  expect(readme).toContain('bun test')
   for (const path of ['.jig', 'jig.lock', 'node_modules', 'bun.lock'])
     await expect(lstat(join(project, path))).rejects.toMatchObject({ code: 'ENOENT' })
 
@@ -776,6 +816,6 @@ test('installed attempt help and malformed requests retain exact private-safe fr
 })
 
 afterAll(async () => {
-  if (passed === 10) await rm(root, { recursive: true, force: true })
+  if (passed === 11) await rm(root, { recursive: true, force: true })
   else if (root) console.error(`Installed CLI portable evidence retained at ${root}`)
 })

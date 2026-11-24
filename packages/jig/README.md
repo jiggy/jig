@@ -47,8 +47,8 @@ Use `jig init bulletin --starter publication-review` to try the [scoped route ex
 Project commands:
 
 ```text
-jig init [--bare] <directory> [--agent [codex|claude]]
-jig init <directory> --starter publication-review
+jig init [directory] [--bare] [--agent [codex|claude]]
+jig init [directory] --starter publication-review
 jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
 jig add-use <package-path> <slot>
 jig add-use <package-path> <slot>=<source> [--optional]

@@ -299,6 +299,7 @@ export function privateCliDiagnostic(
     JIG_TUI_UNAVAILABLE: 'Error: TUI support is unavailable',
     JIG_RUN_TARGET_INVALID: 'Error: Run target is invalid',
     JIG_INIT_DESTINATION_EXISTS: 'Error: Project destination already exists',
+    JIG_INIT_PATH_EXISTS: 'Error: A project path already exists',
     JIG_INIT_UNAVAILABLE: 'Error: Project could not be created',
     JIG_INIT_CLEANUP_FAILED: 'Error: Incomplete project could not be removed',
     JIG_CHECKPOINT_UNAVAILABLE: 'Error: Retained result could not be recovered',
