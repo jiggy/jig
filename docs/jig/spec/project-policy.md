@@ -51,8 +51,8 @@ This requirement does not authorize execution or change an approved Run.
 The current prerelease policy requires the exact tested version and makes no broader compatibility promise.
 
 `jig init` creates an ordinary editable greeting package under
-`flows/hello`, a sample input in `tests/fixtures/greeting.json`, a Bun test in
-`tests/greeting.test.ts`, a short project README, and the project skeleton below.
+`flows/hello`, a Bun test in `tests/greeting.test.ts`, a short project README,
+and the project skeleton below. The README and test use an inline JSON string.
 Its package-local manifest names the exact `@jigging/flow` revision tested with the Jig build. It uses the same
 explicit missing-lock resolution permission and review as any other package.
 Initialization writes source files without installing dependencies, using the

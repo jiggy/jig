@@ -334,11 +334,11 @@ test('installed greeting and Agent initialization create ordinary editable files
     const projectManifest = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'))
     expect(projectManifest.engines).toEqual({ jig: current.version })
     expect(projectManifest.peerDependencies).toBeUndefined()
-    expect(JSON.parse(await readFile(join(project, 'tests/fixtures/greeting.json'), 'utf8'))).toBe('Ada')
+    expect((await readdir(join(project, 'tests'))).sort()).toEqual(['AGENTS.md', 'greeting.test.ts'])
     expect(guidance).toContain('](./tests/AGENTS.md)')
     const greetingTest = await readFile(join(project, 'tests/greeting.test.ts'), 'utf8')
     expect(greetingTest).toContain("from 'bun:test'")
-    expect(greetingTest).toContain('jig run flow:flows/hello --input @tests/fixtures/greeting.json')
+    expect(greetingTest).toContain(`jig run flow:flows/hello --input '"Ada"'`)
     if (client) {
       expect(await readFile(join(project, 'bindings/agent.ts'), 'utf8')).toContain(
         `client: ${JSON.stringify(client)}`,
@@ -348,7 +348,7 @@ test('installed greeting and Agent initialization create ordinary editable files
       const readme = await readFile(join(project, 'README.md'), 'utf8')
       expect(readme).toContain('jig check')
       expect(readme).toContain('jig review --allow-resolution-network')
-      expect(readme).toContain('jig run flow:flows/hello --input @tests/fixtures/greeting.json')
+      expect(readme).toContain(`jig run flow:flows/hello --input '"Ada"'`)
       expect(readme).toContain('bun test')
     }
     for (const path of ['.jig', 'jig.lock', 'node_modules', 'bun.lock'])

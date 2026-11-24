@@ -223,8 +223,8 @@ remain supported and are not rewritten by a review default.
   The [agent guide](../../docs/jig/for-agents.md) gives existing projects the same text for their local launcher.
   The greeting and each `jig new` Flow have their own editable `AGENTS.md` beside `FLOW.ts`.
 
-  Keep generated test inputs under `tests/fixtures`.
-  The greeting's README, CLI instructions, and Bun test use the same JSON fixture.
+  Keep generated fixture files under `tests/fixtures`.
+  The greeting's README, CLI instructions, and Bun test use the same inline JSON string.
   Every scaffold copies the packaged FLOW and Jig authoring skill trees into `.agents/skills/`.
   Build from `skills/jig/` and the pinned upstream FLOW source without introducing another authored skill tree.
   Record both upstream paths in `skills-lock.json` so the project can use `npx skills update --project`.

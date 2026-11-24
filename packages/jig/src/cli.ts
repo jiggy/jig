@@ -166,7 +166,7 @@ Start here:
   cd hello-jig
   jig check
   jig review --allow-resolution-network
-  jig run flow:flows/hello --input @tests/fixtures/greeting.json
+  jig run flow:flows/hello --input '"Ada"'
 
 ${VERIFICATION_HELP}
 

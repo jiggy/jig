@@ -39,7 +39,7 @@ jig init hello-jig
 cd hello-jig
 ```
 
-`init` creates `jig.ts`, a greeting Flow, Binding guidance, and a test with input at `tests/fixtures/greeting.json`.
+`init` creates `jig.ts`, a greeting Flow, Binding guidance, and a test at `tests/greeting.test.ts`.
 Its root [`AGENTS.md`](../for-agents.md#find-where-to-change-a-workflow) guides coding agents through scoped edits and verification.
 It installs nothing, makes no network requests, and approves nothing.
 
@@ -90,7 +90,7 @@ Review prepares and retains dependencies privately, so this tutorial needs no pe
 After approval:
 
 ```sh
-jig run flow:flows/hello --input @tests/fixtures/greeting.json
+jig run flow:flows/hello --input '"Ada"'
 ```
 
 Expect these fields in the result:
@@ -123,7 +123,7 @@ Review the change and run again:
 
 ```sh
 jig review --allow-resolution-network
-jig run flow:flows/hello --input @tests/fixtures/greeting.json
+jig run flow:flows/hello --input '"Ada"'
 ```
 
 Approve only after inspecting the source change.

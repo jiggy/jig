@@ -27,7 +27,7 @@ jig init hello-jig
 cd hello-jig
 jig check
 jig review --allow-resolution-network
-jig run flow:flows/hello --input @tests/fixtures/greeting.json
+jig run flow:flows/hello --input '"Ada"'
 ```
 
 The generated DOX hierarchy and local FLOW and Jig skills guide scoped edits and verification.
