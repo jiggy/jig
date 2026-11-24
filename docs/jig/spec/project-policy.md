@@ -51,9 +51,9 @@ This requirement does not authorize execution or change an approved Run.
 The current prerelease policy requires the exact tested version and makes no broader compatibility promise.
 
 `jig init` creates an ordinary editable greeting package under
-`flows/hello`, a sample input in `fixtures/greeting.json`, a short project
-README, and the project skeleton below. Its package-local manifest names the
-exact `@jigging/flow` revision tested with the Jig build. It uses the same
+`flows/hello`, a sample input in `tests/fixtures/greeting.json`, a Bun test in
+`tests/greeting.test.ts`, a short project README, and the project skeleton below.
+Its package-local manifest names the exact `@jigging/flow` revision tested with the Jig build. It uses the same
 explicit missing-lock resolution permission and review as any other package.
 Initialization writes source files without installing dependencies, using the
 network, approving changes, or executing a Flow.
@@ -66,10 +66,9 @@ Normal initialization writes a private root `package.json` with its build’s ex
 This metadata records the required host without installing it.
 Bare initialization retains the smaller skeleton below unless Agent selection already requires a manifest.
 
-`jig init [directory] --starter publication-review` creates a publication
-workflow with two editorial policies, JSON fixtures, and application tests
-that replay the configured routes through installed Jig. The starter is an alternative
-to `--bare` and `--agent`. It has the same source-only initialization and
+`jig init [directory] --starter kitchen-shifts` creates a workflow that assigns a cook to a kitchen shift or drafts a cover request.
+Its JSON fixtures live under `tests/fixtures` and its tests run through installed Jig.
+The starter is an alternative to `--bare` and `--agent`. It has the same source-only initialization and
 explicit review requirements as the default project.
 
 `jig init --bare [directory]` creates the project definition and guidance without an example Flow.

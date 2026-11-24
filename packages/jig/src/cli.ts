@@ -166,7 +166,7 @@ Start here:
   cd hello-jig
   jig check
   jig review --allow-resolution-network
-  jig run flow:flows/hello --input @fixtures/greeting.json
+  jig run flow:flows/hello --input @tests/fixtures/greeting.json
 
 ${VERIFICATION_HELP}
 
@@ -385,21 +385,21 @@ Examples:
 
 ${VERIFICATION_HELP}`,
   init: `Usage: jig init [directory] [--bare] [--agent [codex|claude]]
-       jig init [directory] --starter publication-review
+       jig init [directory] --starter kitchen-shifts
 
 Create an editable project and greeting Flow in the current directory by default.
 A named destination creates a new directory. No installation, network
 requests, approval, or execution happens during initialization.
 
   --bare     Omit the greeting; an explicit --agent still creates its starter
-  --starter publication-review  Prepare submissions using two editorial policies
+  --starter kitchen-shifts  Assign a cook to a shift or ask for cover
 
 Examples:
   $ jig init
   $ jig init hello-jig
 
-For a composed publication workflow:
-  $ jig init bulletin --starter publication-review
+For the kitchen shifts example:
+  $ jig init kitchen --starter kitchen-shifts
 
 With an ordinary Agent:
   $ jig init my-app --agent codex
@@ -1962,7 +1962,7 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
       } else agent = 'choose'
     } else if (value === '--starter' && starter === undefined) {
       const next = arguments_[++index]
-      if (next !== 'publication-review') usage('init', 'Use --starter publication-review.')
+      if (next !== 'kitchen-shifts') usage('init', 'Use --starter kitchen-shifts.')
       starter = next
     } else if (!value.startsWith('-') && destination === undefined) destination = value
     else usage('init', 'Specify at most one directory and one initialization mode.')
@@ -1970,7 +1970,7 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
   const directory = destination ?? '.'
   const inPlace = directory === '.'
   if (starter !== undefined && (bare || agent !== undefined))
-    usage('init', 'Choose --starter publication-review on its own, or use --bare or --agent.')
+    usage('init', 'Choose --starter kitchen-shifts on its own, or use --bare or --agent.')
   if (agent === 'choose') {
     if (!runtime.interactive)
       usage(

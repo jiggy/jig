@@ -18,7 +18,7 @@ import { openPrivateChild } from './internal/descriptor-files.js'
 import { privatePublishDirectory } from './internal/file-input.js'
 import { validateLogicalPath } from './package/paths.js'
 import { doxFramework, doxLicense } from './project-dox.js'
-import { publicationReviewFiles } from './project-starter.js'
+import { kitchenShiftFiles } from './project-starter.js'
 
 /** @internal Not exported from the package. */
 export interface ProjectInitFileSystem {
@@ -47,7 +47,7 @@ const AUTHORING_SKILLS_README = [
   '',
 ] as const
 export type ProjectInitAgent = 'codex' | 'claude'
-export type ProjectInitStarter = 'publication-review'
+export type ProjectInitStarter = 'kitchen-shifts'
 
 export type ProjectInitErrorCode =
   | 'JIG_NEW_INVALID'
@@ -291,8 +291,8 @@ export async function createProject(
       ...(!bare && agent === undefined
         ? ([['package.json', renderProjectManifest()]] as const)
         : []),
-      ...(starter === 'publication-review'
-        ? publicationReviewFiles(GREETING_SDK_VERSION, flowAgentGuidance, AUTHORING_SKILLS_README)
+      ...(starter === 'kitchen-shifts'
+        ? kitchenShiftFiles(GREETING_SDK_VERSION, flowAgentGuidance, AUTHORING_SKILLS_README)
         : !bare
           ? greetingFiles().filter(([path]) => agent === undefined || path !== 'README.md')
           : agent === undefined
@@ -300,9 +300,11 @@ export async function createProject(
             : []),
       ...(agent === undefined ? [] : agentFiles(agent)),
     ]
+    const hasTests = !bare
     const files: readonly (readonly [string, string])[] = [
       ['.gitignore', '.jig/\n'],
-      ['AGENTS.md', projectAgentGuidance(starter !== undefined)],
+      ['AGENTS.md', projectAgentGuidance(hasTests)],
+      ...(hasTests ? ([['tests/AGENTS.md', testAgentGuidance]] as const) : []),
       ['flows/AGENTS.md', flowsAgentGuidance(sourceFiles)],
       [
         'bindings/AGENTS.md',
@@ -463,7 +465,7 @@ function projectAgentGuidance(hasTests: boolean): string {
     '- [Flows](./flows/AGENTS.md) — portable methods and their packages.',
     '- [Bindings](./bindings/AGENTS.md) — project-owned settings and selections.',
     ...(hasTests
-      ? ['- [Tests](./test/AGENTS.md) — input fixtures and native route assertions.']
+      ? ['- [Tests](./tests/AGENTS.md) — input fixtures and application tests.']
       : []),
     '',
   ].join('\n')
@@ -598,9 +600,33 @@ function flowAgentGuidance(
   ].join('\n')
 }
 
+const testAgentGuidance = `# Application tests
+
+Run \`bun test\` from the project root after the operator approves the revision.
+Keep example inputs in \`tests/fixtures\` so tests and Explorer can use the same JSON.
+After a route change, check the requested behavior and the routes that should still work.
+Require complete call evidence before asserting that a call did not occur.
+`
+
+const greetingTest = `import { $ } from 'bun'
+import { expect, test } from 'bun:test'
+
+test('Greets Ada', async () => {
+  const result = await $\`jig run flow:flows/hello --input @tests/fixtures/greeting.json --json\`
+    .cwd(\`\${import.meta.dir}/..\`).quiet().json()
+
+  expect(result).toMatchObject({
+    status: 'succeeded',
+    outcome: 'done',
+    output: { message: 'Hello, Ada!' },
+  })
+}, 60_000)
+`
+
 function greetingFiles(): readonly (readonly [string, string])[] {
   return [
-    ['fixtures/greeting.json', '"Ada"\n'],
+    ['tests/fixtures/greeting.json', '"Ada"\n'],
+    ['tests/greeting.test.ts', greetingTest],
     ['flows/hello/AGENTS.md', flowAgentGuidance('hello')],
     [
       'flows/hello/FLOW.meta.json',
@@ -632,7 +658,7 @@ function greetingFiles(): readonly (readonly [string, string])[] {
         '```sh',
         'jig check',
         'jig review --allow-resolution-network',
-        'jig run flow:flows/hello --input @fixtures/greeting.json',
+        'jig run flow:flows/hello --input @tests/fixtures/greeting.json',
         '```',
         '',
         'Expect `Hello, Ada!`. Use the same fixture in `jig explore` with Load input JSON file.',
@@ -648,7 +674,7 @@ function greetingFiles(): readonly (readonly [string, string])[] {
         'This ordinary package names the exact SDK revision tested with this Jig build.',
         'Resolution retains exact versions privately; add an authored Bun lock when',
         'sharing reproducible dependencies.',
-        'You do not need a separate Bun install to run this project.',
+        'With Bun on your PATH, run `bun test` after approval. The test runs Jig with the same fixture.',
         '',
         'Help: `jig review --help`, `jig run --help`, https://jig.md/start/',
         '',

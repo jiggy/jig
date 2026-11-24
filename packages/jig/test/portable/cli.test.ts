@@ -90,7 +90,7 @@ test('installed help is focused and version matches the installed manifest', asy
     }
     if (args[0] === 'init') {
       expect(result.stdout).toContain('--bare')
-      expect(result.stdout).toContain('--starter publication-review')
+      expect(result.stdout).toContain('--starter kitchen-shifts')
     }
     if (args[0] === 'types') expect(result.stdout).toContain('jig types --project')
     if (args[0] !== 'init' && args[0] !== 'types') {
@@ -334,7 +334,11 @@ test('installed greeting and Agent initialization create ordinary editable files
     const projectManifest = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'))
     expect(projectManifest.engines).toEqual({ jig: current.version })
     expect(projectManifest.peerDependencies).toBeUndefined()
-    expect(JSON.parse(await readFile(join(project, 'fixtures/greeting.json'), 'utf8'))).toBe('Ada')
+    expect(JSON.parse(await readFile(join(project, 'tests/fixtures/greeting.json'), 'utf8'))).toBe('Ada')
+    expect(guidance).toContain('](./tests/AGENTS.md)')
+    const greetingTest = await readFile(join(project, 'tests/greeting.test.ts'), 'utf8')
+    expect(greetingTest).toContain("from 'bun:test'")
+    expect(greetingTest).toContain('jig run flow:flows/hello --input @tests/fixtures/greeting.json')
     if (client) {
       expect(await readFile(join(project, 'bindings/agent.ts'), 'utf8')).toContain(
         `client: ${JSON.stringify(client)}`,
@@ -344,7 +348,8 @@ test('installed greeting and Agent initialization create ordinary editable files
       const readme = await readFile(join(project, 'README.md'), 'utf8')
       expect(readme).toContain('jig check')
       expect(readme).toContain('jig review --allow-resolution-network')
-      expect(readme).toContain('jig run flow:flows/hello --input @fixtures/greeting.json')
+      expect(readme).toContain('jig run flow:flows/hello --input @tests/fixtures/greeting.json')
+      expect(readme).toContain('bun test')
     }
     for (const path of ['.jig', 'jig.lock', 'node_modules', 'bun.lock'])
       await expect(lstat(join(project, path))).rejects.toMatchObject({ code: 'ENOENT' })
@@ -352,33 +357,32 @@ test('installed greeting and Agent initialization create ordinary editable files
   passed++
 })
 
-test('installed publication starter writes scoped guidance, policies and native route tests', async () => {
-  const project = join(root, 'publication-review')
-  const initialized = await invoke(['init', project, '--starter', 'publication-review'])
+test('installed kitchen shifts starter writes scoped guidance and native route tests', async () => {
+  const project = join(root, 'kitchen-shifts')
+  const initialized = await invoke(['init', project, '--starter', 'kitchen-shifts'])
   expect(initialized.code).toBe(0)
   expect(initialized.stderr).toBe('')
   expect(initialized.stdout).toBe(initMessage(project))
   expect((await readdir(join(project, 'flows'))).sort()).toEqual([
     'AGENTS.md',
-    'assess',
-    'prepare',
-    'review',
+    'request-cover',
+    'staff-shift',
   ])
   const guidance = await readFile(join(project, 'AGENTS.md'), 'utf8')
-  expect(guidance).toContain('](./test/AGENTS.md)')
+  expect(guidance).toContain('](./tests/AGENTS.md)')
   const flowGuide = await readFile(join(project, 'flows/AGENTS.md'), 'utf8')
-  for (const flow of ['assess', 'prepare', 'review']) {
+  for (const flow of ['request-cover', 'staff-shift']) {
     expect(flowGuide).toContain(`[${flow}](./${flow}/AGENTS.md)`)
     expect((await lstat(join(project, `flows/${flow}/AGENTS.md`))).isFile()).toBe(true)
   }
   const readFixture = async (name: string) =>
-    JSON.parse(await readFile(join(project, `test/fixtures/${name}.json`), 'utf8'))
-  expect(await readFixture('unattributed')).toMatchObject({ title: 'Weekend library hours' })
-  expect(await readFixture('attributed')).toMatchObject({ source: 'Library board meeting minutes' })
-  const testSource = await readFile(join(project, 'test/publication.test.mjs'), 'utf8')
+    JSON.parse(await readFile(join(project, `tests/fixtures/${name}.json`), 'utf8'))
+  expect(await readFixture('staffed')).toEqual({ shift: 'Saturday breakfast', cooks: ['Ada'] })
+  expect(await readFixture('short-staffed')).toEqual({ shift: 'Saturday breakfast', cooks: [] })
+  const testSource = await readFile(join(project, 'tests/shifts.test.ts'), 'utf8')
   expect(testSource).toContain("from 'bun:test'")
   expect(testSource).toContain('--record-calls')
-  expect(testSource).toContain("'inspect', '--result', packet, '--calls'")
+  expect(testSource).toContain("callEvidence: { coverage: 'complete' }")
   const bindingGuide = await readFile(join(project, 'bindings/AGENTS.md'), 'utf8')
   expect(bindingGuide).toContain('jig inspect --flow')
   const readme = await readFile(join(project, 'README.md'), 'utf8')
@@ -390,8 +394,8 @@ test('installed publication starter writes scoped guidance, policies and native 
   for (const args of [
     ['--starter'],
     ['--starter', 'unknown'],
-    ['--starter', 'publication-review', '--bare'],
-    ['--starter', 'publication-review', '--agent', 'codex'],
+    ['--starter', 'kitchen-shifts', '--bare'],
+    ['--starter', 'kitchen-shifts', '--agent', 'codex'],
   ]) {
     expect((await invoke(['init', invalid, ...args])).code).toBe(2)
     await expect(lstat(invalid)).rejects.toMatchObject({ code: 'ENOENT' })

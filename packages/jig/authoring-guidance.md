@@ -223,15 +223,16 @@ remain supported and are not rewritten by a review default.
   The [agent guide](../../docs/jig/for-agents.md) gives existing projects the same text for their local launcher.
   The greeting and each `jig new` Flow have their own editable `AGENTS.md` beside `FLOW.ts`.
 
-  The greeting's README and CLI instructions use the same generated JSON fixture.
+  Keep generated test inputs under `tests/fixtures`.
+  The greeting's README, CLI instructions, and Bun test use the same JSON fixture.
   Every scaffold copies the packaged FLOW and Jig authoring skill trees into `.agents/skills/`.
   Build from `skills/jig/` and the pinned upstream FLOW source without introducing another authored skill tree.
   Record both upstream paths in `skills-lock.json` so the project can use `npx skills update --project`.
   Initialization reads the local bundle and writes editable project files offline.
 
-  `--starter publication-review` generates the composed exercise owned by
+  `--starter kitchen-shifts` generates the composed exercise owned by
   [the composition guide](../../docs/jig/build/compose.md#test-a-scoped-route).
-  Its Bun tests reuse JSON fixtures and check complete saved child calls through installed Jig.
+  Its Bun tests reuse the two JSON fixtures and check complete inline child-call evidence through installed Jig.
   The operator reviews and approves the intended revision before running the test.
 
   Check generated package versions against their manifests. The greeting names

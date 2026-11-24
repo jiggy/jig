@@ -39,7 +39,7 @@ jig init hello-jig
 cd hello-jig
 ```
 
-`init` creates `jig.ts`, a greeting Flow, Binding guidance, and `fixtures/greeting.json`.
+`init` creates `jig.ts`, a greeting Flow, Binding guidance, and a test with input at `tests/fixtures/greeting.json`.
 Its root [`AGENTS.md`](../for-agents.md#find-where-to-change-a-workflow) guides coding agents through scoped edits and verification.
 It installs nothing, makes no network requests, and approves nothing.
 
@@ -90,7 +90,7 @@ Review prepares and retains dependencies privately, so this tutorial needs no pe
 After approval:
 
 ```sh
-jig run flow:flows/hello --input @fixtures/greeting.json
+jig run flow:flows/hello --input @tests/fixtures/greeting.json
 ```
 
 Expect these fields in the result:
@@ -114,6 +114,8 @@ Redirected stdout or `--json` carries machine-readable JSON.
 Stderr carries diagnostics and status.
 This result-only method creates no result packet unless you request one with `--out`.
 
+With Bun on your PATH, run `bun test` to check the greeting through installed Jig using the same input.
+
 ## 4. Change the greeting
 
 In `flows/hello/FLOW.ts`, replace `Hello,` with `Welcome,`.
@@ -121,7 +123,7 @@ Review the change and run again:
 
 ```sh
 jig review --allow-resolution-network
-jig run flow:flows/hello --input @fixtures/greeting.json
+jig run flow:flows/hello --input @tests/fixtures/greeting.json
 ```
 
 Approve only after inspecting the source change.
