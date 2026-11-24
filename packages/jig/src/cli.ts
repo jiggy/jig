@@ -54,6 +54,10 @@ import {
   type PrivateInspectionEnvironmentCheck,
 } from './internal/activation-admission-store.js'
 import { addFlowUse } from './internal/add-use.js'
+import {
+  PRIVATE_BUN_HTTPS_PROXY_ENV,
+  PRIVATE_BUN_HTTPS_PROXY_HINT,
+} from './internal/bun-native-preparation-protocol.js'
 import { PrivateCliOutput } from './internal/cli-output.js'
 import { importContract } from './internal/contract-import.js'
 import {
@@ -440,6 +444,7 @@ unchanged. Explicit client pins and their model or retention requirements stay i
 Later reviews require another choice; they may suggest the previously approved client.
 Run uses the approved client and code together; review never rewrites grants.
 Supplied locks stay frozen; stale locks must be updated explicitly.
+Set ${PRIVATE_BUN_HTTPS_PROXY_ENV} to route the fixed installer's HTTPS requests.
 
 Review defaults to ${DEPENDENCY_PREPARATION_LIMIT_POLICY.default.maxPreparations} distinct dependency preparations.
 For larger libraries, set limits.dependencies.maxPreparations in jig.ts
@@ -3812,6 +3817,7 @@ export function renderFailure(error: unknown, runtime: Pick<CliRuntime, 'writeEr
       PACKAGE_BUN_LOCK_INVALID: 'bun.lock is invalid; correct the supplied lock',
       PACKAGE_FLOW_IMPORT_OUTSIDE_CAPTURE: error.message,
       PACKAGE_BUN_LOCK_STALE: staleDependencyLockHint(error),
+      PACKAGE_BUN_PROXY_INVALID: PRIVATE_BUN_HTTPS_PROXY_HINT,
       PACKAGE_BUN_INPUT_LIMIT:
         'the selected package sources exceed the preparation limit; reduce captured package files and see https://jig.md/build/dependencies',
       PACKAGE_BUN_OUTPUT_LIMIT: dependencyPreparationLimitHint(error),
@@ -3822,7 +3828,7 @@ export function renderFailure(error: unknown, runtime: Pick<CliRuntime, 'writeEr
       (error.diagnostic?.code === 'PACKAGE_BUN_NODE_MODULES'
         ? 'move generated node_modules outside the Flow package; jig review prepares its locked production dependencies'
         : error.diagnostic?.code === 'PACKAGE_BUN_PREPARATION_FAILED'
-          ? 'locked dependencies could not be prepared; check registry access and package availability'
+          ? 'locked dependencies could not be prepared; check registry access, the preparation proxy, and package availability'
           : undefined)
     runtime.writeError(
       error.diagnostic !== undefined

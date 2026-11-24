@@ -2,6 +2,7 @@ import type { NativeAcpClient } from '../project/grants.js'
 import { DEPENDENCY_PREPARATION_LIMIT_POLICY } from '../project/limits.js'
 import type { PrivateInspectionEnvironmentCheck } from './activation-admission-store.js'
 import { inspectPrivateBunDirectIdentity } from './bun-direct-run.js'
+import { PRIVATE_BUN_HTTPS_PROXY_ENV } from './bun-native-preparation-protocol.js'
 import {
   inspectPrivateExecutionBackendSupport,
   type PrivateExecutionBackend,
@@ -73,6 +74,7 @@ export async function openPrivateInstalledBunHost(
   return Object.freeze({
     backend,
     installedBunSupport,
+    dependencyHttpsProxy: operatorEnvironment[PRIVATE_BUN_HTTPS_PROXY_ENV],
     dependencyLimitEnvironment: Object.freeze(
       Object.fromEntries(
         Object.values(DEPENDENCY_PREPARATION_LIMIT_POLICY.environment).map((name) => [

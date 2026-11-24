@@ -20,6 +20,8 @@ import {
 import { requirePrivateBunPatches } from './bun-native-lock-policy.js'
 import {
   encodePrivateBunMessage,
+  normalizePrivateBunHttpsProxy,
+  PRIVATE_BUN_HTTPS_PROXY_HINT,
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
   type PrivateBunPreparationMode,
@@ -129,6 +131,7 @@ export interface PrivatePreparedBunPackage {
  */
 export async function preparePrivateBunPackage(input: {
   readonly captured: CapturedPackage
+  readonly httpsProxy?: string | undefined
   readonly mode?: PrivateBunPreparationMode
   readonly dependencyLimits?: DependencyPreparationOutputLimits
   readonly installedSupport: PrivateInstalledBunSupport
@@ -176,12 +179,24 @@ export async function preparePrivateBunPackage(input: {
     throw new TypeError('Bun dependency preparation requires runtime dependencies or a lock')
   }
   requirePrivateBunResolutionPermission(classification, input.allowResolutionNetwork)
+  let httpsProxy: string | undefined
+  try {
+    httpsProxy = normalizePrivateBunHttpsProxy(input.httpsProxy)
+  } catch {
+    throw new CheckError(
+      'unavailable',
+      'PACKAGE_BUN_PROXY_INVALID',
+      PRIVATE_BUN_HTTPS_PROXY_HINT,
+      'package.json',
+    )
+  }
   input.signal?.throwIfAborted()
   const installedSupport = requirePrivateInstalledBunSupport(input.installedSupport)
   await revalidatePrivateInstalledBunSupport(installedSupport)
   const backend = requirePrivateExecutionBackend(input.backend)
   const source = {
     ...(await sourceMessage(input.captured, input.mode)),
+    ...(httpsProxy === undefined ? {} : { httpsProxy }),
     ...(input.mode === 'evaluation' ? { mode: 'evaluation' } : {}),
     ...(dependencyLimits === undefined ? {} : { dependencyLimits }),
     ...(input.workspace === undefined

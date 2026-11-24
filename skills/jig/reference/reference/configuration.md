@@ -19,6 +19,7 @@ Start with the setting that matches your task.
 | ACP client for one reviewed proposal | `review --agent codex\|claude`. Source stays unchanged and later reviews start from source again |
 | Flows, Bindings, and application settings | `jig.ts`. See [Project settings](#project-settings) |
 | Dependency preparation count per review | `limits.dependencies.maxPreparations` in `jig.ts`, or `JIG_LIMITS_DEPENDENCIES_MAX_PREPARATIONS`. See [Limits and defaults](limits.md#override-dependency-preparation-limits) |
+| HTTPS proxy for dependency preparation | Operator environment variable `JIG_DEPENDENCY_HTTPS_PROXY`. See [Dependency preparation proxy](../build/dependencies.md#dependency-preparation-proxy) |
 | Prepared runtime dependency capacity per package | `limits.dependencies` in `jig.ts`, or `JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES` and `JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES`. See [Limits and defaults](limits.md) |
 | Application starting point and default Run arguments | `entrypoint` in `jig.ts`. See [Project entrypoint](#project-entrypoint) |
 | Input, deadline, and output for one Run | Command arguments. See [Per-command options](#per-command-options) |

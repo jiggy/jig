@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
+import { createServer, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
@@ -7,6 +17,7 @@ import {
   openPrivateProjectCoordinator,
 } from '../../src/internal/activation-admission-store.js'
 import { preparePrivateBunPackage } from '../../src/internal/bun-native-preparation.js'
+import { PRIVATE_BUN_HTTPS_PROXY_ENV } from '../../src/internal/bun-native-preparation-protocol.js'
 import { withPrivateInstallationVerification } from '../../src/internal/installation-verification.js'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import { openPrivateProjectSession } from '../../src/internal/project-session-controller.js'
@@ -22,6 +33,93 @@ import {
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 
 describe.serial('private contained Bun dependency preparation', () => {
+  test('sends proxy credentials only on the selected CONNECT and refuses after proxy failure', async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-preparation-proxy-')))
+    const packageRoot = await fixture()
+    const initialCgroups = new Set(await rootlessCgroups())
+    const initialTemporary = new Set((await readdir(tmpdir())).filter(rootlessTemporaryEntry))
+    const sockets = new Set<Socket>()
+    const password = 'jig-proxy-test-canary'
+    const authorization = `Basic ${Buffer.from(`runner:${password}`).toString('base64')}`
+    let authenticatedConnects = 0
+    const proxy = createServer((socket) => {
+      sockets.add(socket)
+      socket.once('close', () => sockets.delete(socket))
+      socket.on('error', () => socket.destroy())
+      socket.setTimeout(5000, () => socket.destroy())
+      socket.setEncoding('utf8')
+      let request = ''
+      const receive = (chunk: string) => {
+        request += chunk
+        if (request.length > 4096) return void socket.destroy()
+        if (!request.includes('\r\n\r\n')) return
+        socket.off('data', receive)
+        if (
+          request.startsWith('CONNECT registry.npmjs.org:443 HTTP/1.1\r\n') &&
+          /^Proxy-Authorization: ([^\r\n]+)\r?$/im.exec(request)?.[1] === authorization
+        )
+          authenticatedConnects++
+        socket.end('HTTP/1.1 407 Proxy Authentication Required\r\nContent-Length: 0\r\n\r\n')
+      }
+      socket.on('data', receive)
+    })
+    try {
+      await mkdir(join(root, 'flows'))
+      await rename(packageRoot, join(root, 'flows', 'proxy-proof'))
+      await writeFile(
+        join(root, 'jig.ts'),
+        "import { defineJig } from '@jigging/jig'; export default defineJig({ flows: ['flows/proxy-proof'] });",
+      )
+      await new Promise<void>((resolve, reject) => {
+        proxy.once('error', reject)
+        proxy.listen(0, '127.0.0.1', resolve)
+      })
+      const address = proxy.address()
+      if (address === null || typeof address === 'string') throw new Error('proxy did not bind TCP')
+      const plan = async (httpsProxy: string | undefined) => {
+        const host = await openPrivateInstalledBunHost(
+          installedBunLocation,
+          {
+            ...process.env,
+            HTTPS_PROXY: 'http://127.0.0.1:1',
+            NO_PROXY: '*',
+            [PRIVATE_BUN_HTTPS_PROXY_ENV]: httpsProxy,
+          },
+          root,
+        )
+        const session = await openPrivateProjectSession({ directory: root, host })
+        try {
+          return await session.plan({ lockMode: 'update' })
+        } finally {
+          await session.close()
+        }
+      }
+
+      // Establish that direct access works, then force an authenticated proxy failure.
+      expect((await plan(undefined)).state).toBe('applicable')
+      const failure = await plan(`http://runner:${password}@127.0.0.1:${address.port}`).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(failure).toMatchObject({
+        diagnostic: {
+          code: 'PACKAGE_BUN_PREPARATION_FAILED',
+          path: 'flows/proxy-proof/package.json',
+        },
+      })
+      expect(JSON.stringify(failure)).not.toContain(password)
+      expect(authenticatedConnects).toBeGreaterThan(0)
+      expect(await readdir(join(root, '.jig', 'private-preparation-owners'))).toEqual([])
+      await waitForCgroups(initialCgroups)
+      await waitForTemporary(initialTemporary)
+    } finally {
+      for (const socket of sockets) socket.destroy()
+      if (proxy.listening) await new Promise<void>((resolve) => proxy.close(() => resolve()))
+      await rm(packageRoot, { recursive: true, force: true })
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 120_000)
+
   test('native evaluation preparation retains development closure after collector cleanup', async () => {
     const initialTemporary = new Set((await readdir(tmpdir())).filter(rootlessTemporaryEntry))
     const initialCgroups = new Set(await rootlessCgroups())

@@ -212,6 +212,9 @@ The command supports discovery and literal Binding membership in `jig.ts`.
 See [Binding authoring](https://jig.md/build/design#give-one-caller-slot-its-own-child-binding).
 
 Use `jig check` to link the complete working configuration before review.
+
+On hosts that need a proxy for npm fetches, configure `JIG_DEPENDENCY_HTTPS_PROXY` in the operator environment.
+See the [dependency preparation proxy guide](https://jig.md/build/dependencies#dependency-preparation-proxy).
 Use `--diff` to show configured changes since the last local approval.
 Source behavior and execution readiness require separate checks.
 

@@ -129,6 +129,25 @@ Root `name` or `version` edits do not make a lock stale. Bun does not reliably
 retain that metadata. Jig still checks dependency selections and member metadata.
 Root manifest changes still require review.
 
+### Dependency preparation proxy
+
+Set `JIG_DEPENDENCY_HTTPS_PROXY` in the operator environment when review needs an HTTPS proxy.
+Use a trusted HTTP or HTTPS proxy URL, with optional URL credentials.
+If you already trust the shell's `HTTPS_PROXY`, select it explicitly.
+
+```sh
+JIG_DEPENDENCY_HTTPS_PROXY="$HTTPS_PROXY" jig review
+```
+
+The setting applies to HTTPS requests from the dependency installer during review.
+The installer still uses the default registry, verifies TLS and lock integrity, and disables scripts.
+With a supplied valid lock, preparation can fetch the locked bytes through the proxy.
+Resolving a missing lock still needs `--allow-resolution-network`.
+
+Keep proxy credentials in the operator's environment.
+Jig leaves them out of project files, review diagnostics, and Flow environments.
+Use host or proxy policy to restrict destinations.
+
 ### Consuming a frozen candidate
 
 Use the candidate's exact published dependency versions in each importing Flow.

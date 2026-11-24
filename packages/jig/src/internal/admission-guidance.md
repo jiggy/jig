@@ -149,6 +149,10 @@ Version metadata is checked before evaluation and reverified before capture comp
   authority or alter admitted grants. Workers receive validated numeric values,
   never ambient environment configuration.
 
+- Forward the explicit operator preparation proxy on the contained worker's private input.
+  Only the fixed installer receives it as `HTTPS_PROXY`.
+  Keep the URL and credentials out of native launch plans, preparation identity, and diagnostics.
+
 - `dependency-flows.ts` selects declared `npm:` dependencies after ordinary
   contained Bun preparation. It inspects a regular-file package view and retains
   the original dependency lookup layout with that package as the execution root.

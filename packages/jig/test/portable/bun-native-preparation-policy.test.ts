@@ -11,6 +11,7 @@ import {
 import {
   encodePrivateBunMessage,
   maximumPrivateBunFileMessageBytes,
+  normalizePrivateBunHttpsProxy,
   PRIVATE_BUN_PREPARATION_LIMITS,
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
@@ -40,6 +41,29 @@ function lock(packages: Readonly<Record<string, unknown>>): object {
 }
 
 describe('private Bun preparation policy', () => {
+  test('accepts only a bounded operator proxy endpoint and keeps rejected values private', () => {
+    expect(normalizePrivateBunHttpsProxy(undefined)).toBeUndefined()
+    expect(normalizePrivateBunHttpsProxy('http://runner:sample@proxy.example:3128')).toBe(
+      'http://runner:sample@proxy.example:3128/',
+    )
+    expect(normalizePrivateBunHttpsProxy('https://[::1]:8443/')).toBe('https://[::1]:8443/')
+    for (const invalid of [
+      null,
+      '',
+      'socks5://private@example.invalid',
+      'https://private@example.invalid/path',
+      'https://private@example.invalid?',
+      'https://private@example.invalid#',
+      'https://private@example.invalid\\other',
+      'https://private@example.invalid\u0000',
+      `http://private:${'x'.repeat(4096)}@example.invalid`,
+    ]) {
+      expect(() => normalizePrivateBunHttpsProxy(invalid)).toThrow(
+        /^Set JIG_DEPENDENCY_HTTPS_PROXY to an HTTP or HTTPS proxy URL, or unset it to use direct access\.$/,
+      )
+    }
+  })
+
   test('identifies a non-default registry without exposing its URL', () => {
     const value = lock({
       example: ['example@1.0.0', 'https://secret@example.invalid/example.tgz', {}, INTEGRITY],

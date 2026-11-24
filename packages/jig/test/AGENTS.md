@@ -2,6 +2,9 @@
 
 ## Ownership
 
+`host/bun-native-preparation.test.ts` uses a real loopback CONNECT proxy to check operator credential delivery and refusal after proxy failure.
+It first proves direct preparation and then checks cleanup and diagnostic redaction after the proxy refuses.
+
 `portable/contract-import.test.ts` checks offline collaborator declarations with or without a source.
 It checks that an optional declaration copies a named agreement and that a bare optional declaration leaves source untouched.
 It covers exact bundle and metadata preservation, collision refusal, concurrent edits, and recoverable source publication failure.
