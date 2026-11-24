@@ -27,6 +27,8 @@ Use the project's usual Jig command if it has a local launcher.
 > replay the changed and preserved routes with the same fixture. When routing
 > matters, verify the exact caller, slot, and target in the Run evidence.
 
+For application test recipes, see the [composition testing guide](build/compose.md#test-callers-in-your-application).
+
 For example, `jig inspect --flow flows/import/FLOW.ts` opens the configured use or lists the uses of that package.
 `jig inspect --flow bindings/code.ts` opens that exact Binding.
 Follow the relevant Binding declaration or [focused inspection](build/results.md#inspect-source-behavior) to the decision.

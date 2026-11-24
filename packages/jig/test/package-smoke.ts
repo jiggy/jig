@@ -235,6 +235,15 @@ try {
     const path = join(greeting, '.agents/skills', name, 'SKILL.md')
     assert.ok((await readFile(path, 'utf8')).includes(`name: ${name}\n`))
   }
+  const greetingGuide = await readFile(join(greeting, 'AGENTS.md'), 'utf8')
+  const compositionGuide = '.agents/skills/jig/reference/build/compose.md'
+  const testSection = 'test-callers-in-your-application'
+  assert.ok(greetingGuide.includes(`./${compositionGuide}#${testSection}`))
+  assert.ok(greetingGuide.includes(`https://jig.md/build/compose#${testSection}`))
+  assert.match(
+    await readFile(join(greeting, compositionGuide), 'utf8'),
+    /^### Test callers in your application$/m,
+  )
   await assert.rejects(stat(join(greeting, '.jig')), { code: 'ENOENT' })
   await assert.rejects(stat(join(greeting, 'flows/hello/node_modules')), { code: 'ENOENT' })
   const added = await run([command, 'new', 'summarize'], greeting)
