@@ -10,15 +10,46 @@ The operator delegates a cgroup subtree to the session.
 Jig uses that subtree to enforce its ordinary execution and cleanup rules.
 See the [session requirements](../reference/configuration.md#use-an-existing-delegated-linux-session).
 
-## Configure the NixOS reference
+## Prepare the host
 
-This reference is a candidate. Its independent lifecycle checks are pending.
 Use an unprivileged account on an x86_64 host with the [Jig host prerequisites](./index.md#supported-host).
-The reference uses systemd 254 or later to place the session in its initial cgroup.
-Pin the host package set and use the same exact installed Jig build in both sessions.
+Both setups below use systemd 254 or later to place each session in its initial cgroup.
+Pin the host package set and use the same installed Jig build in both sessions.
 The [Jig Nixpkgs pin](https://github.com/jiggy/jig/blob/main/shell.nix) provides a starting package set.
 
 Fetch the [reference directory](https://github.com/jiggy/jig/tree/main/scripts/linux-sessions) from one Jig revision.
+
+## Start transient user services
+
+The host test used two transient user services under the same NixOS runner account.
+Both sessions passed inspection, review, and execution before and after an edit.
+The operator confirmed cgroup cleanup after cancellation, deadline expiry, and coordinator loss.
+In each case the peer Run stayed active and finished. [Host acceptance report](https://github.com/jiggy/jig/pull/198#issuecomment-7142275963)
+
+Start the services from a trusted Bash terminal under the runner account.
+This setup uses the existing systemd user manager without host `sudo`.
+The user manager must be able to delegate the CPU, memory, and process controllers.
+Start from the first disposable directory.
+Set `reference` and `bwrap_path` to the absolute paths of the reference directory and Bubblewrap executable.
+
+```bash
+unit=jig-session-first.service
+systemd-run --user --pty --wait --collect --service-type=exec \
+  --unit="$unit" --working-directory="$PWD" \
+  --property='Delegate=cpu memory pids' --property=DelegateSubgroup=jig \
+  --setenv="PATH=$PATH" --setenv="JIG_BWRAP_PATH=$bwrap_path" \
+  --expand-environment=no \
+  -- "$BASH" "$reference/enter-systemd-session.sh" "$unit" "$BASH" --norc -i
+```
+
+Repeat in a second terminal from the other disposable directory with `unit=jig-session-second.service`.
+Keep both shells open during the checks.
+Exit each shell after its checks finish. Systemd collects the transient service.
+
+## Configure persistent system units
+
+Use the NixOS module when the host operator manages the session units in system configuration.
+Live lifecycle checks for the module are pending.
 Import its module into your NixOS configuration.
 Point each command at the entrypoint for that session.
 
@@ -46,6 +77,8 @@ Use a foreground command that stays alive for the whole session.
 Apply the configuration through your normal NixOS workflow.
 Start `jig-session-first.service` and `jig-session-second.service` from the host.
 Connect to each session through its usual interface.
+
+## Preserve the session boundary
 
 Systemd delegates CPU, memory, and process controllers to each unit.
 The startup script enables them in its own subtree before it starts the session.
@@ -80,13 +113,18 @@ sed -i "s/revision: 'first'/revision: 'second'/" flows/lifetime/FLOW.ts &&
 
 Expect `succeeded` and `childStarted: true` from both Runs.
 Expect `revision: first` before the edit and `revision: second` after the second review.
+
 From the host, check that each delegated subtree has no execution subgroups.
 Set `first_leaf` and `second_leaf` to each session's absolute cgroup path.
-For the NixOS reference, use the unit's cgroup path with its `jig` subgroup.
+For a systemd setup, use the unit's cgroup path with its `jig` subgroup.
+Run this lookup from a third, trusted terminal.
+Set `reference` in that terminal too.
+For system-level units, set `manager=(systemctl)` in the first line.
 
 ```bash
-first_leaf="/sys/fs/cgroup$(systemctl show -p ControlGroup --value jig-session-first.service)/jig"
-second_leaf="/sys/fs/cgroup$(systemctl show -p ControlGroup --value jig-session-second.service)/jig"
+manager=(systemctl --user)
+first_leaf="/sys/fs/cgroup$("${manager[@]}" show -p ControlGroup --value jig-session-first.service)/jig"
+second_leaf="/sys/fs/cgroup$("${manager[@]}" show -p ControlGroup --value jig-session-second.service)/jig"
 ```
 
 ```bash
@@ -156,7 +194,7 @@ Check that its subtree also reaches `settled`.
 Record the Jig build, Linux distribution, kernel, Bubblewrap, and session configuration.
 For the NixOS reference, include the Nixpkgs and systemd revisions.
 Include case outputs, exit statuses, and both scopes' observations.
-Running this procedure in two Orca worktrees is one independent acceptance case.
+Repeat this procedure through the normal session launcher to qualify that integration.
 Report the first unmet condition alongside any successful cases.
 
 Re-run these checks when the profile or Jig's relevant host requirements change.
