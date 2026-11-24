@@ -392,7 +392,7 @@ A named destination creates a new directory. No installation, network
 requests, approval, or execution happens during initialization.
 
   --bare     Omit the greeting; an explicit --agent still creates its starter
-  --starter kitchen-shifts  Assign a cook to a shift or ask for cover
+  --starter kitchen-shifts  Build a weekend kitchen roster
 
 Examples:
   $ jig init

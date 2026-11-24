@@ -232,7 +232,8 @@ remain supported and are not rewritten by a review default.
 
   `--starter kitchen-shifts` generates the composed exercise owned by
   [the composition guide](../../docs/jig/build/compose.md#test-a-scoped-route).
-  Its Bun tests reuse the two JSON fixtures and check complete inline child-call evidence through installed Jig.
+  It builds a roster by choosing the least-assigned available cook for each shift and records the unfilled shifts.
+  Its Bun tests check the full and partial rosters and complete inline child-call evidence through installed Jig.
   The operator reviews and approves the intended revision before running the test.
 
   Check generated package versions against their manifests. The greeting names

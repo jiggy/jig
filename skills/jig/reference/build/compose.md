@@ -145,8 +145,8 @@ The operator must configure and review those differences.
 
 ## Test a scoped route
 
-Create a small kitchen workflow that assigns a cook to a shift.
-When nobody is available, it calls a Flow that drafts a cover request.
+Create a kitchen workflow that assigns four weekend shifts across three cooks.
+It gives each shift to the available cook with the fewest assignments so far.
 
 ```sh
 jig init kitchen --starter kitchen-shifts
@@ -158,18 +158,18 @@ Use a [supported host](../start/index.md#supported-host) and approve the revisio
 The flag permits [dependency resolution](dependencies.md#fresh-resolution-and-network-access) before approval.
 
 ```sh
-jig run binding:kitchen --input @tests/fixtures/staffed.json
+jig run binding:kitchen --input @tests/fixtures/weekend.json
 jig run binding:kitchen --input @tests/fixtures/short-staffed.json
 bun test
 ```
 
-The first Run assigns Ada. The second returns `needs-cover` with a message.
+The first Run assigns two shifts to Ada and one each to Bea and Cal.
+The second returns `needs-cover` with Saturday lunch open and the other shifts staffed.
 Use those same fixtures in [Explorer](results.md#explore-before-starting-a-run).
 
 The Bun tests call installed Jig and check the application result and [inline call evidence](results.md#inspect-saved-child-calls).
-They require complete coverage and verify that only the short-staffed case calls `request-cover`.
-Try editing the message in `flows/request-cover/FLOW.ts` and updating its expected value.
-Review the change and rerun both tests. The staffed shift should still assign Ada.
+They require complete coverage and verify one call to `choose-cook` per staffed shift.
+Try reversing the order of available cooks for Saturday breakfast and predict the roster before running it.
 
 ### Test callers in your application
 
