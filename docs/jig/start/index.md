@@ -196,6 +196,8 @@ glibc through `/run/current-system/sw/share/nix-ld/lib/ld.so` and gives Runs
 only the required loader and libraries. Automated CI conformance on NixOS
 remains unconfigured.
 
+See the [candidate reference for restricted NixOS agent sessions](./nixos-agent-session.md).
+
 `review` and `run` acquire their delegated scopes without `sudo`. Jig verifies
 the package-local Bun runtime before execution. See the
 [security boundary](https://github.com/jiggy/jig/blob/main/SECURITY.md) for

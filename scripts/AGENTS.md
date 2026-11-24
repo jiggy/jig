@@ -19,6 +19,7 @@ operational baselines, and public-site assembly.
   Packaged installations never select contributor recovery from their working directory.
 
 - Root scripts own unprivileged source, package, release, and site operations.
+- `nixos/` owns the NixOS agent-session reference and its acceptance fixture.
 - `experiments/visual-flows/` owns isolated read-only composition and runtime-topology experiments.
   Its projections carry evidence limits and grant no execution authority.
 - `example-inventory.mjs` reconciles every example directory with application
@@ -366,6 +367,7 @@ operational baselines, and public-site assembly.
 ## Child DOX Index
 
 - [experiments/visual-flows/AGENTS.md](experiments/visual-flows/AGENTS.md) — Read-only graph experiments and their evidence limits.
+- [nixos/AGENTS.md](nixos/AGENTS.md) — NixOS agent-session setup and installed acceptance.
 
 - [release/AGENTS.md](release/AGENTS.md) — Changeset coverage, version generation, trusted publication, rehearsals,
   derived dependency pins, and release eligibility.

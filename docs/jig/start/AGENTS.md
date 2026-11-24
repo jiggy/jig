@@ -10,6 +10,7 @@ Teach the first useful run and application call.
 Mac guidance distinguishes capability admission on native ARM macOS 15+ from
 complete macOS 15/26 release qualification. Intel and Rosetta remain unsupported.
 `application.md` invokes that same accepted method through the public client.
+`nixos-agent-session.md` owns the NixOS agent-session candidate and its acceptance procedure.
 `review-run.diagram.json` and its SVG explain review and execution.
 
 ## Local Contracts
