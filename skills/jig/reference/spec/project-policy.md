@@ -66,7 +66,7 @@ Normal initialization writes a private root `package.json` with its build’s ex
 This metadata records the required host without installing it.
 Bare initialization retains the smaller skeleton below unless Agent selection already requires a manifest.
 
-`jig init [directory] --starter kitchen-shifts` creates a workflow that assigns a cook to a kitchen shift or drafts a cover request.
+`jig init [directory] --starter kitchen-shifts` creates a workflow that spreads a weekend's shifts among available cooks and marks open shifts.
 Its JSON fixtures live under `tests/fixtures` and its tests run through installed Jig.
 The starter is an alternative to `--bare` and `--agent`. It has the same source-only initialization and
 explicit review requirements as the default project.

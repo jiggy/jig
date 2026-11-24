@@ -440,7 +440,7 @@ function projectAgentGuidance(hasTests: boolean): string {
   return [
     '# Workflow edits',
     '',
-    'Follow the DOX chain below. Read the bundled [Jig skill](./.agents/skills/jig/SKILL.md)',
+    'Read the bundled [Jig skill](./.agents/skills/jig/SKILL.md)',
     'for project wiring, review, Runs, and tests. Read the bundled',
     '[FLOW skill](./.agents/skills/flow/SKILL.md) for method design and contracts.',
     'For a change within one Flow, work from its own guidance, source, and tests.',

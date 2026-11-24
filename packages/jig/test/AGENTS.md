@@ -20,7 +20,7 @@ Phrase lookup checks that separator matches preserve literal matches under the r
 `host/installed-cli-lifecycle.test.ts` checks pre-approval topology and current versus approved source identity through the installed CLI.
 It checks approved phrase lookup against changed working descriptions and verifies the retained approval bytes.
 It reopens a saved greeting result and checks that the result-only invocation reserves no artifact bytes.
-It runs the generated greeting test and both kitchen shift tests using the installed CLI.
+It runs the generated greeting test and both roster tests using the installed CLI.
 
 `host/installed-shared-binding-wiring.test.ts` runs the standalone publishing consumer on its frozen Jig archive.
 The consumer reviews a shared producer, isolates the offer edit, and checks book and direct routes.

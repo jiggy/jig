@@ -365,24 +365,28 @@ test('installed kitchen shifts starter writes scoped guidance and native route t
   expect(initialized.stdout).toBe(initMessage(project))
   expect((await readdir(join(project, 'flows'))).sort()).toEqual([
     'AGENTS.md',
-    'request-cover',
-    'staff-shift',
+    'choose-cook',
+    'plan-roster',
   ])
   const guidance = await readFile(join(project, 'AGENTS.md'), 'utf8')
+  expect(guidance.startsWith('# Workflow edits\n\nRead the bundled [Jig skill]')).toBe(true)
   expect(guidance).toContain('](./tests/AGENTS.md)')
   const flowGuide = await readFile(join(project, 'flows/AGENTS.md'), 'utf8')
-  for (const flow of ['request-cover', 'staff-shift']) {
+  for (const flow of ['choose-cook', 'plan-roster']) {
     expect(flowGuide).toContain(`[${flow}](./${flow}/AGENTS.md)`)
     expect((await lstat(join(project, `flows/${flow}/AGENTS.md`))).isFile()).toBe(true)
   }
   const readFixture = async (name: string) =>
     JSON.parse(await readFile(join(project, `tests/fixtures/${name}.json`), 'utf8'))
-  expect(await readFixture('staffed')).toEqual({ shift: 'Saturday breakfast', cooks: ['Ada'] })
-  expect(await readFixture('short-staffed')).toEqual({ shift: 'Saturday breakfast', cooks: [] })
+  const weekend = await readFixture('weekend')
+  expect(weekend).toHaveLength(4)
+  expect(weekend[1]).toEqual({ shift: 'Saturday lunch', available: ['Ada', 'Bea'] })
+  const shortStaffed = await readFixture('short-staffed')
+  expect(shortStaffed).toEqual([weekend[0], { shift: 'Saturday lunch', available: [] }, ...weekend.slice(2)])
   const testSource = await readFile(join(project, 'tests/shifts.test.ts'), 'utf8')
   expect(testSource).toContain("from 'bun:test'")
   expect(testSource).toContain('--record-calls')
-  expect(testSource).toContain("callEvidence: { coverage: 'complete' }")
+  expect(testSource).toContain("expect(result.callEvidence.coverage).toBe('complete')")
   const bindingGuide = await readFile(join(project, 'bindings/AGENTS.md'), 'utf8')
   expect(bindingGuide).toContain('jig inspect --flow')
   const readme = await readFile(join(project, 'README.md'), 'utf8')
