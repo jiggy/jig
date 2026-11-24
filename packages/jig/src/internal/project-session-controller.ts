@@ -112,6 +112,7 @@ import { PrivateBunWorkspaceError } from './workspace-source-roots.js'
 
 /** One closed proof-host input. It is not a public host or extension SPI. */
 export interface PrivateProjectSessionHost {
+  readonly dependencyHttpsProxy?: string | undefined
   readonly dependencyLimitEnvironment?: Readonly<Record<string, string | undefined>>
   readonly expectedAdmissionDigest?: string
   readonly backend: PrivateExecutionBackend
@@ -477,6 +478,7 @@ function createSession(
               const reviewed = await reviewPrivateProjectEvaluation({
                 grant,
                 captured,
+                httpsProxy: host.dependencyHttpsProxy,
                 installedSupport: host.installedBunSupport,
                 backend: host.backend,
                 projectRoot: owner.root.requestedPath,
@@ -521,6 +523,7 @@ function createSession(
                     return await privateProfileSpan('dependency-preparation', () =>
                       preparePrivateBunPackage({
                         captured,
+                        httpsProxy: host.dependencyHttpsProxy,
                         dependencyLimits: dependencyPolicy!.outputLimits,
                         ...(workspace === undefined ? {} : { workspace }),
                         installedSupport: host.installedBunSupport,
@@ -750,6 +753,7 @@ function createSession(
                   const prepared = await privateProfileSpan('dependency-preparation', () =>
                     preparePrivateBunPackage({
                       captured,
+                      httpsProxy: host.dependencyHttpsProxy,
                       dependencyLimits: dependencyPolicy!.outputLimits,
                       ...(workspace === undefined ? {} : { workspace }),
                       installedSupport: host.installedBunSupport,
@@ -1319,6 +1323,7 @@ function isUnavailableDiagnosticCode(code: string): boolean {
     code === 'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE' ||
     code === 'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
+    code === 'PACKAGE_BUN_PROXY_INVALID' ||
     code === 'PACKAGE_BUN_SOURCE_ROOT_UNREADABLE' ||
     code === 'PACKAGE_BUN_SOURCE_ROOT_UNAVAILABLE' ||
     code === 'PACKAGE_BUN_WORKSPACE_SOURCE_ACCESS' ||

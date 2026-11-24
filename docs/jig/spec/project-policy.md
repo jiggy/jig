@@ -292,14 +292,24 @@ only then performs a frozen install. Unsupported transitive sources can
 therefore fail after permitted network activity, not become executable through
 the flag. Resolution and installation share the existing preparation limits.
 
-Preparation ignores ambient configuration: the worker and installer receive
-no ambient variables or env file, only fixed loader support, `/dev/null` as
-Bun configuration, the exact runtime selected by Jig, and an explicit npm
-registry. A package-local root `.npmrc` is rejected because Bun treats it as a
-separate configuration input.
-Only captured manifests, any supplied root `bun.lock`, and declared workspace
-patch files are staged for Bun; other authored files are materialized after
-installation. Foreign locks,
+Preparation uses fixed loader support, `/dev/null` as Bun configuration, the pinned runtime, and the explicit default npm registry.
+Jig ignores ambient installer variables and env files.
+Jig rejects package-local root `.npmrc` because Bun reads it as separate configuration.
+
+The operator can set `JIG_DEPENDENCY_HTTPS_PROXY` for fresh dependency preparation.
+It accepts an HTTP or HTTPS proxy endpoint with an optional port and URL credentials.
+Jig rejects paths other than `/`, query strings, fragments, and normalized URLs over 4,096 bytes.
+Jig passes the value through the contained worker's private input.
+Only the fixed installer's resolve and install commands receive that value as `HTTPS_PROXY`.
+
+The proxy setting grants no resolution permission and changes no admitted authority or package identity.
+Jig preserves TLS validation, lock integrity, script restrictions, and the default registry.
+The proxy URL stays out of the lock, retained preparation evidence, and diagnostics.
+Jig reports invalid configuration as `PACKAGE_BUN_PROXY_INVALID`.
+Unsetting the option restores direct access.
+
+Jig stages only captured manifests, any supplied root `bun.lock`, and declared workspace patch files for Bun.
+Jig materializes other authored files after installation. Foreign locks,
 preloads, and configuration therefore cannot influence resolution or install.
 Git, GitHub, tarball, file, undeclared workspace, custom-registry, and non-integrity entries
 in a supplied lock are rejected before the trusted installer starts a fetch.
@@ -901,6 +911,7 @@ honest Binding/slot fallback. It does not label a provider's executable Flow
 as the client declaration. Failure preserves the previous complete admission.
 Failure to prepare dependencies includes `PACKAGE_BUN_PREPARATION_FAILED` and
 its project-relative `package.json` location.
+An invalid preparation proxy reports `PACKAGE_BUN_PROXY_INVALID` at the affected manifest.
 
 `PACKAGE_BUN_PROJECT_COUNT_LIMIT` reports the first rejected preparation count, the effective maximum, and the value's origin.
 That observed count is a lower bound, since review stops before preparing the over-limit package.

@@ -10,6 +10,25 @@ import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 const MIB = 1024 * 1024
 const MAX_JSON_BYTES_PER_PATH_BYTE = 6
+const MAX_PROXY_URL_BYTES = 4096
+
+export const PRIVATE_BUN_HTTPS_PROXY_ENV = 'JIG_DEPENDENCY_HTTPS_PROXY'
+export const PRIVATE_BUN_HTTPS_PROXY_HINT =
+  'Set JIG_DEPENDENCY_HTTPS_PROXY to an HTTP or HTTPS proxy URL, or unset it to use direct access.'
+
+export function normalizePrivateBunHttpsProxy(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  const url =
+    typeof value === 'string' &&
+    value.length <= MAX_PROXY_URL_BYTES &&
+    /^https?:\/\//i.test(value) &&
+    !/[\p{Cc}\s\\?#]/u.test(value)
+      ? URL.parse(value)
+      : null
+  if (url === null || url.pathname !== '/' || Buffer.byteLength(url.href) > MAX_PROXY_URL_BYTES)
+    throw new TypeError(PRIVATE_BUN_HTTPS_PROXY_HINT)
+  return url.href
+}
 
 export const PRIVATE_BUN_PREPARATION_LIMITS = Object.freeze({
   sourceFiles: 4_096,

@@ -53,6 +53,13 @@ Claude Code clients inherit networking only inside their admitted ACP
 execution scope. Their executable, authentication and launch policy remain
 operator configuration. Jig supplies no default model.
 
+The operator can route the dependency installer's HTTPS requests through `JIG_DEPENDENCY_HTTPS_PROXY`.
+Jig passes the URL and any credentials through the worker's private input.
+Only the fixed installer's resolution and install subprocesses receive it.
+Jig preserves TLS validation, lock integrity, disabled scripts, and explicit resolution permission.
+Proxy configuration grants no network access to Flows or other resources.
+Use host or proxy policy to enforce destination restrictions.
+
 The selected native-client scope receives its bounded credential projection
 through a transient private channel. Instructions and selected Skill text
 arrive through the ordinary Agent Flow's admitted resource call. A

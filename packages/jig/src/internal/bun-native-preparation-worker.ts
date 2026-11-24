@@ -14,6 +14,7 @@ import {
 } from './bun-native-lock-policy.js'
 import {
   encodePrivateBunMessage,
+  normalizePrivateBunHttpsProxy,
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
   type PrivateBunPreparationMode,
@@ -56,6 +57,10 @@ try {
   const first = await iterator.next()
   if (first.done) throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source is missing')
   const source = requireSource(first.value)
+  const installerEnvironment =
+    source.httpsProxy === undefined
+      ? CHILD_ENVIRONMENT
+      : Object.freeze({ ...CHILD_ENVIRONMENT, HTTPS_PROXY: source.httpsProxy })
   workspace = source.workspace
   mode = source.mode
   dependencyLimits = source.dependencyLimits
@@ -102,9 +107,9 @@ try {
   const inputs = source.files.filter(({ path }) => inputPaths.has(path))
   await materializeSource(inputs)
   const resolving = !inputs.some(({ path }) => path === 'bun.lock')
-  if (resolving) await resolveMissingLock()
+  if (resolving) await resolveMissingLock(installerEnvironment)
   await requireSupportedLock(resolving, patches)
-  await install()
+  await install(installerEnvironment)
   await materializeSource(source.files.filter(({ path }) => !inputPaths.has(path)))
   await verifySource(source.files)
   const prepared = await capturePrivateBunPreparedTree(
@@ -310,7 +315,9 @@ function canonical(value: unknown): string {
   return JSON.stringify(value) ?? ''
 }
 
-async function resolveMissingLock(): Promise<void> {
+async function resolveMissingLock(
+  installerEnvironment: Readonly<Record<string, string>>,
+): Promise<void> {
   if (!allowResolutionNetwork)
     throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'resolution permission is missing')
   const result = await runChild(
@@ -331,7 +338,7 @@ async function resolveMissingLock(): Promise<void> {
       '--no-summary',
       ...workspaceFilter(),
     ],
-    { cwd: PACKAGE_ROOT, env: CHILD_ENVIRONMENT },
+    { cwd: PACKAGE_ROOT, env: installerEnvironment },
     64 * 1024,
     64 * 1024,
   )
@@ -357,7 +364,7 @@ function unsupportedSource(): never {
   )
 }
 
-async function install(): Promise<void> {
+async function install(installerEnvironment: Readonly<Record<string, string>>): Promise<void> {
   const result = await runChild(
     [
       '--no-env-file',
@@ -376,7 +383,7 @@ async function install(): Promise<void> {
     ],
     {
       cwd: PACKAGE_ROOT,
-      env: CHILD_ENVIRONMENT,
+      env: installerEnvironment,
     },
     64 * 1024,
     64 * 1024,
@@ -402,8 +409,15 @@ function requireSource(value: unknown): {
   readonly workspace?: Workspace
   readonly mode: PrivateBunPreparationMode
   readonly dependencyLimits?: DependencyPreparationOutputLimits
+  readonly httpsProxy?: string
 } {
   const root = ordinaryRecord(value)
+  let httpsProxy: string | undefined
+  try {
+    httpsProxy = normalizePrivateBunHttpsProxy(root?.httpsProxy)
+  } catch {
+    throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'invalid dependency preparation proxy')
+  }
   if (root?.mode !== undefined && root.mode !== 'evaluation')
     throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'unsupported preparation mode')
   const selectedMode = root?.mode === 'evaluation' ? 'evaluation' : 'production'
@@ -494,6 +508,7 @@ function requireSource(value: unknown): {
   return Object.freeze({
     files: Object.freeze(files),
     mode: selectedMode,
+    ...(httpsProxy === undefined ? {} : { httpsProxy }),
     ...(selectedLimits === undefined ? {} : { dependencyLimits: selectedLimits }),
     ...(selectedWorkspace === undefined ? {} : { workspace: selectedWorkspace }),
   })
