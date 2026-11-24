@@ -978,7 +978,7 @@ meaning without admitting it.
 
 An ACP grant with omitted `client` requests the operator's native Agent.
 It is not an executable client. Such a grant may specify common `maxTurns`,
-but not a vendor model, `authProfile`, or `retainSessions`. Those require
+but not a vendor model, `authProfile`, `reasoningEffort` or `retainSessions`. Those require
 an explicit client pin. The operator's default never rewrites a pin, even if
 the client uses a named authentication profile.
 

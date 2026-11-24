@@ -430,11 +430,23 @@ for (const scenario of [
   'completion-before-reply',
   'http-status-503',
   'rejected',
+  'effort-confirmed',
+  'effort-unavailable',
+  'effort-dispatch-guard',
 ] as const) {
   test(`Codex ACP configuration and fast-turn frames satisfy PrivateFiniteAcpPolicy: ${scenario}`, async () => {
     const encoder = new TextEncoder()
+    const effortScenario = scenario.startsWith('effort-')
+    const requireEffort = effortScenario && scenario !== 'effort-dispatch-guard'
     const policy = new PrivateFiniteAcpPolicy(
-      { configuration: [], modeId: 'read-only' },
+      {
+        configuration: [
+          ...(effortScenario ? [{ configId: 'model', value: 'fixture' }] : []),
+          ...(requireEffort ? [{ configId: 'reasoning_effort', value: 'low' }] : []),
+        ],
+        maxTurns: scenario === 'effort-confirmed' ? 2 : 1,
+        modeId: 'read-only',
+      },
       'openai-codex',
     )
     const root = await mkdtemp(join(tmpdir(), 'jig-codex-acp-policy-'))
@@ -461,6 +473,7 @@ for (const scenario of [
           CODEX_PATH: fixture,
           RECORD_PATH: recording,
           RECORD_SCENARIO: scenario,
+          ...(effortScenario ? { JIG_CODEX_REASONING_EFFORT: 'low' } : {}),
         },
         stdin: 'pipe',
         stdout: 'pipe',
@@ -496,7 +509,16 @@ for (const scenario of [
       for (;;) {
         const { raw, parsed } = await readRawFrame()
         const delivery = policy.fromClient(encoder.encode(raw))
-        if (parsed.id === (frame as { id: number }).id) return delivery.toAdapter
+        if (parsed.id === (frame as { id: number }).id) {
+          if (
+            effortScenario &&
+            (frame as { params?: { configId?: string } }).params?.configId === 'model'
+          )
+            expect(parsed.result.configOptions).toContainEqual(
+              expect.objectContaining({ configId: 'reasoning_effort', currentValue: 'high' }),
+            )
+          return delivery.toAdapter
+        }
       }
     }
     try {
@@ -538,12 +560,39 @@ for (const scenario of [
       const sessionId = newReply.result.sessionId as string
       expect(typeof sessionId).toBe('string')
 
-      const configReply = await callThroughPolicy({
-        jsonrpc: '2.0',
-        id: 3,
-        method: 'session/set_config_option',
-        params: { sessionId, configId: 'mode', type: 'id', value: 'read-only' },
-      })
+      let nextId = 3
+      const configure = (configId: string, value: string) =>
+        callThroughPolicy({
+          jsonrpc: '2.0',
+          id: nextId++,
+          method: 'session/set_config_option',
+          params: { sessionId, configId, type: 'id', value },
+        })
+      const nativeRequests = async (method: string) =>
+        (await readFile(recording, 'utf8'))
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line))
+          .filter((request) => request.method === method)
+      if (effortScenario) {
+        const modelReply = await configure('model', 'fixture')
+        expect(modelReply.result.configOptions[0].currentValue).toBe('fixture')
+      }
+      if (scenario === 'effort-unavailable') {
+        await expect(configure('reasoning_effort', 'low')).rejects.toMatchObject({
+          reason: 'reasoning-effort',
+        })
+        expect(await nativeRequests('turn/start')).toEqual([])
+        return
+      }
+      if (requireEffort) {
+        const effortReply = await configure('reasoning_effort', 'low')
+        expect(effortReply.result.configOptions[0]).toMatchObject({
+          configId: 'reasoning_effort',
+          currentValue: 'low',
+        })
+      }
+      const configReply = await configure('mode', 'read-only')
       expect(configReply.result).toEqual({
         configOptions: [
           {
@@ -556,27 +605,35 @@ for (const scenario of [
         ],
       })
 
-      const acceptedPrompt = policy.fromAdapter(
-        encoder.encode(
-          JSON.stringify({
-            jsonrpc: '2.0',
-            id: 4,
-            method: 'session/prompt',
-            params: { sessionId, prompt: [{ type: 'text', text: 'Answer through policy.' }] },
-          }),
-        ),
-      )
-      child.stdin.write(`${JSON.stringify(acceptedPrompt)}\n`)
-      await child.stdin.flush()
+      const sendPrompt = async () => {
+        const id = nextId++
+        const prompt = policy.fromAdapter(
+          encoder.encode(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id,
+              method: 'session/prompt',
+              params: { sessionId, prompt: [{ type: 'text', text: 'Answer through policy.' }] },
+            }),
+          ),
+        )
+        child.stdin.write(`${JSON.stringify(prompt)}\n`)
+        await child.stdin.flush()
+        return id
+      }
+      const promptId = await sendPrompt()
 
-      if (scenario === 'rejected') {
+      const rejected = scenario === 'rejected' || scenario === 'effort-dispatch-guard'
+      if (rejected) {
         for (;;) {
           const { raw, parsed } = await readRawFrame()
           policy.fromClient(encoder.encode(raw))
-          if (parsed.id === 4) break
+          if (parsed.id === promptId) break
         }
         expect(policy.hasExplicitPromptRejection).toBeTrue()
         expect(policy.hasAcceptedOrInsertedPrompt).toBeFalse()
+        if (scenario === 'effort-dispatch-guard')
+          expect(await nativeRequests('turn/start')).toEqual([])
       } else {
         while (policy.turnActive) {
           const { raw } = await readRawFrame()
@@ -596,14 +653,24 @@ for (const scenario of [
         }
         expect(policyError).toBeUndefined()
       }
+      if (scenario === 'effort-confirmed') {
+        expect(await nativeRequests('turn/start')).toHaveLength(1)
+        await sendPrompt()
+        while (policy.turnActive) policy.fromClient(encoder.encode((await readRawFrame()).raw))
+        const turns = await nativeRequests('turn/start')
+        expect(turns.map(({ params }) => [params.model, params.effort])).toEqual([
+          ['fixture', 'low'],
+          ['fixture', 'low'],
+        ])
+      }
       const closeReply = await callThroughPolicy({
         jsonrpc: '2.0',
-        id: 5,
+        id: nextId++,
         method: 'session/close',
         params: { sessionId },
       })
       expect(closeReply.result).toEqual({})
-      if (scenario !== 'rejected') expect(policy.settledSessionId).toBe(sessionId)
+      if (!rejected) expect(policy.settledSessionId).toBe(sessionId)
     } finally {
       try {
         await child.stdin.end()

@@ -398,7 +398,7 @@ function resolvePackageProject<Flow>(
     }
   }
   // Resolve only source grants with no client. A pinned client (including its
-  // model, authProfile, or retention) stays untouched and separately qualified.
+  // model, reasoning effort, authProfile, or retention) stays separately qualified.
   if (agentOverride !== undefined) {
     let selected = 0
     let pinned = 0

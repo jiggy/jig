@@ -138,8 +138,11 @@ All selected domain requirements still apply.
   reports Jig runtime verification, operator resource configuration, and
   project-state recovery separately. Capturing configuration does not verify a
   native client. Only targets selecting an ACP grant trigger that verification.
+
   SDK expected trusted setup refusals retain unavailable exact targets and their
   selected dependents. Unrelated targets keep their own readiness.
+  Show an explicit reasoning effort in the Codex selection during review.
+  Confirmation by the client occurs during execution, before prompt forwarding.
 
   CLI review stops any observed typed selected ACP prerequisite before avoidable
   target execution preparation, unchanged success or apply. Its readiness

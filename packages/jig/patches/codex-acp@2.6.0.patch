@@ -56,7 +56,16 @@ index 5f73e89..95d4ab3 100755
 +      if (login.type !== "chatgptAuthTokens") throw new Error("Codex startup authentication failed");
 +    }
      this.isInitialized = true;
-@@ -44442,17 +44459,32 @@ var CodexAppServerClient = class {
+@@ -44439,2 +44456,8 @@ var CodexAppServerClient = class {
+   async turnStart(params) {
++    // Check the reviewed value after any app-server recovery, at the actual
++    // native dispatch boundary where the requested effort is known.
++    const requiredEffort = process.env.JIG_CODEX_REASONING_EFFORT;
++    if (requiredEffort !== void 0 && params.effort !== requiredEffort) {
++      throw RequestError.invalidRequest("Codex did not confirm the reviewed reasoning effort");
++    }
+     return await this.sendRequest({ method: "turn/start", params });
+@@ -44442,17 +44465,32 @@ var CodexAppServerClient = class {
    async runTurn(params, onTurnStarted) {
 -    const capturedCompletions = [];
 -    const releaseCapture = this.captureTurnCompletions(params.threadId, (event) => {
@@ -101,41 +110,41 @@ index 5f73e89..95d4ab3 100755
 +      releaseRouting();
 +      releaseCompletion();
      }
-@@ -46230,3 +46262,5 @@ var CodexAppServerSupervisor = class {
+@@ -46230,3 +46268,5 @@ var CodexAppServerSupervisor = class {
      logger.log("[APP-SERVER SHUTDOWN]", { generation: this.child.generation });
 -    void this.stop(this.child);
 +    void this.stop(this.child).then((exit) => {
 +      if (exit.code !== 0 || exit.forced) process.exitCode ||= 1;
 +    });
    }
-@@ -46258,2 +46292,5 @@ var CodexAppServerSupervisor = class {
+@@ -46258,2 +46298,5 @@ var CodexAppServerSupervisor = class {
      let wedgedTimer = null;
 +    let terminateTimer;
 +    let abandonTimer;
 +    let forced = false;
      const markDead = () => {
-@@ -46272,2 +46309,4 @@ var CodexAppServerSupervisor = class {
+@@ -46272,2 +46315,4 @@ var CodexAppServerSupervisor = class {
        if (wedgedTimer !== null) clearTimeout(wedgedTimer);
 +      clearTimeout(terminateTimer);
 +      clearTimeout(abandonTimer);
        child.exit = exit;
-@@ -46292,2 +46331,3 @@ var CodexAppServerSupervisor = class {
+@@ -46292,2 +46337,3 @@ var CodexAppServerSupervisor = class {
          intentional: child.intentional,
 +        forced,
          at: this.now(),
-@@ -46381,4 +46421,5 @@ var CodexAppServerSupervisor = class {
+@@ -46381,4 +46427,5 @@ var CodexAppServerSupervisor = class {
        }
 -      setTimeout(() => {
 +      terminateTimer = setTimeout(() => {
          if (exitSeen) return;
 +        forced = true;
          logger.log("[APP-SERVER STOP] still running after the end of stdin; sending SIGTERM", { generation });
-@@ -46388,3 +46429,3 @@ var CodexAppServerSupervisor = class {
+@@ -46388,3 +46435,3 @@ var CodexAppServerSupervisor = class {
          }
 -        setTimeout(() => {
 +        abandonTimer = setTimeout(() => {
            if (exitSeen) return;
-@@ -47460,7 +47501,2 @@ var ASYNC_TASK_STOP_METHOD = "_session/async_task/stop";
+@@ -47460,7 +47507,2 @@ var ASYNC_TASK_STOP_METHOD = "_session/async_task/stop";
  // src/AuthStatusMeta.ts
 -var AUTH_STATUS_UPDATE_METHOD = "_auth/status_update";
 -var AUTH_STATUS_META_KEY = "authStatus";
@@ -143,13 +152,13 @@ index 5f73e89..95d4ab3 100755
 -  return {};
 -}
  var NOT_LOGGED_IN_LABEL = "Not logged in";
-@@ -48046,3 +48082,4 @@ var TitleGenerator = class {
+@@ -48046,3 +48088,4 @@ var TitleGenerator = class {
    onTurnCompleted(userPromptText) {
 -    if (this.generated) return;
 +    // A review-approved Jig prompt never authorizes a separate title model turn.
 +    return;
      const src = this.getSessionTitleSource();
-@@ -48158,4 +48195,5 @@ var SUGGESTION_SCHEMA = {
+@@ -48158,4 +48201,5 @@ var SUGGESTION_SCHEMA = {
  var SUGGESTION_PROMPT = "This is an app-generated request for a suggested next user message. The user did not write this message.\n\nYour suggestion will appear in the user's empty message composer. They can accept it, edit it, or ignore it; it will not be sent automatically.\n\nPredict the single message this user is most likely to type next from the visible conversation. Use the whole conversation to understand their current intent and the latest exchange. Choose the action and specific object that best continue that intent, rather than a generally useful follow-up. Express its core naturally in the user's voice, keeping the requirements needed to retain its meaning. Choose the strongest grounded move even if several continuations are possible; uncertainty about exact wording or incidental details is not a reason to return null. Use null only when the conversation offers no grounded next move at all.\n\nSet suggestion to exactly one natural user message, one line, at most 240 characters, or null. No alternatives or explanation.\n\nReturn only JSON matching this schema: " + JSON.stringify(SUGGESTION_SCHEMA);
 -function promptSuggestionsEnabled(env = process.env) {
 -  return env["CODEX_ACP_PROMPT_SUGGESTIONS"]?.trim().toLowerCase() !== "false";
@@ -157,7 +166,7 @@ index 5f73e89..95d4ab3 100755
 +  // Suggestions would make another model request outside the reviewed prompt.
 +  return false;
  }
-@@ -51093,7 +51131,2 @@ var CodexAcpServer = class {
+@@ -51093,7 +51137,2 @@ var CodexAcpServer = class {
            sse: false
 -        },
 -        _meta: {
@@ -165,7 +174,7 @@ index 5f73e89..95d4ab3 100755
 -          // never carries a payload, and the client never asks for one.
 -          [AUTH_STATUS_META_KEY]: authStatusCapability()
          }
-@@ -51127,8 +51160,3 @@ var CodexAcpServer = class {
+@@ -51127,8 +51166,3 @@ var CodexAcpServer = class {
        capabilities: {
 -        auth: {
 -          _meta: {
@@ -175,7 +184,7 @@ index 5f73e89..95d4ab3 100755
 -        },
 +        auth: {},
          providers: {},
-@@ -52772,8 +52800,4 @@ You have been logged out. Please try again.`);
+@@ -52772,8 +52806,4 @@ You have been logged out. Please try again.`);
      }
 +    // Jig owns credential projection and does not admit account-identity updates.
      this.currentAuthStatus = next;
@@ -185,7 +194,7 @@ index 5f73e89..95d4ab3 100755
 -      logger.log("Failed to send auth status update", { error: String(error62) });
 -    }
    }
-@@ -54201,10 +54225,3 @@ You have been logged out. Please try again.`);
+@@ -54201,10 +54231,3 @@ You have been logged out. Please try again.`);
    }
 -  /**
 -   * Sends `turn/interrupt` and retries it against the registration race: right after a
@@ -197,23 +206,23 @@ index 5f73e89..95d4ab3 100755
 -   */
 +  /** Retries only while the same prompt owns the same native turn. */
    async requestTurnInterrupt(sessionState, threadId, completionTurnId, requestName) {
-@@ -54217,3 +54234,3 @@ You have been logged out. Please try again.`);
+@@ -54217,3 +54240,3 @@ You have been logged out. Please try again.`);
      const stillOwnsPrompt = () => ownsRegisteredTurn && activePrompt !== void 0 && this.activePrompts.get(sessionState.sessionId) === activePrompt;
 -    let turnId = ownsRegisteredTurn ? codexRunningTurnId(sessionState, completionTurnId) : completionTurnId;
 +    const turnId = completionTurnId;
      for (let attempt = 0; ; attempt++) {
-@@ -54230,5 +54247,3 @@ You have been logged out. Please try again.`);
+@@ -54230,5 +54253,3 @@ You have been logged out. Please try again.`);
        } catch (err) {
 -        const mismatch = parseExpectedActiveTurnMismatch(err);
 -        const isMismatch = mismatch !== null && mismatch.expected === sessionState.currentTurnId && mismatch.found !== "";
 -        const retryable = stillOwnsPrompt() && (isNoActiveTurnError(err) || isMismatch) && attempt < NO_ACTIVE_TURN_RETRY_DELAYS_MS.length;
 +        const retryable = stillOwnsPrompt() && isNoActiveTurnError(err) && attempt < NO_ACTIVE_TURN_RETRY_DELAYS_MS.length;
          if (!retryable) {
-@@ -54239,3 +54254,2 @@ You have been logged out. Please try again.`);
+@@ -54239,3 +54260,2 @@ You have been logged out. Please try again.`);
          if (!stillOwnsPrompt()) return;
 -        turnId = sessionState.interruptTurnId ?? (isMismatch ? mismatch.found : completionTurnId);
          logger.log(`${requestName} - turn not interruptible yet, retrying`, {
-@@ -54289,5 +54303,5 @@ You have been logged out. Please try again.`);
+@@ -54289,5 +54309,5 @@ You have been logged out. Please try again.`);
    async getInterruptibleTurnId(sessionState, requestName) {
 -    if (sessionState.currentTurnId) {
 -      return sessionState.currentTurnId;
@@ -222,18 +231,18 @@ index 5f73e89..95d4ab3 100755
 +    if (!activePrompt && sessionState.currentTurnId) return sessionState.currentTurnId;
 +    if (activePrompt?.currentTurn?.threadId === sessionState.sessionId) return activePrompt.currentTurn.turnId;
      const pendingTurnStart = this.pendingTurnStarts.get(sessionState.sessionId);
-@@ -54454,3 +54468,4 @@ You have been logged out. Please try again.`);
+@@ -54454,3 +54474,4 @@ You have been logged out. Please try again.`);
              const notInsertedMessage = "The prompt ended before Codex recorded the user message";
 -            reject(response.stopReason === "cancelled" ? RequestError.requestCancelled(void 0, notInsertedMessage) : failure3 !== null ? new RequestError(failure3.code, failure3.message) : RequestError.internalError(void 0, notInsertedMessage));
 +            const cancelled = response.stopReason === "cancelled";
 +            if (!cancelled) reject(failure3 !== null ? new RequestError(failure3.code, failure3.message) : RequestError.internalError(void 0, notInsertedMessage));
              if (turnWasAdopted || startedTurn !== null) {
-@@ -54459,2 +54474,4 @@ You have been logged out. Please try again.`);
+@@ -54459,2 +54480,4 @@ You have been logged out. Please try again.`);
              }
 +            // Report native settlement before rejecting an uninserted cancellation.
 +            if (cancelled) reject(RequestError.requestCancelled(void 0, notInsertedMessage));
              return;
-@@ -54812,3 +54829,8 @@ You have been logged out. Please try again.`);
+@@ -54812,3 +54835,8 @@ You have been logged out. Please try again.`);
            sessionState.additionalDirectories,
 -          (turnId) => {
 +          (turnId, alreadyCompleted) => {

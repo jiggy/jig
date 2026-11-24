@@ -112,6 +112,7 @@ export interface AcpGrant {
   readonly kind: 'acp'
   readonly client?: NativeAcpClient
   readonly model?: string
+  readonly reasoningEffort?: string
   readonly authProfile?: string
   readonly maxTurns?: number
   readonly retainSessions?: true
@@ -134,8 +135,20 @@ export function normalizeGrant(value: unknown): GrantPolicy {
   if (kind === 'acp') {
     if (
       Object.keys(policy).some(
-        (key) => !['client', 'model', 'authProfile', 'maxTurns', 'retainSessions'].includes(key),
+        (key) =>
+          ![
+            'client',
+            'model',
+            'reasoningEffort',
+            'authProfile',
+            'maxTurns',
+            'retainSessions',
+          ].includes(key),
       ) ||
+      ('reasoningEffort' in policy &&
+        (policy.client !== 'codex' ||
+          typeof policy.reasoningEffort !== 'string' ||
+          !/^[a-z][a-z0-9_-]{0,31}(?![\s\S])/.test(policy.reasoningEffort))) ||
       ('retainSessions' in policy &&
         (policy.retainSessions !== true || policy.client !== 'codex')) ||
       ('maxTurns' in policy && !isPrivateNativeTurnAllowance(policy.maxTurns)) ||
@@ -145,19 +158,19 @@ export function normalizeGrant(value: unknown): GrantPolicy {
         (typeof policy.authProfile !== 'string' ||
           policy.authProfile.length > 64 ||
           !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(policy.authProfile))) ||
-      (policy.client !== undefined &&
-        !['codex', 'claude'].includes(policy.client as string)) ||
+      (policy.client !== undefined && !['codex', 'claude'].includes(policy.client as string)) ||
       ('model' in policy &&
         (typeof policy.model !== 'string' ||
           !/^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}(?![\s\S])/.test(policy.model)))
     )
       throw new TypeError(
-        `ACP grant allows omitted client for operator selection, with model, authProfile and retention requiring an explicitly pinned client, maxTurns from ${PRIVATE_NATIVE_TURN_POLICY.minimum} to ${PRIVATE_NATIVE_TURN_POLICY.maximum}, and optional retainSessions: true for Codex`,
+        `ACP grant allows omitted client for operator selection. Model and authProfile require a pinned client. Codex grants also allow a lowercase reasoningEffort identifier (1–32 characters) and retainSessions: true. maxTurns must be from ${PRIVATE_NATIVE_TURN_POLICY.minimum} to ${PRIVATE_NATIVE_TURN_POLICY.maximum}.`,
       )
     return Object.freeze({
       kind,
       ...('client' in policy ? { client: policy.client as NativeAcpClient } : {}),
       ...('model' in policy ? { model: policy.model as string } : {}),
+      ...('reasoningEffort' in policy ? { reasoningEffort: policy.reasoningEffort as string } : {}),
       ...('authProfile' in policy ? { authProfile: policy.authProfile as string } : {}),
       ...('maxTurns' in policy ? { maxTurns: policy.maxTurns as number } : {}),
       ...('retainSessions' in policy ? { retainSessions: true as const } : {}),

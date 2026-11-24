@@ -6,6 +6,8 @@ import { createInterface } from 'node:readline'
 let requests = 0
 let threads = 0
 let turns = 0
+const effortScenario = process.env.RECORD_SCENARIO?.startsWith('effort-')
+const initialEffort = effortScenario ? 'high' : 'low'
 let interruptible: { threadId: string; turn: Record<string, unknown> } | undefined
 const reply = (value: unknown) => process.stdout.write(JSON.stringify(value) + '\n')
 if (process.env.RECORD_SCENARIO === 'forced-clean') {
@@ -60,8 +62,13 @@ for await (const line of createInterface({ input: process.stdin })) {
             displayName: 'Fixture',
             description: 'Local peer',
             isDefault: true,
-            supportedReasoningEfforts: [{ reasoningEffort: 'low', description: 'low' }],
-            defaultReasoningEffort: 'low',
+            inputModalities: ['text'],
+            supportedReasoningEfforts: (effortScenario &&
+            process.env.RECORD_SCENARIO !== 'effort-unavailable'
+              ? ['high', 'low']
+              : [initialEffort]
+            ).map((effort) => ({ reasoningEffort: effort, description: effort })),
+            defaultReasoningEffort: initialEffort,
           },
         ],
         nextCursor: null,
@@ -72,7 +79,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         thread: { id: `thread-${++threads}`, turns: [] },
         model: 'fixture',
         modelProvider: 'openai',
-        reasoningEffort: 'low',
+        reasoningEffort: initialEffort,
         cwd: process.cwd(),
       })
       break

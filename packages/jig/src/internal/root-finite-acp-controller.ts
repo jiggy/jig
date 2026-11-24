@@ -657,11 +657,15 @@ export function privateFiniteAcpFailureTerminal(input: {
   // This is not proof that native startup had no remote side effects.
   const promptRecord = privateFiniteAcpTaskPromptEvidence(error)
   const safeCleanup = cleanupRecovered && !aborted && bootRemainingMs > 0
+  const reasoningEffortUnconfirmed =
+    error instanceof PrivateFiniteAcpPolicyError && error.reason === 'reasoning-effort'
   const explanation =
     error instanceof PrivateFiniteAcpPolicyError
       ? error.reason === 'native-session'
         ? ' The native client reported a session failure; private details were withheld.'
-        : ' The finite ACP exchange violated its validated protocol.'
+        : reasoningEffortUnconfirmed
+          ? ' Codex did not confirm the reviewed reasoning effort.'
+          : ' The finite ACP exchange violated its validated protocol.'
       : ''
   const nativeSession =
     error instanceof PrivateFiniteAcpPolicyError &&
@@ -680,7 +684,9 @@ export function privateFiniteAcpFailureTerminal(input: {
   if (safeCleanup && promptRecord?.forwarding === 'not-forwarded')
     return failed(
       'EXECUTION_FAILED',
-      'The native ACP client failed before Jig forwarded the task prompt, and its local work was fenced and released.',
+      reasoningEffortUnconfirmed
+        ? 'Codex did not confirm the reviewed reasoning effort. Check the selected model and effort in the ACP grant. Jig fenced and released the client before forwarding the task prompt.'
+        : 'The native ACP client failed before Jig forwarded the task prompt, and its local work was fenced and released.',
       {
         nativePrompt: {
           forwarding: 'not-forwarded',

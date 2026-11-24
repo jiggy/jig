@@ -46,7 +46,7 @@ const nativeCategories = ['connection', 'access', 'limit', 'request', 'service',
 export class PrivateFiniteAcpPolicyError extends Error {
   constructor(
     message: string,
-    readonly reason: 'protocol' | 'native-session' = 'protocol',
+    readonly reason: 'protocol' | 'native-session' | 'reasoning-effort' = 'protocol',
     readonly nativeCategory?: (typeof nativeCategories)[number],
     readonly nativeHttpStatusCode?: number,
     readonly nativeReportedReason?: PrivateNativeSessionReportedReason,
@@ -67,6 +67,7 @@ const CANCEL = 'session/cancel'
 const CLOSE = 'session/close'
 const UPDATE = 'session/update'
 const PERMISSION = 'session/request_permission'
+const REASONING_EFFORT = 'reasoning_effort'
 
 /**
  * Private authority accounting for one finite ACP conversation. A returned frame
@@ -207,11 +208,7 @@ export class PrivateFiniteAcpPolicy {
           break
         case CONFIGURE: {
           this.ownedSession(params, ['configId', 'value'], ['type'])
-          const required =
-            this.configuration[this.configured] ??
-            (this.modeId !== undefined && !this.modeSet
-              ? { configId: 'mode', value: this.modeId }
-              : undefined)
+          const required = this.nextConfiguration
           if (this.promptSent || required === undefined || this.modeSet)
             fail('ACP configuration is not available')
           if (
@@ -287,6 +284,8 @@ export class PrivateFiniteAcpPolicy {
         const error = object(frame.error)
         if (!Number.isSafeInteger(error.code) || typeof error.message !== 'string')
           fail('Invalid ACP error response')
+        if (pending.method === CONFIGURE && this.nextConfiguration?.configId === REASONING_EFFORT)
+          failReasoningEffort()
         if (pending.method === PROMPT && this.cancelSent && error.code === -32800) {
           this.v2.cancelBeforeInsertion()
           this.pending = undefined
@@ -361,18 +360,15 @@ export class PrivateFiniteAcpPolicy {
           projected = {}
           break
         case CONFIGURE: {
-          const required =
-            this.configuration[this.configured] ??
-            (this.modeId !== undefined && !this.modeSet
-              ? { configId: 'mode', value: this.modeId }
-              : undefined)
+          const required = this.nextConfiguration
           if (required === undefined) fail('ACP configuration is not available')
-          if (!Array.isArray(result.configOptions)) fail('ACP configuration was not confirmed')
-          const matches = result.configOptions.filter(
-            (option) => object(option).configId === required.configId,
-          )
-          if (matches.length !== 1 || object(matches[0]).currentValue !== required.value)
+          if (required.configId === REASONING_EFFORT) {
+            if (!confirmsConfiguration(result.configOptions, required, 'select'))
+              failReasoningEffort()
+          } else if (!confirmsConfiguration(result.configOptions, required)) {
             fail('ACP configuration was not confirmed')
+          }
+          this.verifyConfirmedEffort(result.configOptions)
           const option =
             typeof required.value === 'boolean'
               ? {
@@ -491,6 +487,8 @@ export class PrivateFiniteAcpPolicy {
     }
     this.ownedSession(params, ['update'], ['_meta'])
     if (typeof update.sessionUpdate !== 'string') fail('Invalid ACP update')
+    if (update.sessionUpdate === 'config_option_update')
+      this.verifyConfirmedEffort(update.configOptions)
     if (
       [
         'user_message',
@@ -698,6 +696,25 @@ export class PrivateFiniteAcpPolicy {
       fail('ACP message does not belong to the owned session')
   }
 
+  private get nextConfiguration(): Configuration | undefined {
+    return (
+      this.configuration[this.configured] ??
+      (this.modeId !== undefined && !this.modeSet
+        ? { configId: 'mode', value: this.modeId }
+        : undefined)
+    )
+  }
+
+  private verifyConfirmedEffort(options: JsonValue | undefined): void {
+    const effort = this.configuration.findIndex((option) => option.configId === REASONING_EFFORT)
+    if (
+      effort >= 0 &&
+      effort < this.configured &&
+      !confirmsConfiguration(options, this.configuration[effort]!, 'select')
+    )
+      failReasoningEffort()
+  }
+
   private frame(bytes: Uint8Array, direction: 'adapter' | 'client'): JsonObject {
     if (!(bytes instanceof Uint8Array) || bytes.byteLength > PRIVATE_FINITE_ACP_LIMITS.frameBytes)
       fail('ACP frame capacity exceeded')
@@ -741,6 +758,28 @@ export class PrivateFiniteAcpPolicy {
 
 function response(id: Id, value: JsonObject, error = false): JsonObject {
   return { jsonrpc: '2.0', id, [error ? 'error' : 'result']: value }
+}
+
+function confirmsConfiguration(
+  options: JsonValue | undefined,
+  required: Configuration,
+  type?: 'select',
+): boolean {
+  if (!Array.isArray(options)) return false
+  const matches = options.map(object).filter((option) => option.configId === required.configId)
+  const match = matches[0]
+  return (
+    matches.length === 1 &&
+    match?.currentValue === required.value &&
+    (type === undefined || match.type === type)
+  )
+}
+
+function failReasoningEffort(): never {
+  throw new PrivateFiniteAcpPolicyError(
+    'Codex did not confirm the reviewed reasoning effort',
+    'reasoning-effort',
+  )
 }
 
 function freeze<T extends JsonObject>(value: T): T {

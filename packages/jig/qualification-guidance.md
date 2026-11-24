@@ -77,6 +77,8 @@ These links locate module rules. All selected domain requirements still apply.
 
   The private patch owns the one-use credential bootstrap and disables account-identity notifications.
   It suppresses model-generated titles and suggestions outside the reviewed prompt.
+  It checks the reviewed Codex effort at the outgoing native turn boundary
+  after any app-server recovery.
   Require a matching native start event before interrupting a turn.
   Report failed or forced app-server exits as adapter failures.
   Retain only a bounded numeric HTTP status in native failure metadata.
