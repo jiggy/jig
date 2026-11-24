@@ -343,11 +343,11 @@ test('PR collector finishes on fixed winners while the other OS is still queued'
   }
   let observations = 0,
     downloads = 0,
-    clock = 0
+    clock = now
   const result = await waitForMacPrWinners({
     context: decisionContext,
     shards: [0],
-    deadline: 1000,
+    deadline: now + 1000,
     now: () => clock,
     observe: async () => ({
       artifacts: [winner.artifact],
@@ -395,11 +395,11 @@ test('PR collector waits for a queued retry of a failed winner and uses its new 
     steps: [],
   }
   let observations = 0
-  let clock = 0
+  let clock = now
   const result = await waitForMacPrWinners({
     context: decisionContext,
     shards: [0],
-    deadline: 1000,
+    deadline: now + 1000,
     now: () => clock,
     observe: async () => {
       const waiting = observations++ === 0
@@ -431,6 +431,8 @@ test('PR collector refuses a failed fixed winner and bounds missing-decision obs
     waitForMacPrWinners({
       context: decisionContext,
       shards: [0],
+      deadline: now + 1000,
+      now: () => now,
       observe: async () => ({
         artifacts: [winner.artifact],
         jobs: [selector(0), { ...winner.job, conclusion: 'failure' }],
