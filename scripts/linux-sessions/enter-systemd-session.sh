@@ -1,11 +1,11 @@
 set -euo pipefail
 
 fail() {
-  printf 'Jig agent session: %s\n' "$1" >&2
+  printf 'Jig delegated session: %s\n' "$1" >&2
   exit 1
 }
 
-(( $# >= 2 )) || fail 'expected a service name and the operator-selected sandbox command'
+(( $# >= 2 )) || fail 'expected a service name and the operator-selected session command'
 unit=$1
 shift
 
@@ -20,7 +20,7 @@ parent=${leaf%/jig}
   fail 'the delegated parent is not owned by the service user'
 [[ -z $(< "$parent/cgroup.procs") ]] || fail 'the delegated parent contains processes'
 
-# Activate only the unit's own empty parent before starting the sandbox.
+# Activate only the unit's own empty parent before starting the session.
 shopt -s nullglob
 children=("$parent"/*/)
 [[ ${#children[@]} == 1 && ${children[0]} == "$leaf/" ]] ||

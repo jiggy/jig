@@ -161,8 +161,8 @@ provisioned Ubuntu 24.04 x86_64. This host needs:
 
 - Linux x86_64, glibc 2.17 or newer, and an SSE4.2-capable CPU.
 - Bubblewrap 0.12 or newer and GNU `readlink -f`.
-- cgroup v2 with delegated `cpu`, `memory`, and `pids` controllers.
-- A systemd user manager supporting transient scopes with `Delegate=yes`.
+- cgroup v2 with `cpu`, `memory`, and `pids` controllers.
+- [Inherited delegation](../reference/configuration.md#use-an-existing-delegated-linux-session) or a systemd user manager that can create a delegated scope.
 - Unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
 
 On Mac, Jig requires native Apple Silicon and macOS 15 or newer. It checks the
@@ -196,7 +196,7 @@ glibc through `/run/current-system/sw/share/nix-ld/lib/ld.so` and gives Runs
 only the required loader and libraries. Automated CI conformance on NixOS
 remains unconfigured.
 
-See the [candidate reference for restricted NixOS agent sessions](./nixos-agent-session.md).
+See the [delegated Linux walkthrough](./delegated-linux.md) for the NixOS reference candidate.
 
 `review` and `run` acquire their delegated scopes without `sudo`. Jig verifies
 the package-local Bun runtime before execution. See the

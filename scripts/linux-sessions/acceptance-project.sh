@@ -7,7 +7,7 @@ if (( $# != 1 )) || [[ $1 != /* || ! -x $1 ]]; then
 fi
 
 jig=$1
-root=$(mktemp -d "$PWD/.jig-nixos-acceptance.XXXXXXXX")
+root=$(mktemp -d "$PWD/.jig-session-acceptance.XXXXXXXX")
 project=$root/project
 "$jig" init --bare "$project" >&2
 flow=$project/flows/lifetime

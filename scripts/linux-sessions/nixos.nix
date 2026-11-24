@@ -1,25 +1,25 @@
 { config, lib, pkgs, utils, ... }:
 let
-  sessions = config.jig.agentSessions;
-  enterSession = pkgs.writeShellScript "jig-enter-agent-session" (builtins.readFile ./enter-session.sh);
+  sessions = config.jig.delegatedSessions;
+  enterSession = pkgs.writeShellScript "jig-enter-systemd-session" (builtins.readFile ./enter-systemd-session.sh);
 in
 {
-  options.jig.agentSessions = lib.mkOption {
+  options.jig.delegatedSessions = lib.mkOption {
     default = { };
-    description = "Operator-started Jig agent sessions with one delegated cgroup subtree per worktree.";
+    description = "Operator-started Linux sessions with independent cgroup delegation for Jig.";
     type = lib.types.attrsOf (lib.types.submodule {
       options = {
         user = lib.mkOption {
           type = lib.types.str;
-          description = "Dedicated unprivileged runner account for this session.";
+          description = "Unprivileged account that owns this session.";
         };
-        worktree = lib.mkOption {
+        workingDirectory = lib.mkOption {
           type = lib.types.path;
-          description = "Absolute path to the worktree.";
+          description = "Absolute initial working directory of the session.";
         };
         command = lib.mkOption {
           type = lib.types.nonEmptyListOf lib.types.str;
-          description = "Absolute executable and arguments for the existing agent sandbox.";
+          description = "Absolute executable and arguments for the foreground session.";
         };
       };
     });
@@ -35,30 +35,25 @@ in
         && session.user != ""
         && session.user != "root"
         && lib.hasPrefix "/" (builtins.head session.command);
-      message = "Jig agent session ${name} requires a simple unit name, an unprivileged user, and an absolute executable.";
+      message = "Jig session ${name} requires a simple unit name, an unprivileged user, and an absolute executable.";
     }) sessions ++ [
       {
         assertion = lib.versionAtLeast config.systemd.package.version "254";
-        message = "Jig agent sessions require systemd 254 or newer for DelegateSubgroup.";
-      }
-      {
-        assertion = lib.length (lib.unique (lib.mapAttrsToList (_: session: toString session.worktree) sessions))
-          == lib.length (lib.attrNames sessions);
-        message = "Each Jig agent session requires its own worktree.";
+        message = "Jig sessions require systemd 254 or newer for DelegateSubgroup.";
       }
     ];
 
     systemd.services = lib.mapAttrs' (name: session:
       let
-        unit = "jig-agent-${name}";
+        unit = "jig-session-${name}";
       in
       lib.nameValuePair unit {
-        description = "Jig agent session ${name}";
+        description = "Jig delegated session ${name}";
         environment.JIG_BWRAP_PATH = lib.getExe pkgs.bubblewrap;
         serviceConfig = {
           Type = "exec";
           User = session.user;
-          WorkingDirectory = toString session.worktree;
+          WorkingDirectory = toString session.workingDirectory;
           Delegate = "cpu memory pids";
           DelegateSubgroup = "jig";
           KillMode = "control-group";

@@ -1,67 +1,66 @@
 ---
-title: Run Jig in a NixOS agent session
-description: Provision isolated worktree sessions and validate stock Jig inspection, review, runs, and cleanup.
+title: Run Jig in a delegated Linux session
+description: Use an existing Linux session and verify stock Jig inspection, review, execution, and cleanup.
 ---
 
-# Run Jig in a NixOS agent session
+# Run Jig in a delegated Linux session
 
-This reference is a candidate for an operator-managed NixOS host.
-The Orca lifecycle checks below are pending.
-Use a dedicated, unprivileged runner account and a separate disposable worktree for each session.
+Use stock Jig from an operator-managed session on Linux.
+The operator delegates a cgroup subtree to the session.
+Jig uses that subtree to enforce its ordinary execution and cleanup rules.
+See the [session requirements](../reference/configuration.md#use-an-existing-delegated-linux-session).
 
-## Configure the host
+## Configure the NixOS reference
 
-Use an x86_64 host with the [Jig host prerequisites](./index.md#supported-host).
+This reference is a candidate. Its independent lifecycle checks are pending.
+Use an unprivileged account on an x86_64 host with the [Jig host prerequisites](./index.md#supported-host).
 The reference uses systemd 254 or later to place the session in its initial cgroup.
 Pin the host package set and use the same exact installed Jig build in both sessions.
 The [Jig Nixpkgs pin](https://github.com/jiggy/jig/blob/main/shell.nix) provides a starting package set.
 
-Fetch the [reference directory](https://github.com/jiggy/jig/tree/main/scripts/nixos) from one Jig revision.
-Import its module into your NixOS configuration. Point each command at the existing sandbox launcher for that session.
+Fetch the [reference directory](https://github.com/jiggy/jig/tree/main/scripts/linux-sessions) from one Jig revision.
+Import its module into your NixOS configuration.
+Point each command at the entrypoint for that session.
 
 ```nix
 {
-  imports = [ ./jig-nixos/agent-sessions.nix ];
+  imports = [ ./linux-sessions/nixos.nix ];
 
-  jig.agentSessions = {
+  jig.delegatedSessions = {
     first = {
-      user = "orca-runner";
-      worktree = "/srv/orca/first";
-      command = [ "/etc/orca/launch-first" ];
+      user = "runner";
+      workingDirectory = "/srv/projects/first";
+      command = [ "/etc/local/bin/start-session" "first" ];
     };
     second = {
-      user = "orca-runner";
-      worktree = "/srv/orca/second";
-      command = [ "/etc/orca/launch-second" ];
+      user = "runner";
+      workingDirectory = "/srv/projects/second";
+      command = [ "/etc/local/bin/start-session" "second" ];
     };
   };
 }
 ```
 
 Replace the example account, paths, and commands with your operator-owned values.
-Use foreground sandbox commands that stay alive for the whole session.
+Use a foreground command that stays alive for the whole session.
 Apply the configuration through your normal NixOS workflow.
-Start `jig-agent-first.service` and `jig-agent-second.service` from the host.
-Connect to the agents through their usual interface.
+Start `jig-session-first.service` and `jig-session-second.service` from the host.
+Connect to each session through its usual interface.
 
 Systemd delegates CPU, memory, and process controllers to each unit.
-The startup script enables them in its own subtree before it starts the sandbox.
-Jig checks the inherited authority, then owns containment and cleanup for each Run.
-Use one active Jig command per unit, and wait for cleanup before starting another.
+The startup script enables them in its own subtree before it starts the session.
 
-The existing session policy still owns worktree, Nix store, network, and socket access.
-Allow Jig to see its own delegated cgroup and run nested Bubblewrap inside that policy.
+If you use an outer sandbox, preserve its existing access policy.
+That policy must permit Jig to use its own delegated cgroup and run Bubblewrap.
 Preserve `JIG_BWRAP_PATH` from the unit if the sandbox filters its environment.
-Keep the host systemd control socket outside the agent's permissions.
+Provisioning takes place on the host and needs no systemd control socket access from the session.
 Landlock filesystem restrictions block mount topology changes even with pre-provisioned cgroups.
 [Linux Landlock documentation](https://www.kernel.org/doc/html/v6.18/userspace-api/landlock.html#filesystem-topology-modification)
 
-If the existing Orca launch cannot inherit this delegation, record how it starts and places the agent.
-Keep the failing case with the qualification results.
-
 ## Check inspection, review, and a normal Run
 
-Run these commands inside each agent session from its disposable worktree.
+Use two sessions with independent delegations.
+Run these commands inside each session from a separate disposable directory.
 Set `reference` and `jig` to the absolute paths of the reference directory and installed binary.
 Check that `"$jig" inspect --help` lists `--flow`.
 Use an installed artifact from the reference revision if the published alpha lacks this option.
@@ -81,11 +80,18 @@ sed -i "s/revision: 'first'/revision: 'second'/" flows/lifetime/FLOW.ts &&
 
 Expect `succeeded` and `childStarted: true` from both Runs.
 Expect `revision: first` before the edit and `revision: second` after the second review.
-From the host, check that each unit has removed its execution subgroups.
+From the host, check that each delegated subtree has no execution subgroups.
+Set `first_leaf` and `second_leaf` to each session's absolute cgroup path.
+For the NixOS reference, use the unit's cgroup path with its `jig` subgroup.
 
 ```bash
-bash "$reference/observe-scope.sh" settled jig-agent-first.service
-bash "$reference/observe-scope.sh" settled jig-agent-second.service
+first_leaf="/sys/fs/cgroup$(systemctl show -p ControlGroup --value jig-session-first.service)/jig"
+second_leaf="/sys/fs/cgroup$(systemctl show -p ControlGroup --value jig-session-second.service)/jig"
+```
+
+```bash
+bash "$reference/observe-cgroup.sh" settled "$first_leaf"
+bash "$reference/observe-cgroup.sh" settled "$second_leaf"
 ```
 
 ## Check overlapping Runs
@@ -108,12 +114,12 @@ jig_pid=$!
 printf 'Jig command PID: %s\n' "$jig_pid"
 ```
 
-From the host, verify both worktree units have a populated execution subgroup.
+From the host, verify both delegated subtrees have a populated execution subgroup.
 Record both paths. The peer check must identify the same subgroup after the first Run stops.
 
 ```bash
-bash "$reference/observe-scope.sh" running jig-agent-first.service
-peer_group=$(bash "$reference/observe-scope.sh" running jig-agent-second.service)
+bash "$reference/observe-cgroup.sh" running "$first_leaf"
+peer_group=$(bash "$reference/observe-cgroup.sh" running "$second_leaf")
 ```
 
 Test each case with a fresh pair of Runs.
@@ -138,19 +144,20 @@ From the host, repeat the following checks until cleanup settles.
 Record a failed check if the subgroup remains after 15 seconds or the peer changes.
 
 ```bash
-bash "$reference/observe-scope.sh" settled jig-agent-first.service
-test "$peer_group" = "$(bash "$reference/observe-scope.sh" running jig-agent-second.service)"
+bash "$reference/observe-cgroup.sh" settled "$first_leaf"
+test "$peer_group" = "$(bash "$reference/observe-cgroup.sh" running "$second_leaf")"
 ```
 
 Wait for the peer to return `succeeded`.
-Check that its unit also reaches `settled`.
+Check that its subtree also reaches `settled`.
 
 ## Retain the evidence
 
-Record the Jig build, Nixpkgs pin, kernel, systemd, Bubblewrap, and Orca sandbox revisions.
+Record the Jig build, Linux distribution, kernel, Bubblewrap, and session configuration.
+For the NixOS reference, include the Nixpkgs and systemd revisions.
 Include case outputs, exit statuses, and both scopes' observations.
+Running this procedure in two Orca worktrees is one independent acceptance case.
 Report the first unmet condition alongside any successful cases.
-Keep dependency proxy qualification separate from this fixture.
 
 Re-run these checks when the profile or Jig's relevant host requirements change.
 The [containment contract](../spec/project-policy.md#containment-and-lifetime) defines the enforcement and cleanup that the reference must preserve.
