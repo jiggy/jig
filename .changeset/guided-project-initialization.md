@@ -3,4 +3,5 @@
 ---
 
 Guide new Jig projects through composition checks, explicit review, and repeatable Runs with a shared greeting fixture.
-Add an opt-in scoped greeting starter with a test that verifies both configured routes through installed Jig.
+Ship local FLOW and Jig authoring skills and preserve the DOX hierarchy in every new project.
+Add an opt-in publication review starter that verifies scoped route changes with saved Run evidence.

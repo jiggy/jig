@@ -90,7 +90,7 @@ test('installed help is focused and version matches the installed manifest', asy
     }
     if (args[0] === 'init') {
       expect(result.stdout).toContain('--bare')
-      expect(result.stdout).toContain('--starter scoped-greeting')
+      expect(result.stdout).toContain('--starter publication-review')
     }
     if (args[0] === 'types') expect(result.stdout).toContain('jig types --project')
     if (args[0] !== 'init' && args[0] !== 'types') {
@@ -199,6 +199,7 @@ test('installed bare init writes only the inert envelope and preserves existing 
   expect(initialized.stderr).toBe('')
   expect(initialized.stdout).toContain('Created bare Jig project')
   expect((await readdir(project)).sort()).toEqual([
+    '.agents',
     '.gitignore',
     'AGENTS.md',
     'bindings',
@@ -210,10 +211,20 @@ test('installed bare init writes only the inert envelope and preserves existing 
   expect(guidance).toContain('jig inspect --flow')
   expect(guidance).toContain('jig check --diff')
   expect(guidance).toContain('After authorized review')
-  expect(guidance).toContain('https://jig.md/for-agents')
-  expect(guidance).not.toContain('## Local guidance')
-  expect(await readdir(join(project, 'flows'))).toEqual([])
-  expect(await readdir(join(project, 'bindings'))).toEqual([])
+  expect(guidance).toContain('# DOX framework')
+  expect(guidance).toContain('## Read Before Editing')
+  expect(guidance).toContain('## Update After Editing')
+  expect(guidance).toContain('## Child DOX Index')
+  expect(guidance).toContain('](./flows/AGENTS.md)')
+  expect(guidance).toContain('](./bindings/AGENTS.md)')
+  expect(await readdir(join(project, 'flows'))).toEqual(['AGENTS.md'])
+  expect(await readdir(join(project, 'bindings'))).toEqual(['AGENTS.md'])
+  for (const name of ['jig', 'flow']) {
+    const skill = join(project, '.agents/skills', name)
+    expect(guidance).toContain(`](./.agents/skills/${name}/SKILL.md)`)
+    expect(await readFile(join(skill, 'SKILL.md'), 'utf8')).toContain(`name: ${name}\n`)
+    expect((await lstat(join(skill, 'reference/build/design.md'))).isFile()).toBe(true)
+  }
   expect(await readFile(join(project, '.gitignore'), 'utf8')).toBe('.jig/\n')
   expect(await readFile(join(project, 'jig.ts'), 'utf8')).toBe(
     [
@@ -248,6 +259,7 @@ test('concurrent installed bare initializers have exactly one winner', async () 
   ])
   expect(results.map((result) => result.code).sort()).toEqual([0, 1])
   expect((await readdir(destination)).sort()).toEqual([
+    '.agents',
     '.gitignore',
     'AGENTS.md',
     'bindings',
@@ -268,8 +280,10 @@ test('installed greeting and Agent initialization create ordinary editable files
     expect(result.stderr).toBe('')
     expect(result.stdout).not.toContain('\u001b')
     const guidance = await readFile(join(project, 'AGENTS.md'), 'utf8')
-    expect(guidance).toContain('[flows/hello/AGENTS.md](./flows/hello/AGENTS.md)')
+    expect(guidance).toContain('](./flows/AGENTS.md)')
     expect(guidance).toContain('slot, and target in the Run evidence')
+    const flowGuide = await readFile(join(project, 'flows/AGENTS.md'), 'utf8')
+    expect(flowGuide).toContain('[hello](./hello/AGENTS.md)')
     const notes = await readFile(join(project, 'flows/hello/AGENTS.md'), 'utf8')
     expect(notes).toContain('# hello Flow\n')
     expect(notes).toContain('[FLOW.ts](./FLOW.ts)')
@@ -299,32 +313,36 @@ test('installed greeting and Agent initialization create ordinary editable files
   passed++
 })
 
-test('installed scoped greeting starter writes both routes and a shared test fixture', async () => {
-  const project = join(root, 'scoped-greeting')
-  const initialized = await invoke(['init', project, '--starter', 'scoped-greeting'])
+test('installed publication starter writes scoped guidance, policies and native route tests', async () => {
+  const project = join(root, 'publication-review')
+  const initialized = await invoke(['init', project, '--starter', 'publication-review'])
   expect(initialized.code).toBe(0)
   expect(initialized.stderr).toBe('')
-  expect(initialized.stdout).toContain('scoped greeting starter')
+  expect(initialized.stdout).toContain('publication review starter')
   expect((await readdir(join(project, 'flows'))).sort()).toEqual([
-    'brief-hello',
-    'hello',
-    'welcome-group',
+    'AGENTS.md',
+    'assess',
+    'prepare',
+    'review',
   ])
   const guidance = await readFile(join(project, 'AGENTS.md'), 'utf8')
-  for (const flow of ['brief-hello', 'hello', 'welcome-group']) {
-    const path = `flows/${flow}/AGENTS.md`
-    expect(guidance).toContain(`[${path}](./${path})`)
-    expect((await lstat(join(project, path))).isFile()).toBe(true)
+  expect(guidance).toContain('](./test/AGENTS.md)')
+  const flowGuide = await readFile(join(project, 'flows/AGENTS.md'), 'utf8')
+  for (const flow of ['assess', 'prepare', 'review']) {
+    expect(flowGuide).toContain(`[${flow}](./${flow}/AGENTS.md)`)
+    expect((await lstat(join(project, `flows/${flow}/AGENTS.md`))).isFile()).toBe(true)
   }
-  expect(JSON.parse(await readFile(join(project, 'fixtures/group.json'), 'utf8'))).toEqual([
-    'Ada',
-    'Grace',
-  ])
-  const testSource = await readFile(join(project, 'test/wiring.test.mjs'), 'utf8')
-  expect(testSource).toContain('@fixtures/group.json')
+  const readFixture = async (name: string) =>
+    JSON.parse(await readFile(join(project, `test/fixtures/${name}.json`), 'utf8'))
+  expect(await readFixture('unattributed')).toMatchObject({ title: 'Weekend library hours' })
+  expect(await readFixture('attributed')).toMatchObject({ source: 'Library board meeting minutes' })
+  const testSource = await readFile(join(project, 'test/publication.test.mjs'), 'utf8')
   expect(testSource).toContain('--record-calls')
+  expect(testSource).toContain("'inspect', '--result', packet, '--calls'")
+  const bindingGuide = await readFile(join(project, 'bindings/AGENTS.md'), 'utf8')
+  expect(bindingGuide).toContain('jig inspect --flow')
   const readme = await readFile(join(project, 'README.md'), 'utf8')
-  expect(readme).toContain('node --test test/wiring.test.mjs')
+  expect(readme).toContain('node --test test/publication.test.mjs')
   for (const path of ['.jig', 'jig.lock', 'node_modules', 'bun.lock'])
     await expect(lstat(join(project, path))).rejects.toMatchObject({ code: 'ENOENT' })
 
@@ -332,8 +350,8 @@ test('installed scoped greeting starter writes both routes and a shared test fix
   for (const args of [
     ['--starter'],
     ['--starter', 'unknown'],
-    ['--starter', 'scoped-greeting', '--bare'],
-    ['--starter', 'scoped-greeting', '--agent', 'codex'],
+    ['--starter', 'publication-review', '--bare'],
+    ['--starter', 'publication-review', '--agent', 'codex'],
   ]) {
     expect((await invoke(['init', invalid, ...args])).code).toBe(2)
     await expect(lstat(invalid)).rejects.toMatchObject({ code: 'ENOENT' })

@@ -31,7 +31,7 @@ Check the installed Jig version and the [supported-host requirements](reference/
 Distinguish documented source candidates from the installed package's supported behavior.
 If execution is unavailable, continue authorized authoring and state which runtime claims remain unverified.
 
-For a new project, recommend the [FLOW and Jig authoring skills](reference/for-agents.md#install-authoring-skills).
+For new projects, `jig init` supplies the [FLOW and Jig authoring skills](reference/for-agents.md#install-authoring-skills) under `.agents/skills/`.
 Use the FLOW skill when designing, creating, composing, or reviewing the project's Flows.
 If it is unavailable, follow its [canonical design guidance](https://flow.jig.md/guide/design) and the task's FLOW specifications.
 Keep portable method guidance with FLOW and host configuration with Jig.

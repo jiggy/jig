@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { readdir, readFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const IMAGE_ASSETS = [
@@ -10,6 +10,23 @@ const IMAGE_ASSETS = [
     '22bf6e9f9a100d972da0411a69c5ba504367fc1fa87b3b64e3f35e53926d2d70',
   ],
 ] as const
+
+async function skillFiles(
+  directory: string,
+  prefix: string,
+): Promise<readonly (readonly [string, string])[]> {
+  const files: (readonly [string, string])[] = []
+  const entries = await readdir(directory, { withFileTypes: true })
+  for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    if (entry.name === '.tmp' || entry.name === 'node_modules') continue
+    const path = join(directory, entry.name)
+    const target = `${prefix}/${entry.name}`
+    if (entry.isDirectory()) files.push(...(await skillFiles(path, target)))
+    else if (entry.isFile()) files.push([target, await readFile(path, 'utf8')])
+    else throw Error(`An authoring skill input is not a regular file: ${target}`)
+  }
+  return files
+}
 
 /** Resolve declared renderer exports and embed their built bytes in CLI identity. */
 export async function privateBuildCli(): Promise<void> {
@@ -28,6 +45,11 @@ export async function privateBuildCli(): Promise<void> {
     __JIG_IMAGE_PREVIEW_WORKER_DIGEST__: JSON.stringify(digest),
   })
   await Bun.write(resolve(root, 'libexec/installed-cli.js'), command)
+  const [jig, flow] = await Promise.all([
+    skillFiles(resolve(root, '../../skills/jig'), 'jig'),
+    skillFiles(resolve(root, 'support/flow-skill'), 'flow'),
+  ])
+  await Bun.write(resolve(root, 'libexec/init-skills.json'), JSON.stringify([...jig, ...flow]))
   const parserNotices = new URL(
     '../ThirdPartyNoticeText.txt',
     import.meta.resolve('typescript-parser'),

@@ -7,6 +7,10 @@ setup or package-held authority.
 
 ## Ownership
 
+- `flow-skill/` holds the upstream FLOW authoring skill and its references as
+  recorded in its `SOURCE.md`. The CLI build packages these editable project
+  assets with the canonical Jig skill for offline initialization.
+
 - `codex-requirements.toml` supplies the Linux native client's constrained
   policy. Provider code owns its selection, identity and projection. Mac uses
   the pinned ACP mode and outer boundary rather than that Linux absolute path.

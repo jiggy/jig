@@ -216,17 +216,18 @@ remain supported and are not rewritten by a review default.
   installations or authentication.
 
   Every scaffold includes a project-owned `AGENTS.md` for scoped inspection, composition checks, and verified route changes.
-  Link the child guidance created by that scaffold.
+  Keep the DOX chain and its indexes for Flow packages, Bindings, and tests.
   The [agent guide](../../docs/jig/for-agents.md) gives existing projects the same text for their local launcher.
   The greeting and each `jig new` Flow have their own editable `AGENTS.md` beside `FLOW.ts`.
 
   The greeting's README and CLI instructions use the same generated JSON fixture.
-  Generated READMEs recommend FLOW and Jig authoring skills through the agent guide.
-  Keep installation commands in that guide and initialization free of installation.
+  Every scaffold copies the packaged FLOW and Jig authoring skill trees into `.agents/skills/`.
+  Build the bundle from the canonical Jig skill and the pinned upstream FLOW skill.
+  Initialization reads the local bundle and writes editable project files offline.
 
-  `--starter scoped-greeting` generates the composed exercise owned by
+  `--starter publication-review` generates the composed exercise owned by
   [the composition guide](../../docs/jig/build/compose.md#test-a-scoped-route).
-  Its test uses a shared fixture and checks exact child calls through installed Jig.
+  Its tests reuse JSON fixtures and check complete saved child calls through installed Jig.
   The operator reviews and approves the intended revision before running the test.
 
   Check generated package versions against their manifests. The greeting names

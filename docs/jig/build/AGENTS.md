@@ -16,7 +16,7 @@ It teaches how to check committed type declarations against fresh generator outp
 `design.md` owns source-grounded route-change guidance, including decision ownership, preserved alternatives, and affected evidence consumers.
 `design.md` also teaches the scoped slot specialization, literal membership, and source review.
 Authored behavioral maps remain distinct from host-computed configured topology.
-`compose.md` teaches the scoped greeting starter's application-owned route test
+`compose.md` teaches the publication review starter's application-owned route tests
 through ordinary installed Runs. Keep explicit project review, separate execution and domain
 assertions, and forwarded child evidence in the runnable example. Its application
 recipe keeps caller wiring in the authored source and selects local peers at the

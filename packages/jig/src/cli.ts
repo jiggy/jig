@@ -385,19 +385,19 @@ Examples:
 
 ${VERIFICATION_HELP}`,
   init: `Usage: jig init [--bare] <directory> [--agent [codex|claude]]
-       jig init <directory> --starter scoped-greeting
+       jig init <directory> --starter publication-review
 
 Create a new editable project and greeting Flow. No installation, network
 requests, approval, or execution happens during initialization.
 
   --bare     Omit the greeting; an explicit --agent still creates its starter
-  --starter scoped-greeting  Teach a scoped route change with two Bindings and a test
+  --starter publication-review  Prepare submissions using two editorial policies
 
 Example:
   $ jig init hello-jig
 
-For a composed greeting:
-  $ jig init welcome-project --starter scoped-greeting
+For a composed publication workflow:
+  $ jig init bulletin --starter publication-review
 
 With an ordinary Agent:
   $ jig init my-app --agent codex
@@ -1960,14 +1960,14 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
       } else agent = 'choose'
     } else if (value === '--starter' && starter === undefined) {
       const next = arguments_[++index]
-      if (next !== 'scoped-greeting') usage('init', 'Use --starter scoped-greeting.')
+      if (next !== 'publication-review') usage('init', 'Use --starter publication-review.')
       starter = next
     } else if (!value.startsWith('-') && destination === undefined) destination = value
     else usage('init', 'Specify one new directory and an optional supported Agent client.')
   }
   if (destination === undefined) usage('init', 'Specify a new project directory.')
   if (starter !== undefined && (bare || agent !== undefined))
-    usage('init', 'Choose --starter scoped-greeting on its own, or use --bare or --agent.')
+    usage('init', 'Choose --starter publication-review on its own, or use --bare or --agent.')
   if (agent === 'choose') {
     if (!runtime.interactive)
       usage(
@@ -2000,7 +2000,7 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
     )
     runtime.writeOutput(
       starter !== undefined
-        ? `Created Jig project ${asciiJsonString(destination)} with the scoped greeting starter.\n\nOpen its README.md to check, review, and test both routes.\n`
+        ? `Created Jig project ${asciiJsonString(destination)} with the publication review starter.\n\nOpen its README.md to check, review, and test the publication routes.\n`
         : agent !== undefined
           ? `Created Jig project ${asciiJsonString(destination)} with ${agent} selected.\n\nNext:\n  Open the project README for native client prerequisites and the first Run.\n  Review bindings/agent.ts for the requested authority, then:\n\n  $ jig review --allow-resolution-network\n\nNo client installed, credentials copied or execution approved.\n`
           : bare

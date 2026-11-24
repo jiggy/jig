@@ -10,6 +10,8 @@ operational baselines, and public-site assembly.
 - `jig-development-build.ts` checks contributor source and generated output on launcher invocation.
   The launcher executes its generated bundle, never the mutable checker or its source imports.
   Build records bind the inputs observed before and after a successful build.
+
+  The editable authoring skill bundles include Markdown inputs in this check.
   Inputs include package compiler configurations and the web asset builder.
   Fingerprinting validates and reads regular files through the same no-follow descriptor.
   Changed source, output or incomplete builds require rebuilding.

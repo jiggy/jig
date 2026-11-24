@@ -78,8 +78,8 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
     const { cli, tooling } = await installFixtureCli(root, command)
     const project = join(root, 'greeting')
     const before = await foundationResidue(qualification, command, root)
-    const starter = join(root, 'scoped-greeting')
-    await command([cli, 'init', starter, '--starter', 'scoped-greeting'], root)
+    const starter = join(root, 'publication-review')
+    await command([cli, 'init', starter, '--starter', 'publication-review'], root)
     const checkedStarter = await command([cli, 'check', '--json'], starter)
     expect(JSON.parse(checkedStarter.stdout)).toMatchObject({
       basis: 'working-tree',

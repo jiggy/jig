@@ -45,6 +45,8 @@ async function sourceDigest(root: string): Promise<string> {
   ]) {
     await collect(root, directory, paths)
   }
+  for (const directory of ['skills/jig', 'packages/jig/support/flow-skill'])
+    await collect(root, directory, paths, true)
   paths.push('docs/jig/spec/machine/project-authoring-1.schema.json')
   return digestFiles(root, paths)
 }
@@ -58,12 +60,21 @@ async function outputDigest(release: string): Promise<string> {
   )
 }
 
-async function collect(root: string, directory: string, paths: string[]): Promise<void> {
+async function collect(
+  root: string,
+  directory: string,
+  paths: string[],
+  includeMarkdown = false,
+): Promise<void> {
   for (const entry of await readdir(join(root, directory), { withFileTypes: true })) {
-    if (entry.name === 'node_modules' || entry.name === '.tmp' || entry.name.endsWith('.md'))
+    if (
+      entry.name === 'node_modules' ||
+      entry.name === '.tmp' ||
+      (!includeMarkdown && entry.name.endsWith('.md'))
+    )
       continue
     const path = directory + '/' + entry.name
-    if (entry.isDirectory()) await collect(root, path, paths)
+    if (entry.isDirectory()) await collect(root, path, paths, includeMarkdown)
     else if (entry.isFile()) paths.push(path)
     else throw new Error('A build input is not a regular file')
   }
