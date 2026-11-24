@@ -221,6 +221,7 @@ remain supported and are not rewritten by a review default.
   Every scaffold includes a project-owned `AGENTS.md` for scoped inspection, composition checks, and verified route changes.
   Keep the DOX chain and its indexes for Flow packages, Bindings, and tests.
   The [agent guide](../../docs/jig/for-agents.md) gives existing projects the same text for their local launcher.
+  Include a public link to the composition testing guide so the workflow guidance works with existing skill installations.
   The greeting and each `jig new` Flow have their own editable `AGENTS.md` beside `FLOW.ts`.
 
   Keep generated fixture files under `tests/fixtures`.
