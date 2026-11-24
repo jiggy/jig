@@ -39,6 +39,7 @@ export type PrivateAcpClientOpener = (
   projectDirectory: string,
   model?: string,
   authProfile?: string,
+  reasoningEffort?: string,
 ) => Promise<PrivateAcpAgentProvider>
 
 export class PrivateAcpResourceUnavailableError extends Error {
@@ -193,7 +194,13 @@ export async function selectPrivateAcpResources(
     )
       throw new TypeError('the selected ACP resource has no matching private operator owner')
     const client = route.grant.client
-    const key = JSON.stringify([client, route.grant.model ?? null, route.grant.authProfile ?? null])
+    const { model, authProfile, reasoningEffort } = route.grant
+    const key = JSON.stringify([
+      client,
+      model ?? null,
+      authProfile ?? null,
+      reasoningEffort ?? null,
+    ])
     let provider: PrivateAcpAgentProvider
     try {
       let pending = state.clients.get(key)
@@ -201,12 +208,13 @@ export async function selectPrivateAcpResources(
         pending = state.openClient(
           client,
           state.support,
-          route.grant.authProfile === undefined
+          authProfile === undefined
             ? state.environment
-            : privateAcpProfileEnvironment(state.environment, client, route.grant.authProfile),
+            : privateAcpProfileEnvironment(state.environment, client, authProfile),
           state.projectDirectory,
-          route.grant.model,
-          route.grant.authProfile,
+          model,
+          authProfile,
+          reasoningEffort,
         )
         state.clients.set(key, pending)
       }
@@ -238,7 +246,22 @@ async function openQualifiedClient(
   projectDirectory: string,
   model?: string,
   authProfile?: string,
+  reasoningEffort?: string,
 ): Promise<PrivateAcpAgentProvider> {
-  const open = client === 'codex' ? openPrivateCodexAgentProvider : openPrivateClaudeAgentProvider
-  return await open(support.releaseRoot, environment, projectDirectory, model, authProfile)
+  return client === 'codex'
+    ? await openPrivateCodexAgentProvider(
+        support.releaseRoot,
+        environment,
+        projectDirectory,
+        model,
+        authProfile,
+        reasoningEffort,
+      )
+    : await openPrivateClaudeAgentProvider(
+        support.releaseRoot,
+        environment,
+        projectDirectory,
+        model,
+        authProfile,
+      )
 }

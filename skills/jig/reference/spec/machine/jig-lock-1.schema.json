@@ -431,6 +431,11 @@
               "minLength": 1,
               "maxLength": 64
             },
+            "reasoningEffort": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
             "maxTurns": {
               "type": "integer",
               "minimum": 1,
@@ -442,7 +447,7 @@
           },
           "required": ["kind", "client"],
           "if": {
-            "required": ["retainSessions"]
+            "anyOf": [{ "required": ["retainSessions"] }, { "required": ["reasoningEffort"] }]
           },
           "then": {
             "properties": {

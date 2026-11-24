@@ -220,6 +220,13 @@ selection, not automatic failover or native history migration. Named profiles
 support session retention when combined with `retainSessions: true` on qualified Codex. See
 [ACP grants](../spec/grants.md).
 
+To require an exact Codex reasoning effort, add `reasoningEffort: 'low'` to
+the Codex grant and review the change. It works with a subscription or an API
+key, and you can pair it with a model pin. Review shows the requirement. At
+Run time, if the selected model cannot confirm the effort, Jig stops before
+forwarding the first prompt. Leave the field out to use the client's effort
+selection. See [Finite ACP](../spec/finite-acp.md#one-invocation-two-direct-channels).
+
 ### Native candidate recovery
 
 The ordinary native ACP package (`npm:@jigging/agent-acp`) supports ordered candidate recovery.

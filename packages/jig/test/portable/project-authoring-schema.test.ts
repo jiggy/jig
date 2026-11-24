@@ -116,6 +116,20 @@ describe('Project Authoring SDK/1 shape schema', () => {
       expect(() => schema.validate(invalid, 'INVALID_PROJECT_AUTHORING')).toThrow(SchemaDiagnostic)
     }
   })
+  test('reasoning effort is accepted only for an explicit Codex grant', () => {
+    const authored = (policy: unknown) =>
+      changed(binding, (item) => {
+        item.slots.native = policy
+      })
+    const validate = (policy: unknown) =>
+      schema.validate(authored(policy), 'INVALID_PROJECT_AUTHORING')
+    expect(() => validate({ kind: 'acp', client: 'codex', reasoningEffort: 'low' })).not.toThrow()
+    expect(() => validate({ kind: 'acp', reasoningEffort: 'low' })).toThrow()
+    for (const patch of [{ client: 'claude' }, { reasoningEffort: 'a'.repeat(33) }])
+      expect(() =>
+        validate({ kind: 'acp', client: 'codex', reasoningEffort: 'low', ...patch }),
+      ).toThrow()
+  })
   test('accepts the complete direct-alpha authoring surface', () => {
     expect(() => schema.validate(project, 'INVALID_PROJECT_AUTHORING')).not.toThrow()
     expect(() => schema.validate(binding, 'INVALID_PROJECT_AUTHORING')).not.toThrow()

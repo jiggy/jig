@@ -787,6 +787,7 @@ describe('private project Plan review', () => {
         executablePath,
         sandboxExecutablePath: '/agent/client',
         environment: {},
+        configuration: [{ configId: 'reasoning_effort', value: 'low' }],
         secrets: ['token-secret-work'],
       })
       const withoutProfile = await createPrivateAcpAgentProvider({
@@ -802,13 +803,14 @@ describe('private project Plan review', () => {
       })
       expect(
         privateProjectReviewedAcpSelection(
-          { client: 'codex', authProfile: 'work-codex' },
+          { client: 'codex', authProfile: 'work-codex', reasoningEffort: 'low' },
           withProfile,
         ),
       ).toEqual({
         client: 'codex',
         authProfile: 'work-codex',
         model: 'gpt-5',
+        reasoningEffort: 'low',
         authentication: 'chatgpt',
         executable: executablePath,
       })

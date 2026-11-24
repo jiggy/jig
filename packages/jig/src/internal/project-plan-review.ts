@@ -280,24 +280,36 @@ function configuredTargets(
 }
 
 export function privateProjectReviewedAcpSelection(
-  grant: { readonly client?: string; readonly authProfile?: string | undefined },
+  grant: {
+    readonly client?: string
+    readonly authProfile?: string
+    readonly reasoningEffort?: string
+  },
   providerValue: unknown,
 ): {
   client: string
   authProfile?: string
   model: string
+  reasoningEffort?: string
   authentication: string
   executable: string
 } {
   if (grant.client === undefined)
     throw new TypeError('ACP review cannot publish an unselected native client')
   const provider = requirePrivateAcpAgentProvider(providerValue)
+  const runtime = privateAcpAgentRuntime(provider)
+  const reasoningEffort = runtime.configuration.find(
+    (option) => option.configId === 'reasoning_effort',
+  )?.value
+  if (reasoningEffort !== grant.reasoningEffort)
+    throw new TypeError('ACP review reasoning effort does not match the proposed runtime')
   return {
     client: grant.client,
     ...(grant.authProfile === undefined ? {} : { authProfile: grant.authProfile }),
     model: provider.model,
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     authentication: provider.credentialMode,
-    executable: privateAcpAgentRuntime(provider).executablePath,
+    executable: runtime.executablePath,
   }
 }
 
@@ -312,6 +324,7 @@ function projectAcpSelections(
       client: string
       authProfile?: string
       model: string
+      reasoningEffort?: string
       authentication: string
       executable: string
     }

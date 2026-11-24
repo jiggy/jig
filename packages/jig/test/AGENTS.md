@@ -2,6 +2,11 @@
 
 ## Ownership
 
+`portable/codex-acp-dispatch.test.ts` observes the pinned adapter's outgoing
+app-server turns through the finite host policy. Cover an effort that differs
+from the starting setting, refusal of an unsupported effort, and the native
+dispatch guard's refusal on a mismatch. This is offline protocol evidence.
+
 `host/bun-native-preparation.test.ts` uses a real loopback CONNECT proxy to check operator credential delivery and refusal after proxy failure.
 It first proves direct preparation and then checks cleanup and diagnostic redaction after the proxy refuses.
 

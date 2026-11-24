@@ -284,6 +284,8 @@ describe('private native Codex Agent provider', () => {
       },
       undefined,
       'binding-model',
+      'subscription-profile',
+      'low',
     )
     expect(selectedSubscription).toMatchObject({
       model: 'binding-model',
@@ -297,11 +299,27 @@ describe('private native Codex Agent provider', () => {
       },
       undefined,
       'binding-model',
+      'api-profile',
+      'high',
     )
     expect(selectedApi).toMatchObject({
       model: 'binding-model',
       credentialMode: 'openai-responses-api-key',
     })
+    for (const [provider, effort] of [
+      [selectedSubscription, 'low'],
+      [selectedApi, 'high'],
+    ] as const) {
+      const runtime = privateAcpAgentRuntime(provider)
+      expect(runtime.configuration).toEqual([
+        { configId: 'model', value: 'binding-model' },
+        { configId: 'reasoning_effort', value: effort },
+      ])
+      expect(runtime.environment.JIG_CODEX_REASONING_EFFORT).toBe(effort)
+    }
+    expect(privateAcpAgentRuntime(pinnedSubscription).configuration).toEqual([
+      { configId: 'model', value: 'gpt-5.3-codex-spark' },
+    ])
     for (const model of ['bad model', 'model\n']) {
       await expect(
         openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {

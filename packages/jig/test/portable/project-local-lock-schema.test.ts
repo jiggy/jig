@@ -52,6 +52,18 @@ function changed(value: unknown, mutate: (copy: Record<string, any>) => void): u
 }
 
 describe('Jig lock/1 shape schema', () => {
+  test('only an admitted Codex slot can carry exact reasoning effort', () => {
+    const withPolicy = (policy: unknown) =>
+      changed(lock, (item) => {
+        item.bindings.configured.slots.native = { kind: 'grant', policy }
+      })
+    const validate = (policy: unknown) => schema.validate(withPolicy(policy), 'INVALID_JIG_LOCK')
+    expect(() => validate({ kind: 'acp', client: 'codex', reasoningEffort: 'low' })).not.toThrow()
+    for (const patch of [{ client: 'claude' }, { reasoningEffort: '' }, { reasoningEffort: 1 }])
+      expect(() =>
+        validate({ kind: 'acp', client: 'codex', reasoningEffort: 'low', ...patch }),
+      ).toThrow()
+  })
   test('retains only the qualified explicitly authorized session policy', () => {
     const value = changed(lock, (item) => {
       item.bindings.configured.slots.native = {

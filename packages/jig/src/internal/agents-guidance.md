@@ -61,9 +61,8 @@ These links locate module rules. All selected domain requirements still apply.
   the closed location diagnostic.
 
   Share sealing's path predicate. Preflight neither mounts files nor replaces
-  launch-time validation. Cache selected configurations by client, authProfile, and granted
-  model together. A grant model does not change authentication mode or mutate
-  the operator snapshot.
+  launch-time validation. Cache selected configurations by client, authProfile,
+  model and reasoning effort. Model and effort are independent of authentication.
 
 ### acp-setup-diagnostics
 
@@ -94,6 +93,11 @@ These links locate module rules. All selected domain requirements still apply.
   refusals. Independent Agent transport contracts retain their own wire
   validation. `finite-acp-resource.ts` owns bounded framing, private startup and
   authentication, and essential channel delivery.
+
+  Apply a reviewed Codex effort after model selection on new and restored
+  sessions. Require its exact confirmation before prompting and reject a
+  conflicting configuration update. The pinned adapter checks the effort
+  again at the app-server turn write, after any native recovery.
 
   Credentialed providers supply private literal rejection patterns outside provider identity.
   Nonempty credentials shorter than eight UTF-8 bytes are refused before launch, with or without a Bearer prefix.

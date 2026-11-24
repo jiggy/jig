@@ -68,6 +68,7 @@ export const PRIVATE_CODEX_REQUIREMENTS = [
 
 export interface PrivateCodexAgentSupport {
   readonly authProfile?: string
+  readonly reasoningEffort?: string
   /** Exact Jig-owned startup launcher selected by trusted host policy. */
   readonly launcherPath: string
   /** Exact official codex-acp adapter selected by trusted host policy. */
@@ -125,6 +126,7 @@ export async function openPrivateCodexAgentProvider(
   projectDirectory: string = process.cwd(),
   selectedModel?: string,
   authProfile?: string,
+  reasoningEffort?: string,
 ): Promise<PrivateAcpAgentProvider> {
   environment = Object.freeze({ ...environment })
   let executablePath: string
@@ -185,6 +187,7 @@ export async function openPrivateCodexAgentProvider(
   }
   const support = Object.freeze({
     ...(authProfile === undefined ? {} : { authProfile }),
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     launcherPath: join(releaseRoot, 'libexec', 'agent', 'codex-agent-launcher.js'),
     adapterPath: join(releaseRoot, 'libexec', 'agent', 'codex-acp.js'),
     executablePath,
@@ -341,7 +344,7 @@ export async function createPrivateCodexSubscriptionAgentProvider(
     executablePath: value.executablePath,
     sandboxExecutablePath: value.executablePath,
     environment: codexEnvironment(true, model, value),
-    configuration: model === undefined ? [] : [{ configId: 'model', value: model }],
+    configuration: codexSessionConfiguration(model, value.reasoningEffort),
     modeId: 'read-only',
     secrets,
     startupInput: frameStartupInput(credential),
@@ -400,7 +403,7 @@ export async function createPrivateCodexOpenAIApiAgentProvider(
     executablePath: value.executablePath,
     sandboxExecutablePath: value.executablePath,
     environment: codexEnvironment(false, value.model, value, baseURL),
-    configuration: [{ configId: 'model', value: value.model }],
+    configuration: codexSessionConfiguration(value.model, value.reasoningEffort),
     modeId: 'read-only',
     nestedUserNamespaces: true,
     readOnlyMounts: [
@@ -448,6 +451,15 @@ export async function createPrivateCodexOpenAIApiAgentProvider(
   })
 }
 
+function codexSessionConfiguration(model: string | undefined, reasoningEffort: string | undefined) {
+  return [
+    ...(model === undefined ? [] : [{ configId: 'model', value: model }]),
+    ...(reasoningEffort === undefined
+      ? []
+      : [{ configId: 'reasoning_effort', value: reasoningEffort }]),
+  ]
+}
+
 function codexEnvironment(
   subscription: boolean,
   model: string | undefined,
@@ -486,6 +498,9 @@ function codexEnvironment(
     }),
     CODEX_HOME: SANDBOX_CODEX_HOME,
     CODEX_PATH: support.executablePath,
+    ...(support.reasoningEffort === undefined
+      ? {}
+      : { JIG_CODEX_REASONING_EFFORT: support.reasoningEffort }),
     // Keep a bundled fallback off PATH so Codex performs its vendor digest check.
     PATH:
       support.nativeBubblewrapSource === 'bundled'
