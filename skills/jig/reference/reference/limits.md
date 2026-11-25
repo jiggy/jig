@@ -285,6 +285,10 @@ The byte and file settings cover each production preparation, including assembly
 They do not change source capture, evaluation output, alias layout, aggregate review content, deadlines, or artifact storage.
 Reused admitted packages consume none of the new-preparation count or aggregate output allowance.
 
+Within one review, several Flow selectors can share a newly prepared capture.
+Its files count once toward the aggregate limit. Each selector's retained
+execution layout counts separately.
+
 The captured package store retains evidence from declined and superseded
 reviews. It performs no implicit garbage collection and offers no selective
 reclamation command. State deletion is not a capacity-recovery instruction.

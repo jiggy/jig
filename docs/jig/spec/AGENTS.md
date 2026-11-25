@@ -50,6 +50,7 @@ execution evidence.
 - Project authoring owns dependency preparation overrides and precedence. The central limits reference derives values from their implementation owners.
   Project policy owns the installer-only proxy and its operator authority.
   Keep the review-wide preparation count separate from per-package output allowances and fixed aggregate byte and deadline bounds.
+  Count a prepared capture once per review and charge each retained layout.
 - A descriptor-byte change must reconcile its documented digest, host allowlist,
   fixtures, lock constants, and published exact bytes.
 - Current exclusions must match the implementation and guide claims.

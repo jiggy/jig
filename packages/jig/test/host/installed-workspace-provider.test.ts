@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, truncate, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { settleTestCommand } from '../fixtures/bounded-command.js'
@@ -22,6 +22,101 @@ if (
     'This suite requires JIG_LINUX_ROOTLESS_HOSTILE=1 on Linux or JIG_MACOS_PROCESS_TEST=1 on macOS',
   )
 }
+
+test('installed review charges one prepared tree shared by 22 workspace Flow selectors', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-shared-preparation-')))
+  const workspace = join(directory, 'workspace')
+  const profile = join(directory, 'review.jsonl')
+  const selectors = Array.from({ length: 22 }, (_, index) => `fixture-flow-${index + 1}`)
+  const put = async (path: string, value: unknown) => {
+    const file = join(workspace, path)
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, typeof value === 'string' ? value : JSON.stringify(value))
+  }
+  let passed = false
+  try {
+    await put('package.json', {
+      name: 'shared-review-fixture',
+      private: true,
+      workspaces: ['packages/*', 'app'],
+    })
+    await put('app/package.json', {
+      name: 'shared-review-app',
+      private: true,
+      dependencies: Object.fromEntries(selectors.map((name) => [name, 'workspace:*'])),
+    })
+    await put(
+      'app/jig.ts',
+      `import { defineJig } from '@jigging/jig'
+export default defineJig(${JSON.stringify({
+        flows: selectors.map((name) => `npm:${name}`),
+        limits: { dependencies: { maxPreparations: 1 } },
+      })})`,
+    )
+    await put('packages/shared/package.json', {
+      name: 'fixture-shared',
+      version: '1.0.0',
+      exports: './index.ts',
+      files: ['index.ts', 'payload.bin'],
+    })
+    await put('packages/shared/index.ts', 'export const value = 42\n')
+    await put('packages/shared/payload.bin', '')
+    await truncate(join(workspace, 'packages/shared/payload.bin'), 12 * 1024 * 1024)
+    for (const name of selectors) {
+      await put(`packages/${name}/package.json`, {
+        name,
+        version: '1.0.0',
+        dependencies: { 'fixture-shared': 'workspace:*' },
+      })
+      await put(
+        `packages/${name}/FLOW.ts`,
+        'import { value } from "fixture-shared"\nexport default () => value\n',
+      )
+    }
+    execFileSync(
+      process.execPath,
+      ['--no-env-file', 'install', '--ignore-scripts', '--lockfile-only'],
+      {
+        cwd: workspace,
+        timeout: 15_000,
+      },
+    )
+    const lock = join(workspace, 'bun.lock')
+    const before = await readFile(lock)
+    const env = reviewCommandEnvironment('review', profile, { ...process.env, NO_COLOR: '1' })
+    delete env.JIG_LIMITS_DEPENDENCIES_MAX_PREPARATIONS
+    delete env.JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES
+    delete env.JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES
+    const review = Bun.spawn([cli, 'review', 'app', '--details'], {
+      cwd: workspace,
+      env,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const result = await settleTestCommand(review, {
+      evidence: join(directory, 'review.command'),
+      timeoutMs: 210_000,
+    })
+    const output = result.stdout + result.stderr
+    expect(result.code, output).toBe(2)
+    expect(output).toContain('Targets after approval: 22 ready, 0 unavailable.')
+    expect(output).toContain('Diagnostic code: JIG_APPROVAL_REQUIRED')
+    const events = (await readFile(profile, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+      .filter((event) => event.phase === 'dependency-preparation' && event.kind === 'end')
+    expect(events).toMatchObject([{ outcome: 'returned' }])
+    expect(events).toHaveLength(1)
+    expect(await readFile(lock)).toEqual(before)
+    await expect(stat(join(workspace, 'app', 'jig.lock'))).rejects.toMatchObject({ code: 'ENOENT' })
+    passed = true
+  } finally {
+    if (passed) await rm(directory, { recursive: true, force: true })
+    else console.error(`Preserved shared-preparation review fixture: ${directory}`)
+  }
+}, 240_000)
 
 for (const location of ['member', 'root', 'nested'] as const) {
   test(`installed CLI reviews and runs a workspace dependency (application: ${location})`, async () => {

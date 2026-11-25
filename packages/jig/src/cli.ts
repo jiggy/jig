@@ -3822,6 +3822,8 @@ export function renderFailure(error: unknown, runtime: Pick<CliRuntime, 'writeEr
         'the selected package sources exceed the preparation limit; reduce captured package files and see https://jig.md/build/dependencies',
       PACKAGE_BUN_OUTPUT_LIMIT: dependencyPreparationLimitHint(error),
       PACKAGE_BUN_PROJECT_COUNT_LIMIT: dependencyPreparationLimitHint(error),
+      PACKAGE_BUN_PROJECT_OUTPUT_LIMIT:
+        'Reduce the prepared dependency content or the Flow selection in jig.ts, then review again. The aggregate byte limit covers the whole review. See https://jig.md/reference/limits.',
     }
     const hint =
       candidateHints[error.diagnostic?.code ?? ''] ??
@@ -4213,7 +4215,9 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
           ? 'The dependency lock contains a non-default registry source.'
           : diagnostic.code === 'PACKAGE_BUN_PROJECT_COUNT_LIMIT'
             ? 'Review reached its limit for distinct dependency preparations. No Flow was started by this review.'
-            : ACP_SETUP_CAUSES[diagnostic.code]
+            : diagnostic.code === 'PACKAGE_BUN_PROJECT_OUTPUT_LIMIT'
+              ? 'The prepared files and layouts exceed the fixed aggregate review limit.'
+              : ACP_SETUP_CAUSES[diagnostic.code]
   const lock =
     diagnostic.lockPath === undefined || diagnostic.lockPath === diagnostic.path
       ? ''

@@ -487,11 +487,7 @@ function createSession(
                 signal: budget.signal,
               })
               try {
-                budget.retain(
-                  reviewed.prepared.files,
-                  grant.recipe,
-                  Buffer.byteLength(JSON.stringify(reviewed.layout)),
-                )
+                budget.retain(reviewed.prepared, Buffer.byteLength(JSON.stringify(reviewed.layout)))
                 return normalizePrivateRetainedProjectEvaluation({
                   recipe: await publishCapturedPackage(packageStoreRoot, captured),
                   dependencies: await publishCapturedPackage(packageStoreRoot, reviewed.prepared),
@@ -546,8 +542,7 @@ function createSession(
                 },
                 retain: async (selector, source, prepared) => {
                   budget.retain(
-                    prepared.captured.files,
-                    selector,
+                    prepared.captured,
                     Buffer.byteLength(JSON.stringify(prepared.layout)),
                   )
                   const artifact = await publishCapturedPackage(packageStoreRoot, prepared.captured)
@@ -774,8 +769,7 @@ function createSession(
                       budget.signal,
                     )
                     budget.retain(
-                      prepared.captured.files,
-                      request.packagePath,
+                      prepared.captured,
                       Buffer.byteLength(JSON.stringify(prepared.layout)),
                     )
                     const dependencies = await capturePrivateBunDependencies(

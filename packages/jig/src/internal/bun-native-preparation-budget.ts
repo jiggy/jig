@@ -1,4 +1,5 @@
 import { CheckError } from '../diagnostics.js'
+import type { CapturedPackage } from '../package/capture.js'
 import {
   DEFAULT_PROJECT_DEPENDENCY_LIMITS,
   requireDependencyPreparationLimit,
@@ -11,15 +12,13 @@ export const PRIVATE_BUN_PROJECT_PREPARATION_LIMITS = Object.freeze({
   wallClockMs: 180_000,
 })
 
+type PreparedCapture = Pick<CapturedPackage, 'files'>
+
 export interface PrivateBunPreparationBudget {
   readonly deadlineUnixMs: number
   readonly signal: AbortSignal
   reserve(packageDigest: string, projectPath: string, maxPreparations?: number): void
-  retain(
-    files: readonly { readonly size: number }[],
-    projectPath: string,
-    metadataBytes?: number,
-  ): void
+  retain(capture: PreparedCapture, layoutBytes?: number): void
   dispose(): void
 }
 
@@ -43,6 +42,9 @@ export function createPrivateBunPreparationBudget(
   timer.unref()
   const signal = AbortSignal.any([parentSignal, deadline.signal])
   const packages = new Set<string>()
+  // Reuse the same capture within this review. Separate preparations have
+  // separate captures even if their package digests match.
+  const accountedCaptures = new WeakSet<PreparedCapture>()
   let preparedBytes = 0
   let disposed = false
 
@@ -73,31 +75,30 @@ export function createPrivateBunPreparationBudget(
       }
       packages.add(packageDigest)
     },
-    retain(
-      files: readonly { readonly size: number }[],
-      projectPath: string,
-      metadataBytes = 0,
-    ): void {
+    retain(capture: PreparedCapture, layoutBytes = 0): void {
       requireOpen()
       signal.throwIfAborted()
-      if (!Number.isSafeInteger(metadataBytes) || metadataBytes < 0)
+      if (!Number.isSafeInteger(layoutBytes) || layoutBytes < 0)
         throw new TypeError('prepared metadata size is invalid')
-      let bytes = metadataBytes
-      for (const file of files) {
-        if (!Number.isSafeInteger(file.size) || file.size < 0) {
-          throw new TypeError('prepared package file size is invalid')
+      let bytes = layoutBytes
+      if (!accountedCaptures.has(capture)) {
+        for (const { size } of capture.files) {
+          if (!Number.isSafeInteger(size) || size < 0)
+            throw new TypeError('prepared package file size is invalid')
+          bytes += size
+          if (!Number.isSafeInteger(bytes)) throw new TypeError('prepared package size is invalid')
         }
-        bytes += file.size
-        if (!Number.isSafeInteger(bytes)) throw new TypeError('prepared package size is invalid')
       }
       if (preparedBytes + bytes > PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.preparedBytes) {
-        throw limit(
+        throw new CheckError(
+          'invalid',
           'PACKAGE_BUN_PROJECT_OUTPUT_LIMIT',
           `project dependency preparation exceeds ${PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.preparedBytes} bytes`,
-          projectPath,
+          'jig.ts',
         )
       }
       preparedBytes += bytes
+      accountedCaptures.add(capture)
     },
     dispose(): void {
       if (disposed) return
@@ -109,8 +110,4 @@ export function createPrivateBunPreparationBudget(
   function requireOpen(): void {
     if (disposed) throw new TypeError('Bun preparation budget is closed')
   }
-}
-
-function limit(code: string, message: string, path: string): CheckError {
-  return new CheckError('invalid', code, message, path)
 }

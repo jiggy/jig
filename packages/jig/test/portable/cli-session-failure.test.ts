@@ -10,6 +10,10 @@ import { RootAdministrationError, type RootRunTerminal } from '../../src/adminis
 import { main, privateCliRunFailure, renderFailure } from '../../src/cli.js'
 import { privateCliHumanText } from '../../src/cli-presentation.js'
 import { CheckError } from '../../src/diagnostics.js'
+import {
+  createPrivateBunPreparationBudget,
+  PRIVATE_BUN_PROJECT_PREPARATION_LIMITS,
+} from '../../src/internal/bun-native-preparation-budget.js'
 import { projectError } from '../../src/internal/project-session-controller.js'
 import type { PrivateAgentReadinessReport } from '../../src/internal/review-agent-setup.js'
 import { parseInvocationContract } from '../../src/invocation-contract.js'
@@ -101,6 +105,33 @@ test('preparation count refusal without numeric evidence does not invent observe
   expect(output[0]).not.toContain('Effective limit:')
   expect(output[0]).not.toContain('Limit source:')
   expect(output[0]).not.toContain('SYNTHETIC_')
+})
+
+test('aggregate prepared byte refusal identifies the review as a whole', () => {
+  const budget = createPrivateBunPreparationBudget(new AbortController().signal)
+  try {
+    const maximum = PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.preparedBytes
+    budget.retain({ files: [{ path: 'private-dependency', size: maximum }] })
+    let failure: unknown
+    try {
+      budget.retain({ files: [{ path: 'overflow-member', size: 1 }] })
+    } catch (error) {
+      failure = error
+    }
+    const output: string[] = []
+    expect(
+      renderFailure(projectError(failure, 'plan'), { writeError: (text) => output.push(text) }),
+    ).toBe(1)
+    expect(output).toHaveLength(1)
+    expect(output[0]).toContain('Location: "jig.ts"')
+    expect(output[0]).toContain('fixed aggregate review limit')
+    expect(output[0]).toContain('Reduce the prepared dependency content or the Flow selection')
+    expect(output[0]).toContain('Diagnostic code: PACKAGE_BUN_PROJECT_OUTPUT_LIMIT')
+    expect(output[0]).not.toContain('overflow-member')
+    expect(output[0]).not.toContain('maxPreparedBytes')
+  } finally {
+    budget.dispose()
+  }
 })
 
 test('evaluation output refusal retains its fixed profile and omits count overrides', () => {

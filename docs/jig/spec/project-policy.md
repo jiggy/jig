@@ -507,6 +507,10 @@ Each distinct captured package digest counts once.
 Reusing admitted dependencies consumes neither this count nor the aggregate prepared-output allowance.
 
 All new preparations share 256 MiB of aggregate prepared content and one 180-second cancellation deadline.
+File content counts once per new prepared capture, even when several npm Flow
+selectors use it. Each retained execution layout contributes its own bytes.
+Separate preparations each contribute their captured bytes.
+
 Each contained preparation retains the earlier 60-second hard deadline.
 Increasing the count does not restart deadlines or enlarge the aggregate byte allowance.
 One package accepts at most 4,096 source files and 16 MiB before installation.

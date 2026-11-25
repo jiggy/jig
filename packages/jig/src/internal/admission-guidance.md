@@ -158,6 +158,10 @@ Version metadata is checked before evaluation and reverified before capture comp
   the original dependency lookup layout with that package as the execution root.
   No provider imports, live installation traversal or new native authority.
 
+  One review charges its immutable prepared capture once by identity and each
+  retained layout separately. Independent captures consume bytes even if their
+  digests are equal. Report aggregate overflows against the project selection.
+
   Schema compilation failures become invalid-candidate diagnostics with their contract file and exact JSON pointer.
   Captured workspace members use project-relative source locations, including bounded ancestor paths.
   Registry packages use their `npm:` selector and package-relative file, without exposing prepared installation paths.
