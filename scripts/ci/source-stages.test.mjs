@@ -149,6 +149,11 @@ test('source stages run serially after one shared build on both supported shells
       ['build:jig::build'],
     )
     assert.ok(events.indexOf('build:jig::build') < events.indexOf('portable-start'))
+    for (const stage of ['portable', 'protocol']) {
+      const lint = `consumer:x --no-install biome lint --only=suspicious/noFocusedTests --error-on-warnings ./fixtures/source-${stage}.test.ts`
+      assert.ok(events.includes(lint))
+      assert.ok(events.indexOf(lint) < events.indexOf(`${stage}-start`))
+    }
     assert.ok(events.indexOf('portable-done') < events.indexOf('portable-node-start'))
     assert.ok(events.indexOf('portable-node-done') < events.indexOf('protocol-start'))
     assert.ok(events.indexOf('protocol-done') < events.indexOf('protocol-node-start'))

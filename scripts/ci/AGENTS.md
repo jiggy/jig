@@ -77,6 +77,10 @@ preparation never becomes a consumer requirement.
   files with isolated workers and preserves their full JUnit coverage. A failed
   stage stops later work.
 
+  These stages lint selected Bun files for focused registrations before test
+  execution. Bun's JUnit can report a passing file after focus hides its
+  sibling cases.
+
   `source-test-durations.json` records slower-file timings from the successful
   source job in CI run 45578818280. Bun uses them to start longer files earlier.
   The source catalog determines which files run.
@@ -618,6 +622,9 @@ They consume frozen package exports with tracked test helpers and installed
   actual source shell with controlled tools on Bash and POSIX sh.
   It executes actual Node tests through the owning reporter and Python merger.
   It also checks both source inventories through the root test recipe.
+- `node --test scripts/ci/source-stage-evidence.test.mjs` exercises real
+  parallel Bun JUnit through the report merger. It verifies complete passing
+  reports and rejects skips, failures, missing files and focused registrations.
 - Exercise provision, the hostile suite, cleanup, and `assert-clean` on a
   disposable supported runner.
 - `node --test scripts/ci/host-test-coverage.test.mjs` verifies exhaustive Mac

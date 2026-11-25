@@ -107,7 +107,8 @@ operational baselines, and public-site assembly.
   portable build owns its complete local package graph.
 
   Both portable and protocol stages run `.node.mjs` files with the verified
-  `FLOW_NODE` executable. Other selected files run with Bun. The stages merge
+  `FLOW_NODE` executable. Other selected files run with Bun after the workspace
+  linter checks for focused tests. The stages merge
   actual reports and require exact coverage of their complete selected files.
 
   An explicit report directory retains raw Bun and Node reports under each stage, including failures.
