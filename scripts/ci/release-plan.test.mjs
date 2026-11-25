@@ -706,6 +706,7 @@ test('fresh source and exact replay reject stale, malformed, and fabricated rele
   const base = commit(root)
   await versionRelease(root)
   const release = commit(root)
+  assert.equal((await checkRelease(root, release)).mode, 'versioned')
   await put(root, 'README.md', 'Later source change.\n')
   let head = commit(root)
   assert.equal((await releaseState(root, head)).reason, 'stale-release-plan')
@@ -713,6 +714,7 @@ test('fresh source and exact replay reject stale, malformed, and fabricated rele
   await put(root, '.changeset/release.json', { schemaVersion: 1 })
   head = commit(root)
   await assert.rejects(releaseState(root, head), /Malformed generated release plan/)
+  await assert.rejects(checkRelease(root, head), /Malformed generated release plan/)
 
   git(root, ['checkout', '--quiet', '--detach', release])
   const marker = await get(root, '.changeset/release.json')
@@ -722,8 +724,9 @@ test('fresh source and exact replay reject stale, malformed, and fabricated rele
   marker.releases[0].newVersion = value.version
   marker.sourceDigest = await sourceDigest(root)
   await put(root, '.changeset/release.json', marker)
-  commit(root, 'Fabricated matching marker')
+  const fabricated = commit(root, 'Fabricated matching marker')
   await assert.rejects(checkRelease(root, base), /differs from the generated/)
+  await assert.rejects(checkRelease(root, fabricated), /differs from the generated/)
 })
 
 test('a release PR must regenerate after its target base advances', async (t) => {
@@ -767,6 +770,29 @@ test('feature release checks exclude target changes made after the event base', 
   assert.equal(checked.mode, 'feature')
   assert.deepEqual(checked.affectedPackages, ['@jigging/agent-method'])
   assert.deepEqual(checked.changesets, ['method-pr-fix'])
+})
+
+test('nightly release checks validate the snapshot after a multi-commit feature push', async (t) => {
+  const { root, base } = await fixture(t)
+  await put(root, 'packages/jig/src/index.ts', 'export const value = 2\n')
+  await note(root, 'initial-fix', ['@jigging/jig'])
+  const middle = commit(root, 'Initial feature with a changeset')
+  await rm(join(root, '.changeset/initial-fix.md'))
+  await note(root, 'final-fix', ['@jigging/jig'])
+  const source = commit(root, 'Refine the feature changeset')
+  const env = { GITHUB_EVENT_NAME: 'push', GITHUB_SHA: source }
+  const pushBase = releaseBase({ repository: root, env, event: { before: base, after: source } })
+  assert.deepEqual((await checkRelease(root, pushBase)).changesets, ['final-fix'])
+  await assert.rejects(checkRelease(root, middle), /Pending changeset initial-fix changed/)
+  const scheduledBase = releaseBase({
+    repository: root,
+    env: { ...env, GITHUB_EVENT_NAME: 'schedule' },
+  })
+  const nightly = await checkRelease(root, scheduledBase)
+  assert.equal(nightly.sourceRevision, source)
+  assert.equal(nightly.mode, 'snapshot')
+  assert.equal(nightly.reason, 'pending-changesets')
+  assert.equal(nightly.eligible, false)
 })
 
 test('generated release replay rejects an empty target advance despite matching source bytes', async (t) => {

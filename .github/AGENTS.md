@@ -114,12 +114,14 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - CI reports quick development/release checks and site builds independently of
   the longer source suite. Quick checks validate release coverage against the
   tested PR merge's verified first parent, previous main revision, or manual
-  source parent. The PR merge must match the workflow source and event head.
+  source parent. Scheduled quick checks validate the exact checked source's
+  release state. The PR merge must match the workflow source and event head.
   Its first parent may advance beyond the event's recorded base only through
-  verified ancestry. Missing or unrelated baselines fail.
+  verified ancestry. Missing or unrelated transition baselines fail.
 
   A generated release must reproduce the version plan from that exact base.
-  A branch name or bot identity grants no exemption.
+  Scheduled checks replay eligible versioned snapshots from the base recorded
+  in their release plan. A branch name or bot identity grants no exemption.
 
   Candidate jobs retain their archives, then perform read-only registry checks.
   Pending changesets distinguish development bytes from versioned release

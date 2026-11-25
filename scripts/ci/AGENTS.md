@@ -64,7 +64,9 @@ preparation never becomes a consumer requirement.
   ancestor of the first parent, which supplies the comparison commit.
 
   Push checks retain the event's previous revision. Manual checks use the
-  source's first parent. Missing, unrelated, or uncertain baselines fail.
+  source's first parent. Scheduled checks use the exact checked source to
+  validate its release state. Missing, unrelated, or uncertain transition
+  baselines fail.
 
   A newer tested base never relaxes generated release replay. The marker must
   name that exact base, even when its advance changes no files.
@@ -564,10 +566,12 @@ They consume frozen package exports with tracked test helpers and installed
 
   They execute generated Mac planning and check bounded useful concurrency, complete coverage, and preserved PR cancellation.
 
-- `node --test scripts/ci/release-base.test.mjs` exercises real Git comparisons,
-  advancing PR bases, push ranges, manual parents, and invalid event identities.
+- `node --test scripts/ci/release-base.test.mjs` exercises real Git comparisons.
+  It covers advancing PR bases, push ranges, manual parents, scheduled source
+  identity, and invalid event identities.
   Release-plan integration tests reject stale generated plans after an empty
-  base advance. They preserve feature coverage after unrelated main version changes.
+  base advance and preserve feature coverage after unrelated main version changes.
+  They validate scheduled release snapshots after multi-commit pushes.
 - `node --test scripts/ci/*.test.mjs` includes disposable Git fixtures for suite
   discovery, exact PR merge state, independent input scope and failed or forged
   host-job results. Archive/API fixtures cover source/run/attempt/profile/digest
