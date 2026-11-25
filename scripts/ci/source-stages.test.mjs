@@ -84,6 +84,8 @@ if(a.includes('--destination')) {
  fs.mkdirSync(destination,{recursive:true});fs.writeFileSync(path.join(destination,'fixture.tgz'),'frozen fixture');event('pack');
 } else if(a[0]==='test') {
  const stage=a.includes('./fixtures/source-portable.test.ts')?'portable':'protocol';event(stage+'-start');
+ const workers=a.find(arg=>arg.startsWith('--parallel='));
+ if(workers)event(stage+':'+workers);
  if(process.env.FIXTURE_FAIL===stage)process.exit(7);
  if(a.some(arg=>arg.endsWith('.node.mjs')))throw Error('Node files must not execute under Bun');
  for(const arg of a)if(arg.startsWith('--reporter-outfile='))fs.writeFileSync(arg.slice(19),'<testsuites tests="1"><testcase file="fixtures/source-'+stage+'.test.ts" name="'+stage+' controller fixture"/></testsuites>');
@@ -122,10 +124,15 @@ if(a.includes('--destination')) {
 
 test('source stages run serially after one shared build on both supported shells', (t) => {
   for (const shell of ['/bin/sh', '/bin/bash']) {
+    const workers = shell === '/bin/bash' ? '4' : ''
     const f = fixture(t),
-      result = f.run(shell)
+      result = f.run(shell, { JIG_CI_SOURCE_BUN_WORKERS: workers })
     assert.equal(result.status, 0, result.stderr)
     const events = f.events()
+    assert.deepEqual(
+      events.filter((event) => event.includes(':--parallel=')),
+      workers ? ['portable:--parallel=4', 'protocol:--parallel=4'] : [],
+    )
     assert.deepEqual(
       events.filter((event) => event.startsWith('build:')),
       ['build:jig::build'],

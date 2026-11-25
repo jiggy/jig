@@ -73,7 +73,10 @@ preparation never becomes a consumer requirement.
 - Source execution keeps one `source-tests` workflow job and workspace, with
   distinct `source-portable`, `source-protocol`, `source-applications` and
   `source-python` evidence. CI and local execution run selected stages serially
-  after shared builds and archive freezing. A failed stage stops later work.
+  after shared builds and archive freezing. CI runs portable and protocol Bun
+  files with isolated workers and preserves their full JUnit coverage. A failed
+  stage stops later work.
+
   Canonical installed smoke checks belong to required candidate profiles,
   including Jig's three standalone display gates. Local source execution retains
   those consumers. Source-only Python stages do not build Jig.
@@ -355,9 +358,9 @@ They consume frozen package exports with tracked test helpers and installed
 - The Mac planner freezes complete inventory, source, policy, balanced groups, and digest before execution.
   Target duration and minimum/maximum capacity determine useful shard count. New files enter discovery automatically.
 
-  The default permits up to three useful workers. The PR workflow permits a
-  fourth when the three-worker plan exceeds the target. Timing observations
-  affect placement, never required coverage.
+  The default permits up to three useful workers. The PR workflow targets
+  700 estimated seconds and permits up to six useful workers. Timing
+  observations affect placement, never required coverage.
   Every worker and collector independently validate the frozen plan against source inventory.
   Frozen plans are bounded regular files read through one no-follow, nonblocking descriptor.
 
@@ -374,6 +377,8 @@ They consume frozen package exports with tracked test helpers and installed
 
   A listed artifact may not yet have a readable archive. Transient archive reads remain pending under the original observation deadline.
   API transport retries allow at most three reads with one-second backoff. Authorization, record, digest and identity failures remain fatal.
+  Offer selection and worker decision resolution start with three waits of 15
+  seconds, then use the ordinary one-minute cadence.
 
   Candidates wait for their role's decision. Failed selected workers cannot inherit another OS's success.
   Selectors watch their chosen worker so failed-job retries include failed roles.

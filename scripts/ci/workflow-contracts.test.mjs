@@ -152,10 +152,11 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
     const pr = event === 'pull_request'
     const rows = JSON.parse(output.workers).include
     const count = Number(output.shard_count)
-    assert.equal(plan.policy.maxShards, pr ? 4 : 3)
-    assert.equal(Number(output.max_parallel), pr ? 8 : 3)
-    assert.equal(count, pr && !strict.withinTarget ? 4 : strict.shards.length)
-    assert.equal(plan.policy.targetSeconds, strict.policy.targetSeconds)
+    assert.equal(plan.policy.maxShards, pr ? 6 : 3)
+    assert.equal(Number(output.max_parallel), pr ? 12 : 3)
+    assert.equal(plan.policy.targetSeconds, pr ? 700 : strict.policy.targetSeconds)
+    assert.ok(count <= plan.policy.maxShards)
+    if (!pr) assert.equal(count, strict.shards.length)
     assert.equal(plan.inventoryDigest, strict.inventoryDigest)
     assert.deepEqual(
       JSON.parse(output.selectors).include,

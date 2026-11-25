@@ -102,7 +102,8 @@ operational baselines, and public-site assembly.
 - `test-release.sh` accepts explicit portable, protocol, applications and Python
   stages in one built workspace. Omitted stages perform no setup or execution.
   Selected reports bind the complete whole-file suite inventory. Its default
-  runs all stages serially after shared builds and archive freezing. Jig's
+  runs all stages serially after shared builds and archive freezing. CI uses
+  Bun's isolated file workers inside the portable and protocol stages. Jig's
   portable build owns its complete local package graph.
 
   Both portable and protocol stages run `.node.mjs` files with the verified

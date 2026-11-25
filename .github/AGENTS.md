@@ -204,8 +204,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Never use the built-in token to merge a release and suppress main-push CI.
 - CI runs its complete fixed source, site, Python and npm profiles. Source
   targets run serially in one workspace after shared builds and archive
-  freezing, with separate complete reports for each stage. A failed stage stops
-  later work. Installed smoke checks use the canonical candidate profiles.
+  freezing, with separate complete reports for each stage. Bun runs the
+  portable and protocol files with four isolated workers on the Ubuntu CI
+  runner. A failed stage stops later work. Installed smoke checks use the
+  canonical candidate profiles.
 - Host workflows always report `affected-linux` and `affected-macos` for PRs. A
   small verified-Git scope check can omit native jobs for independent site,
   non-specification documentation or Python changes. The shared Reporting
@@ -400,9 +402,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Scope freezes a source-bound plan before requesting Macs. Measured durations choose useful shards within the checked-in capacity limit.
   Each selected worker runs the complete native enforcement and Codex preference-boundary baseline, then its sequential assigned files. The installed owner also runs genuine offline-client checks.
 
-  The PR planner tries up to three useful workers first. When their estimate
-  exceeds the target, it can assign a fourth worker. Each planned PR shard
-  has two candidates. Strict runs permit three concurrent workers.
+  The PR planner targets 700 seconds of estimated test work per shard and can
+  assign up to six useful workers. Each planned PR shard has two candidates.
+  Strict runs permit three concurrent workers.
   Worker count and runner labels remain separate from test membership.
 
   Before native work, each candidate publishes a uniquely named readiness offer.
@@ -501,7 +503,8 @@ The workbench visual workflow builds the exact PR-base renderer in an isolated w
 ## Verification
 
 - Quick development checks mount production web assets in Chromium against an authenticated inert producer.
-  The job allowance covers browser dependency installation alongside development and browser checks.
+  Install Playwright's headless Chromium shell and its system dependencies for
+  this job.
   They verify application material, host inspection, responsive navigation, focus and evidence delivery.
   These checks establish browser behavior, not native execution or visual parity with an approved mockup.
 - After any automation change, validate the called script locally where

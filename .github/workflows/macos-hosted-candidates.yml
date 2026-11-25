@@ -45,7 +45,8 @@ jobs:
         id: plan
         run: |-
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            export JIG_MACOS_MAX_SHARDS=4
+            export JIG_MACOS_TARGET_SECONDS=700
+            export JIG_MACOS_MAX_SHARDS=6
           fi
           node scripts/ci/macos-host-test-shards.mjs freeze arm64 "$RUNNER_TEMP/PLAN.json"
           node scripts/ci/macos-host-collect.mjs matrix "$RUNNER_TEMP/PLAN.json"

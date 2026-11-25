@@ -85,7 +85,7 @@ jobs:
           {
             just test-tooling
             just display_web::build
-            node packages/display-web/node_modules/playwright/cli.js install --with-deps chromium
+            node packages/display-web/node_modules/playwright/cli.js install --with-deps --only-shell chromium
             just display_web::test-browser
           } 2>&1 | tee "$RUNNER_TEMP/tooling.txt"
       - name: Record observed execution
@@ -357,6 +357,7 @@ jobs:
       - name: Run Jig source and package gates
         env:
           PYTHONDONTWRITEBYTECODE: "1"
+          JIG_CI_SOURCE_BUN_WORKERS: "4"
           JIG_CI_SOURCE_REPORT_DIRECTORY: ${{ runner.temp }}/source-reports
           CI_PYTHON_DISTRIBUTIONS: ${{ runner.temp }}/python-dist
           CI_PYTHON_REPORTING_DISTRIBUTIONS: ${{ runner.temp }}/python-reporting-dist

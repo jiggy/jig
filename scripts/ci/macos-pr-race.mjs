@@ -624,8 +624,9 @@ export async function chooseMacOffer(client, context, { jobs, artifacts, now = D
     throw new Error('All current Mac candidates completed without a live readiness offer')
   throw pending('Awaiting a live allocated Mac readiness offer')
 }
-async function poll(operation, deadline) {
-  for (;;) {
+async function poll(operation, deadline, { handoff = false } = {}) {
+  const fastWaits = handoff ? 3 : 0
+  for (let waits = 0; ; waits++) {
     if (Date.now() >= deadline) throw new Error('Mac decision observation deadline expired')
     try {
       const result = await operation()
@@ -634,8 +635,9 @@ async function poll(operation, deadline) {
     } catch (error) {
       if (error.code !== 'MAC_RACE_PENDING') throw error
     }
+    const interval = waits < fastWaits ? 15_000 : 60_000
     await new Promise((resolve) =>
-      setTimeout(resolve, Math.min(60000, Math.max(1, deadline - Date.now()))),
+      setTimeout(resolve, Math.min(interval, Math.max(1, deadline - Date.now()))),
     )
   }
 }
@@ -748,12 +750,16 @@ async function cli() {
     return
   }
   if (mode === 'select') {
-    const offer = await poll(async () => {
-      state = await snapshot()
-      if (state.artifacts.some((artifact) => artifact.name === decisionName(context)))
-        throw new Error('This selector attempt already published its decision')
-      return chooseMacOffer(client, context, state)
-    }, observationDeadline)
+    const offer = await poll(
+      async () => {
+        state = await snapshot()
+        if (state.artifacts.some((artifact) => artifact.name === decisionName(context)))
+          throw new Error('This selector attempt already published its decision')
+        return chooseMacOffer(client, context, state)
+      },
+      observationDeadline,
+      { handoff: true },
+    )
     const decision = validateMacDecision(
       {
         ...offer.ready,
@@ -767,21 +773,28 @@ async function cli() {
     await output(`contend=true\ndecision_name=${decisionName(context)}\n`)
     return
   }
-  const row = await poll(async () => {
-    checkBudget()
-    state = await snapshot()
-    const artifacts = state.artifacts.filter((artifact) => artifact.name === decisionName(context))
-    if (artifacts.length > 1) throw new Error('Ambiguous immutable Mac selector decisions')
-    if (!artifacts.length) {
-      const selector = state.jobs.filter(
-        (job) => job.name === selectorJobName(context.shard) && job.run_attempt === context.attempt,
+  const row = await poll(
+    async () => {
+      checkBudget()
+      state = await snapshot()
+      const artifacts = state.artifacts.filter(
+        (artifact) => artifact.name === decisionName(context),
       )
-      if (selector.length && selector.every((job) => job.status === 'completed'))
-        throw new Error('Completed selector published no decision')
-      throw pending('Awaiting this attempt selector decision')
-    }
-    return readMacDecisionArtifact(client, artifacts[0], context, { jobs: state.jobs })
-  }, observationDeadline)
+      if (artifacts.length > 1) throw new Error('Ambiguous immutable Mac selector decisions')
+      if (!artifacts.length) {
+        const selector = state.jobs.filter(
+          (job) =>
+            job.name === selectorJobName(context.shard) && job.run_attempt === context.attempt,
+        )
+        if (selector.length && selector.every((job) => job.status === 'completed'))
+          throw new Error('Completed selector published no decision')
+        throw pending('Awaiting this attempt selector decision')
+      }
+      return readMacDecisionArtifact(client, artifacts[0], context, { jobs: state.jobs })
+    },
+    observationDeadline,
+    { handoff: mode === 'resolve' },
+  )
   if (mode === 'resolve') {
     checkBudget()
     if (
