@@ -141,15 +141,23 @@ preparation never becomes a consumer requirement.
   Copied successful checks contribute no execution time. Their unique observed
   origin, missing origin or ambiguous origins remain explicit diagnostics.
 
+  Skipped checks retain their observed timestamps and conclusions without
+  contributing intervals. GitHub may record their completion before check
+  creation. A cancelled check with an empty or null runner name and no steps
+  records an unassigned runner. If its completion precedes creation, retain
+  the conclusion and withhold its timing and the affected attempt's elapsed time.
+
   The report infers no flake rate and changes no scheduling weights or qualification.
   Collection refuses incomplete pagination, changing runs and excessive windows.
   It requires GitHub CLI read access and permits windows of at most 31 days.
 
   Collection sets its budget from remaining core API requests at startup,
   leaving 500 for qualification and permitting at most 200 reads.
-  It checks the window's minimum request cost
-  before collecting individual run histories. Insufficient budget refuses the
-  complete report without sampling. Use a narrower manual window after refusal.
+  It checks the window's minimum request cost before collecting individual run
+  histories. Manual requests require the entire window. The daily schedule may
+  select the longest complete trailing whole-hour interval whose minimum read
+  cost fits, using the same inventory. All reads share one budget. Refuse if
+  the final hour cannot fit or collection fails.
 - `qualified-bun.json` owns qualified Bun metadata. It defines the runtime
   version, revision, platform, architecture, and exact Just version for builds
   and checks.
@@ -545,7 +553,8 @@ They consume frozen package exports with tracked test helpers and installed
 
 - `node --test scripts/ci/ci-performance.test.mjs` checks actual snapshot CLI
   execution, independent timing intervals, partial retries, copied checks, failure classifications
-  and ambiguous or foreign metadata refusal.
+  and ambiguous or foreign metadata refusal. It checks whole-hour schedule
+  selection and skipped job rows with no execution.
   Collect a report with `node scripts/ci/ci-performance.mjs --repository jiggy/jig --since 2026-10-30T00:00:00Z --until 2026-10-31T00:00:00Z`.
   Use explicit UTC bounds and redirect output into `.tmp/` when retaining reports.
 

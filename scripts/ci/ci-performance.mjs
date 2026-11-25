@@ -15,7 +15,9 @@ const MAX_RUNS = 1000
 const MAX_ATTEMPTS = 10
 const MAX_REQUESTS = 200
 const QUALIFICATION_REQUEST_RESERVE = 500
-const MAX_WINDOW_MS = 31 * 24 * 60 * 60 * 1000
+const HOUR_MS = 60 * 60 * 1000
+const DAY_MS = 24 * HOUR_MS
+const MAX_WINDOW_MS = 31 * DAY_MS
 const repositoryPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 
 function time(value, label) {
@@ -35,17 +37,21 @@ function identity(value, label) {
   if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`Invalid ${label}`)
   return value
 }
-function window(repository, since, until) {
+function window(repository, since, until, scheduled = false) {
   if (!repositoryPattern.test(repository ?? '')) throw new Error('Invalid GitHub repository')
   const start = time(since, 'window start')
   const end = time(until, 'window end')
   if (end <= start || end - start > MAX_WINDOW_MS)
     throw new Error('Use a positive window of at most 31 days')
+  if (scheduled && (end - start !== DAY_MS || end % DAY_MS !== 0))
+    throw new Error('Scheduled performance collection requires one complete UTC day')
   return { start, end }
 }
+function runnerUnassigned(job) {
+  return (job.runner_name === '' || job.runner_name === null) && job.steps?.length === 0
+}
 function classification(job) {
-  if (job.conclusion === 'cancelled' && job.runner_name === '' && job.steps?.length === 0)
-    return 'runner-not-assigned'
+  if (job.conclusion === 'cancelled' && runnerUnassigned(job)) return 'runner-not-assigned'
   return (
     {
       success: 'success',
@@ -209,30 +215,34 @@ export function analyzeCiPerformance(snapshot) {
               originAttempt: originals.length === 1 ? originals[0].observation.attempt : null,
             }
           : null
-        const releasedAfterSeconds = carried
+        const category = carried ? 'carried-success-check' : classification(job)
+        const unassigned = runnerUnassigned(job)
+        const reversedUnassignedCompletion =
+          category === 'runner-not-assigned' &&
+          job.completed_at &&
+          time(job.completed_at, 'job completion') < time(job.created_at, 'job release')
+        const timed = !carried && category !== 'job-skipped' && !reversedUnassignedCompletion
+        const releasedAfterSeconds = !timed
           ? null
           : seconds(attempt.startedAt, job.created_at, 'job release')
-        const skipped = job.conclusion === 'skipped'
-        const unassigned = job.runner_name === '' && job.steps?.length === 0
         const jobQueueSeconds =
-          !carried && !skipped && !unassigned && job.started_at
+          timed && !unassigned && job.started_at
             ? seconds(job.created_at, job.started_at, 'job queue')
             : null
         const executionSeconds =
-          !carried && !skipped && !unassigned && job.started_at && job.completed_at
+          timed && !unassigned && job.started_at && job.completed_at
             ? seconds(job.started_at, job.completed_at, 'job execution')
             : null
         const unassignedSeconds =
-          !carried && unassigned && job.completed_at
+          timed && unassigned && job.completed_at
             ? seconds(job.created_at, job.completed_at, 'unassigned job wait')
             : null
-        if (!carried && job.completed_at)
-          seconds(job.created_at, job.completed_at, 'job completion')
+        if (timed && job.completed_at) seconds(job.created_at, job.completed_at, 'job completion')
         const observation = {
           id: job.id,
           name: job.name,
           attempt: attempt.number,
-          classification: carried ? 'carried-success-check' : classification(job),
+          classification: category,
           conclusion: job.conclusion ?? null,
           createdAt: job.created_at,
           startedAt: job.started_at ?? null,
@@ -255,11 +265,12 @@ export function analyzeCiPerformance(snapshot) {
         (job) => !['job-skipped', 'carried-success-check'].includes(job.classification),
       )
       const firstCreatedAt = active
+        .filter((job) => job.releasedAfterSeconds !== null)
         .map((job) => job.createdAt)
         .sort(timeOrder)
         .at(0)
       const completedAt =
-        active.length && active.every((job) => job.completedAt)
+        active.length && active.every((job) => job.releasedAfterSeconds !== null && job.completedAt)
           ? active
               .map((job) => job.completedAt)
               .sort(timeOrder)
@@ -406,6 +417,7 @@ export function analyzeCiPerformance(snapshot) {
       'Pre-job delay includes workflow concurrency and scheduling; its cause is not established.',
       'Job release offsets include dependency and scheduling delay; they are not job queue time.',
       'Job queues combine concurrency and runner allocation waits; metadata does not distinguish their causes.',
+      'Skipped checks contribute no timing. Unassigned cancellations with reversed timestamps retain their outcome without timing.',
       'Observed retained runner time requires no new execution; receipt acceptance and wall-clock savings are not established.',
       'Carried successful checks add no execution time; missing or ambiguous execution origins remain explicit.',
       'Event head groups do not establish an exact tested PR merge source or branch-policy readiness.',
@@ -436,21 +448,34 @@ export function performanceRequestBudget(rateLimit) {
   return budget
 }
 
-export function requireCollectionBudget(runs, requests, budget) {
-  const minimum = runs.reduce((sum, run) => {
+function minimumCollectionRequests(runs) {
+  return runs.reduce((sum, run) => {
     identity(run.id, 'run ID')
     const attempt = identity(run.run_attempt, 'run attempt')
     if (attempt > MAX_ATTEMPTS) throw new Error('Performance attempt limit exceeded')
-    return sum + 2 + attempt - 1
+    return sum + 1 + attempt
   }, 0)
-  if (requests + minimum > budget)
+}
+
+export function requireCollectionBudget(runs, requests, budget) {
+  if (requests + minimumCollectionRequests(runs) > budget)
     throw new Error(
       'Complete performance window exceeds the reserved API budget; use a narrower window',
     )
 }
 
-export async function collectCiPerformance({ repository, since, until }) {
-  window(repository, since, until)
+/** Choose a complete trailing interval using the inventory already read for the day. */
+export function scheduledPerformanceWindow({ start, end, runs, requests, budget }) {
+  for (let from = start; from < end; from += HOUR_MS) {
+    const selected = runs.filter((run) => time(run.created_at, 'run creation') >= from)
+    if (requests + minimumCollectionRequests(selected) <= budget)
+      return { since: new Date(from).toISOString(), runs: selected }
+  }
+  throw new Error('The final complete UTC hour exceeds the reserved performance API budget')
+}
+
+export async function collectCiPerformance({ repository, since, until, scheduled = false }) {
+  const bounds = window(repository, since, until, scheduled)
   let requests = 0
   let requestLimit = 1
   const deadline = Date.now() + 15 * 60_000
@@ -496,15 +521,20 @@ export async function collectCiPerformance({ repository, since, until }) {
       `${path}?created=${encodeURIComponent(`${since}..${until}`)}`,
       'workflow_runs',
     )) {
-      if (time(run.created_at, 'run creation') >= time(until, 'window end')) continue
+      const created = time(run.created_at, 'run creation')
+      if (created >= bounds.end) continue
+      if (created < bounds.start) throw new Error('Performance run predates the requested window')
       if (selectedRuns.length >= MAX_RUNS || run.run_attempt > MAX_ATTEMPTS)
         throw new Error('Performance run or attempt limit exceeded; use a narrower window')
       selectedRuns.push(run)
     }
   }
-  requireCollectionBudget(selectedRuns, requests, requestLimit)
+  const selection = scheduled
+    ? scheduledPerformanceWindow({ ...bounds, runs: selectedRuns, requests, budget: requestLimit })
+    : { since, runs: selectedRuns }
+  requireCollectionBudget(selection.runs, requests, requestLimit)
   const runs = []
-  for (const run of selectedRuns) {
+  for (const run of selection.runs) {
     const jobs = pages(`repos/${repository}/actions/runs/${run.id}/jobs?filter=all`, 'jobs')
     const attempts = []
     for (let number = 1; number <= run.run_attempt; number++) {
@@ -530,7 +560,7 @@ export async function collectCiPerformance({ repository, since, until }) {
       throw new Error('Workflow changed during performance collection; retry after it settles')
     runs.push({ run, attempts })
   }
-  return { repository, since, until, runs }
+  return { repository, since: selection.since, until, runs }
 }
 
 export function performanceMarkdown(report) {
@@ -597,17 +627,22 @@ export function performanceMarkdown(report) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
+    const args = process.argv.slice(2)
+    const scheduled = args[0] === '--scheduled'
+    if (scheduled) args.shift()
     const options = {}
-    for (let i = 2; i < process.argv.length; i += 2) {
-      const key = process.argv[i]
+    for (let i = 0; i < args.length; i += 2) {
+      const key = args[i]
       if (
         !['--repository', '--since', '--until', '--snapshot', '--report'].includes(key) ||
         options[key] ||
-        !process.argv[i + 1]
+        !args[i + 1]
       )
         throw new Error('Unknown, duplicate or missing performance option')
-      options[key] = process.argv[i + 1]
+      options[key] = args[i + 1]
     }
+    if (scheduled && (options['--snapshot'] || options['--report']))
+      throw new Error('Use --scheduled with live collection of one complete UTC day')
     if (options['--report'] && Object.keys(options).length !== 1)
       throw new Error('Use --report alone to render an existing JSON report')
     if (options['--report']) {
@@ -631,8 +666,17 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
             repository: options['--repository'],
             since: options['--since'],
             until: options['--until'],
+            scheduled,
           })
-      console.log(JSON.stringify(analyzeCiPerformance(snapshot), null, 2))
+      const report = analyzeCiPerformance(snapshot)
+      if (
+        scheduled &&
+        time(report.since, 'report start') > time(options['--since'], 'requested start')
+      )
+        report.notes.unshift(
+          'The scheduled UTC day exceeded the read budget. This report covers the complete trailing interval shown above.',
+        )
+      console.log(JSON.stringify(report, null, 2))
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : 'CI performance collection failed')
