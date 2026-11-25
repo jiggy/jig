@@ -448,30 +448,19 @@ export function performanceRequestBudget(rateLimit) {
   return budget
 }
 
-function minimumCollectionRequests(runs) {
-  return runs.reduce((sum, run) => {
+class PerformanceRequestBudgetExceeded extends Error {}
+
+export function requireCollectionBudget(runs, requests, budget) {
+  const minimum = runs.reduce((sum, run) => {
     identity(run.id, 'run ID')
     const attempt = identity(run.run_attempt, 'run attempt')
     if (attempt > MAX_ATTEMPTS) throw new Error('Performance attempt limit exceeded')
     return sum + 1 + attempt
   }, 0)
-}
-
-export function requireCollectionBudget(runs, requests, budget) {
-  if (requests + minimumCollectionRequests(runs) > budget)
-    throw new Error(
+  if (requests + minimum > budget)
+    throw new PerformanceRequestBudgetExceeded(
       'Complete performance window exceeds the reserved API budget; use a narrower window',
     )
-}
-
-/** Choose a complete trailing interval using the inventory already read for the day. */
-export function scheduledPerformanceWindow({ start, end, runs, requests, budget }) {
-  for (let from = start; from < end; from += HOUR_MS) {
-    const selected = runs.filter((run) => time(run.created_at, 'run creation') >= from)
-    if (requests + minimumCollectionRequests(selected) <= budget)
-      return { since: new Date(from).toISOString(), runs: selected }
-  }
-  throw new Error('The final complete UTC hour exceeds the reserved performance API budget')
 }
 
 export async function collectCiPerformance({ repository, since, until, scheduled = false }) {
@@ -480,12 +469,18 @@ export async function collectCiPerformance({ repository, since, until, scheduled
   let requestLimit = 1
   const deadline = Date.now() + 15 * 60_000
   const api = (path) => {
-    if (++requests > requestLimit || Date.now() >= deadline)
-      throw new Error('Performance collection budget exceeded; use a narrower window')
+    const timeLeft = deadline - Date.now()
+    if (timeLeft <= 0)
+      throw new Error('Performance collection deadline exceeded; use a narrower window')
+    if (requests >= requestLimit)
+      throw new PerformanceRequestBudgetExceeded(
+        'Performance collection budget exceeded; use a narrower window',
+      )
+    requests++
     return JSON.parse(
       execFileSync('gh', ['api', path], {
         encoding: 'utf8',
-        timeout: Math.min(15_000, deadline - Date.now()),
+        timeout: Math.min(15_000, timeLeft),
         maxBuffer: 16 * 1024 * 1024,
       }),
     )
@@ -529,12 +524,7 @@ export async function collectCiPerformance({ repository, since, until, scheduled
       selectedRuns.push(run)
     }
   }
-  const selection = scheduled
-    ? scheduledPerformanceWindow({ ...bounds, runs: selectedRuns, requests, budget: requestLimit })
-    : { since, runs: selectedRuns }
-  requireCollectionBudget(selection.runs, requests, requestLimit)
-  const runs = []
-  for (const run of selection.runs) {
+  const collectRun = (run) => {
     const jobs = pages(`repos/${repository}/actions/runs/${run.id}/jobs?filter=all`, 'jobs')
     const attempts = []
     for (let number = 1; number <= run.run_attempt; number++) {
@@ -558,9 +548,33 @@ export async function collectCiPerformance({ repository, since, until, scheduled
     const after = api(`repos/${repository}/actions/runs/${run.id}`)
     if (after.run_attempt !== run.run_attempt || after.updated_at !== run.updated_at)
       throw new Error('Workflow changed during performance collection; retry after it settles')
-    runs.push({ run, attempts })
+    return { run, attempts }
   }
-  return { repository, since: selection.since, until, runs }
+  if (!scheduled) {
+    requireCollectionBudget(selectedRuns, requests, requestLimit)
+    return { repository, since, until, runs: selectedRuns.map(collectRun) }
+  }
+
+  const runs = []
+  let completeSince = bounds.end
+  for (let hourStart = bounds.end - HOUR_MS; hourStart >= bounds.start; hourStart -= HOUR_MS) {
+    const hourRuns = selectedRuns.filter((run) => {
+      const created = time(run.created_at, 'run creation')
+      return created >= hourStart && created < completeSince
+    })
+    try {
+      requireCollectionBudget(hourRuns, requests, requestLimit)
+      const collectedHour = hourRuns.map(collectRun)
+      runs.push(...collectedHour)
+    } catch (error) {
+      if (!(error instanceof PerformanceRequestBudgetExceeded)) throw error
+      if (completeSince === bounds.end)
+        throw new Error('The final complete UTC hour exceeds the reserved performance API budget')
+      break
+    }
+    completeSince = hourStart
+  }
+  return { repository, since: new Date(completeSince).toISOString(), until, runs }
 }
 
 export function performanceMarkdown(report) {

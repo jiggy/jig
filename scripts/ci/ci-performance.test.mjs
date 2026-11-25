@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { delimiter, dirname, join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { parse } from 'yaml'
 import {
@@ -11,7 +11,6 @@ import {
   performanceMarkdown,
   performanceRequestBudget,
   requireCollectionBudget,
-  scheduledPerformanceWindow,
 } from './ci-performance.mjs'
 
 const base = Date.parse('2026-10-30T12:00:00Z')
@@ -371,31 +370,131 @@ test('collection preserves qualification rate budget and preflights the complete
   )
 })
 
-test('the schedule keeps the longest complete trailing interval under one read budget', () => {
-  const start = Date.parse('2026-11-23T00:00:00.000Z')
-  const end = Date.parse('2026-11-24T00:00:00.000Z')
-  const run = (id, clock, run_attempt = 1) => ({
-    id,
-    created_at: `2026-11-23T${clock}:00.000Z`,
-    run_attempt,
+test('scheduled collection keeps complete newest hours when a paginated hour exceeds the budget', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-ci-performance-pages-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const script = resolve(import.meta.dirname, 'ci-performance.mjs')
+  const requests = join(directory, 'requests')
+  const since = stamp(-12 * 3600)
+  const until = stamp(12 * 3600)
+  const fixtures = [
+    [14, 23, 0, 1],
+    [13, 22, 0, 1],
+    [12, 21, 10, 1],
+    [11, 21, 0, 101],
+  ].map(([id, hour, minute, jobCount]) => {
+    const offset = (hour - 12) * 3600 + minute * 60
+    const run = {
+      ...entry().run,
+      id,
+      created_at: stamp(offset),
+      run_started_at: stamp(offset),
+      updated_at: stamp(offset + 60),
+    }
+    const jobs = Array.from({ length: jobCount }, (_, index) =>
+      job(id * 1000 + index, `job ${index}`, 1, {
+        run_id: id,
+        created_at: stamp(offset + 1),
+        started_at: stamp(offset + 2),
+        completed_at: stamp(offset + 3),
+      }),
+    )
+    return { run, jobs }
   })
-  const earlier = run(1, '04:59')
-  const later = [run(2, '05:00', 2), run(3, '20:00'), run(4, '23:00')]
-  const runs = [earlier, ...later]
-  const plan = { start, end, runs, requests: 4, budget: 11 }
-  assert.deepEqual(scheduledPerformanceWindow(plan), {
-    since: '2026-11-23T05:00:00.000Z',
-    runs: later,
-  })
-  assert.deepEqual(scheduledPerformanceWindow({ ...plan, budget: 13 }), {
-    since: '2026-11-23T00:00:00.000Z',
-    runs,
-  })
-  assert.throws(
-    () =>
-      scheduledPerformanceWindow({ ...plan, runs: [run(1, '23:00'), run(2, '23:59')], budget: 7 }),
-    /final complete UTC hour exceeds/,
+  await writeFile(
+    join(directory, 'gh'),
+    String.raw`#!/usr/bin/env node
+const { appendFileSync } = require('node:fs')
+const fixtures = ${JSON.stringify(fixtures)}
+const raw = process.argv[3]
+if (process.argv[2] !== 'api') throw new Error('Unexpected gh command')
+appendFileSync(process.env.PERFORMANCE_REQUEST_LOG, raw + '\n')
+const { pathname, searchParams } = new URL(raw, 'https://api.github.test/')
+let response
+if (raw === 'rate_limit') {
+  response = { resources: { core: { remaining: Number(process.env.PERFORMANCE_READS) + 500, limit: 1000 } } }
+} else if (pathname.includes('/actions/workflows/')) {
+  const workflow_runs = pathname.endsWith('/ci.yml/runs') ? fixtures.map(({ run }) => run) : []
+  response = { total_count: workflow_runs.length, workflow_runs }
+} else {
+  const match = pathname.match(/\/actions\/runs\/(\d+)(\/jobs)?$/)
+  const fixture = fixtures.find(({ run }) => run.id === Number(match?.[1]))
+  if (!fixture) throw new Error('Unexpected gh path: ' + raw)
+  if (match[2]) {
+    const offset = (Number(searchParams.get('page')) - 1) * 100
+    const changed = process.env.PERFORMANCE_CHANGING_PAGES === '1' && offset > 0
+    response = { total_count: fixture.jobs.length + Number(changed), jobs: fixture.jobs.slice(offset, offset + 100) }
+  } else response = fixture.run
+}
+console.log(JSON.stringify(response))
+`,
+    { mode: 0o755 },
   )
+  async function collect({ scheduled, budget = 12, changing = false }) {
+    await writeFile(requests, '')
+    const child = spawnSync(
+      process.execPath,
+      [
+        script,
+        ...(scheduled ? ['--scheduled'] : []),
+        '--repository',
+        'jiggy/jig',
+        '--since',
+        since,
+        '--until',
+        until,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: [directory, dirname(process.execPath), process.env.PATH].join(delimiter),
+          PERFORMANCE_REQUEST_LOG: requests,
+          PERFORMANCE_READS: String(budget),
+          PERFORMANCE_CHANGING_PAGES: changing ? '1' : '0',
+        },
+      },
+    )
+    const paths = (await readFile(requests, 'utf8')).trim().split('\n')
+    assert.ok(paths.length <= budget)
+    return { child, paths }
+  }
+
+  const { child, paths } = await collect({ scheduled: true })
+  assert.equal(child.status, 0, child.stderr)
+  const report = JSON.parse(child.stdout)
+  assert.equal(report.since, stamp(10 * 3600))
+  assert.equal(report.until, until)
+  assert.deepEqual(
+    report.latestRuns.map(({ runId }) => runId),
+    [14, 13],
+  )
+  assert.match(report.notes[0], /complete trailing interval/)
+  assert.equal(paths.length, 12)
+  assert.ok(paths[9].endsWith('/runs/12'), 'the prior hour already had a complete run')
+  assert.ok(paths[11].endsWith('/runs/11/jobs?filter=all&per_page=100&page=2'))
+
+  const full = await collect({ scheduled: true, budget: 13 })
+  assert.equal(full.child.status, 0, full.child.stderr)
+  const day = JSON.parse(full.child.stdout)
+  assert.equal(day.since, since)
+  assert.equal(day.latestRuns.length, 4)
+  assert.equal(day.attempts.find(({ runId }) => runId === 11).jobs.length, 101)
+
+  const manual = await collect({ scheduled: false })
+  assert.equal(manual.child.status, 1)
+  assert.equal(manual.child.stdout, '')
+  assert.match(manual.child.stderr, /collection budget exceeded/)
+
+  const noCompleteHour = await collect({ scheduled: true, budget: 5 })
+  assert.equal(noCompleteHour.child.status, 1)
+  assert.equal(noCompleteHour.child.stdout, '')
+  assert.match(noCompleteHour.child.stderr, /final complete UTC hour exceeds/)
+
+  const changing = await collect({ scheduled: true, changing: true })
+  assert.equal(changing.child.status, 1)
+  assert.equal(changing.child.stdout, '')
+  assert.match(changing.child.stderr, /changing GitHub jobs pagination/)
 })
 
 test('a skipped matrix check can complete before its check row was created', () => {

@@ -153,11 +153,13 @@ preparation never becomes a consumer requirement.
 
   Collection sets its budget from remaining core API requests at startup,
   leaving 500 for qualification and permitting at most 200 reads.
-  It checks the window's minimum request cost before collecting individual run
-  histories. Manual requests require the entire window. The daily schedule may
-  select the longest complete trailing whole-hour interval whose minimum read
-  cost fits, using the same inventory. All reads share one budget. Refuse if
-  the final hour cannot fit or collection fails.
+  Manual requests check the window's minimum request cost and require all runs.
+  The daily schedule collects the same inventory by UTC hour, newest first.
+  It checks each hour's minimum read cost before reading run histories.
+
+  Actual reads include any extra job pages and share the same budget.
+  Budget exhaustion discards the unfinished hour. Refuse if the final hour
+  cannot fit, the inventory is incomplete, or another collection error occurs.
 - `qualified-bun.json` owns qualified Bun metadata. It defines the runtime
   version, revision, platform, architecture, and exact Just version for builds
   and checks.
@@ -553,8 +555,8 @@ They consume frozen package exports with tracked test helpers and installed
 
 - `node --test scripts/ci/ci-performance.test.mjs` checks actual snapshot CLI
   execution, independent timing intervals, partial retries, copied checks, failure classifications
-  and ambiguous or foreign metadata refusal. It checks whole-hour schedule
-  selection and skipped job rows with no execution.
+  and ambiguous or foreign metadata refusal. It checks skipped job rows with
+  no execution. A GitHub CLI fixture verifies schedule limits with paginated jobs.
   Collect a report with `node scripts/ci/ci-performance.mjs --repository jiggy/jig --since 2026-10-30T00:00:00Z --until 2026-10-31T00:00:00Z`.
   Use explicit UTC bounds and redirect output into `.tmp/` when retaining reports.
 
