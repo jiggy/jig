@@ -45,8 +45,8 @@ jobs:
         id: plan
         run: |-
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            export JIG_MACOS_TARGET_SECONDS=700
-            export JIG_MACOS_MAX_SHARDS=6
+            export JIG_MACOS_TARGET_SECONDS=800
+            export JIG_MACOS_MAX_SHARDS=5
           fi
           node scripts/ci/macos-host-test-shards.mjs freeze arm64 "$RUNNER_TEMP/PLAN.json"
           node scripts/ci/macos-host-collect.mjs matrix "$RUNNER_TEMP/PLAN.json"
@@ -80,12 +80,16 @@ jobs:
           artifact-ids: ${{ needs.scope.outputs.plan_id }}
           merge-multiple: true
           path: ${{ runner.temp }}/mac-plan
-      - name: Acquire the exact canonical CI candidates after Quick checks
+      - name: Acquire the exact canonical CI candidates
         env:
           GH_TOKEN: ${{ github.token }}
         run: |-
           set -eu
-          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600
+          set -- --timeout-seconds 300
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            set -- --after-quick true --timeout-seconds 600
+          fi
+          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --producer-timeout-seconds 1800 "$@"
           cp "$RUNNER_TEMP/mac-plan/PLAN.json" "$RUNNER_TEMP/macos-host-artifacts/PLAN.json"
       - name: Retain exact macos host artifacts
         id: prepared-artifacts

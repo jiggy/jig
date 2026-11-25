@@ -152,9 +152,9 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
     const pr = event === 'pull_request'
     const rows = JSON.parse(output.workers).include
     const count = Number(output.shard_count)
-    assert.equal(plan.policy.maxShards, pr ? 6 : 3)
-    assert.equal(Number(output.max_parallel), pr ? 12 : 3)
-    assert.equal(plan.policy.targetSeconds, pr ? 700 : strict.policy.targetSeconds)
+    assert.equal(plan.policy.maxShards, pr ? 5 : 3)
+    assert.equal(Number(output.max_parallel), pr ? 10 : 3)
+    assert.equal(plan.policy.targetSeconds, pr ? 800 : strict.policy.targetSeconds)
     assert.ok(count <= plan.policy.maxShards)
     if (!pr) assert.equal(count, strict.shards.length)
     assert.equal(plan.inventoryDigest, strict.inventoryDigest)
@@ -238,7 +238,7 @@ test('Mac acquisition, collection and final gate retain source identity and comp
   const inputs = workflow.jobs['host-artifacts']
   assert.equal(inputs['runs-on'], 'ubuntu-24.04')
   const acquire = inputs.steps.find((step) => step.run?.includes('candidate-transfer.mjs acquire'))
-  assert.match(acquire.run, /--source "\$GITHUB_SHA" --after-quick true/)
+  assert.match(acquire.run, /--source "\$GITHUB_SHA" --producer-timeout-seconds 1800 "\$@"/)
   const download = workflow.jobs.prerequisites.steps.find(
     (step) => step.with?.['artifact-ids'] === '${{ needs.host-artifacts.outputs.artifact_id }}',
   )

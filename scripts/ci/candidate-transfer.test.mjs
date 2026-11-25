@@ -512,7 +512,7 @@ async function acquireAfterQuick(fixture, changes = {}) {
 }
 
 for (const initial of ['queued', 'missing']) {
-  test(`Mac scheduling waits for ${initial} Quick work before downloading the existing canonical bundle`, async () => {
+  test(`strict Mac scheduling waits for ${initial} Quick work before downloading the existing canonical bundle`, async () => {
     const ci = run(100)
     await withFixture([ci], async (fixture) => {
       fixture.jobsByRun.set(
@@ -727,7 +727,7 @@ test('PR scheduling binds the Quick head to the producer metadata rather than it
   })
 })
 
-test('Mac hosts queue after Quick and consume immutable prepared inputs', async () => {
+test('PR Mac hosts start after the canonical build and strict hosts wait for Quick', async () => {
   const workflow = parse(
     await readFile(
       new URL('../../.github/workflows/macos-hosted-candidates.yml', import.meta.url),
@@ -740,8 +740,9 @@ test('Mac hosts queue after Quick and consume immutable prepared inputs', async 
   )
   assert.match(
     acquire.run,
-    /--source "\$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600/,
+    /set -- --timeout-seconds 300\s+if \[ "\$GITHUB_EVENT_NAME" != pull_request \]; then\s+set -- --after-quick true --timeout-seconds 600\s+fi/,
   )
+  assert.match(acquire.run, /--source "\$GITHUB_SHA" --producer-timeout-seconds 1800 "\$@"/)
   const upload = acquisition.steps.find((step) => step.id === 'prepared-artifacts')
   assert.ok(acquisition.steps.indexOf(upload) > acquisition.steps.indexOf(acquire))
   assert.equal(

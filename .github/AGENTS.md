@@ -402,8 +402,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Scope freezes a source-bound plan before requesting Macs. Measured durations choose useful shards within the checked-in capacity limit.
   Each selected worker runs the complete native enforcement and Codex preference-boundary baseline, then its sequential assigned files. The installed owner also runs genuine offline-client checks.
 
-  The PR planner targets 700 seconds of estimated test work per shard and can
-  assign up to six useful workers. Each planned PR shard has two candidates.
+  The PR planner targets 800 seconds of estimated test work per shard and can
+  assign up to five useful workers. Each planned PR shard has two candidates.
   Strict runs permit three concurrent workers.
   Worker count and runner labels remain separate from test membership.
 
@@ -426,7 +426,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Different observed patch builds may contribute coverage within one required major.
   This union establishes the ARM behavior contract, rather than independently certifying each observed build.
 
-  One Ubuntu preparation job acquires canonical inputs after Quick checks pass. Every worker downloads that artifact by immutable ID.
+  One Ubuntu preparation job acquires canonical inputs as soon as their PR
+  producer succeeds. The required CI aggregate independently requires Quick
+  checks. Strict Mac runs wait for Quick checks before acquiring inputs.
+  Every worker downloads the prepared artifact by immutable ID.
   Workers verify canonical provenance before execution and compare archive hashes afterward.
   Complete reports, confirmed cleanup, and unchanged input identity remain mandatory.
 

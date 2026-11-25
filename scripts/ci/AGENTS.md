@@ -77,6 +77,10 @@ preparation never becomes a consumer requirement.
   files with isolated workers and preserves their full JUnit coverage. A failed
   stage stops later work.
 
+  `source-test-durations.json` records slower-file timings from the successful
+  source job in CI run 45578818280. Bun uses them to start longer files earlier.
+  The source catalog determines which files run.
+
   Canonical installed smoke checks belong to required candidate profiles,
   including Jig's three standalone display gates. Local source execution retains
   those consumers. Source-only Python stages do not build Jig.
@@ -225,14 +229,14 @@ They consume frozen package exports with tracked test helpers and installed
 
   Producer readiness has one absolute deadline, including job queues.
   Missing, queued or running jobs poll every 30 seconds. Failed, skipped,
-  duplicate, stale or completed-but-missing proof refuses immediately. Hosted
-  Mac also requires latest `Quick development checks` success through
+  duplicate, stale or completed-but-missing proof refuses immediately. Strict
+  hosted Mac runs also require `Quick development checks` success through
   `--after-quick true`. Main/manual runs require current-attempt success.
 
   Readiness pins the workflow run and current attempt, selected build job ID
   and producer attempt before artifact transfer. A later producer change refuses
-  acquisition. Transfer retains its separate 300-second Linux or 600-second Mac
-  maximum and 10-second polling. Other acquisition callers retain their existing
+  acquisition. Transfer retains its separate 300-second Linux and Mac PR or
+  600-second strict Mac maximum and 10-second polling. Other callers retain their existing
   bounds without producer waiting. These prerequisites grant no qualification
   and do not wait for unrelated source or Python work.
 
@@ -359,7 +363,7 @@ They consume frozen package exports with tracked test helpers and installed
   Target duration and minimum/maximum capacity determine useful shard count. New files enter discovery automatically.
 
   The default permits up to three useful workers. The PR workflow targets
-  700 estimated seconds and permits up to six useful workers. Timing
+  800 estimated seconds and permits up to five useful workers. Timing
   observations affect placement, never required coverage.
   Every worker and collector independently validate the frozen plan against source inventory.
   Frozen plans are bounded regular files read through one no-follow, nonblocking descriptor.
@@ -413,7 +417,8 @@ They consume frozen package exports with tracked test helpers and installed
   job without falling back from failures. `merge-retry.mjs` owns PR CI input
   acquisition and per-job evidence across attempts within one original run.
   It downloads immutable artifact IDs and verifies ZIP transport hashes before
-  extraction.
+  extraction. The collector verifies up to four independent job artifacts at
+  once and writes its receipt only after every artifact and the run recheck pass.
   PR CI metadata and archive reads reuse the bounded GitHub transport policy of
   three attempts with one-second backoff. Validation of artifact identity,
   digest, receipt and coverage remains fail-closed.

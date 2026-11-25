@@ -22,6 +22,7 @@ import { readGitHubApiJson, retryGitHubRead } from './github-read.mjs'
 import { allRunJobs, latestJob } from './merge-attempts.mjs'
 
 const WORKFLOW = '.github/workflows/ci.yml'
+const MERGE_DOWNLOAD_CONCURRENCY = 4
 const mergeGitHubClient = (repository) =>
   githubClient(repository, { readApiJson: readGitHubApiJson, readArchive: retryGitHubRead })
 const SOURCE_TARGETS = [
@@ -379,8 +380,7 @@ export async function acquireMergeEvidence({
   inputArtifact(snapshot, 'python-reporting')
   const workflowDigest = workflowSourceDigest(snapshot.source)
   await mkdir(directory)
-  const retained = []
-  for (const spec of MERGE_JOBS) {
+  const collectJob = async (spec) => {
     const job = latestJob(snapshot.jobs, snapshot.run, spec.name)
     const name = 'ci-evidence-' + spec.stem + '-' + snapshot.source + '-a' + job.run_attempt
     const matches = snapshot.artifacts.filter((artifact) => artifact.name === name)
@@ -400,13 +400,22 @@ export async function acquireMergeEvidence({
     }
     if (!same(targets.sort(), [...spec.targets].sort()))
       throw new Error('Incomplete or repeated merge job target inventory')
-    retained.push({
+    return {
       name: spec.name,
       jobId: job.id,
       attempt: job.run_attempt,
       artifactId: artifact.id,
       artifactDigest: artifact.digest,
-    })
+    }
+  }
+  const retained = []
+  for (let index = 0; index < MERGE_JOBS.length; index += MERGE_DOWNLOAD_CONCURRENCY) {
+    const batch = MERGE_JOBS.slice(index, index + MERGE_DOWNLOAD_CONCURRENCY)
+    const reports = await Promise.allSettled(batch.map(collectJob))
+    for (const report of reports) {
+      if (report.status === 'rejected') throw report.reason
+      retained.push(report.value)
+    }
   }
   await unchanged(snapshot, client)
   const jobResults = { 'candidate-build': { result: 'success' } }

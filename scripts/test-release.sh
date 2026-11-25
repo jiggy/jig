@@ -124,7 +124,7 @@ run_source_stage() {
     set --
     while IFS= read -r test_file; do set -- "$@" "./$test_file"; done < "$release_tmp/$stage_id.bun.files"
     if [ -n "${JIG_CI_SOURCE_BUN_WORKERS:-}" ]; then
-      set -- "--parallel=$JIG_CI_SOURCE_BUN_WORKERS" "$@"
+      set -- "--parallel=$JIG_CI_SOURCE_BUN_WORKERS" --timings=scripts/ci/source-test-durations.json "$@"
     fi
     bun test --timeout 420000 "$@" --reporter=junit "--reporter-outfile=$stage_reports/bun.xml"
   fi

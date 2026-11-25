@@ -86,6 +86,8 @@ if(a.includes('--destination')) {
  const stage=a.includes('./fixtures/source-portable.test.ts')?'portable':'protocol';event(stage+'-start');
  const workers=a.find(arg=>arg.startsWith('--parallel='));
  if(workers)event(stage+':'+workers);
+ const timings=a.find(arg=>arg.startsWith('--timings='));
+ if(timings)event(stage+':'+timings);
  if(process.env.FIXTURE_FAIL===stage)process.exit(7);
  if(a.some(arg=>arg.endsWith('.node.mjs')))throw Error('Node files must not execute under Bun');
  for(const arg of a)if(arg.startsWith('--reporter-outfile='))fs.writeFileSync(arg.slice(19),'<testsuites tests="1"><testcase file="fixtures/source-'+stage+'.test.ts" name="'+stage+' controller fixture"/></testsuites>');
@@ -132,6 +134,15 @@ test('source stages run serially after one shared build on both supported shells
     assert.deepEqual(
       events.filter((event) => event.includes(':--parallel=')),
       workers ? ['portable:--parallel=4', 'protocol:--parallel=4'] : [],
+    )
+    assert.deepEqual(
+      events.filter((event) => event.includes(':--timings=')),
+      workers
+        ? [
+            'portable:--timings=scripts/ci/source-test-durations.json',
+            'protocol:--timings=scripts/ci/source-test-durations.json',
+          ]
+        : [],
     )
     assert.deepEqual(
       events.filter((event) => event.startsWith('build:')),

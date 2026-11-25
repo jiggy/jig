@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "files": {
+    "packages/agent-acp/test/flow.test.ts": 6098,
+    "packages/display-tui/test/native.test.ts": 15466,
+    "packages/display-tui/test/portability.test.ts": 12462,
+    "packages/jig/test/portable/activation-admission-store.test.ts": 25744,
+    "packages/jig/test/portable/cli.test.ts": 67905,
+    "packages/jig/test/portable/codex-acp-dispatch.test.ts": 10118,
+    "packages/jig/test/portable/contract-generation.test.ts": 10652,
+    "packages/jig/test/portable/display-archive.test.ts": 9197,
+    "packages/jig/test/portable/file-delivery.test.ts": 12482,
+    "packages/jig/test/portable/image-preview-process.test.ts": 12699,
+    "packages/jig/test/portable/image-preview.test.ts": 9070,
+    "packages/jig/test/portable/installation-verification.test.ts": 8921,
+    "packages/jig/test/portable/jig-development-build.test.ts": 26296,
+    "packages/jig/test/portable/macos-codex-preferences.test.ts": 5023,
+    "packages/jig/test/portable/saved-result.test.ts": 13263,
+    "packages/reporting/test/publisher.test.ts": 12163
+  }
+}
