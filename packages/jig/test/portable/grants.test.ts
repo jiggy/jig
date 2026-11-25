@@ -100,18 +100,19 @@ test('session retention is separately reviewed and restricted to qualified Codex
     retainSessions: true,
   })
 })
-test('Codex reasoning effort is part of the reviewed grant', () => {
+test('reasoning effort is independent of the client selection and part of the reviewed grant', () => {
   const grant = { kind: 'acp', client: 'codex', model: 'selected-model' }
   expect(normalizeGrant(grant)).toEqual(grant)
   expect(normalizeGrant({ ...grant, reasoningEffort: 'low' })).toEqual({
     ...grant,
     reasoningEffort: 'low',
   })
-  for (const reasoningEffort of ['', 'LOW', 'low\n', 'a'.repeat(33), false, null])
+  for (const reasoningEffort of ['', 'default', 'LOW', 'low\n', 'a'.repeat(33), false, null])
     expect(() => normalizeGrant({ ...grant, reasoningEffort })).toThrow('reasoningEffort')
-  expect(() => normalizeGrant({ ...grant, client: 'claude', reasoningEffort: 'low' })).toThrow(
-    'reasoningEffort',
-  )
+  for (const selection of [{ client: 'codex' }, { client: 'claude' }, {}]) {
+    const policy = { kind: 'acp', reasoningEffort: 'low', ...selection }
+    expect(normalizeGrant(policy)).toEqual(policy)
+  }
 
   const lock = (reasoningEffort: string) => ({
     packages: { 'flows/agent': { digest: 'code', directRun: false, uses: { native: finiteAcp } } },
@@ -168,7 +169,6 @@ test('omitted ACP client defers review selection but cannot pin model, profile o
   expect(binding.slots.native).toEqual({ kind: 'acp', maxTurns: 3 })
   for (const extra of [
     { model: 'pinned' },
-    { reasoningEffort: 'low' },
     { authProfile: 'work-account' },
     { retainSessions: true },
     { client: 'operator' },

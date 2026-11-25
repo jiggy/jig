@@ -977,10 +977,9 @@ meaning without admitting it.
 ### Review client selection
 
 An ACP grant with omitted `client` requests the operator's native Agent.
-It is not an executable client. Such a grant may specify common `maxTurns`,
-but not a vendor model, `authProfile`, `reasoningEffort` or `retainSessions`. Those require
-an explicit client pin. The operator's default never rewrites a pin, even if
-the client uses a named authentication profile.
+It may specify `maxTurns` and an exact `reasoningEffort`. A vendor model,
+`authProfile` or `retainSessions` requires an explicit client pin.
+An explicit selection takes precedence over the review default.
 
 After capturing and validating source, Jig links the candidate. If a bound
 ACP resource lacks a client, interactive review asks the operator for

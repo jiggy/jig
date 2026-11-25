@@ -141,7 +141,7 @@ All selected domain requirements still apply.
 
   SDK expected trusted setup refusals retain unavailable exact targets and their
   selected dependents. Unrelated targets keep their own readiness.
-  Show an explicit reasoning effort in the Codex selection during review.
+  Show an explicit reasoning effort in the ACP selection during review.
   Confirmation by the client occurs during execution, before prompt forwarding.
 
   CLI review stops any observed typed selected ACP prerequisite before avoidable

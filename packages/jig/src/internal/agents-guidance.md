@@ -94,10 +94,10 @@ These links locate module rules. All selected domain requirements still apply.
   validation. `finite-acp-resource.ts` owns bounded framing, private startup and
   authentication, and essential channel delivery.
 
-  Apply a reviewed Codex effort after model selection on new and restored
+  Apply a reviewed effort after model selection on new and restored
   sessions. Require its exact confirmation before prompting and reject a
-  conflicting configuration update. The pinned adapter checks the effort
-  again at the app-server turn write, after any native recovery.
+  conflicting configuration update. Each pinned adapter chooses its own
+  option ID and checks the effort at its native prompt boundary after recovery.
 
   Credentialed providers supply private literal rejection patterns outside provider identity.
   Nonempty credentials shorter than eight UTF-8 bytes are refused before launch, with or without a Bearer prefix.

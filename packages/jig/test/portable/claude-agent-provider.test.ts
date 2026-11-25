@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   type PrivateAcpReadOnlyMount,
   privateAcpAgentRuntime,
@@ -13,6 +14,7 @@ import {
   openPrivateClaudeAgentProvider,
   PRIVATE_CLAUDE_DEFAULT_ANTHROPIC_BASE_URL,
 } from '../../src/internal/claude-agent-provider.js'
+import { PrivateFiniteAcpPolicy } from '../../src/internal/finite-acp-policy.js'
 import { rejectsCredentialOutput } from '../finite-acp-resource.fixture.js'
 import { nativeElf } from '.././fixtures/native-elf.js'
 import { nativeMachO } from '.././fixtures/native-macho.js'
@@ -59,6 +61,167 @@ test('installed Claude adapter keeps auth status private when Jig blocks nonesse
     expect(JSON.parse(result.stdout.toString())).toEqual({ retained: true, notifications })
   }
 })
+
+for (const scenario of [
+  'confirmed',
+  'unavailable',
+  'dispatch-guard',
+  'confirmation-lost',
+] as const) {
+  test(`pinned Claude adapter enforces the reviewed effort: ${scenario}`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-claude-effort-'))
+    const executable = join(root, 'claude')
+    const recording = join(root, 'native.jsonl')
+    const fixture = await readFile(new URL('../fixtures/claude-sdk-recording.ts', import.meta.url))
+    await writeFile(executable, `#!${process.execPath}\n${fixture.toString('utf8')}`, {
+      mode: 0o700,
+    })
+    const adapter = fileURLToPath(
+      new URL('./index.js', import.meta.resolve('@agentclientprotocol/claude-agent-acp')),
+    )
+    const child = Bun.spawn([process.execPath, '--no-env-file', '--no-install', adapter], {
+      cwd: root,
+      env: {
+        HOME: root,
+        CLAUDE_CONFIG_DIR: root,
+        CLAUDE_CODE_EXECUTABLE: executable,
+        CLAUDE_AGENT_ACP_PROTOCOL: 'v2',
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+        ANTHROPIC_API_KEY: 'offline-fixture-key',
+        RECORD_PATH: recording,
+        RECORD_EFFORT_UNAVAILABLE: scenario === 'unavailable' ? '1' : '0',
+        RECORD_EFFORT_CONFIRMATION_LOST: scenario === 'confirmation-lost' ? '1' : '0',
+        JIG_ACP_REASONING_EFFORT: 'low',
+      },
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const deadline = setTimeout(() => child.kill(), 8_000)
+    const stderr = new Response(child.stderr).text()
+    const reader = child.stdout.getReader()
+    const encoder = new TextEncoder()
+    const decoder = new TextDecoder()
+    const policy = new PrivateFiniteAcpPolicy({
+      ...(scenario === 'dispatch-guard'
+        ? {}
+        : {
+            configuration: [{ configId: 'effort', value: 'low' }],
+            reasoningEffortConfigId: 'effort',
+          }),
+      maxTurns: 2,
+      modeId: 'default',
+    })
+    let nextId = 1
+    let buffer = ''
+    let totalBytes = 0
+    const readFrame = async () => {
+      for (;;) {
+        const split = buffer.indexOf('\n')
+        if (split >= 0) {
+          const line = buffer.slice(0, split)
+          buffer = buffer.slice(split + 1)
+          return { line, frame: JSON.parse(line) }
+        }
+        const { value, done } = await reader.read()
+        if (done) throw new Error(`Claude ACP closed: ${await stderr}`)
+        totalBytes += value.byteLength
+        if (totalBytes > 256 * 1024) throw new Error('Claude ACP output exceeded fixture bounds')
+        buffer += decoder.decode(value, { stream: true })
+      }
+    }
+    const request = async (method: string, params: object, nativeParams = params) => {
+      const id = nextId++
+      const frame = (params: object) => ({ jsonrpc: '2.0', id, method, params })
+      policy.fromAdapter(encoder.encode(JSON.stringify(frame(params))))
+      child.stdin.write(`${JSON.stringify(frame(nativeParams))}\n`)
+      await child.stdin.flush()
+      for (;;) {
+        const reply = await readFrame()
+        const projected = policy.fromClient(encoder.encode(reply.line))
+        if (reply.frame.id === id) return { projected: projected.toAdapter, native: reply.frame }
+      }
+    }
+    try {
+      await request('initialize', {
+        protocolVersion: 2,
+        capabilities: {},
+        info: { name: 'jig-claude-recording', version: '2' },
+      })
+      const created = await request(
+        'session/new',
+        { cwd: '/work' },
+        {
+          cwd: root,
+          _meta: sessionMeta('fixture'),
+        },
+      )
+      const sessionId = (created.projected?.result as { sessionId: string }).sessionId
+      expect(created.native.result.configOptions).toContainEqual(
+        expect.objectContaining({ configId: 'effort', currentValue: 'default' }),
+      )
+      const configure = (configId: string, value: string) =>
+        request('session/set_config_option', { sessionId, configId, type: 'id', value })
+
+      if (scenario === 'unavailable') {
+        await expect(configure('effort', 'low')).rejects.toMatchObject({
+          reason: 'reasoning-effort',
+        })
+      } else {
+        if (scenario !== 'dispatch-guard') {
+          const configured = await configure('effort', 'low')
+          expect(configured.native.result.configOptions).toContainEqual(
+            expect.objectContaining({ configId: 'effort', currentValue: 'low' }),
+          )
+        }
+        await configure('mode', 'default')
+        for (let turn = 0; turn < (scenario === 'dispatch-guard' ? 1 : 2); turn++) {
+          const result = await request('session/prompt', {
+            sessionId,
+            prompt: [{ type: 'text', text: 'Answer through the recording peer.' }],
+          })
+          if (scenario === 'dispatch-guard' || (scenario === 'confirmation-lost' && turn === 1)) {
+            expect(result.native.error.message).toContain('reviewed reasoning effort')
+            expect(result.native.error.message).not.toContain('Private native refusal')
+            expect(policy.hasAcceptedOrInsertedPrompt).toBeFalse()
+          } else {
+            expect(result.projected?.result).toHaveProperty('messageId')
+            while (policy.turnActive) policy.fromClient(encoder.encode((await readFrame()).line))
+          }
+        }
+        await request('session/close', { sessionId })
+      }
+
+      const native = (await readFile(recording, 'utf8'))
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      const effortAndPrompts = native.flatMap((frame) =>
+        frame.type === 'user'
+          ? ['prompt']
+          : frame.request?.subtype === 'apply_flag_settings'
+            ? [frame.request.settings.effortLevel]
+            : [],
+      )
+      expect(effortAndPrompts).toEqual(
+        scenario === 'confirmed'
+          ? ['low', 'low', 'prompt', 'low', 'prompt']
+          : scenario === 'confirmation-lost'
+            ? ['low', 'low', 'prompt', 'low']
+            : [],
+      )
+    } finally {
+      try {
+        await child.stdin.end()
+      } finally {
+        await child.exited
+        clearTimeout(deadline)
+        await reader.cancel()
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+  }, 12_000)
+}
 
 const temporary = new Set<string>()
 function environment(
@@ -199,6 +362,8 @@ describe('private native Claude Code Agent provider', () => {
       },
       undefined,
       'binding-model',
+      undefined,
+      'low',
     )
     expect(selectedSubscription).toMatchObject({
       model: 'binding-model',
@@ -212,11 +377,22 @@ describe('private native Claude Code Agent provider', () => {
       },
       undefined,
       'binding-model',
+      undefined,
+      'high',
     )
     expect(selectedApi).toMatchObject({
       model: 'binding-model',
       credentialMode: 'anthropic-api-key',
     })
+    for (const [provider, effort] of [
+      [selectedSubscription, 'low'],
+      [selectedApi, 'high'],
+    ] as const) {
+      const runtime = privateAcpAgentRuntime(provider)
+      expect(runtime.configuration).toEqual([{ configId: 'effort', value: effort }])
+      expect(runtime.environment.JIG_ACP_REASONING_EFFORT).toBe(effort)
+      expect(runtime.environment.CLAUDE_CODE_DISABLE_THINKING).toBeUndefined()
+    }
     for (const model of ['bad model', 'model\n']) {
       await expect(
         openPrivateClaudeAgentProvider(fixture.releaseRoot, {

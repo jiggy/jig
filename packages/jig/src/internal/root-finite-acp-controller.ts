@@ -664,7 +664,7 @@ export function privateFiniteAcpFailureTerminal(input: {
       ? error.reason === 'native-session'
         ? ' The native client reported a session failure; private details were withheld.'
         : reasoningEffortUnconfirmed
-          ? ' Codex did not confirm the reviewed reasoning effort.'
+          ? ' The native ACP client did not confirm the reviewed reasoning effort.'
           : ' The finite ACP exchange violated its validated protocol.'
       : ''
   const nativeSession =
@@ -685,7 +685,7 @@ export function privateFiniteAcpFailureTerminal(input: {
     return failed(
       'EXECUTION_FAILED',
       reasoningEffortUnconfirmed
-        ? 'Codex did not confirm the reviewed reasoning effort. Check the selected model and effort in the ACP grant. Jig fenced and released the client before forwarding the task prompt.'
+        ? 'The native ACP client did not confirm the reviewed reasoning effort. Check the selected model and effort in the ACP grant. Jig fenced and released the client before forwarding the task prompt.'
         : 'The native ACP client failed before Jig forwarded the task prompt, and its local work was fenced and released.',
       {
         nativePrompt: {

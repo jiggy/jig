@@ -103,52 +103,59 @@ function deniesAndCloses(policy: PrivateFiniteAcpPolicy, action: () => unknown):
 }
 
 describe('finite ACP authority policy', () => {
-  test('a Codex effort pin requires confirmation and refuses later drift', () => {
-    const reasoning = { configId: 'reasoning_effort', value: 'low' }
-    const effort = { configId: reasoning.configId, currentValue: 'low', type: 'select' }
-    const configure = () => {
-      const policy = session({ configuration: [reasoning], modeId: 'read-only' })
+  test.each(['reasoning_effort', 'effort', 'another-native-option'])(
+    'a reviewed effort option %s requires confirmation and refuses later drift',
+    (configId) => {
+      const reasoning = { configId, value: 'low' }
+      const effort = { configId: reasoning.configId, currentValue: 'low', type: 'select' }
+      const configure = () => {
+        const policy = session({
+          configuration: [reasoning],
+          reasoningEffortConfigId: configId,
+          modeId: 'read-only',
+        })
+        policy.fromAdapter(
+          request(3, 'session/set_config_option', {
+            sessionId: 'owned-session',
+            type: 'id',
+            ...reasoning,
+          }),
+        )
+        return policy
+      }
+      for (const configOptions of [[], [{ ...effort, currentValue: 'high' }], [effort, effort]]) {
+        const policy = configure()
+        expect(() => policy.fromClient(reply(3, { configOptions }))).toThrow(
+          'The native ACP client did not confirm the reviewed reasoning effort',
+        )
+        expect(() => prompt(policy)).toThrow('closed after failure')
+      }
+      const policy = configure()
+      policy.fromClient(reply(3, { configOptions: [effort] }))
       policy.fromAdapter(
-        request(3, 'session/set_config_option', {
+        request(4, 'session/set_config_option', {
           sessionId: 'owned-session',
           type: 'id',
-          ...reasoning,
+          configId: 'mode',
+          value: 'read-only',
         }),
       )
-      return policy
-    }
-    for (const configOptions of [[], [{ ...effort, currentValue: 'high' }], [effort, effort]]) {
-      const policy = configure()
-      expect(() => policy.fromClient(reply(3, { configOptions }))).toThrow(
-        'Codex did not confirm the reviewed reasoning effort',
-      )
-      expect(() => prompt(policy)).toThrow('closed after failure')
-    }
-    const policy = configure()
-    policy.fromClient(reply(3, { configOptions: [effort] }))
-    policy.fromAdapter(
-      request(4, 'session/set_config_option', {
-        sessionId: 'owned-session',
-        type: 'id',
-        configId: 'mode',
-        value: 'read-only',
-      }),
-    )
-    policy.fromClient(
-      reply(4, {
-        configOptions: [effort, { configId: 'mode', currentValue: 'read-only' }],
-      }),
-    )
-    expect(() =>
       policy.fromClient(
-        update({
-          sessionUpdate: 'config_option_update',
-          configOptions: [{ ...effort, currentValue: 'high' }],
+        reply(4, {
+          configOptions: [effort, { configId: 'mode', currentValue: 'read-only' }],
         }),
-      ),
-    ).toThrow('Codex did not confirm the reviewed reasoning effort')
-    expect(() => prompt(policy)).toThrow('closed after failure')
-  })
+      )
+      expect(() =>
+        policy.fromClient(
+          update({
+            sessionUpdate: 'config_option_update',
+            configOptions: [{ ...effort, currentValue: 'high' }],
+          }),
+        ),
+      ).toThrow('The native ACP client did not confirm the reviewed reasoning effort')
+      expect(() => prompt(policy)).toThrow('closed after failure')
+    },
+  )
 
   test('settles an interrupted follow-up with native cancellation before insertion', () => {
     const policy = session({ maxTurns: 2 })

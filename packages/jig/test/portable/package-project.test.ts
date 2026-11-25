@@ -206,7 +206,7 @@ describe('private package-project linker', () => {
     await withFlows(nativeAgentTrees(), (flows, members) => {
       const input = {
         flows,
-        grants: { shared: { kind: 'acp' as const, maxTurns: 2 } },
+        grants: { shared: { kind: 'acp' as const, maxTurns: 2, reasoningEffort: 'low' } },
         bindings: [
           binding('bindings/inline.ts', {
             package: 'flows/native',
@@ -226,7 +226,11 @@ describe('private package-project linker', () => {
       const inspected = inspectPackageProject({ ...input, flows: members })
       expect(inspected.bindings.map((binding) => binding.slots.native)).toEqual([
         { kind: 'grant', policy: { kind: 'acp', maxTurns: 3 } },
-        { kind: 'grant', name: 'shared', policy: { kind: 'acp', maxTurns: 2 } },
+        {
+          kind: 'grant',
+          name: 'shared',
+          policy: { kind: 'acp', maxTurns: 2, reasoningEffort: 'low' },
+        },
       ])
       expect(() => buildPrivateActivationRequests(inspected as never)).toThrow(
         'package-project linker',
@@ -238,11 +242,14 @@ describe('private package-project linker', () => {
           {
             kind: 'grant',
             name: 'shared',
-            policy: { kind: 'acp', client, maxTurns: 2 },
+            policy: { kind: 'acp', client, maxTurns: 2, reasoningEffort: 'low' },
           },
         ])
         const locked = createPrivateProjectLocalLock(selected, client)
         expect(locked.agentOverride).toBe(client)
+        expect(locked.bindings.named?.slots.native).toMatchObject({
+          policy: { client, reasoningEffort: 'low' },
+        })
         for (const binding of Object.values(locked.bindings)) {
           for (const route of Object.values(binding.slots)) {
             if (route.kind === 'grant' && route.policy.kind === 'acp')
@@ -250,7 +257,7 @@ describe('private package-project linker', () => {
           }
         }
       }
-      expect(input.grants.shared).toEqual({ kind: 'acp', maxTurns: 2 })
+      expect(input.grants.shared).toEqual({ kind: 'acp', maxTurns: 2, reasoningEffort: 'low' })
       expect((input.bindings[0]!.definition as { slots: { native: object } }).slots.native).toEqual(
         { kind: 'acp', maxTurns: 3 },
       )

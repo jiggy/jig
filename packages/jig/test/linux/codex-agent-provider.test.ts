@@ -315,7 +315,7 @@ describe('private native Codex Agent provider', () => {
         { configId: 'model', value: 'binding-model' },
         { configId: 'reasoning_effort', value: effort },
       ])
-      expect(runtime.environment.JIG_CODEX_REASONING_EFFORT).toBe(effort)
+      expect(runtime.environment.JIG_ACP_REASONING_EFFORT).toBe(effort)
     }
     expect(privateAcpAgentRuntime(pinnedSubscription).configuration).toEqual([
       { configId: 'model', value: 'gpt-5.3-codex-spark' },
