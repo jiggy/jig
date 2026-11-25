@@ -702,6 +702,10 @@ approval on refusal and require successful review after each repair.
 It also checks non-default registry refusals identify the workspace lock and do
 not disclose its URL.
 
+The shared-capture case uses one locked workspace and the installed CLI.
+Require one completed preparation and an unapproved proposal with 22 ready
+selectors. Verify the authored lock and absence of a Jig approval lock.
+
 Its initial reviews select a dependency source root relative to the CLI working directory.
 Member and nested applications retain a distinct project argument.
 Later reviews omit the selection and Runs consume retained bytes without it.

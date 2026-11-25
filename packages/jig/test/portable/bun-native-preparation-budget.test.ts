@@ -8,6 +8,10 @@ import {
   DEPENDENCY_PREPARATION_LIMIT_POLICY,
 } from '../../src/project/limits.js'
 
+function capturedFile(size: number) {
+  return { files: [{ path: 'payload.bin', size }] }
+}
+
 describe('private aggregate Bun preparation budget', () => {
   test('bounds distinct actual preparations and ignores duplicate reservations', () => {
     const budget = createPrivateBunPreparationBudget(new AbortController().signal)
@@ -90,10 +94,8 @@ describe('private aggregate Bun preparation budget', () => {
         'flows/exact',
         DEPENDENCY_PREPARATION_LIMIT_POLICY.maximum.maxPreparations,
       )
-      budget.retain([{ size: PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.preparedBytes }], 'flows/exact')
-      expect(() => budget.retain([{ size: 1 }], 'flows/overflow')).toThrow(
-        'project dependency preparation exceeds',
-      )
+      budget.retain(capturedFile(PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.preparedBytes))
+      expect(() => budget.retain(capturedFile(1))).toThrow('project dependency preparation exceeds')
     } finally {
       budget.dispose()
     }
@@ -115,19 +117,29 @@ describe('private aggregate Bun preparation budget', () => {
       budget.dispose()
     }
   })
-  test('charges layout metadata to the same aggregate byte ceiling', () => {
+  test('charges a shared capture once and each layout separately', () => {
     const budget = createPrivateBunPreparationBudget(new AbortController().signal)
     try {
       const maximum = PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.preparedBytes
-      budget.retain([{ size: maximum - 1024 }], 'flows/first', 512)
-      expect(() => budget.retain([], 'flows/metadata-overflow', 513)).toThrow(
-        'project dependency preparation exceeds',
-      )
-      // A rejected retention must not consume capacity.
-      expect(() => budget.retain([], 'flows/exact', 512)).not.toThrow()
-      expect(() => budget.retain([], 'flows/one-more', 1)).toThrow(
-        'project dependency preparation exceeds',
-      )
+      const capture = capturedFile(maximum - 1024)
+      budget.retain(capture, 512)
+      expect(() => budget.retain(capture, 513)).toThrow('project dependency preparation exceeds')
+      expect(() => budget.retain(capture, 512)).not.toThrow()
+      expect(() => budget.retain(capture, 1)).toThrow('project dependency preparation exceeds')
+    } finally {
+      budget.dispose()
+    }
+  })
+  test('keeps separate captures charged and refuses a new capture atomically', () => {
+    const budget = createPrivateBunPreparationBudget(new AbortController().signal)
+    try {
+      const half = PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.preparedBytes / 2
+      const first = capturedFile(half)
+      const second = capturedFile(half)
+      budget.retain(first)
+      expect(() => budget.retain(second, 1)).toThrow('project dependency preparation exceeds')
+      budget.retain(second)
+      expect(() => budget.retain(capturedFile(1))).toThrow('project dependency preparation exceeds')
     } finally {
       budget.dispose()
     }
@@ -147,14 +159,11 @@ describe('private aggregate Bun preparation budget', () => {
           (metadataBytes) => {
             const budget = createPrivateBunPreparationBudget(new AbortController().signal)
             try {
-              expect(() => budget.retain([], 'flows/invalid', metadataBytes)).toThrow(
+              expect(() => budget.retain({ files: [] }, metadataBytes)).toThrow(
                 'prepared metadata size is invalid',
               )
               expect(() =>
-                budget.retain(
-                  [{ size: PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.preparedBytes }],
-                  'flows/exact',
-                ),
+                budget.retain(capturedFile(PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.preparedBytes)),
               ).not.toThrow()
             } finally {
               budget.dispose()

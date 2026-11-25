@@ -20,6 +20,7 @@ Group troubleshooting by the failed task, with contextual links from those walkt
 Keep settings definitions and generated numeric limits with their respective owners.
 
 Distinguish review-wide preparation counts from per-package output allowances and fixed aggregate byte and time limits.
+Explain how the fixed review byte limit accounts for shared prepared captures and separate execution layouts.
 Count diagnostics report a lower bound, since review stops at the first rejected preparation.
 Do not create a separate page for one exceptional diagnostic.
 
