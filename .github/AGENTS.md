@@ -235,15 +235,16 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   present source archives as the installable package.
 - Keep FLOW and Jig site publication independent.
 - `workflows/ci-performance.yml` reports the previous complete UTC day at
-  03:17 UTC on main. If the day's inventory exceeds the read budget, it reports
-  the longest complete trailing interval starting on a UTC hour whose minimum
-  read cost fits.
+  03:17 UTC on main. It collects run histories one UTC hour at a time, newest
+  first. If the shared API read budget runs out, it reports only the complete
+  trailing hours it collected.
   The report identifies the actual interval and discloses that it was shortened.
 
   It uses repository and Actions read permission without builds, native
   allocation or publication.
   Retain its JSON metadata and Markdown observations for fourteen days.
-  Collection preserves the qualification API reserve and refuses incomplete windows.
+  Collection preserves the qualification API reserve and requires complete
+  coverage for the reported interval.
   Manual dispatch requires the entire selected window of one, three or seven
   complete days.
   Reports establish no qualification, flake rate or automatic scheduling changes.
