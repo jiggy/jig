@@ -22,8 +22,9 @@ at review. It is source policy data, not an executable client. Interactive
 review prompts after source capture and before qualification, while
 noninteractive review requires `--agent codex|claude`. The effective
 client is recorded in the lock and never selected again at Run time.
-Unpinned grants cannot specify a model, authentication profile, reasoning
-effort or native retention. Explicit pins
+
+Unpinned grants can require reasoning effort. Model, authentication profile and
+native retention require an explicit client. Explicit pins
 remain supported and are not rewritten by a review default.
 
 ## Ownership
@@ -319,7 +320,7 @@ remain supported and are not rewritten by a review default.
   one matching policy and allows independent pinned clients.
 
   Failed selection preserves any previous approval. An ACP grant may pin a
-  recipient-specific model, and a Codex grant may require exact reasoning effort.
+  recipient-specific model, and any ACP grant may require exact reasoning effort.
   These settings affect approval and runtime identity independently of authentication.
   `docs/jig/spec/grants.md` owns capture, reuse and recipient-scoped approval.
 

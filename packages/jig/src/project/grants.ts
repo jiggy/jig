@@ -146,8 +146,8 @@ export function normalizeGrant(value: unknown): GrantPolicy {
           ].includes(key),
       ) ||
       ('reasoningEffort' in policy &&
-        (policy.client !== 'codex' ||
-          typeof policy.reasoningEffort !== 'string' ||
+        (typeof policy.reasoningEffort !== 'string' ||
+          policy.reasoningEffort === 'default' ||
           !/^[a-z][a-z0-9_-]{0,31}(?![\s\S])/.test(policy.reasoningEffort))) ||
       ('retainSessions' in policy &&
         (policy.retainSessions !== true || policy.client !== 'codex')) ||
@@ -164,7 +164,7 @@ export function normalizeGrant(value: unknown): GrantPolicy {
           !/^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}(?![\s\S])/.test(policy.model)))
     )
       throw new TypeError(
-        `ACP grant allows omitted client for operator selection. Model and authProfile require a pinned client. Codex grants also allow a lowercase reasoningEffort identifier (1–32 characters) and retainSessions: true. maxTurns must be from ${PRIVATE_NATIVE_TURN_POLICY.minimum} to ${PRIVATE_NATIVE_TURN_POLICY.maximum}.`,
+        `ACP grant allows omitted client for operator selection. Model and authProfile require a pinned client. reasoningEffort must name an exact lowercase effort (1–32 characters). retainSessions: true requires Codex. maxTurns must be from ${PRIVATE_NATIVE_TURN_POLICY.minimum} to ${PRIVATE_NATIVE_TURN_POLICY.maximum}.`,
       )
     return Object.freeze({
       kind,

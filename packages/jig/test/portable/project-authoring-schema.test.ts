@@ -116,7 +116,7 @@ describe('Project Authoring SDK/1 shape schema', () => {
       expect(() => schema.validate(invalid, 'INVALID_PROJECT_AUTHORING')).toThrow(SchemaDiagnostic)
     }
   })
-  test('reasoning effort is accepted only for an explicit Codex grant', () => {
+  test('reasoning effort can be specified before client selection', () => {
     const authored = (policy: unknown) =>
       changed(binding, (item) => {
         item.slots.native = policy
@@ -124,11 +124,10 @@ describe('Project Authoring SDK/1 shape schema', () => {
     const validate = (policy: unknown) =>
       schema.validate(authored(policy), 'INVALID_PROJECT_AUTHORING')
     expect(() => validate({ kind: 'acp', client: 'codex', reasoningEffort: 'low' })).not.toThrow()
-    expect(() => validate({ kind: 'acp', reasoningEffort: 'low' })).toThrow()
-    for (const patch of [{ client: 'claude' }, { reasoningEffort: 'a'.repeat(33) }])
-      expect(() =>
-        validate({ kind: 'acp', client: 'codex', reasoningEffort: 'low', ...patch }),
-      ).toThrow()
+    expect(() => validate({ kind: 'acp', client: 'claude', reasoningEffort: 'low' })).not.toThrow()
+    expect(() => validate({ kind: 'acp', reasoningEffort: 'low' })).not.toThrow()
+    expect(() => validate({ kind: 'acp', reasoningEffort: 'a'.repeat(33) })).toThrow()
+    expect(() => validate({ kind: 'acp', reasoningEffort: 'default' })).toThrow()
   })
   test('accepts the complete direct-alpha authoring surface', () => {
     expect(() => schema.validate(project, 'INVALID_PROJECT_AUTHORING')).not.toThrow()

@@ -172,10 +172,6 @@ function renderCompactIssue(
       )
     if (issue.policy.model !== undefined)
       lines.push('    This policy pins a model. Edit the policy before switching clients.')
-    if (issue.policy.reasoningEffort !== undefined)
-      lines.push(
-        '    This policy requires Codex reasoning effort. Edit it before switching clients.',
-      )
     if (issue.policy.retainSessions === true)
       lines.push(
         '    This policy requests Codex session retention. Edit it before switching clients.',
@@ -366,8 +362,6 @@ function renderIssue(
       lines.push(
         '  This policy pins a model. For a different client, explicitly choose its model or remove the pin in source; no model compatibility is inferred.',
       )
-    if (issue.policy.reasoningEffort !== undefined)
-      lines.push('  This policy requires Codex reasoning effort. Edit it before switching clients.')
     if (issue.policy.retainSessions === true)
       lines.push(
         '  This policy requests Codex session retention. Keep Codex to retain it; another client requires an explicit retention policy change.',

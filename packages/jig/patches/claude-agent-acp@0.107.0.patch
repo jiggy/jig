@@ -22,3 +22,45 @@ diff --git a/dist/auth-status-reporter.js b/dist/auth-status-reporter.js
          // ACP notifications get no reply, and clients that do not know the method
          // drop it silently — send unconditionally and never fail a caller on it.
          void Promise.resolve()
+diff --git a/dist/v2/config.js b/dist/v2/config.js
+--- a/dist/v2/config.js
++++ b/dist/v2/config.js
+@@ -173,4 +173,13 @@ export class SessionConfig {
+     options() {
+         return v2ConfigOptions(this.session.configOptions);
+     }
++    /** Require acknowledgement from the current query for each Jig prompt. */
++    confirmReviewedReasoningEffort(value) {
++        return this.serialized(async () => {
++            if (this.effort.pinned !== value || this.effort.applied !== value)
++                return false;
++            await this.session.query.applyFlagSettings(effortFlagSettings(value, this.ultracodeEnabled));
++            return true;
++        });
++    }
+     /** The entries of the `model` option, for the `model` of a subagent's session. */
+diff --git a/dist/v2/session.js b/dist/v2/session.js
+--- a/dist/v2/session.js
++++ b/dist/v2/session.js
+@@ -361,5 +361,21 @@ export class Session {
+                     this.fileChanges?.requested(uuid, params._meta);
+                 }
++                const requiredEffort = process.env.JIG_ACP_REASONING_EFFORT;
++                if (requiredEffort !== undefined) {
++                    let confirmed = false;
++                    try {
++                        confirmed = await this.config.confirmReviewedReasoningEffort(requiredEffort);
++                    }
++                    catch {
++                        // Keep native control diagnostics out of the finite ACP exchange.
++                    }
++                    if (answered())
++                        return;
++                    if (!confirmed) {
++                        this.failPrompt(uuid, RequestError.invalidRequest(undefined, "Claude Code did not confirm the reviewed reasoning effort"));
++                        return;
++                    }
++                }
+                 pending.pushed = true;
+                 this.remoteControl.pushed(uuid);
+                 this.input.push(message);

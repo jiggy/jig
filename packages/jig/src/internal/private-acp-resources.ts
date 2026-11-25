@@ -248,20 +248,13 @@ async function openQualifiedClient(
   authProfile?: string,
   reasoningEffort?: string,
 ): Promise<PrivateAcpAgentProvider> {
-  return client === 'codex'
-    ? await openPrivateCodexAgentProvider(
-        support.releaseRoot,
-        environment,
-        projectDirectory,
-        model,
-        authProfile,
-        reasoningEffort,
-      )
-    : await openPrivateClaudeAgentProvider(
-        support.releaseRoot,
-        environment,
-        projectDirectory,
-        model,
-        authProfile,
-      )
+  const open = client === 'codex' ? openPrivateCodexAgentProvider : openPrivateClaudeAgentProvider
+  return await open(
+    support.releaseRoot,
+    environment,
+    projectDirectory,
+    model,
+    authProfile,
+    reasoningEffort,
+  )
 }

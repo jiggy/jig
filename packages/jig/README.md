@@ -257,9 +257,9 @@ for all selected ACP resources in this approval. The flag leaves source unchange
 repeat it on later reviews. Bare review returns to source choices, while Run keeps
 using the exact approved client and code. Model pins or incompatible retention
 can refuse a cross-client override. Unavailable selected ACP prerequisites stop
-CLI review before new approval; no Flow starts. With `client: 'codex'`,
-`reasoningEffort: 'low'` pins the effort in the grant. Review shows the pin
-and Jig requires Codex to confirm it before forwarding a prompt.
+CLI review before new approval; no Flow starts. An ACP grant can pin effort
+with `reasoningEffort: 'low'`, including when the operator chooses the client
+during review. Jig requires the selected client to confirm it before a prompt.
 
 ## Guides
 

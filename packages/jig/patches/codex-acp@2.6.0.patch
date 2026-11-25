@@ -60,7 +60,7 @@ index 5f73e89..95d4ab3 100755
    async turnStart(params) {
 +    // Check the reviewed value after any app-server recovery, at the actual
 +    // native dispatch boundary where the requested effort is known.
-+    const requiredEffort = process.env.JIG_CODEX_REASONING_EFFORT;
++    const requiredEffort = process.env.JIG_ACP_REASONING_EFFORT;
 +    if (requiredEffort !== void 0 && params.effort !== requiredEffort) {
 +      throw RequestError.invalidRequest("Codex did not confirm the reviewed reasoning effort");
 +    }

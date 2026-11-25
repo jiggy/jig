@@ -38,16 +38,16 @@ package drives the dialogue and interprets the answer.
 For ordinary applications, `native: { kind: 'acp' }` is the portable
 default. It delegates the native-client choice to the operator during review
 instead of requiring a vendor in source. A common `maxTurns` bound is allowed.
-A model, `authProfile`, reasoning effort or native session retention requires
-an explicit client pin.
+A model, `authProfile` or native session retention requires an explicit client pin.
 
-On Codex, `reasoningEffort: 'low'` requires that exact effort for each native
-turn. Use the effort identifier supported by the selected model. It must start
-with a lowercase ASCII letter and contain at most 32 characters, using
-lowercase letters, digits, underscores or hyphens.
+An optional `reasoningEffort: 'low'` requires that exact effort for each native
+turn on the selected ACP client. Use an effort identifier supported by the
+selected model. It must start with a lowercase ASCII letter and contain at most 32 characters, using
+lowercase letters, digits, underscores or hyphens. The identifier `default`
+leaves the choice to the client, so omit the field to use that behavior.
 
 Review shows the requirement.
-Changing it requires renewed approval. Omission leaves effort selection to Codex.
+Changing it requires renewed approval.
 See [Finite ACP](finite-acp.md#one-invocation-two-direct-channels) for
 confirmation and dispatch requirements.
 

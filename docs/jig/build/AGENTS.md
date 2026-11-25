@@ -48,7 +48,7 @@ Centralize Agent setup in `agents.md`.
 
 Native Mac Codex setup requires genuine session qualification and preserves
 forced-policy and unavailable-observation diagnostics.
-Explain how to require Codex reasoning effort in `agents.md`. Distinguish the
+Explain how to require ACP reasoning effort in `agents.md`. Distinguish the
 reviewed requirement from confirmation during the Run.
 Keep result semantics and required safety conditions beside their actions.
 Link repair procedures to the shared troubleshooting guide instead of duplicating them.

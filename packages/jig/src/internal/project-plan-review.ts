@@ -298,9 +298,7 @@ export function privateProjectReviewedAcpSelection(
     throw new TypeError('ACP review cannot publish an unselected native client')
   const provider = requirePrivateAcpAgentProvider(providerValue)
   const runtime = privateAcpAgentRuntime(provider)
-  const reasoningEffort = runtime.configuration.find(
-    (option) => option.configId === 'reasoning_effort',
-  )?.value
+  const reasoningEffort = runtime.reasoningEffort?.value
   if (reasoningEffort !== grant.reasoningEffort)
     throw new TypeError('ACP review reasoning effort does not match the proposed runtime')
   return {

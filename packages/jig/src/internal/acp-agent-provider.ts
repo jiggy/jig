@@ -45,6 +45,7 @@ export interface PrivateAcpAgentProviderConfiguration {
   readonly sandboxExecutablePath: string
   readonly environment: Readonly<Record<string, string>>
   readonly configuration?: readonly PrivateAcpSessionConfiguration[]
+  readonly reasoningEffort?: { readonly configId: string; readonly value: string }
   readonly modeId?: string
   readonly sessionMeta?: Readonly<Record<string, unknown>>
   /** The native client starts its own unprivileged Linux sandbox. */
@@ -82,6 +83,7 @@ export interface PrivateAcpAgentRuntime {
   readonly sandboxExecutablePath: string
   readonly environment: Readonly<Record<string, string>>
   readonly configuration: readonly PrivateAcpSessionConfiguration[]
+  readonly reasoningEffort?: PrivateAcpAgentProviderConfiguration['reasoningEffort']
   readonly modeId?: string
   readonly sessionMeta?: Readonly<Record<string, unknown>>
   readonly nestedUserNamespaces: boolean
@@ -132,8 +134,19 @@ export async function createPrivateAcpAgentProvider(
   if (value.sandboxAdapterPath === value.sandboxExecutablePath) {
     throw new Error('ACP Agent support destinations overlap')
   }
-  const environment = normalizeEnvironment(value.environment)
-  const configuration = normalizeConfiguration(value.configuration ?? [])
+  const effort = value.reasoningEffort
+  const configuration = normalizeConfiguration(
+    effort === undefined ? (value.configuration ?? []) : [...(value.configuration ?? []), effort],
+  )
+  const baseEnvironment = normalizeEnvironment(value.environment)
+  const environment =
+    effort === undefined
+      ? baseEnvironment
+      : Object.freeze({ ...baseEnvironment, JIG_ACP_REASONING_EFFORT: effort.value })
+  const reasoningEffort =
+    effort === undefined
+      ? undefined
+      : Object.freeze({ configId: effort.configId, value: effort.value })
   const sessionMeta =
     value.sessionMeta === undefined
       ? undefined
@@ -214,6 +227,7 @@ export async function createPrivateAcpAgentProvider(
     sandboxExecutablePath: value.sandboxExecutablePath,
     environment,
     configuration,
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     sessionMeta: sessionMeta ?? null,
     ...(value.modeId === undefined ? {} : { modeId: value.modeId }),
     authentication: authentication?.identity ?? null,
@@ -252,6 +266,7 @@ export async function createPrivateAcpAgentProvider(
       sandboxExecutablePath: value.sandboxExecutablePath,
       environment,
       configuration,
+      ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
       ...(value.modeId === undefined ? {} : { modeId: value.modeId }),
       ...(sessionMeta === undefined ? {} : { sessionMeta }),
       ...(authentication === undefined ? {} : { authentication }),

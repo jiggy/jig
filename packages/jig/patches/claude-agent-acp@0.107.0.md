@@ -25,3 +25,7 @@ installation, and checked against the installed published distribution by
 portable source tests. An adapter upgrade can remove these hunks when its
 bundled configuration suppresses separate title inference and unsolicited
 authentication-status notices and passes the corresponding qualification.
+
+For grants with an explicit reasoning effort, the adapter requires the current
+SDK query to acknowledge the pin again before it queues each prompt. A restart
+must restore that pin on the replacement query before dispatch.

@@ -787,7 +787,7 @@ describe('private project Plan review', () => {
         executablePath,
         sandboxExecutablePath: '/agent/client',
         environment: {},
-        configuration: [{ configId: 'reasoning_effort', value: 'low' }],
+        reasoningEffort: { configId: 'reasoning_effort', value: 'low' },
         secrets: ['token-secret-work'],
       })
       const withoutProfile = await createPrivateAcpAgentProvider({

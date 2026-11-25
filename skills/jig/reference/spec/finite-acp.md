@@ -34,7 +34,7 @@ Interactive review asks for an Agent when a selected ACP slot is unpinned.
 Noninteractive review requires `--agent codex|claude`. A common
 `maxTurns` bound is allowed.
 
-Model, reasoning effort, authentication profile
+Model, authentication profile
 and native retention require an explicit client. Explicit `client: 'codex' | 'claude'`
 pins an Agent for a specialized method and is never overridden by `--agent`.
 The admitted lock contains only concrete clients and Run never substitutes one.
@@ -56,17 +56,19 @@ configuration and documented default. Two Bindings can use the same client with
 different models. Changing this policy requires renewed authority approval;
 the ready configuration and native dispatch enforce the selected model.
 
-An optional Codex grant `reasoningEffort` requires an exact effort for the
+An optional ACP grant `reasoningEffort` requires an exact effort for the
 selected model. Review displays the requirement and records it in the qualified
-configuration. During a Run the host requests `reasoning_effort` after model
-selection, for both new and restored sessions.
+configuration. During a Run the host requests the selected client's effort
+option after model selection, for both new and supported restored sessions.
 
 Jig requires an exact confirmation before it forwards a prompt. A refusal, missing confirmation,
-or conflicting later configuration report fails the exchange. The qualified
-Codex adapter checks the effort immediately before each app-server
-`turn/start`, including after an app-server restart. These checks establish
-the requested dispatch parameter. Review itself does not open a session or
-verify model availability, inference behavior, or billing.
+or conflicting later configuration report fails the exchange. Each qualified
+adapter additionally checks the reviewed effort before sending a prompt to its
+native engine, including after a restart.
+
+These checks establish the requested dispatch configuration. Model availability
+is checked during session setup. Inference behavior and billing depend on
+the provider.
 
 Input is normally `null`. A requested native session uses the closed shape
 `{session:{retain:true}}`, `{session:{retain:true,lifetime:"run"}}`, or

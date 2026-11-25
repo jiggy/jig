@@ -88,7 +88,8 @@ These links locate module rules. All selected domain requirements still apply.
 
   The Claude ACP patch suppresses unrequested title inference and unsolicited
   authentication-status notifications when Jig disables nonessential traffic.
-  It preserves the adapter's internal authentication state.
+  It preserves the adapter's internal authentication state and checks the
+  applied reasoning effort before sending a prompt to the native SDK query.
 
   Every patch has a same-basename `.md` note explaining purpose, behavioral
   tests and removal conditions. A version bump alone proves none of them.

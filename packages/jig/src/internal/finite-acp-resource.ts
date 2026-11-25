@@ -127,6 +127,9 @@ export async function runPrivateFiniteAcpResource(
     {
       maxTurns,
       configuration: runtime.configuration,
+      ...(runtime.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffortConfigId: runtime.reasoningEffort.configId }),
       ...(runtime.modeId === undefined ? {} : { modeId: runtime.modeId }),
       ...(session?.restoreSessionId === undefined
         ? {}

@@ -31,6 +31,7 @@ type Configuration =
 export interface PrivateFiniteAcpConfiguration {
   readonly maxTurns?: number
   readonly configuration?: readonly Configuration[]
+  readonly reasoningEffortConfigId?: string
   readonly modeId?: string
   readonly restoreSessionId?: string
 }
@@ -67,7 +68,6 @@ const CANCEL = 'session/cancel'
 const CLOSE = 'session/close'
 const UPDATE = 'session/update'
 const PERMISSION = 'session/request_permission'
-const REASONING_EFFORT = 'reasoning_effort'
 
 /**
  * Private authority accounting for one finite ACP conversation. A returned frame
@@ -79,6 +79,7 @@ export class PrivateFiniteAcpPolicy {
   private readonly v2 = new PrivateAcpV2Foreground()
   private turns = 0
   private readonly configuration: readonly Configuration[]
+  private readonly reasoningEffortIndex: number
   private readonly modeId?: string
   private readonly restoreSessionId?: string
   private canResume = false
@@ -113,7 +114,11 @@ export class PrivateFiniteAcpPolicy {
   ) {
     if (nativeClient !== undefined) identifier(nativeClient)
     const policy = object(snapshotPrivateOrdinaryJson(configuration, 'finite ACP policy', invalid))
-    keys(policy, [], ['configuration', 'modeId', 'maxTurns', 'restoreSessionId'])
+    keys(
+      policy,
+      [],
+      ['configuration', 'reasoningEffortConfigId', 'modeId', 'maxTurns', 'restoreSessionId'],
+    )
     if (Object.hasOwn(policy, 'restoreSessionId'))
       this.restoreSessionId = identifier(policy.restoreSessionId)
     const maxTurns = Object.hasOwn(policy, 'maxTurns')
@@ -138,6 +143,14 @@ export class PrivateFiniteAcpPolicy {
       }
     }
     this.configuration = options as unknown as readonly Configuration[]
+    this.reasoningEffortIndex = Object.hasOwn(policy, 'reasoningEffortConfigId')
+      ? this.configuration.findIndex(
+          (option) =>
+            option.configId === policy.reasoningEffortConfigId && typeof option.value === 'string',
+        )
+      : -1
+    if (policy.reasoningEffortConfigId !== undefined && this.reasoningEffortIndex < 0)
+      fail('ACP reasoning effort must name a reviewed configuration option')
     if (Object.hasOwn(policy, 'modeId')) this.modeId = identifier(policy.modeId)
     if (this.modeId !== undefined && ids.has('mode'))
       fail('ACP v2 mode configuration is duplicated')
@@ -284,7 +297,7 @@ export class PrivateFiniteAcpPolicy {
         const error = object(frame.error)
         if (!Number.isSafeInteger(error.code) || typeof error.message !== 'string')
           fail('Invalid ACP error response')
-        if (pending.method === CONFIGURE && this.nextConfiguration?.configId === REASONING_EFFORT)
+        if (pending.method === CONFIGURE && this.configured === this.reasoningEffortIndex)
           failReasoningEffort()
         if (pending.method === PROMPT && this.cancelSent && error.code === -32800) {
           this.v2.cancelBeforeInsertion()
@@ -362,7 +375,7 @@ export class PrivateFiniteAcpPolicy {
         case CONFIGURE: {
           const required = this.nextConfiguration
           if (required === undefined) fail('ACP configuration is not available')
-          if (required.configId === REASONING_EFFORT) {
+          if (this.configured === this.reasoningEffortIndex) {
             if (!confirmsConfiguration(result.configOptions, required, 'select'))
               failReasoningEffort()
           } else if (!confirmsConfiguration(result.configOptions, required)) {
@@ -706,11 +719,11 @@ export class PrivateFiniteAcpPolicy {
   }
 
   private verifyConfirmedEffort(options: JsonValue | undefined): void {
-    const effort = this.configuration.findIndex((option) => option.configId === REASONING_EFFORT)
+    const effort = this.configuration[this.reasoningEffortIndex]
     if (
-      effort >= 0 &&
-      effort < this.configured &&
-      !confirmsConfiguration(options, this.configuration[effort]!, 'select')
+      effort !== undefined &&
+      this.reasoningEffortIndex < this.configured &&
+      !confirmsConfiguration(options, effort, 'select')
     )
       failReasoningEffort()
   }
@@ -777,7 +790,7 @@ function confirmsConfiguration(
 
 function failReasoningEffort(): never {
   throw new PrivateFiniteAcpPolicyError(
-    'Codex did not confirm the reviewed reasoning effort',
+    'The native ACP client did not confirm the reviewed reasoning effort',
     'reasoning-effort',
   )
 }

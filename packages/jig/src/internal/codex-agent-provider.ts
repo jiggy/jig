@@ -344,7 +344,8 @@ export async function createPrivateCodexSubscriptionAgentProvider(
     executablePath: value.executablePath,
     sandboxExecutablePath: value.executablePath,
     environment: codexEnvironment(true, model, value),
-    configuration: codexSessionConfiguration(model, value.reasoningEffort),
+    configuration: model === undefined ? [] : [{ configId: 'model', value: model }],
+    ...codexReasoningEffort(value.reasoningEffort),
     modeId: 'read-only',
     secrets,
     startupInput: frameStartupInput(credential),
@@ -403,7 +404,8 @@ export async function createPrivateCodexOpenAIApiAgentProvider(
     executablePath: value.executablePath,
     sandboxExecutablePath: value.executablePath,
     environment: codexEnvironment(false, value.model, value, baseURL),
-    configuration: codexSessionConfiguration(value.model, value.reasoningEffort),
+    configuration: [{ configId: 'model', value: value.model }],
+    ...codexReasoningEffort(value.reasoningEffort),
     modeId: 'read-only',
     nestedUserNamespaces: true,
     readOnlyMounts: [
@@ -451,13 +453,8 @@ export async function createPrivateCodexOpenAIApiAgentProvider(
   })
 }
 
-function codexSessionConfiguration(model: string | undefined, reasoningEffort: string | undefined) {
-  return [
-    ...(model === undefined ? [] : [{ configId: 'model', value: model }]),
-    ...(reasoningEffort === undefined
-      ? []
-      : [{ configId: 'reasoning_effort', value: reasoningEffort }]),
-  ]
+function codexReasoningEffort(value: string | undefined) {
+  return value === undefined ? {} : { reasoningEffort: { configId: 'reasoning_effort', value } }
 }
 
 function codexEnvironment(
@@ -498,9 +495,6 @@ function codexEnvironment(
     }),
     CODEX_HOME: SANDBOX_CODEX_HOME,
     CODEX_PATH: support.executablePath,
-    ...(support.reasoningEffort === undefined
-      ? {}
-      : { JIG_CODEX_REASONING_EFFORT: support.reasoningEffort }),
     // Keep a bundled fallback off PATH so Codex performs its vendor digest check.
     PATH:
       support.nativeBubblewrapSource === 'bundled'
