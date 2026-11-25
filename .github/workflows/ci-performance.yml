@@ -7,7 +7,7 @@ name: CI performance observations
       days:
         description: Complete UTC days to report within the available read budget
         type: choice
-        default: '7'
+        default: '1'
         options: ['1', '3', '7']
 permissions:
   contents: read
@@ -27,14 +27,18 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24'
-      - name: Report complete UTC days within the read budget
+      - name: Report a complete UTC interval within the read budget
         env:
           GH_TOKEN: ${{ github.token }}
-          PERFORMANCE_DAYS: ${{ inputs.days || '7' }}
+          PERFORMANCE_DAYS: ${{ inputs.days || '1' }}
         run: |
           end=$(node -p 'new Date(new Date().setUTCHours(0,0,0,0)).toISOString()')
-          start=$(node -e 'const days=Number(process.env.PERFORMANCE_DAYS); if(![1,3,7].includes(days))process.exit(64); console.log(new Date(new Date().setUTCHours(0,0,0,0)-days*24*60*60*1000).toISOString())')
-          node scripts/ci/ci-performance.mjs --repository "$GITHUB_REPOSITORY" --since "$start" --until "$end" > "$RUNNER_TEMP/ci-performance.json"
+          start=$(node -e 'const days=Number(process.env.PERFORMANCE_DAYS); if(![1,3,7].includes(days))process.exit(64); console.log(new Date(Date.parse(process.argv[1])-days*24*60*60*1000).toISOString())' "$end")
+          options=()
+          if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then
+            options+=(--scheduled)
+          fi
+          node scripts/ci/ci-performance.mjs "${options[@]}" --repository "$GITHUB_REPOSITORY" --since "$start" --until "$end" > "$RUNNER_TEMP/ci-performance.json"
           node scripts/ci/ci-performance.mjs --report "$RUNNER_TEMP/ci-performance.json" > "$RUNNER_TEMP/ci-performance.md"
           cat "$RUNNER_TEMP/ci-performance.md" >> "$GITHUB_STEP_SUMMARY"
       - name: Retain the bounded metadata report

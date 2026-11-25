@@ -11,6 +11,7 @@ import {
   performanceMarkdown,
   performanceRequestBudget,
   requireCollectionBudget,
+  scheduledPerformanceWindow,
 } from './ci-performance.mjs'
 
 const base = Date.parse('2026-10-30T12:00:00Z')
@@ -370,6 +371,59 @@ test('collection preserves qualification rate budget and preflights the complete
   )
 })
 
+test('the schedule keeps the longest complete trailing interval under one read budget', () => {
+  const start = Date.parse('2026-11-23T00:00:00.000Z')
+  const end = Date.parse('2026-11-24T00:00:00.000Z')
+  const run = (id, clock, run_attempt = 1) => ({
+    id,
+    created_at: `2026-11-23T${clock}:00.000Z`,
+    run_attempt,
+  })
+  const earlier = run(1, '04:59')
+  const later = [run(2, '05:00', 2), run(3, '20:00'), run(4, '23:00')]
+  const runs = [earlier, ...later]
+  const plan = { start, end, runs, requests: 4, budget: 11 }
+  assert.deepEqual(scheduledPerformanceWindow(plan), {
+    since: '2026-11-23T05:00:00.000Z',
+    runs: later,
+  })
+  assert.deepEqual(scheduledPerformanceWindow({ ...plan, budget: 13 }), {
+    since: '2026-11-23T00:00:00.000Z',
+    runs,
+  })
+  assert.throws(
+    () =>
+      scheduledPerformanceWindow({ ...plan, runs: [run(1, '23:00'), run(2, '23:59')], budget: 7 }),
+    /final complete UTC hour exceeds/,
+  )
+})
+
+test('a skipped matrix check can complete before its check row was created', () => {
+  const run = entry()
+  run.attempts[0].jobs.push(
+    job(102, 'Skipped matrix', 1, {
+      conclusion: 'skipped',
+      runner_name: null,
+      created_at: stamp(401),
+      started_at: stamp(401),
+      completed_at: stamp(400),
+    }),
+  )
+  const attempt = analyzeCiPerformance(snapshot([run])).attempts[0]
+  const skipped = attempt.jobs[1]
+  assert.equal(skipped.classification, 'job-skipped')
+  assert.equal(skipped.completedAt, stamp(400))
+  for (const key of [
+    'releasedAfterSeconds',
+    'jobQueueSeconds',
+    'executionSeconds',
+    'unassignedSeconds',
+  ])
+    assert.equal(skipped[key], null)
+  assert.equal(attempt.runnerSeconds, 120)
+  assert.equal(attempt.elapsedSeconds, 480)
+})
+
 test('approval, no-runner cancellation, generic failures and skipped jobs retain their distinct evidence', () => {
   const run = entry()
   run.attempts[0].conclusion = 'cancelled'
@@ -424,6 +478,32 @@ test('a cancellation with GitHub sentinel start time and no runner never becomes
   assert.equal(observation.executionSeconds, null)
   assert.equal(observation.unassignedSeconds, 2714)
   assert.equal(report.attempts[0].runnerSeconds, 0)
+})
+
+test('a cancelled matrix check without a runner can complete before its row was created', () => {
+  const run = entry()
+  run.run.conclusion = run.attempts[0].conclusion = 'cancelled'
+  run.attempts[0].jobs = [
+    job(101, 'Cancelled matrix', 1, {
+      conclusion: 'cancelled',
+      runner_name: null,
+      steps: [],
+      created_at: stamp(0),
+      started_at: stamp(0),
+      completed_at: stamp(-1),
+    }),
+  ]
+  const report = analyzeCiPerformance(snapshot([run]))
+  const attempt = report.attempts[0]
+  const observation = attempt.jobs[0]
+  assert.equal(observation.classification, 'runner-not-assigned')
+  assert.equal(observation.completedAt, stamp(-1))
+  assert.equal(observation.unassignedSeconds, null)
+  assert.equal(observation.executionSeconds, null)
+  assert.equal(attempt.preJobSeconds, null)
+  assert.equal(attempt.elapsedSeconds, null)
+  assert.equal(attempt.runnerSeconds, 0)
+  assert.deepEqual(report.workflowSummaries[0].conclusions, { cancelled: 1 })
 })
 
 test('only a complete unambiguous three-workflow success receives an event-head envelope', () => {
@@ -648,6 +728,8 @@ test('the real snapshot CLI is read-only and rejects ambiguous command options',
     for (const args of [
       ['--snapshot', file, '--repository', 'jiggy/jig'],
       ['--snapshot', file, '--snapshot', file],
+      ['--scheduled', '--snapshot', file],
+      ['--scheduled', '--report', reportPath],
       ['--unknown', 'value'],
     ]) {
       const refused = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' })
@@ -675,9 +757,36 @@ test('daily observation workflow stays read-only, bounded and separate from qual
   assert.ok(collect.run.includes('days*24*60*60*1000'))
   assert.ok(collect.run.includes('[1,3,7].includes(days)'))
   assert.deepEqual(workflow.on.workflow_dispatch.inputs.days.options, ['1', '3', '7'])
+  assert.equal(workflow.on.workflow_dispatch.inputs.days.default, '1')
+  assert.equal(collect.env.PERFORMANCE_DAYS, '$' + "{{ inputs.days || '1' }}")
+  assert.match(
+    collect.run,
+    /if \[\[ "\$GITHUB_EVENT_NAME" == schedule \]\]; then\s+options\+=\(--scheduled\)/,
+  )
   assert.ok(collect.run.includes('setUTCHours(0,0,0,0)'))
   assert.ok(collect.run.includes('--report'))
   assert.equal(collect.env.GH_TOKEN, '$' + '{{ github.token }}')
   assert.equal(job.steps.at(-1).with['retention-days'], 14)
   assert.ok(job.steps.every((step) => !step.run || !/\b(?:bun|npm|just|sudo)\b/.test(step.run)))
+})
+
+test('scheduled collection rejects a window unaligned with UTC days before reading GitHub', () => {
+  const script = resolve(import.meta.dirname, 'ci-performance.mjs')
+  const child = spawnSync(
+    process.execPath,
+    [
+      script,
+      '--scheduled',
+      '--repository',
+      'jiggy/jig',
+      '--since',
+      '2026-11-23T01:00:00.000Z',
+      '--until',
+      '2026-11-24T01:00:00.000Z',
+    ],
+    { encoding: 'utf8' },
+  )
+  assert.equal(child.status, 1)
+  assert.equal(child.stdout, '')
+  assert.match(child.stderr, /requires one complete UTC day/)
 })

@@ -234,12 +234,18 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   install commands, and docs. Preserve existing release notes on retries. Never
   present source archives as the installable package.
 - Keep FLOW and Jig site publication independent.
-- `workflows/ci-performance.yml` reports the previous seven complete UTC days,
-  daily at 03:17 UTC or by manual dispatch on main. It uses repository and
-  Actions read permission without builds, native allocation or publication.
+- `workflows/ci-performance.yml` reports the previous complete UTC day at
+  03:17 UTC on main. If the day's inventory exceeds the read budget, it reports
+  the longest complete trailing interval starting on a UTC hour whose minimum
+  read cost fits.
+  The report identifies the actual interval and discloses that it was shortened.
+
+  It uses repository and Actions read permission without builds, native
+  allocation or publication.
   Retain its JSON metadata and Markdown observations for fourteen days.
   Collection preserves the qualification API reserve and refuses incomplete windows.
-  Manual dispatch permits one, three or seven complete days after budget refusal.
+  Manual dispatch requires the entire selected window of one, three or seven
+  complete days.
   Reports establish no qualification, flake rate or automatic scheduling changes.
 - `workflows/sync-skill-references.yml` processes same-repository PR documents under `pull_request` with read permission and no secrets.
   It runs tooling from the PR base and treats PR files as inert input.
