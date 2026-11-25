@@ -271,19 +271,18 @@ export async function versionRelease(root = defaultRoot, { cli = defaultCli } = 
 
 async function verifyGeneratedRelease(
   root,
-  baseRevision,
   sourceRevision,
-  { cli = defaultCli } = {},
+  { baseRevision, cli = defaultCli } = {},
 ) {
   const raw = await sourceText(root, MARKER, sourceRevision)
   const marker = validateMarker(JSON.parse(raw))
-  if (marker.baseRevision !== baseRevision)
+  if (baseRevision !== undefined && marker.baseRevision !== baseRevision)
     throw new Error('Release plan is stale. Regenerate it from the current PR base.')
   const temporary = await mkdtemp(join(tmpdir(), 'jig-release-replay-'))
   const checkout = join(temporary, 'source')
   try {
     git(root, ['clone', '--quiet', '--shared', '--no-checkout', root, checkout])
-    git(checkout, ['checkout', '--quiet', '--detach', baseRevision])
+    git(checkout, ['checkout', '--quiet', '--detach', marker.baseRevision])
     await copyWorkspaceLock(root, checkout)
     const expected = await versionRelease(checkout, { cli })
     if (
@@ -306,6 +305,16 @@ export async function checkRelease(root, baseRevision, { cli = defaultCli } = {}
   const sourceRevision = requireRevision(git(root, ['rev-parse', 'HEAD']).trim())
   git(root, ['merge-base', '--is-ancestor', baseRevision, sourceRevision])
   await inventory(root, sourceRevision)
+  if (baseRevision === sourceRevision) {
+    const state = await releaseState(root, sourceRevision)
+    if (state.eligible)
+      return {
+        mode: 'versioned',
+        ...(await verifyGeneratedRelease(root, sourceRevision, { cli })),
+      }
+    await currentNotes(root, sourceRevision)
+    return { mode: 'snapshot', ...state }
+  }
   await validateConfiguration(root, sourceRevision)
   const paths = git(root, [
     'diff',
@@ -323,7 +332,7 @@ export async function checkRelease(root, baseRevision, { cli = defaultCli } = {}
       throw new Error('Only the version command may replace the generated release plan')
     return {
       mode: 'versioned',
-      ...(await verifyGeneratedRelease(root, baseRevision, sourceRevision, { cli })),
+      ...(await verifyGeneratedRelease(root, sourceRevision, { baseRevision, cli })),
     }
   }
   for (const path of MANIFESTS) {

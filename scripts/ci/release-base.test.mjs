@@ -166,18 +166,17 @@ test('manual checks use the source first parent and fail for an initial commit',
   f.git(['checkout', '--quiet', '--detach', f.initial])
   assert.throws(
     () => releaseBase({ repository: f.repository, env: { ...env, GITHUB_SHA: f.initial } }),
-    /Manual and scheduled release checks require a source parent/,
+    /Manual release checks require a source parent/,
   )
 })
 
-test('scheduled canonical diagnostics use the exact checked source parent', (t) => {
+test('scheduled canonical diagnostics use the exact checked source', (t) => {
   const f = fixture(t)
-  assert.equal(
-    releaseBase({
-      repository: f.repository,
-      env: { GITHUB_EVENT_NAME: 'schedule', GITHUB_SHA: f.source },
-    }),
-    f.base,
+  const env = { GITHUB_EVENT_NAME: 'schedule', GITHUB_SHA: f.source }
+  assert.equal(releaseBase({ repository: f.repository, env }), f.source)
+  assert.throws(
+    () => releaseBase({ repository: f.repository, env: { ...env, GITHUB_SHA: f.base } }),
+    /Workflow checkout changed/,
   )
 })
 

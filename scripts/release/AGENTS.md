@@ -33,6 +33,8 @@ Exercise the same publication path before merging release changes.
 - Synchronize existing `engines.jig` requirements while preserving every other engine declaration.
 - Synchronize the exact Reporting version in `packages/display-model/THIRD_PARTY_NOTICES`. Preserve all other notice text.
 - Validate generated release PRs by replaying the real version command from their exact base.
+- With the checked source as the comparison revision, validate its release state.
+  Replay eligible generated releases from the base recorded in their plan.
 - Bind release metadata to the complete versioned source, excluding only the metadata file itself.
 - Keep automatic Git maintenance in the foreground of each release invocation.
   Wait for its child processes before removing temporary repositories. Cleanup errors remain failures.

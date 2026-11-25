@@ -33,11 +33,12 @@ export function releaseBase({ repository = process.cwd(), env = process.env, eve
   const source = git(['rev-parse', 'HEAD'])
   assert.match(env.GITHUB_SHA ?? '', revision, 'The workflow source SHA is required')
   assert.equal(source, env.GITHUB_SHA, 'Workflow checkout changed')
+  if (env.GITHUB_EVENT_NAME === 'schedule') return source
   const parents = git(['rev-list', '--parents', '-n', '1', source]).split(' ').slice(1)
 
-  if (['workflow_dispatch', 'schedule'].includes(env.GITHUB_EVENT_NAME)) {
-    assert.ok(parents.length, 'Manual and scheduled release checks require a source parent')
-    return commit(parents[0], 'Manual or scheduled source parent')
+  if (env.GITHUB_EVENT_NAME === 'workflow_dispatch') {
+    assert.ok(parents.length, 'Manual release checks require a source parent')
+    return commit(parents[0], 'Manual source parent')
   }
   assert.ok(
     ['pull_request', 'push'].includes(env.GITHUB_EVENT_NAME),
