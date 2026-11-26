@@ -799,23 +799,30 @@ test('consolidated host jobs distinguish acquisition from scope-only execution',
   }
 })
 
-test('a PR Mac plan declares full scope before its workers obtain the canonical build', () => {
-  for (const [plan, scope] of [
-    ['success', 'full'],
-    ['skipped', 'omitted'],
-    ['failure', 'unverified'],
+test('PR host plans declare full scope before workers obtain the canonical build', () => {
+  for (const [index, planName] of [
+    [1, 'Plan the complete Linux host qualification'],
+    [2, 'Freeze the complete source-bound useful-shard plan'],
   ]) {
-    const runs = requiredGateGroup(935, 1190)
-    const [gate, , prepare] = runs[2].attempts[0].jobs
-    prepare.steps = [
-      { name: 'Determine whether complete host qualification is required', conclusion: 'success' },
-      { name: 'Freeze the complete source-bound useful-shard plan', conclusion: plan },
-      { name: 'Acquire the exact canonical CI candidates', conclusion: 'skipped' },
-    ]
-    runs[2].attempts[0].jobs = [gate, prepare]
-    const report = analyzeCiPerformance(snapshot(runs))
-    assert.equal(report.envelopes[0].requiredChecks.hostScope, scope)
-    assert.equal(report.prRequiredChecksSummary.successful.count, scope === 'full' ? 1 : 0)
+    for (const [plan, scope] of [
+      ['success', 'full'],
+      ['skipped', 'omitted'],
+      ['failure', 'unverified'],
+    ]) {
+      const runs = requiredGateGroup(935, 1190)
+      const host = runs[index]
+      const [gate, , prepare] = host.attempts[0].jobs
+      if (index === 1) prepare.name = 'Prepare Linux inputs'
+      prepare.steps = [
+        { name: 'Determine whether complete host qualification is required', conclusion: 'success' },
+        { name: planName, conclusion: plan },
+        { name: 'Acquire the exact canonical CI candidates', conclusion: 'skipped' },
+      ]
+      host.attempts[0].jobs = [gate, prepare]
+      const report = analyzeCiPerformance(snapshot(runs))
+      assert.equal(report.envelopes[0].requiredChecks.hostScope, scope)
+      assert.equal(report.prRequiredChecksSummary.successful.count, scope === 'full' ? 1 : 0)
+    }
   }
 })
 

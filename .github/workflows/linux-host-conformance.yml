@@ -80,9 +80,9 @@ env:
     console.log(JSON.stringify(commands));
 jobs:
   prepare:
-    name: "Acquire canonical linux host artifacts"
-    runs-on: "ubuntu-24.04"
-    timeout-minutes: 40
+    name: "Prepare Linux inputs"
+    runs-on: "${{ github.event_name == 'pull_request' && 'ubuntu-slim' || 'ubuntu-24.04' }}"
+    timeout-minutes: "${{ github.event_name == 'pull_request' && 15 || 40 }}"
     permissions:
       contents: "read"
       actions: "read"
@@ -103,14 +103,18 @@ jobs:
         id: "scope"
         run: 'node scripts/ci/host-scope.mjs --scope linux --github-output "$GITHUB_OUTPUT"'
       -
+        name: "Plan the complete Linux host qualification"
+        if: "github.event_name == 'pull_request' && steps.scope.outputs.required == 'true'"
+        run: 'node --input-type=module -e "$LINUX_COMMAND_PLANNER" >/dev/null'
+      -
         name: "Acquire the exact canonical CI candidates"
-        if: "steps.scope.outputs.required == 'true'"
+        if: "github.event_name != 'pull_request' && steps.scope.outputs.required == 'true'"
         env:
           GH_TOKEN: "${{ github.token }}"
         run: "node scripts/ci/candidate-transfer.mjs acquire \"$RUNNER_TEMP/linux-host-artifacts\" --source \"$GITHUB_SHA\" --producer-timeout-seconds 1800 --timeout-seconds 300"
       -
         name: "Retain exact linux host artifacts"
-        if: "steps.scope.outputs.required == 'true'"
+        if: "github.event_name != 'pull_request' && steps.scope.outputs.required == 'true'"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
           name: "linux-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
@@ -122,7 +126,11 @@ jobs:
     needs: "prepare"
     if: "${{ needs.prepare.outputs.required == 'true' }}"
     runs-on: "ubuntu-24.04"
-    timeout-minutes: "${{ matrix.suite == 'examples' && 90 || matrix.suite == 'installed-evidence' && inputs.include_startup_profile && 60 || 20 }}"
+    # Allow the producer wait without consuming the prior Linux job allowance.
+    timeout-minutes: "${{ matrix.suite == 'examples' && (github.event_name == 'pull_request' && 125 || 90) || matrix.suite == 'installed-evidence' && inputs.include_startup_profile && 60 || github.event_name == 'pull_request' && 55 || 20 }}"
+    permissions:
+      contents: "read"
+      actions: "read"
     strategy:
       fail-fast: false
       matrix:
@@ -158,6 +166,15 @@ jobs:
           JIG_CI_BUN: "${{ steps.setup-bun.outputs.bun-path }}"
         run: "printf 'JIG_CI_BUN=%s\\n' \"$JIG_CI_BUN\" >> \"$GITHUB_ENV\""
       -
+        name: "Acquire the original canonical CI inputs for PR qualification"
+        if: "github.event_name == 'pull_request'"
+        timeout-minutes: 35
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: >-
+          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/linux-host-artifacts"
+          --source "$GITHUB_SHA" --producer-timeout-seconds 1800 --timeout-seconds 300
+      -
         name: "Provision and preflight the ephemeral host"
         id: "host"
         run: |
@@ -176,6 +193,7 @@ jobs:
         run: "just --justfile packages/jig/justfile build"
       -
         name: "Download the frozen archives"
+        if: "github.event_name != 'pull_request'"
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
           name: "linux-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
@@ -422,6 +440,9 @@ jobs:
       - "host-suite"
     runs-on: "ubuntu-24.04"
     timeout-minutes: 5
+    permissions:
+      contents: "read"
+      actions: "read"
     steps:
       -
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
@@ -433,7 +454,15 @@ jobs:
         with:
           node-version: "24"
       -
-        if: "${{ needs.prepare.outputs.required == 'true' && needs.host-suite.result == 'success' }}"
+        name: "Acquire the original PR canonical proof for reconciliation"
+        if: "${{ github.event_name == 'pull_request' && needs.prepare.outputs.required == 'true' && needs.host-suite.result == 'success' }}"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: >-
+          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/linux-host-artifacts"
+          --source "$GITHUB_SHA" --timeout-seconds 90
+      -
+        if: "${{ github.event_name != 'pull_request' && needs.prepare.outputs.required == 'true' && needs.host-suite.result == 'success' }}"
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
           name: "linux-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"

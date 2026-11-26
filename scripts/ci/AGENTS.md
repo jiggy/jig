@@ -153,8 +153,8 @@ preparation never becomes a consumer requirement.
 
   The required-check report measures time from the first workflow creation to
   successful CI, Linux and Mac checks. The full-qualification cohort requires
-  observed candidate acquisition in Linux and a frozen PR plan or historical
-  candidate acquisition in Mac. Consolidated preparation jobs distinguish
+  observed planning or candidate acquisition in each host workflow.
+  Consolidated preparation jobs distinguish
   preparation from scope-only execution using observed steps.
   Historical samples use the separate scope and acquisition job observations.
   Omitted and unverified scope counts remain visible.
@@ -246,8 +246,8 @@ They consume frozen package exports with tracked test helpers and installed
 
   Producer readiness has one absolute deadline, including job queues.
   Missing, queued or running jobs poll every 30 seconds. Bounded PR producer
-  waits poll every 10 seconds for the first minute. Mac preparation requests
-  native workers as soon as the canonical build passes.
+  waits poll every 10 seconds for the first minute. PR Linux and Mac request
+  native runners after planning while the canonical build completes.
 
   Failed, skipped, duplicate, stale or completed-but-missing proof refuses
   immediately. Strict hosted Mac runs also require
@@ -259,6 +259,10 @@ They consume frozen package exports with tracked test helpers and installed
   acquisition. Transfer retains its separate 300-second Linux and Mac PR or
   600-second strict Mac maximum and 10-second polling. Other callers retain their existing
   bounds without producer waiting. Runner assignment grants no test evidence.
+
+  Linux PR workers acquire the original canonical bundle before provisioning.
+  The final gate independently verifies that producer and compares the
+  original archive metadata against all current-attempt worker receipts.
 
 - `python-ci-profiles.mjs` assigns the complete installed Python profile
   inventory. Full PRs move the macOS 15 profile to the first native Mac shard.

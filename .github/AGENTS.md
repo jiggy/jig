@@ -323,12 +323,17 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   retain explicit lowercase `jig-` paths and automatic `/Volumes/Jig-` volume
   names, plus native helpers including the trusted Codex preference observer.
   These are observations, not process, mount or filesystem cleanup authority.
-- Determine Linux scope and acquire the original canonical CI bundle in one
-  preparation job. Run the complete Linux suite on separately provisioned
-  hosts. Every shard rechecks the frozen archive hashes and performs zero-residue
-  verification. The `affected-linux` gate revalidates scope, verifies every
-  current-attempt shard and retains the observed and qualification receipts.
-  A skipped, cancelled or failed required shard prevents the gate from succeeding.
+- PR Linux preparation determines scope and validates the source command plan
+  on `ubuntu-slim`. The native jobs request separately provisioned hosts before
+  the canonical build finishes. Each PR worker acquires the exact CI bundle
+  before provisioning and has a separate 35-minute acquisition allowance.
+  Other events acquire and retain the original bundle in preparation.
+
+  Every shard rechecks archive hashes and verifies zero residue. The
+  `affected-linux` gate independently acquires the original CI bundle for
+  PRs and verifies matching frozen bytes across every current-attempt shard.
+  The gate revalidates scope and retains observed and qualification receipts.
+  A skipped, cancelled or failed required shard prevents a pass.
 - Linux's `examples` shard runs every original example through installation,
   public review and its authored default invocation. It uses unchanged candidate
   packages, a digest-pinned genuine Codex client and a local HTTPS model peer.

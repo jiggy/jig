@@ -1062,20 +1062,6 @@ test('either failed prerequisite refuses while the other producer job is pending
   })
 })
 
-test('Linux acquisition separates producer readiness from transfer within its outer job bound', async () => {
-  const workflow = await readFile(
-    new URL('../../.github/workflows/linux-host-conformance.yml', import.meta.url),
-    'utf8',
-  )
-  const acquisition = workflow.slice(
-    workflow.indexOf('  prepare:\n'),
-    workflow.indexOf('  host-suite:\n'),
-  )
-  assert.match(acquisition, /timeout-minutes: 40/)
-  assert.match(acquisition, /--producer-timeout-seconds 1800 --timeout-seconds 300/)
-  assert.doesNotMatch(acquisition, /--after-quick/)
-})
-
 for (const producerTimeoutSeconds of [0, 1800]) {
   test(`PR native acquisition retains the original immutable producer with a ${producerTimeoutSeconds}-second readiness wait`, async () => {
     const ci = run(100, 'pull_request', { head_sha: prHead, head_branch: 'feature' })

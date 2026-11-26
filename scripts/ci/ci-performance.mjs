@@ -16,12 +16,14 @@ const PR_GATE_JOBS = {
   [PERFORMANCE_WORKFLOWS[1]]: {
     gate: 'affected-linux',
     scope: 'Determine linux host scope',
-    inputs: 'Acquire canonical linux host artifacts',
+    inputs: ['Prepare Linux inputs', 'Acquire canonical linux host artifacts'],
+    plan: 'Plan the complete Linux host qualification',
   },
   [PERFORMANCE_WORKFLOWS[2]]: {
     gate: 'affected-macos',
     scope: 'Determine macos host scope',
-    inputs: 'Prepare Mac inputs',
+    inputs: ['Prepare Mac inputs'],
+    plan: 'Freeze the complete source-bound useful-shard plan',
   },
 }
 const MAX_RUNS = 1000
@@ -145,7 +147,7 @@ function summarizePrEnvelopes(envelopes, elapsedField = 'threeWorkflowEnvelopeSe
   }
 }
 
-function combinedPreparationScope(job) {
+function combinedPreparationScope(job, planName) {
   const scope = job.steps?.find(
     ({ name }) => name === 'Determine whether complete host qualification is required',
   )
@@ -154,11 +156,9 @@ function combinedPreparationScope(job) {
   )
   if (scope?.conclusion !== 'success' || !acquisition) return 'unverified'
   if (acquisition.conclusion === 'skipped') {
-    const freeze = job.steps.find(
-      ({ name }) => name === 'Freeze the complete source-bound useful-shard plan',
-    )
-    if (freeze?.conclusion === 'success') return 'full'
-    if (freeze && freeze.conclusion !== 'skipped') return 'unverified'
+    const plan = job.steps.find(({ name }) => name === planName)
+    if (plan?.conclusion === 'success') return 'full'
+    if (plan && plan.conclusion !== 'skipped') return 'unverified'
     return job.conclusion === 'success' ? 'omitted' : 'unverified'
   }
   return acquisition.started_at ? 'full' : 'unverified'
@@ -177,7 +177,7 @@ function observePrGate(workflow, latestJobs) {
   const { gate, scope, inputs } = PR_GATE_JOBS[workflow]
   const required = latestJobs.get(gate)
   const scopeJob = latestJobs.get(scope)
-  const inputJob = latestJobs.get(inputs)
+  const inputJob = inputs?.map((name) => latestJobs.get(name)).find(Boolean)
   return {
     gate:
       required && !required.carriedExecution
@@ -257,6 +257,7 @@ export function analyzeCiPerformance(snapshot) {
     )
       throw new Error('Ambiguous, foreign or incomplete run inventory')
     runIds.add(run.id)
+    const gateJobs = PR_GATE_JOBS[run.path]
     const allJobs = []
     const executionOrigins = []
     let latest
@@ -346,8 +347,8 @@ export function analyzeCiPerformance(snapshot) {
           executionSeconds,
           unassignedSeconds,
           carriedExecution,
-          ...(job.name === PR_GATE_JOBS[run.path].inputs
-            ? { hostPreparationScope: combinedPreparationScope(job) }
+          ...(gateJobs.inputs?.includes(job.name)
+            ? { hostPreparationScope: combinedPreparationScope(job, gateJobs.plan) }
             : {}),
           failedSteps: Array.isArray(job.steps)
             ? job.steps.filter((step) => step.conclusion === 'failure').map((step) => step.name)
@@ -748,7 +749,7 @@ export function performanceMarkdown(report) {
     '### Required checks on full-qualification PRs',
     '',
     'Elapsed time runs from the earliest workflow creation until the CI, Linux and macOS gates pass. It includes runner waits and retains the original start on retries.',
-    'Full host scope requires observed Linux candidate acquisition and a frozen PR Mac plan or historical Mac acquisition. Event heads still require a separate check for tested merge identity.',
+    'Full host scope requires observed preparation for both Linux and Mac. A PR preparation plan can establish full scope before candidate acquisition. Event heads still require a separate check for tested merge identity.',
     `Observed full-qualification groups: ${gates.groupCount}. Omitted host scope: ${gates.omittedHostScope}. Unverified host scope: ${gates.unverifiedHostScope}.`,
     '',
     '| Gate outcomes | Passed | Failed | Cancelled | Incomplete | Retried groups | Retried passes |',

@@ -205,6 +205,57 @@ test('release readiness requires every canonical Linux shard including example e
   ])
 })
 
+test('Linux PR runner requests precede candidate acquisition and retain exact archive reconciliation', async () => {
+  const workflow = parse(await readFile(new URL('linux-host-conformance.yml', workflows), 'utf8'))
+  const prepare = workflow.jobs.prepare
+  const workers = workflow.jobs['host-suite']
+  const gate = workflow.jobs['affected-linux']
+  const pr = "github.event_name == 'pull_request'"
+  const strict = "github.event_name != 'pull_request'"
+  const required = "steps.scope.outputs.required == 'true'"
+  const ready = "needs.prepare.outputs.required == 'true' && needs.host-suite.result == 'success'"
+  const transfer = /--source "\$GITHUB_SHA" --producer-timeout-seconds 1800 --timeout-seconds 300/
+  assert.equal(prepare['runs-on'], `\${{ ${pr} && 'ubuntu-slim' || 'ubuntu-24.04' }}`)
+  assert.equal(prepare['timeout-minutes'], `\${{ ${pr} && 15 || 40 }}`)
+  const plan = prepare.steps.find((step) => step.name === 'Plan the complete Linux host qualification')
+  assert.equal(plan.if, `${pr} && ${required}`)
+  assert.match(plan.run, /\$LINUX_COMMAND_PLANNER/)
+  const strictInput = prepare.steps.find((step) => step.run?.includes('candidate-transfer.mjs acquire'))
+  assert.equal(strictInput.if, `${strict} && ${required}`)
+  assert.match(strictInput.run, transfer)
+  assert.doesNotMatch(strictInput.run, /--after-quick/)
+
+  assert.equal(workers.needs, 'prepare')
+  assert.equal(workers['runs-on'], 'ubuntu-24.04')
+  assert.equal(workers.permissions.actions, 'read')
+  const prInputIndex = workers.steps.findIndex((step) =>
+    step.run?.includes('candidate-transfer.mjs acquire'),
+  )
+  const provisionIndex = workers.steps.findIndex((step) => step.id === 'host')
+  assert.ok(prInputIndex >= 0 && prInputIndex < provisionIndex)
+  const prInput = workers.steps[prInputIndex]
+  assert.equal(prInput.if, pr)
+  assert.equal(prInput['timeout-minutes'], 35)
+  assert.match(prInput.run, transfer)
+  assert.doesNotMatch(prInput.run, /--after-quick/)
+  const strictDownload = workers.steps.find((step) => step.name === 'Download the frozen archives')
+  assert.equal(strictDownload.if, strict)
+
+  const reconciliation = gate.steps.find((step) =>
+    step.run?.includes('candidate-transfer.mjs acquire'),
+  )
+  assert.equal(reconciliation.if, `\${{ ${pr} && ${ready} }}`)
+  assert.match(reconciliation.run, /--source "\$GITHUB_SHA" --timeout-seconds 90/)
+  const canonicalDownload = gate.steps.find((step) =>
+    step.with?.name?.startsWith('linux-host-artifacts-'),
+  )
+  assert.equal(canonicalDownload.if, `\${{ ${strict} && ${ready} }}`)
+  const proof = gate.steps.find((step) => step.id === 'qualification')
+  assert.match(proof.run, /retained\.read_bytes\(\) != canonical\.read_bytes\(\)/)
+  assert.match(proof.run, /manifest\.get\("commands"\) != expected_commands\[suite\]/)
+  assert.match(proof.run, /--artifacts --residue/)
+})
+
 test('Linux memory rejection diagnostics cross acquisition into existing retained evidence', async () => {
   const workflow = parse(await readFile(new URL('linux-host-conformance.yml', workflows), 'utf8'))
   const steps = workflow.jobs['host-suite'].steps
