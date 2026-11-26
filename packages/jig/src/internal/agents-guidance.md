@@ -60,6 +60,10 @@ These links locate module rules. All selected domain requirements still apply.
   Reject native destinations under sandbox-reserved paths during selection with
   the closed location diagnostic.
 
+  Review and dispatch compose the same Bun and
+  Agent file projection. Reject different sources assigned to one destination
+  and deduplicate identical source and destination pairs.
+
   Share sealing's path predicate. Preflight neither mounts files nor replaces
   launch-time validation. Cache selected configurations by client, authProfile,
   model and reasoning effort. Model and effort are independent of authentication.

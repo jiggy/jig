@@ -304,6 +304,10 @@ them outside reserved sandbox paths (`/dev`, `/jig`, `/proc`, `/run`, `/sys`,
 executable, adapter or supporting file. Select an operator-owned installation
 and review again.
 
+Review also rejects a client whose runtime needs a different file at a location
+Jig already uses, such as the Linux executable loader. Select a compatible
+client installation and its supported sandbox helper, then review again.
+
 Discovery skips relative PATH entries, the project tree, and ancestor
 `node_modules` directories, including symlink routes through them. Shell aliases
 are not visible to Jig. The adapters require supported native installations. A

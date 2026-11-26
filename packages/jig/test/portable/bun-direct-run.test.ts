@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { createPrivateAcpAgentProvider } from '../../src/internal/acp-agent-provider.js'
+import {
+  createPrivateAcpAgentProvider,
+  privateAcpAgentRuntime,
+  privateAcpExecutionProjections,
+} from '../../src/internal/acp-agent-provider.js'
 import {
   inspectPrivateBunDirectIdentity,
   requirePrivateBunDirectRecipe,
@@ -131,6 +135,66 @@ describe('private Bun direct identity inspection', () => {
       code: 'PROJECT_ACP_UNAVAILABLE',
       path: `${input.request.packagePath}/FLOW.ts`,
     })
+  })
+
+  test('review refuses conflicting ACP file projections and admits compatible selections', async () => {
+    const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation)
+    const shared = installedSupport.runtimeMounts.find(
+      ({ destination }) =>
+        destination ===
+        (installedSupport.platform === 'linux-x64-glibc'
+          ? '/lib64/ld-linux-x86-64.so.2'
+          : '/jig-runtime/bun'),
+    )
+    if (shared === undefined) throw new Error('Expected the installed runtime projection')
+    const provider = (mount: typeof shared) =>
+      createPrivateAcpAgentProvider({
+        client: 'openai-codex',
+        model: 'test-model',
+        credentialMode: 'subscription',
+        adapterPath: installedSupport.installedCliPath,
+        sandboxAdapterPath: '/agent/adapter.js',
+        executablePath: installedSupport.executablePath,
+        sandboxExecutablePath: '/agent/client',
+        environment: {},
+        readOnlyMounts: [{ ...mount, role: 'support' }],
+      })
+    const inspect = (selected: Awaited<ReturnType<typeof provider>>) =>
+      inspectPrivateBunDirectIdentity(
+        {
+          request: activationRequest(true),
+          installedSupport,
+          acpResources: openPrivateAcpResources(
+            installedSupport,
+            {},
+            process.cwd(),
+            async () => selected,
+          ),
+        },
+        SUPPORT,
+      )
+    const conflicting = await provider({ ...shared, source: installedSupport.installedCliPath })
+    await expect(inspect(conflicting)).rejects.toMatchObject({
+      kind: 'unavailable',
+      code: 'PROJECT_ACP_CODEX_MOUNT_CONFLICT',
+      path: 'flows/example/FLOW.ts',
+      pointer: '/slots/session',
+    })
+    const identical = await provider(shared)
+    const alternate = await provider({
+      source: installedSupport.installedCliPath,
+      destination: '/agent/support.js',
+    })
+    for (const selected of [identical, alternate]) {
+      expect((await inspect(selected)).digest).toMatch(/^sha256:/)
+      const projections = privateAcpExecutionProjections(
+        installedSupport.runtimeMounts,
+        privateAcpAgentRuntime(selected),
+      )
+      expect(projections.filter(({ destination }) => destination === shared.destination)).toEqual([
+        { ...shared, kind: 'file' },
+      ])
+    }
   })
 
   test('binds root, aliases and preparation inputs independently of retained package bytes', async () => {
