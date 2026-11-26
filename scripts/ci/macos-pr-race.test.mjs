@@ -13,6 +13,7 @@ import {
   decisionName,
   MACOS_PR_SELECTOR_RUNNER,
   NOOP_STEP_NAMES,
+  observeMacHandoff,
   offerName,
   readMacDecisionArtifact,
   readMacOfferArtifact,
@@ -51,6 +52,30 @@ const ready = {
 const now = Date.parse('2026-11-17T12:10:00Z')
 const stamp = (seconds) =>
   `2026-11-17T12:${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}Z`
+test('Mac handoff probes use only the artifact list until matching evidence or a full refresh is due', async () => {
+  let clock = now
+  let names = ['unrelated-artifact']
+  let lists = 0,
+    snapshots = 0
+  const observe = observeMacHandoff({
+    now: () => clock,
+    names: new Set(['expected-decision']),
+    readArtifacts: async () => {
+      lists++
+      return names.map((name) => ({ name }))
+    },
+    snapshot: async () => ++snapshots,
+  })
+  await assert.rejects(observe(), { code: 'MAC_RACE_PENDING' })
+  assert.equal(snapshots, 0)
+  names = ['expected-decision']
+  assert.equal(await observe(), 1)
+  names = []
+  clock += 120_000
+  assert.equal(await observe(), 2)
+  assert.equal(lists, 2)
+})
+
 function step(name, number, start = 70, end = 80, conclusion = 'success') {
   return {
     name,

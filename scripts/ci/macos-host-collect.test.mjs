@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { digest } from './candidate-provenance.mjs'
+import { githubClient } from './candidate-transfer.mjs'
 import {
   latestMacDecisionArtifacts,
   MACOS_WORKFLOW,
@@ -14,6 +15,7 @@ import {
   requireMacDecisionBinding,
   requireMacInputBinding,
   selectMacShardArtifacts,
+  stageMacShardEvidence,
   waitForMacPrWinners,
   waitForMacReleaseWorkers,
 } from './macos-host-collect.mjs'
@@ -34,6 +36,74 @@ const run = {
   event: 'pull_request',
   created_at: '2026-11-17T00:00:00Z',
 }
+
+test('staged Mac evidence overlaps four real ZIP transfers and joins them before use', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-mac-evidence-downloads-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const archive = join(directory, 'evidence.zip')
+  const downloads = join(directory, 'downloads')
+  await mkdir(downloads)
+  execFileSync('python3', [
+    '-c',
+    'from zipfile import ZipFile; import sys; z = ZipFile(sys.argv[1], "w"); z.writestr("report", "proof"); z.close()',
+    archive,
+  ])
+  const archiveDigest = `sha256:${digest(await readFile(archive))}`
+  await writeFile(
+    join(directory, 'gh'),
+    `#!/bin/sh
+set -eu
+root="$(dirname "$0")"
+id="$(basename "$(dirname "$2")")"
+printf 'start %s\\n' "$id" >> "$root/events"
+if [ "$id" -le 4 ]; then
+  touch "$root/started-$id"
+  count=0
+  until [ -f "$root/started-1" ] && [ -f "$root/started-2" ] && [ -f "$root/started-3" ] && [ -f "$root/started-4" ]; do
+    count=$((count + 1))
+    [ "$count" -le 50 ] || exit 5
+    sleep 0.05
+  done
+fi
+cat "$root/evidence.zip"
+printf 'finish %s\\n' "$id" >> "$root/events"
+`,
+    { mode: 0o700 },
+  )
+  const originalPath = process.env.PATH
+  process.env.PATH = `${directory}${delimiter}${originalPath}`
+  try {
+    const stage = stageMacShardEvidence({
+      client: githubClient('jiggy/jig'),
+      directory: downloads,
+    })
+    const first = stage.download({ id: 1, digest: archiveDigest })
+    assert.equal(stage.download({ id: 1, digest: archiveDigest }), first)
+    const staged = [first]
+    for (let id = 2; id <= 6; id++) staged.push(stage.download({ id, digest: archiveDigest }))
+    const paths = await Promise.all(staged)
+    assert.throws(
+      () => stage.download({ id: 1, digest: `sha256:${'a'.repeat(64)}` }),
+      /digest changed/,
+    )
+    await assert.rejects(
+      stage.download({ id: 7, digest: `sha256:${'a'.repeat(64)}` }),
+      /transport digest mismatch/,
+    )
+    await stage.drain()
+    for (const path of paths) assert.equal(await readFile(join(path, 'report'), 'utf8'), 'proof')
+    const events = (await readFile(join(directory, 'events'), 'utf8')).trim().split('\n')
+    assert.deepEqual(events.slice(0, 4).sort(), ['start 1', 'start 2', 'start 3', 'start 4'])
+    let active = 0
+    for (const event of events) {
+      active += event.startsWith('start ') ? 1 : -1
+      assert.ok(active >= 0 && active <= 4)
+    }
+    assert.equal(active, 0)
+  } finally {
+    process.env.PATH = originalPath
+  }
+})
 
 test('release collector retries transient jobs API errors before validating the metadata', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'jig-mac-collector-api-'))
@@ -421,6 +491,54 @@ test('a timely Mac decision gives its late-assigned worker bounded time to finis
     else await assert.rejects(result, /observation deadline expired/)
     assert.equal(clock, expected)
   }
+})
+
+test('Mac collection stages finished winners and refreshes artifacts after a jobs-only completion', async () => {
+  const first = decisionRow(0)
+  const second = decisionRow(1)
+  let clock = now
+  let snapshots = 0,
+    jobsReads = 0
+  const bothComplete = [first.job, second.job, first.selectorJob, second.selectorJob]
+  const progress = []
+  const completed = await waitForMacPrWinners({
+    context: decisionContext,
+    shards: [0, 1],
+    deadline: now + 5 * 60_000,
+    now: () => clock,
+    observe: async () => {
+      snapshots++
+      return {
+        run,
+        artifacts: [first.artifact, second.artifact],
+        jobs:
+          snapshots === 1
+            ? [
+                first.job,
+                { ...second.job, status: 'in_progress', conclusion: null },
+                first.selectorJob,
+                second.selectorJob,
+              ]
+            : bothComplete,
+        snapshot: snapshots,
+      }
+    },
+    readJobs: async () => {
+      jobsReads++
+      return bothComplete
+    },
+    readDecision: async ({ id }) => (id === first.artifact.id ? first : second),
+    onProgress: (_state, decisions) =>
+      progress.push(decisions.filter((row) => row.job.status === 'completed').map((row) => row.job.id)),
+    sleep: async (ms) => {
+      clock += ms
+    },
+    report: () => {},
+  })
+  assert.deepEqual(progress, [[first.job.id], [first.job.id, second.job.id]])
+  assert.equal(jobsReads, 1)
+  assert.equal(completed.snapshot, 2)
+  assert.equal(clock, now + 30_000)
 })
 
 test('PR collector waits for a queued retry of a failed winner and uses its new decision', async () => {

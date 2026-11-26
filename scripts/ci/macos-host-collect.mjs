@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { constants, readFileSync } from 'node:fs'
-import { appendFile, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
@@ -16,6 +16,7 @@ import {
 } from './candidate-transfer.mjs'
 import { readGitHubApiJson, retryGitHubRead } from './github-read.mjs'
 import {
+  MACOS_JOB_POLL_MS,
   MACOS_PR_ALLOCATION_MINUTES,
   macPrWorkerObservationDeadline,
   readMacDecisionArtifact,
@@ -36,6 +37,8 @@ export { MACOS_COMPATIBILITY_MAJORS, macJobName } from './macos-qualification.mj
 
 export const MACOS_WORKFLOW = '.github/workflows/macos-hosted-candidates.yml'
 const maximumRunAgeMs = 24 * 60 * 60 * 1000
+const fullObservationInterval = 60_000
+const evidenceDownloadConcurrency = 4
 
 export function macExecutionTiming(job, major) {
   const times = ['created_at', 'started_at', 'completed_at'].map((key) => Date.parse(job[key]))
@@ -100,6 +103,42 @@ export function macMatrix(planFile, { pullRequest = false } = {}) {
   }
 }
 
+function findMacShardArtifact({ run, artifacts, source, major, shard, job, now, awaiting = false }) {
+  const name = `macos-prerequisites-${major}-${shard}-${source}-r${run.id}-a${job.run_attempt}`
+  const matches = artifacts.filter((artifact) => artifact.name === name)
+  if (awaiting && matches.length !== 1) return
+  if (matches.length !== 1) throw new Error('Missing or ambiguous Mac shard artifact')
+  return verifyArtifactMetadata(matches[0], { name, runId: run.id, headSha: run.head_sha, now })
+}
+
+export function stageMacShardEvidence({ client, directory, extract }) {
+  const lanes = Array.from({ length: evidenceDownloadConcurrency }, () => Promise.resolve())
+  const downloads = new Map()
+  let next = 0
+  return {
+    download(artifact) {
+      const previous = downloads.get(artifact.id)
+      if (previous) {
+        if (previous.digest !== artifact.digest)
+          throw new Error('Immutable Mac shard artifact digest changed')
+        return previous.promise
+      }
+      const destination = join(directory, String(artifact.id))
+      const lane = next++ % lanes.length
+      const promise = lanes[lane]
+        .then(() => {
+          console.log(`Downloading Mac shard evidence artifact ${artifact.id}`)
+          return downloadArtifactDirectory(client, artifact, destination, { extract })
+        })
+        .then(() => destination)
+      lanes[lane] = promise.catch(() => {})
+      downloads.set(artifact.id, { digest: artifact.digest, promise })
+      return promise
+    },
+    drain: () => Promise.all(lanes),
+  }
+}
+
 export function selectMacShardArtifacts({
   run,
   jobs,
@@ -128,15 +167,7 @@ export function selectMacShardArtifacts({
       macExecutionTiming(job, major)
       if (run.event !== 'pull_request' && job.run_attempt !== run.run_attempt)
         throw new Error('Main and manual Mac qualification require fresh current-attempt execution')
-      const name = `macos-prerequisites-${major}-${shard}-${source}-r${run.id}-a${job.run_attempt}`
-      const matches = artifacts.filter((artifact) => artifact.name === name)
-      if (matches.length !== 1) throw new Error('Missing or ambiguous Mac shard artifact')
-      const artifact = verifyArtifactMetadata(matches[0], {
-        name,
-        runId: run.id,
-        headSha: run.head_sha,
-        now,
-      })
+      const artifact = findMacShardArtifact({ run, artifacts, source, major, shard, job, now })
       return {
         major,
         shard,
@@ -181,6 +212,8 @@ export function latestMacDecisionArtifacts(artifacts, context, shards) {
 export async function waitForMacPrWinners({
   observe,
   readDecision,
+  readJobs,
+  onProgress,
   context,
   shards,
   deadline = Date.now() + MACOS_PR_ALLOCATION_MINUTES * 60_000,
@@ -189,8 +222,17 @@ export async function waitForMacPrWinners({
   report = console.log,
 }) {
   const cache = new Map()
+  let state
+  let refreshAt = 0
+  let decisionsKnown = false
   for (;;) {
-    const state = await observe()
+    const fullObservation = !readJobs || !decisionsKnown || now() >= refreshAt
+    if (fullObservation) {
+      state = await observe()
+      refreshAt = now() + 2 * fullObservationInterval
+    } else {
+      state = { ...state, jobs: await readJobs(state.run) }
+    }
     let observationDeadline = deadline
     try {
       const decisions = []
@@ -231,14 +273,25 @@ export async function waitForMacPrWinners({
         )
       if (now() >= observationDeadline)
         throw new Error('Mac PR winner observation deadline expired')
+      decisionsKnown = decisions.length === shards.length
+      if (fullObservation) onProgress?.(state, decisions)
       const selected = selectMacPrDecisions({ decisions, jobs: state.jobs, context, shards })
+      if (!fullObservation) {
+        refreshAt = 0
+        continue
+      }
       return { ...state, decisions, selected }
     } catch (error) {
+      if (!fullObservation && error.code !== 'MAC_RACE_PENDING') {
+        refreshAt = 0
+        continue
+      }
       if (error.code !== 'MAC_RACE_PENDING') throw error
       report('Awaiting fixed Mac shard winners; unselected queued candidates are not required.')
     }
     if (now() >= observationDeadline) throw new Error('Mac PR winner observation deadline expired')
-    await sleep(Math.min(60_000, observationDeadline - now()))
+    const interval = readJobs && decisionsKnown ? MACOS_JOB_POLL_MS : fullObservationInterval
+    await sleep(Math.min(interval, observationDeadline - now()))
   }
 }
 
@@ -385,39 +438,67 @@ export async function collectMacHost({
     return current
   }
   const deadline = (pr ? collectionStarted : Date.now()) + minutes * 60_000
-  if (pr) {
-    state = await waitForMacPrWinners({
-      context: decisionContext,
-      shards: [...new Set(matrix.include.map(({ shard }) => shard))],
-      observe,
-      deadline,
-      readDecision: (artifact, jobs) =>
-        readMacDecisionArtifact(client, artifact, decisionContext, { jobs }),
+  const stagingDirectory = join(scratch, 'macos-evidence-downloads')
+  await mkdir(stagingDirectory)
+  const staged = stageMacShardEvidence({ client, directory: stagingDirectory, extract })
+  let selected, downloaded
+  try {
+    if (pr) {
+      state = await waitForMacPrWinners({
+        context: decisionContext,
+        shards: [...new Set(matrix.include.map(({ shard }) => shard))],
+        observe,
+        deadline,
+        readJobs: (currentRun) => allRunJobs(client, context.repository, currentRun),
+        readDecision: (artifact, jobs) =>
+          readMacDecisionArtifact(client, artifact, decisionContext, { jobs }),
+        onProgress: (observed, decisions) => {
+          for (const { decision, job } of decisions) {
+            if (
+              job?.status !== 'completed' ||
+              job.conclusion !== 'success' ||
+              job.run_attempt !== run.run_attempt
+            )
+              continue
+            const artifact = findMacShardArtifact({
+              run,
+              artifacts: observed.artifacts,
+              source,
+              major: decision.major,
+              shard: decision.shard,
+              job,
+              awaiting: true,
+            })
+            if (artifact) staged.download(artifact)
+          }
+        },
+      })
+    } else state = await waitForMacReleaseWorkers({ observe, matrix, deadline })
+    selected = selectMacShardArtifacts({
+      run,
+      jobs: state.jobs,
+      artifacts: state.artifacts,
+      source,
+      matrix,
+      ...(pr ? { decisions: state.decisions, decisionContext } : {}),
     })
-    ;({ jobs, artifacts } = state)
-  } else state = await waitForMacReleaseWorkers({ observe, matrix, deadline })
-  ;({ jobs, artifacts } = state)
-  const selected = selectMacShardArtifacts({
-    run,
-    jobs,
-    artifacts,
-    source,
-    matrix,
-    ...(pr ? { decisions: state.decisions, decisionContext } : {}),
-  })
+    downloaded = await Promise.all(selected.map(({ artifact }) => staged.download(artifact)))
+  } finally {
+    await staged.drain()
+  }
   const majors = [...new Set(selected.map((row) => row.major))].sort((a, b) => a - b)
   const evidence = join(scratch, 'macos-evidence')
   await mkdir(evidence)
   const reports = []
   let installedPython
   if (!pr) for (const major of majors) await mkdir(join(evidence, String(major)))
-  for (const row of selected) {
+  for (const [index, row] of selected.entries()) {
     const directory = join(
       evidence,
       ...(pr ? [] : [String(row.major)]),
       `macos-prerequisites-arm64-${row.shard}-${source}`,
     )
-    await downloadArtifactDirectory(client, row.artifact, directory, { extract })
+    await rename(downloaded[index], directory)
     requireMacInputBinding(JSON.parse(await readFile(join(directory, 'INPUT.json'), 'utf8')), {
       source,
       inputArtifactId,
@@ -476,8 +557,10 @@ export async function collectMacHost({
       : {}),
   })
   if (
-    JSON.stringify(checked.map((row) => [row.job.id, row.artifact.id, row.selectorJob?.id])) !==
-    JSON.stringify(selected.map((row) => [row.job.id, row.artifact.id, row.selectorJob?.id]))
+    !isDeepStrictEqual(
+      checked.map((row) => [row.job.id, row.artifact.id, row.artifact.digest, row.selectorJob?.id]),
+      selected.map((row) => [row.job.id, row.artifact.id, row.artifact.digest, row.selectorJob?.id]),
+    )
   )
     throw new Error('Mac execution changed during collection')
   const decisionIdentities = (rows) =>

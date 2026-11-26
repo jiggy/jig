@@ -27,6 +27,8 @@ export const DECISION_UPLOAD_STEP_NAME = 'Publish PR shard decision'
 export const WATCH_STEP_NAME = 'Watch selected PR worker'
 export const MACOS_PR_SELECTOR_RUNNER = 'ubuntu-24.04'
 export const MACOS_PR_ALLOCATION_MINUTES = 40
+export const MACOS_JOB_POLL_MS = 30_000
+const fullObservationInterval = 60_000
 const macPrWorkerMinutes = 25
 const macPrEvidenceObservationMinutes = 2
 export const NOOP_STEP_NAMES = Object.freeze([
@@ -646,8 +648,22 @@ export async function chooseMacOffer(client, context, { jobs, artifacts, now = D
     throw new Error('All current Mac candidates completed without a live readiness offer')
   throw pending('Awaiting a live allocated Mac readiness offer')
 }
-async function poll(operation, deadline, { handoff = false } = {}) {
-  const fastWaits = handoff ? 3 : 0
+export function observeMacHandoff({ readArtifacts, snapshot, names, now = Date.now }) {
+  let refreshAt = now() + 2 * fullObservationInterval
+  return async () => {
+    if (now() < refreshAt && !(await readArtifacts()).some(({ name }) => names.has(name)))
+      throw pending('Awaiting Mac handoff evidence')
+    const state = await snapshot()
+    refreshAt = now() + 2 * fullObservationInterval
+    return state
+  }
+}
+
+async function poll(
+  operation,
+  deadline,
+  { interval = fullObservationInterval, initialInterval = interval } = {},
+) {
   for (let waits = 0; ; waits++) {
     if (Date.now() >= deadline) throw new Error('Mac decision observation deadline expired')
     try {
@@ -657,9 +673,9 @@ async function poll(operation, deadline, { handoff = false } = {}) {
     } catch (error) {
       if (error.code !== 'MAC_RACE_PENDING') throw error
     }
-    const interval = waits < fastWaits ? 15_000 : 60_000
+    const pause = waits < 3 ? initialInterval : interval
     await new Promise((resolve) =>
-      setTimeout(resolve, Math.min(interval, Math.max(1, deadline - Date.now()))),
+      setTimeout(resolve, Math.min(pause, Math.max(1, deadline - Date.now()))),
     )
   }
 }
@@ -697,6 +713,13 @@ async function cli() {
   if (!plan.shards.some((row) => row.index === context.shard))
     throw new Error('Mac role is absent from its frozen plan')
   const client = apiClient(context.repository)
+  const readJobs = (run) => allRunJobs(client, context.repository, run)
+  const readArtifacts = () =>
+    paginated(
+      client,
+      `repos/${context.repository}/actions/runs/${context.runId}/artifacts`,
+      'artifacts',
+    )
   const snapshot = async () => {
     const run = await client.api(`repos/${context.repository}/actions/runs/${context.runId}`)
     validateWorkflowRun(run, github)
@@ -709,14 +732,7 @@ async function cli() {
       age > 86400000
     )
       throw new Error('Mac selection run changed or exceeded its 24-hour session')
-    const [jobs, artifacts] = await Promise.all([
-      allRunJobs(client, context.repository, run),
-      paginated(
-        client,
-        `repos/${context.repository}/actions/runs/${context.runId}/artifacts`,
-        'artifacts',
-      ),
-    ])
+    const [jobs, artifacts] = await Promise.all([readJobs(run), readArtifacts()])
     context = bindMacDecisionPlan({ jobs, artifacts, run, context })
     return { run, jobs, artifacts }
   }
@@ -771,16 +787,22 @@ async function cli() {
     await output(`contend=true\noffer_name=${offerName(ready)}\n`)
     return
   }
+  const decisionArtifactName = decisionName(context)
+  const names = new Set([decisionArtifactName])
+  if (mode === 'select')
+    for (const major of macPrShardMajors(context.shard)) names.add(offerName({ ...context, major }))
+  const observeHandoff = observeMacHandoff({ readArtifacts, snapshot, names })
+  const handoffCadence = { interval: MACOS_JOB_POLL_MS, initialInterval: 5_000 }
   if (mode === 'select') {
     const offer = await poll(
       async () => {
-        state = await snapshot()
-        if (state.artifacts.some((artifact) => artifact.name === decisionName(context)))
+        state = await observeHandoff()
+        if (state.artifacts.some((artifact) => artifact.name === decisionArtifactName))
           throw new Error('This selector attempt already published its decision')
         return chooseMacOffer(client, context, state)
       },
       observationDeadline,
-      { handoff: true },
+      handoffCadence,
     )
     const decision = validateMacDecision(
       {
@@ -798,9 +820,9 @@ async function cli() {
   const row = await poll(
     async () => {
       checkBudget()
-      state = await snapshot()
+      state = await observeHandoff()
       const artifacts = state.artifacts.filter(
-        (artifact) => artifact.name === decisionName(context),
+        (artifact) => artifact.name === decisionArtifactName,
       )
       if (artifacts.length > 1) throw new Error('Ambiguous immutable Mac selector decisions')
       if (!artifacts.length) {
@@ -815,7 +837,7 @@ async function cli() {
       return readMacDecisionArtifact(client, artifacts[0], context, { jobs: state.jobs })
     },
     observationDeadline,
-    { handoff: mode === 'resolve' },
+    handoffCadence,
   )
   if (mode === 'resolve') {
     checkBudget()
@@ -847,6 +869,8 @@ async function cli() {
     throw new Error('Watcher does not own this exact published decision')
   await poll(
     async () => {
+      const observed = macJob(await readJobs(state.run), local, context)
+      if (observed.status !== 'completed') throw pending('Selected Mac worker is still executing')
       state = await snapshot()
       const job = macJob(state.jobs, local, context)
       if (job.status !== 'completed') throw pending('Selected Mac worker is still executing')
@@ -854,6 +878,7 @@ async function cli() {
       return job
     },
     macPrWorkerObservationDeadline(row.job, observationDeadline),
+    { interval: MACOS_JOB_POLL_MS },
   )
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

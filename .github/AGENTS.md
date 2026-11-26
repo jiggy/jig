@@ -475,6 +475,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   The gate reconciles scope and preparation, validates the collector's complete
   observed evidence, and publishes the qualification from the same runner.
+  It can download completed shard reports while other PR workers run.
   Its observed execution check remains mandatory. Optional bounded GitHub diagnostics distinguish missing required coverage from unused candidates after verified PR coverage.
   Native test and cleanup failures remain distinct from allocation failures.
   No spare-worker pool, exact-build matching or external scheduler participates.

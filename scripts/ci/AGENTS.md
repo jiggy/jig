@@ -418,11 +418,15 @@ They consume frozen package exports with tracked test helpers and installed
   A publication timestamp up to five seconds ahead of the runner clock stays pending until the runner catches up. A larger discrepancy fails.
 
   API transport retries allow at most three reads with one-second backoff. Authorization, record, digest and identity failures remain fatal.
-  Offer selection and worker decision resolution start with three waits of 15
-  seconds, then use the ordinary one-minute cadence.
+  Offer selection and decision resolution probe the artifact list after three
+  initial waits of five seconds, then every thirty seconds. Matching metadata
+  triggers a full snapshot and the original identity checks. A full snapshot
+  also refreshes the run, plan and jobs at least every two minutes.
 
   Candidates wait for their role's decision. Failed selected workers cannot inherit another OS's success.
   Selectors watch their chosen worker so failed-job retries include failed roles.
+  Watchers poll the exact job every thirty seconds and recheck the full snapshot
+  before recording its result.
   Selection has its own forty-minute observation window. Once selected, the
   assigned job has its existing twenty-five minutes to execute and the selector
   allows two further minutes for GitHub to report completion.
@@ -464,6 +468,12 @@ They consume frozen package exports with tracked test helpers and installed
 
   It does not wait for unused PR candidates. It retains original worker, selector, decision and evidence identities and verifies each worker's decision copy.
   Decision caching retains immutable bytes only. Current retention and metadata are revalidated.
+
+  The PR gate can fetch completed current-attempt reports while other workers run.
+  At most four archive transfers overlap, staged by immutable artifact ID and
+  digest. Only the final selected executions supply qualification evidence.
+  With verified decisions, the gate polls jobs between full snapshots and
+  always refreshes artifacts and run identity before accepting completion.
 
 - `merge-attempts.mjs` selects the newest authoritative execution of each named
   job without falling back from failures. `merge-retry.mjs` owns PR CI input
@@ -692,6 +702,8 @@ They consume frozen package exports with tracked test helpers and installed
 - `node --test scripts/ci/macos-host-collect.test.mjs` checks complete generated matrices and original-run retry lineage.
   It rejects changed inputs, failed latest executions, missing shards, and stale qualification sessions.
   The collector CLI test verifies recovery from a transient GitHub jobs response before evidence validation.
+  The staged evidence test uses the production transport with real ZIP files.
+  It checks overlap, the four-transfer limit, and archive digest refusal.
 - `node --test scripts/ci/macos-pr-race.test.mjs scripts/ci/macos-qualification.test.mjs` verifies bounded offers and sole-writer decisions, pre-test worker selection, failed-winner refusal, retry no-ops and explicit mixed-major PR scope.
   Real ZIP transports test record digests and exact contents. These portable checks establish no native enforcement or GitHub service atomicity.
 - `node --test scripts/ci/macos-host-profiles.test.mjs` checks behavioral prerequisites, pinned runtimes, unsupported architecture refusal, and bounded evidence. Ordinary input records establish no native qualification.
