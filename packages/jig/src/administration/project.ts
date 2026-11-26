@@ -22,6 +22,7 @@ export type ProjectAdministrationErrorCode =
   | 'PLAN_NOT_FOUND'
   | 'STALE_PLAN'
   | 'PROJECT_BUSY'
+  | 'CLEANUP_UNRESOLVED'
   | 'PROJECT_CLOSED'
   | 'UNAVAILABLE'
   | 'INTERNAL'
@@ -197,6 +198,7 @@ function requireErrorCode(value: unknown): asserts value is ProjectAdministratio
     value !== 'PLAN_NOT_FOUND' &&
     value !== 'STALE_PLAN' &&
     value !== 'PROJECT_BUSY' &&
+    value !== 'CLEANUP_UNRESOLVED' &&
     value !== 'PROJECT_CLOSED' &&
     value !== 'UNAVAILABLE' &&
     value !== 'INTERNAL'

@@ -458,8 +458,9 @@ These links locate module rules. All selected domain requirements still apply.
 
 - A new coordinator may retry an older Run's unconfirmed fence for a bounded
   interval while reacquiring that same durable Run. It never creates another Run
-  or treats pending fencing as a terminal. Exhaustion remains `PROJECT_BUSY`
-  through the project-session boundary instead of becoming an internal error.
+  or treats pending fencing as a terminal. Exhaustion returns
+  `CLEANUP_UNRESOLVED` through the project-session boundary. Lease acquisition
+  and protected-state contention continue to report `PROJECT_BUSY`.
 
 - Dedicated trusted launchers restrict inherited descriptors synchronously
   before each execution hop, including before Bubblewrap. Keep only stdio and

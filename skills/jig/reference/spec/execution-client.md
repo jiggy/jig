@@ -201,8 +201,9 @@ older durable execution, fencing and releasing descendants without launching a
 replacement Run. Acquisition can also reconcile other pending older Runs in the
 same project.
 
-A failed or incomplete fence/cleanup refuses the command and leaves protected evidence intact.
-The caller must preserve the ticket.
+If recovery cannot confirm fencing or cleanup within its allowance, `reconcile`
+returns `CLEANUP_UNRESOLVED` and leaves the protected evidence intact.
+`PROJECT_BUSY` reports contention during acquisition. Preserve the original ticket.
 For prepared or already settled identities, the command only returns their current observation.
 Reconciliation does not reissue cancellation, renew deadlines, re-run a Flow,
 recover remote effects, or turn retained checkpoints into final output.
