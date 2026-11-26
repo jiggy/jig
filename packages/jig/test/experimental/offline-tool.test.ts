@@ -97,7 +97,7 @@ export default defineBinding({package: 'flows/check', slots: {tool: ${JSON.strin
     await mkdir(dirname(source))
     const original = Buffer.alloc(192 * 1024, 0x89)
     await writeFile(source, original)
-    await invoke('review', '--yes')
+    await invoke('review', '--yes', '--allow-authority-changes')
     const run = async (binding: string, dest: string) =>
       JSON.parse(
         await invoke(
