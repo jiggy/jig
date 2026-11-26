@@ -234,6 +234,10 @@ const counter = process.env.COUNTERS + '/' + kind
 const count = fs.existsSync(counter) ? Number(fs.readFileSync(counter)) + 1 : 1
 fs.writeFileSync(counter, String(count))
 const mode = process.env.RESPONSE_MODE
+if (kind === 'jobs' && mode === 'truncated' && count === 1) {
+  console.error('unexpected end of JSON input')
+  process.exit(1)
+}
 if ((kind === 'jobs' && (mode === 'persistent' || (mode === 'recover' && count === 1))) ||
     (kind === 'zip' && mode === 'recover' && count === 1)) {
   console.error('gh: Server Error (HTTP ' + (kind === 'zip' ? '503' : '502') + ')')
@@ -256,7 +260,7 @@ test('merge input CLI retries GitHub reads before validating and binding an arti
   const config = join(root, 'github.json')
   await writeFile(config, JSON.stringify({ ...snapshot, archive }))
   await writeGitHubCommand(root)
-  for (const mode of ['recover', 'persistent', 'corrupt']) {
+  for (const mode of ['recover', 'truncated', 'persistent', 'corrupt']) {
     const counters = join(root, mode)
     await mkdir(counters)
     const destination = join(counters, 'input')
@@ -286,13 +290,13 @@ test('merge input CLI retries GitHub reads before validating and binding an arti
         },
       )
     const reads = async (kind) => Number(await readFile(join(counters, kind), 'utf8'))
-    if (mode === 'recover') {
+    if (mode === 'recover' || mode === 'truncated') {
       input()
       assert.deepEqual(JSON.parse(await readFile(inputs, 'utf8')), [
         inputArtifact(snapshot, 'python-reporting'),
       ])
       assert.equal(await reads('jobs'), 3)
-      assert.equal(await reads('zip'), 2)
+      assert.equal(await reads('zip'), mode === 'recover' ? 2 : 1)
       continue
     }
     assert.throws(input, mode === 'persistent' ? /HTTP 502/ : /transport digest mismatch/)

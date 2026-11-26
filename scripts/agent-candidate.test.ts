@@ -1,7 +1,17 @@
 import { expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -90,6 +100,10 @@ test('the source gate refuses missing prerequisites before starting builds', asy
   try {
     const bin = join(directory, 'bin')
     const calls = join(directory, 'build-calls')
+    const git = spawnSync('git', ['init', '--quiet'], { cwd: directory, encoding: 'utf8' })
+    expect(git.status, git.stderr).toBe(0)
+    await symlink(join(root, 'scripts'), join(directory, 'scripts'), 'dir')
+    await writeFile(join(directory, 'fixture.ts'), 'export {}\n')
     await mkdir(bin)
     await mkdir(join(directory, 'conformance/run-0'), { recursive: true })
     for (const [name, body] of [
@@ -111,13 +125,14 @@ test('the source gate refuses missing prerequisites before starting builds', asy
           PATH: `${bin}:${process.env.PATH}`,
           FLOW_NODE: node,
           PYTHON: join(bin, 'python'),
+          TMPDIR: directory,
           MOCK_BUILD_CALLS: calls,
           MOCK_PYTHON_STATUS: pythonStatus,
           MOCK_DEPENDENCY_STATUS: dependencyStatus,
         },
         encoding: 'utf8',
       })
-      expect(result.status).toBe(expected)
+      expect(result.status, result.stderr).toBe(expected)
       expect(result.stderr).toContain(diagnostic)
       expect(await Bun.file(calls).text()).toBe(expected === 79 ? 'build\n' : '')
     }
