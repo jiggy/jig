@@ -290,6 +290,10 @@ test('Mac acquisition, collection and final gate retain source identity and comp
   )
   assert.ok(diagnostic > publish)
   assert.equal(gate.steps[diagnostic].if, 'always()')
+  assert.equal(
+    gate.steps[diagnostic].env.MACOS_QUALIFICATION_COMPLETE,
+    "${{ job.status == 'success' && steps.qualification.outcome == 'success' }}",
+  )
   assert.equal(gate.steps[diagnostic]['continue-on-error'], true)
   assert.equal(gate.steps[diagnostic]['timeout-minutes'], 1)
   assert.equal(gate.permissions.checks, 'read')

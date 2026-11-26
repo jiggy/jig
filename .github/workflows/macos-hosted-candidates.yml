@@ -442,7 +442,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          MACOS_QUALIFICATION_COMPLETE: ${{ success() && steps.qualification.outcome == 'success' }}
+          MACOS_QUALIFICATION_COMPLETE: ${{ job.status == 'success' && steps.qualification.outcome == 'success' }}
         run: node scripts/ci/host-job-diagnostics.mjs
       - name: Retain host scope and complete qualification reconciliation
         if: always()
