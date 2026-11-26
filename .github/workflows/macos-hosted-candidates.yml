@@ -91,7 +91,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-24.04
     continue-on-error: true
-    timeout-minutes: 45
+    timeout-minutes: 70
     permissions:
       contents: read
       actions: read
@@ -349,7 +349,7 @@ jobs:
       contents: read
       actions: read
       checks: read
-    timeout-minutes: ${{ github.event_name == 'pull_request' && 45 || inputs.include_startup_profile && 180 || 90 }}
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 70 || inputs.include_startup_profile && 180 || 90 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

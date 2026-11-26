@@ -22,6 +22,9 @@ export const SELECT_STEP_NAME = 'Select one ready PR worker'
 export const DECISION_UPLOAD_STEP_NAME = 'Publish PR shard decision'
 export const WATCH_STEP_NAME = 'Watch selected PR worker'
 export const MACOS_PR_SELECTOR_RUNNER = 'ubuntu-24.04'
+export const MACOS_PR_ALLOCATION_MINUTES = 40
+const macPrWorkerMinutes = 25
+const macPrEvidenceObservationMinutes = 2
 export const NOOP_STEP_NAMES = Object.freeze([
   'Publish PR worker readiness',
   'Resolve PR shard decision',
@@ -56,6 +59,15 @@ const decisionFields = [
   'offerArtifactDigest',
 ].sort()
 const pending = (message) => Object.assign(new Error(message), { code: 'MAC_RACE_PENDING' })
+
+export function macPrWorkerObservationDeadline(job, allocationDeadline) {
+  const started = Date.parse(job.started_at)
+  if (!Number.isFinite(started)) throw new Error('Missing selected Mac worker start')
+  return (
+    Math.min(started, allocationDeadline) +
+    (macPrWorkerMinutes + macPrEvidenceObservationMinutes) * 60_000
+  )
+}
 
 function validateContext(context) {
   if (
@@ -731,7 +743,7 @@ async function cli() {
       context,
     )
   }
-  observationDeadline ??= Date.parse(own.started_at) + 40 * 60000
+  observationDeadline ??= Date.parse(own.started_at) + MACOS_PR_ALLOCATION_MINUTES * 60_000
   checkBudget()
   if (own.status !== 'in_progress')
     throw new Error('Mac selection requires its exact active execution')
@@ -827,13 +839,16 @@ async function cli() {
     decisionFields.some((key) => local[key] !== row.decision[key])
   )
     throw new Error('Watcher does not own this exact published decision')
-  await poll(async () => {
-    state = await snapshot()
-    const job = macJob(state.jobs, local, context)
-    if (job.status !== 'completed') throw pending('Selected Mac worker is still executing')
-    if (job.conclusion !== 'success') throw new Error('The selected Mac worker did not succeed')
-    return job
-  }, observationDeadline)
+  await poll(
+    async () => {
+      state = await snapshot()
+      const job = macJob(state.jobs, local, context)
+      if (job.status !== 'completed') throw pending('Selected Mac worker is still executing')
+      if (job.conclusion !== 'success') throw new Error('The selected Mac worker did not succeed')
+      return job
+    },
+    macPrWorkerObservationDeadline(row.job, observationDeadline),
+  )
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {

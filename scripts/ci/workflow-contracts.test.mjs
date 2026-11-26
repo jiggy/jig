@@ -128,6 +128,10 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
   assert.equal(native.strategy['fail-fast'], false)
   assert.equal(native.needs, 'prepare')
   assert.equal(native['runs-on'], '${{ matrix.runner }}')
+  assert.equal(
+    native['timeout-minutes'],
+    '${{ inputs.include_startup_profile && matrix.installed && 65 || 25 }}',
+  )
   assert.equal(workflow.jobs.selectors['runs-on'], MACOS_PR_SELECTOR_RUNNER)
   assert.equal(workflow.jobs.selectors['runs-on'], 'ubuntu-24.04')
   assert.ok(workflow.jobs.selectors['timeout-minutes'] > 15)
@@ -274,6 +278,10 @@ test('Mac acquisition, collection and final gate retain source identity and comp
   assert.deepEqual(MACOS_QUALIFICATION_JOBS, [gate.name])
   assert.equal(gate.needs, 'prepare')
   assert.equal(gate.if, 'always()')
+  assert.equal(
+    gate['timeout-minutes'],
+    "${{ github.event_name == 'pull_request' && 70 || inputs.include_startup_profile && 180 || 90 }}",
+  )
   const collect = gate.steps.findIndex((step) =>
     step.run?.includes('macos-host-collect.mjs collect'),
   )
@@ -313,6 +321,7 @@ test('Mac acquisition, collection and final gate retain source identity and comp
   const selector = workflow.jobs.selectors
   assert.equal(selector.needs, 'prepare')
   assert.match(selector.if, /github.event_name == 'pull_request'/)
+  assert.equal(selector['timeout-minutes'], 70)
   const diagnostic = gate.steps.findIndex(
     (step) => step.run === 'node scripts/ci/host-job-diagnostics.mjs',
   )

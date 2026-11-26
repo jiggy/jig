@@ -13,7 +13,12 @@ import {
   verifyArtifactMetadata,
 } from './candidate-transfer.mjs'
 import { readGitHubApiJson } from './github-read.mjs'
-import { readMacDecisionArtifact, selectMacPrDecisions } from './macos-pr-race.mjs'
+import {
+  MACOS_PR_ALLOCATION_MINUTES,
+  macPrWorkerObservationDeadline,
+  readMacDecisionArtifact,
+  selectMacPrDecisions,
+} from './macos-pr-race.mjs'
 import {
   MACOS_COMPATIBILITY_MAJORS,
   macJobName,
@@ -166,15 +171,15 @@ export async function waitForMacPrWinners({
   readDecision,
   context,
   shards,
-  deadline = Date.now() + 40 * 60_000,
+  deadline = Date.now() + MACOS_PR_ALLOCATION_MINUTES * 60_000,
   now = Date.now,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   report = console.log,
 }) {
   const cache = new Map()
   for (;;) {
-    if (now() >= deadline) throw new Error('Mac PR winner observation deadline expired')
     const state = await observe()
+    let observationDeadline = deadline
     try {
       const decisions = []
       for (const artifact of latestMacDecisionArtifacts(state.artifacts, context, shards)) {
@@ -202,13 +207,26 @@ export async function waitForMacPrWinners({
           job: state.jobs.find(({ id }) => id === row.decision.jobId),
         })
       }
+      // Once all roles have timely, verified decisions, observe each original
+      // worker against its assigned execution clock rather than its queue.
+      if (
+        decisions.length === shards.length &&
+        decisions.every(({ artifact }) => Date.parse(artifact.created_at) <= deadline)
+      )
+        observationDeadline = Math.max(
+          deadline,
+          ...decisions.map(({ job }) => macPrWorkerObservationDeadline(job, deadline)),
+        )
+      if (now() >= observationDeadline)
+        throw new Error('Mac PR winner observation deadline expired')
       const selected = selectMacPrDecisions({ decisions, jobs: state.jobs, context, shards })
       return { ...state, decisions, selected }
     } catch (error) {
       if (error.code !== 'MAC_RACE_PENDING') throw error
       report('Awaiting fixed Mac shard winners; unselected queued candidates are not required.')
     }
-    await sleep(Math.min(60_000, Math.max(1, deadline - now())))
+    if (now() >= observationDeadline) throw new Error('Mac PR winner observation deadline expired')
+    await sleep(Math.min(60_000, observationDeadline - now()))
   }
 }
 
@@ -329,8 +347,8 @@ export async function collectMacHost({
       throw new Error('Mac preparation changed while waiting for workers')
     return current
   }
-  const minutes = Number(env.MACOS_COLLECTION_MINUTES ?? (pr ? 40 : 80))
-  if (pr ? minutes !== 40 : ![80, 170].includes(minutes))
+  const minutes = Number(env.MACOS_COLLECTION_MINUTES ?? (pr ? MACOS_PR_ALLOCATION_MINUTES : 80))
+  if (pr ? minutes !== MACOS_PR_ALLOCATION_MINUTES : ![80, 170].includes(minutes))
     throw new Error('Invalid Mac collection allowance')
   const deadline = Date.now() + minutes * 60_000
   if (pr) {

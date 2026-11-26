@@ -375,6 +375,54 @@ test('PR collector finishes on fixed winners while the other OS is still queued'
   assert.equal(result.jobs.find(({ id }) => id === loser.id).status, 'queued')
 })
 
+test('a timely Mac decision gives its late-assigned worker bounded time to finish', async () => {
+  const minute = 60_000
+  const deadline = now + 40 * minute
+  const started = deadline - 2 * minute
+  const finished = deadline + 10 * minute
+  const at = (time) => new Date(time).toISOString()
+  for (const [published, settles, expected] of [
+    [deadline - minute, true, finished],
+    [deadline - minute, false, started + 27 * minute],
+    [deadline + minute, true, deadline],
+  ]) {
+    const winner = decisionRow(0)
+    winner.artifact.created_at = at(published)
+    let clock = deadline - minute
+    const result = waitForMacPrWinners({
+      context: decisionContext,
+      shards: [0],
+      deadline,
+      now: () => clock,
+      observe: async () => {
+        const done = settles && clock >= finished
+        return {
+          artifacts: clock >= published ? [winner.artifact] : [],
+          jobs: [
+            selector(0),
+            {
+              ...winner.job,
+              started_at: at(started),
+              completed_at: done ? at(finished) : null,
+              status: done ? 'completed' : 'in_progress',
+              conclusion: done ? 'success' : null,
+            },
+          ],
+        }
+      },
+      readDecision: async () => winner,
+      sleep: async (ms) => {
+        clock += ms
+      },
+      report: () => {},
+    })
+    if (settles && published < deadline)
+      assert.equal((await result).selected[0].job.id, winner.job.id)
+    else await assert.rejects(result, /observation deadline expired/)
+    assert.equal(clock, expected)
+  }
+})
+
 test('PR collector waits for a queued retry of a failed winner and uses its new decision', async () => {
   const original = decisionRow(0)
   const replacement = decisionRow(0, 2)

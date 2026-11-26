@@ -409,6 +409,10 @@ They consume frozen package exports with tracked test helpers and installed
 
   Candidates wait for their role's decision. Failed selected workers cannot inherit another OS's success.
   Selectors watch their chosen worker so failed-job retries include failed roles.
+  Selection has its own forty-minute observation window. Once selected, the
+  assigned job has its existing twenty-five minutes to execute and the selector
+  allows two further minutes for GitHub to report completion.
+
   Verified retention no-ops preserve successful reports when only another role needs retrying.
   Rebuilt inputs exclude decisions older than the actual preparation attempt.
   No installation, native owner, mutable fixture or Jig Run is retained.
@@ -432,7 +436,10 @@ They consume frozen package exports with tracked test helpers and installed
   Main and release qualification require fresh current-attempt coverage.
   This retains test evidence only. Jig Runs, installations, owners, and mutable fixtures are never reused.
 
-  The collector has no dependency on the raw candidate matrix. PR observation is bounded to forty minutes with a forty-five-minute job backstop.
+  The collector has no dependency on the raw candidate matrix. PR decisions
+  are due within forty minutes. When every timely decision has been verified,
+  each assigned worker gets its full execution and evidence observation window.
+  The selector and collector jobs have seventy-minute backstops.
   Strict dual-major observation allows eighty minutes, or 170 minutes with optional startup profiling, with ninety- or 180-minute job backstops.
   These bounds cover sequential capacity waves and establish no turnaround guarantee.
 

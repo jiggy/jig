@@ -448,6 +448,12 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Every worker has a 25-minute execution ceiling. Optional startup profiling retains its separate manual allowance.
   Queue time remains visible separately.
 
+  PR selectors allow 40 minutes to select a worker. They then watch the exact
+  assigned job through its own execution allowance and bounded evidence
+  settlement. The collector allows 40 minutes for all shard decisions and
+  observes timely selected workers through that same completion window. The
+  selectors and gate have 70-minute job backstops.
+
   Standard hosted capacity is best effort and supplies no queue guarantee.
 
   The collector validates every shard for every required major. It records original execution IDs, attempts, timestamps, and immutable artifact identities.
