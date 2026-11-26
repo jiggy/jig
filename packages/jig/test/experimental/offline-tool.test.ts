@@ -1,14 +1,204 @@
+import { constants, Database } from 'bun:sqlite'
 import { expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { createAttemptClient } from '../../src/client.js'
 import { flowSdkRuntimeDirectory } from '../fixtures/flow-dependency.js'
 import { installedBunLocation } from '../fixtures/installed-bun-location.js'
 
 const runtime = process.env.JIG_OFFLINE_TOOL_TEST_RUNTIME
 if (process.platform !== 'linux' || !runtime)
   throw Error('Supply a provisioned Nix coreutils installation in JIG_OFFLINE_TOOL_TEST_RUNTIME.')
+
+async function missing<T>(operation: Promise<T>): Promise<T | undefined> {
+  try {
+    return await operation
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    return undefined
+  }
+}
+
+async function processIdentity(pid: number) {
+  const stat = await missing(readFile(`/proc/${pid}/stat`, 'utf8'))
+  if (stat === undefined) return undefined
+  const fields = stat.slice(stat.lastIndexOf(') ') + 2).split(' ')
+  return { state: fields[0], start: fields[19] }
+}
+
+async function waitForTool(scope: string, runtime: string) {
+  const deadline = performance.now() + 25_000
+  while (performance.now() < deadline) {
+    for (const name of (await readdir(scope)).filter((item) => item.startsWith('jig-run-'))) {
+      const group = join(scope, name)
+      const tasks = await missing(readFile(join(group, 'cgroup.procs'), 'utf8'))
+      if (!tasks?.trim()) continue
+      const observed = await Promise.all(
+        tasks
+          .trim()
+          .split('\n')
+          .map(async (value) => {
+            const pid = Number(value)
+            const command = await missing(readFile(`/proc/${pid}/cmdline`, 'utf8'))
+            const executable = command?.split('\0')[0]
+            return { pid, executable, identity: await processIdentity(pid) }
+          }),
+      )
+      const tools = observed.filter(
+        ({ executable, identity }) =>
+          identity !== undefined &&
+          [`${runtime}/bin/timeout`, `${runtime}/bin/sleep`].includes(executable ?? ''),
+      )
+      if (new Set(tools.map(({ executable }) => executable)).size === 2) return { group, tools }
+    }
+    await Bun.sleep(25)
+  }
+  throw new Error('The timeout tool and its sleep child were not observed in the same cgroup')
+}
+
+async function verifyToolCleanup(scope: string, active: Awaited<ReturnType<typeof waitForTool>>) {
+  const deadline = performance.now() + 5_000
+  while (performance.now() < deadline) {
+    const groups = (await readdir(scope)).filter((name) => name.startsWith('jig-run-'))
+    const original = await missing(readFile(join(active.group, 'cgroup.events'), 'utf8'))
+    const live = await Promise.all(
+      active.tools.map(async ({ pid, identity }) => {
+        const current = await processIdentity(pid)
+        return current?.start === identity?.start && current?.state !== 'Z'
+      }),
+    )
+    if (!groups.length && original === undefined && !live.some(Boolean)) return
+    await Bun.sleep(25)
+  }
+  throw new Error('The tool cgroup or an observed task survived settlement')
+}
+
+function acceptedRunCount(root: string): number {
+  const state = Database.open(
+    join(root, '.jig/jig.sqlite3'),
+    constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW,
+  )
+  try {
+    state.exec('PRAGMA busy_timeout = 1000')
+    return state.query<{ count: number }, []>('SELECT count(*) AS count FROM root_runs').get()!
+      .count
+  } finally {
+    state.close()
+  }
+}
+
+async function verifyInterruption(cli: string, root: string, runtime: string) {
+  const scope = process.env.AGENT_DELEGATED_CGROUP
+  if (!scope?.startsWith('/sys/fs/cgroup/')) throw new Error('Missing trial cgroup delegation')
+  const client = createAttemptClient({ executable: cli, cwd: root, timeoutMs: 90_000 })
+  const target = 'binding:long'
+  const inspected = await client.inspect({ target })
+  if (!inspected || typeof inspected.approval !== 'string') throw new Error('Missing tool approval')
+  const approval = inspected.approval
+  const prepare = () =>
+    client.prepare({
+      expectedApproval: approval,
+      target,
+      input: {},
+      files: [{ port: 'source', source: join(root, 'source'), selection: [] }],
+      constraints: { durationMs: 90_000, resultBytes: 65_536, artifactBytes: 1_048_576 },
+      outputIntent: { packet: true, receive: ['report'] },
+    })
+
+  const cancelled = await prepare()
+  const owner = await client.submit({
+    ticket: cancelled.ticket,
+    request: cancelled.canonicalRequest,
+  })
+  try {
+    expect(owner.role).toBe('owner')
+    const active = await waitForTool(scope, runtime)
+    expect(await client.cancel({ ticket: cancelled.ticket })).toMatchObject({ acknowledged: true })
+    expect(await owner.completion).toMatchObject({
+      receipt: { runId: owner.receipt.runId },
+      cleanup: 'confirmed',
+      terminal: { status: 'failed', code: 'CANCELLED' },
+    })
+    await verifyToolCleanup(scope, active)
+    expect((await client.result({ ticket: cancelled.ticket })).artifactResults).toEqual([])
+    console.log(
+      'Cancellation verified after both tool processes started, with confirmed cleanup and zero artifacts',
+    )
+  } finally {
+    owner.close()
+    await owner.completion.catch(() => undefined)
+  }
+
+  const lost = await prepare()
+  const coordinator = Bun.spawn([cli, 'attempt', 'submit', '--json'], {
+    cwd: root,
+    stdin: 'pipe',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const stdout = new Response(coordinator.stdout).text()
+  const stderr = new Response(coordinator.stderr).text()
+  let recovered = false
+  try {
+    coordinator.stdin.write(
+      JSON.stringify({
+        protocolVersion: 1,
+        operation: 'submit',
+        request: { ticket: lost.ticket, request: lost.canonicalRequest },
+      }) + '\n',
+    )
+    await coordinator.stdin.flush()
+    const active = await waitForTool(scope, runtime)
+    const before = await client.lookup({ ticket: lost.ticket })
+    expect(before).toMatchObject({ identity: 'accepted', cleanup: 'pending' })
+    expect(before.receipt?.runId).toMatch(/^sha256:[a-f0-9]{64}$/)
+    expect(before.terminal).toBeUndefined()
+    const runs = acceptedRunCount(root)
+    expect(coordinator.exitCode).toBeNull()
+    coordinator.kill('SIGKILL')
+    await coordinator.exited
+    expect(coordinator.signalCode).toBe('SIGKILL')
+    const accepted = (await stdout)
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(accepted).toEqual([
+      expect.objectContaining({
+        event: 'accepted',
+        role: 'owner',
+        receipt: expect.objectContaining({
+          runId: before.receipt?.runId,
+          requestDigest: lost.requestDigest,
+        }),
+      }),
+    ])
+    const settled = await client.reconcile({ ticket: lost.ticket })
+    expect(settled).toMatchObject({
+      receipt: { runId: before.receipt?.runId },
+      terminal: { status: 'lost', code: 'COORDINATOR_LOST' },
+      cleanup: 'confirmed',
+    })
+    expect(await client.reconcile({ ticket: lost.ticket })).toEqual(settled)
+    await verifyToolCleanup(scope, active)
+    expect((await client.result({ ticket: lost.ticket })).artifactResults).toEqual([])
+    expect(acceptedRunCount(root)).toBe(runs)
+    recovered = true
+    console.log(
+      'Coordinator loss verified after both tool processes started, with the original Run ID, confirmed cleanup and zero artifacts',
+    )
+  } finally {
+    if (coordinator.exitCode === null) coordinator.kill('SIGKILL')
+    await coordinator.exited
+    await stdout
+    const diagnostics = await stderr
+    if (!recovered) {
+      console.error(diagnostics)
+      await client.reconcile({ ticket: lost.ticket }).catch(() => undefined)
+    }
+  }
+}
 
 test('reviewed offline tools preserve binary identity and withhold failed output', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-offline-tool-consumer-'))
@@ -58,7 +248,7 @@ export default defineJig({flows:discover('flows'),bindings:discover('bindings')}
     )
     await put(
       'flows/check/FLOW.ts',
-      `import {handle} from './sdk/index.js'
+      `import {handle,OperationError} from './sdk/index.js'
 await handle(async run => {
   try {
     const checked = await run.call({
@@ -69,7 +259,9 @@ await handle(async run => {
     })
     return {outcome: 'done', output: checked.output, artifactResults: {report: checked.artifacts.deliverables}}
   } catch (error) {
-    return {outcome: 'done', output: {code: error.code, details: error.details}}
+    if (!(error instanceof OperationError)) throw error
+    return {outcome: 'done', output: {code: error.code, message: error.message,
+      ...(error.details === undefined ? {} : {details: error.details})}}
   }
 })`,
     )
@@ -86,6 +278,11 @@ await handle(async run => {
       copy,
       quota: { ...copy, outputBytes: 65536 },
       deadline: { ...copy, executable: `${runtime}/bin/sleep`, args: ['30'], timeoutMs: 1000 },
+      long: {
+        ...copy,
+        executable: `${runtime}/bin/timeout`,
+        args: ['180', `${runtime}/bin/sleep`, '180'],
+      },
     })) {
       await put(
         `bindings/${name}.ts`,
@@ -132,9 +329,10 @@ export default defineBinding({package: 'flows/check', slots: {tool: ${JSON.strin
       code: 'DEADLINE_EXCEEDED',
       details: { tool: { cleanup: 'complete', stopReason: 'deadline' } },
     })
+    await verifyInterruption(cli, root, runtime)
     passed = true
   } finally {
     if (passed) await rm(root, { recursive: true, force: true })
     else console.error(`Offline tool consumer evidence retained at ${root}`)
   }
-}, 180000)
+}, 300000)
