@@ -30,6 +30,53 @@ const ordinary = [
   'packages/jig/test/portable/third.test.ts',
 ]
 
+test('Linux native provisioning updates and installs against the Ubuntu distribution sources', async (t) => {
+  const script = await readFile(new URL('./provision-github-rootless-host.sh', import.meta.url), 'utf8')
+  const sourceLine = '  ubuntu_sources=/etc/apt/sources.list.d/ubuntu.sources'
+  const start = script.indexOf(sourceLine)
+  const end = script.indexOf('\n\n  work=', start)
+  assert.ok(start >= 0 && end > start)
+  const directory = await mkdtemp(resolve(tmpdir(), 'jig-linux-apt-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const ubuntu = resolve(directory, 'ubuntu.sources')
+  const run = () =>
+    spawnSync(
+      'sh',
+      [
+        '-ec',
+        `fail() { echo "$1" >&2; exit 1; }
+       sudo() { printf '%s\\0' "$@"; printf '\\n'; }
+       ubuntu_sources=$1
+       ${script.slice(start + sourceLine.length, end)}`,
+        'linux-provisioning-test',
+        ubuntu,
+      ],
+      { encoding: 'utf8' },
+    )
+  const unavailable = run()
+  assert.equal(unavailable.status, 1)
+  assert.match(unavailable.stderr, /Ubuntu package sources are unavailable/)
+  assert.equal(unavailable.stdout, '')
+
+  await writeFile(ubuntu, 'Types: deb\n')
+  const ready = run()
+  assert.equal(ready.status, 0, ready.stderr)
+  const commands = ready.stdout
+    .trimEnd()
+    .split('\n')
+    .map((line) => line.split('\0').slice(0, -1))
+  const options = [
+    '-n', 'apt-get', '-q', '-o', `Dir::Etc::sourcelist=${ubuntu}`, '-o', 'Dir::Etc::sourceparts=-',
+  ]
+  assert.deepEqual(commands, [
+    [...options, '-o', 'APT::Get::List-Cleanup=0', 'update'],
+    [
+      ...options, '-y', 'install', 'build-essential', 'ca-certificates', 'curl', 'libcap-dev',
+      'libcap2-bin', 'meson', 'ninja-build', 'openssl', 'pkg-config', 'xz-utils',
+    ],
+  ])
+})
+
 test('bounded ARM shards retain complete whole-file coverage and repeat native checks on every actual host', async () => {
   const files = await discoverHostTests(repository)
   assert.deepEqual(

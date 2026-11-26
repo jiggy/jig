@@ -324,7 +324,9 @@ They consume frozen package exports with tracked test helpers and installed
   timestamps, keep inclusive boundaries and refuse incomplete bounded
   pagination.
 - `provision-github-rootless-host.sh` owns provision, cleanup, and clean-state
-  assertions for that runner.
+  assertions for that runner. It installs build packages using the pinned
+  Ubuntu image's signed distribution sources. The package commands leave
+  the runner's unrelated repository configuration untouched.
 - `provision-example-smoke.sh` prepares the dedicated Linux example shard.
   It installs the exact official Codex 0.166.0 package after digest verification,
   preserving its executable/resource layout. Its fixed public asset download retries transport failures within the existing attempt and time limits.

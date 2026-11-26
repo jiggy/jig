@@ -470,7 +470,11 @@ test('Linux host scope preserves complete qualification and always reports its f
   expect(workflow.jobs['rootless-linux']).toBeUndefined()
   expect(
     artifacts.steps.slice(artifacts.steps.indexOf(scope) + 1).map((step: any) => step.if),
-  ).toEqual(["steps.scope.outputs.required == 'true'", "steps.scope.outputs.required == 'true'"])
+  ).toEqual([
+    "github.event_name == 'pull_request' && steps.scope.outputs.required == 'true'",
+    "github.event_name != 'pull_request' && steps.scope.outputs.required == 'true'",
+    "github.event_name != 'pull_request' && steps.scope.outputs.required == 'true'",
+  ])
   expect(suites.if).toBe("${{ needs.prepare.outputs.required == 'true' }}")
   expect(suites.needs).toBe('prepare')
   expect(
@@ -500,7 +504,9 @@ test('Linux host scope preserves complete qualification and always reports its f
   )
   expect(exampleSetup.if).toBe("matrix.suite == 'examples'")
   expect(suites.steps.indexOf(exampleSetup)).toBeLessThan(suites.steps.indexOf(source))
-  expect(suites['timeout-minutes']).toContain("matrix.suite == 'examples' && 90")
+  expect(suites['timeout-minutes']).toContain(
+    "matrix.suite == 'examples' && (github.event_name == 'pull_request' && 125 || 90)",
+  )
   for (const variable of ['JIG_EXAMPLE_CODEX_PATH', 'JIG_EXAMPLE_API_CERT', 'JIG_EXAMPLE_API_KEY'])
     expect(source.run).toContain(`"${variable}=$${variable}"`)
   const archiveVariables = [
