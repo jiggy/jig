@@ -407,6 +407,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   The PR planner targets 800 seconds of estimated test work per shard and can
   assign up to five useful workers. Each planned PR shard has two candidates.
+  Matrix creation lists one candidate per shard first, alternating majors,
+  then lists each shard's other candidate. Either allocated candidate can win.
   Strict runs permit three concurrent workers.
   Worker count and runner labels remain separate from test membership.
 
@@ -421,7 +423,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   PR candidate jobs permit job-level errors. The independent required collector validates the selected jobs' original steps, complete reports and cleanup.
   No native or test step permits errors. Strict main and release jobs remain mandatory.
 
-  Independent `ubuntu-slim` selectors avoid a barrier between shards.
+  Independent selectors on `ubuntu-24.04` avoid a barrier between shards.
+  They stay assigned through worker completion, beyond the 15-minute
+  `ubuntu-slim` job limit.
   The collector starts after preparation and waits only for selected PR workers and their selectors.
   Its gate does not depend on unused queued candidates. Those jobs may remain pending or cancelled in the overall workflow.
   GitHub does not supply individual queued-job cancellation here.

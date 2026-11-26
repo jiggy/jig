@@ -53,7 +53,7 @@ export function macExecutionTiming(job, major) {
 }
 
 // Reconstruct membership through the planner rather than trusting supplied rows.
-export function macMatrix(planFile) {
+export function macMatrix(planFile, { pullRequest = false } = {}) {
   const planned = JSON.parse(
     execFileSync(
       process.execPath,
@@ -68,20 +68,18 @@ export function macMatrix(planFile) {
     planned.include.length > frozen.policy.maxShards
   )
     throw new Error('Mac plan shard count differs from its bounded policy')
-  const majors = [...MACOS_COMPATIBILITY_MAJORS]
+  const shards = planned.include.map(({ shard }, index) => {
+    if (shard !== index) throw new Error('Mac plan shard identities are not contiguous')
+    return { arch: 'arm64', shard, installed: shard === planned.include.length - 1 }
+  })
+  const worker = (shard, major) => ({ ...shard, major, runner: `macos-${major}` })
+  const majors = MACOS_COMPATIBILITY_MAJORS
   return {
-    include: majors.flatMap((major) =>
-      planned.include.map(({ shard }, index) => {
-        if (shard !== index) throw new Error('Mac plan shard identities are not contiguous')
-        return {
-          arch: 'arm64',
-          major,
-          runner: `macos-${major}`,
-          shard,
-          installed: shard === planned.include.length - 1,
-        }
-      }),
-    ),
+    include: pullRequest
+      ? majors.flatMap((_, wave) =>
+          shards.map((shard, index) => worker(shard, majors[(index + wave) % majors.length])),
+        )
+      : majors.flatMap((major) => shards.map((shard) => worker(shard, major))),
   }
 }
 
@@ -313,8 +311,8 @@ export async function collectMacHost({
   await verifyCandidateBundle(bundle, { sourceRevision: source })
   const planFile = join(bundle, 'PLAN.json')
   const planBytes = await readFile(planFile)
-  const matrix = macMatrix(planFile)
   const pr = run.event === 'pull_request'
+  const matrix = macMatrix(planFile, { pullRequest: pr })
   const decisionContext = {
     repository: context.repository,
     source,
@@ -501,10 +499,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   try {
     const [mode, file] = process.argv.slice(2)
     if (mode === 'matrix' && file) {
-      const matrix = macMatrix(file)
+      const pullRequest = process.env.GITHUB_EVENT_NAME === 'pull_request'
+      const matrix = macMatrix(file, { pullRequest })
+      const shardCount = matrix.include.filter((row) => row.major === 26).length
+      const selectors = { include: Array.from({ length: shardCount }, (_, shard) => ({ shard })) }
       await appendFile(
         process.env.GITHUB_OUTPUT,
-        `workers=${JSON.stringify(matrix)}\nselectors=${JSON.stringify({ include: matrix.include.filter((row) => row.major === 26).map(({ shard }) => ({ shard })) })}\nshard_count=${matrix.include.filter((row) => row.major === 26).length}\nmax_parallel=${JSON.parse(readFileSync(file, 'utf8')).policy.maxShards * (process.env.GITHUB_EVENT_NAME === 'pull_request' ? 2 : 1)}\n`,
+        `workers=${JSON.stringify(matrix)}\nselectors=${JSON.stringify(selectors)}\nshard_count=${shardCount}\nmax_parallel=${JSON.parse(readFileSync(file, 'utf8')).policy.maxShards * (pullRequest ? 2 : 1)}\n`,
       )
     } else if (mode === 'collect' && !file) await collectMacHost()
     else throw new Error('usage: macos-host-collect.mjs matrix PLAN.json|collect')

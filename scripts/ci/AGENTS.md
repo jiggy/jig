@@ -384,7 +384,8 @@ They consume frozen package exports with tracked test helpers and installed
   It verifies the current assigned execution before establishing the absolute deadline.
   Child process groups settle after completion or failure. Expired work cannot publish a completion marker.
 - `macos-pr-race.mjs` selects PR workers before native work. Candidates publish unique readiness offers.
-  One `ubuntu-slim` selector per role publishes a decision bound to its actual execution and the chosen offer's immutable ID and digest.
+  One `ubuntu-24.04` selector per role publishes a decision bound to its actual execution and the chosen offer's immutable ID and digest.
+  It needs the full runner's job allowance to observe worker assignment and completion.
   Both records bind source, run, attempt, allocated worker, frozen plan and prepared inputs.
   Artifact names do not provide mutual exclusion. Duplicate decisions, unverified transport and mismatched identities refuse.
 
@@ -403,6 +404,8 @@ They consume frozen package exports with tracked test helpers and installed
   Publication validators reject PR coverage, including attempts to relabel a mixed-major union as complete release coverage.
   Release readiness derives required job names from this complete receipt and verifies actual current-attempt job identities.
 - `macos-host-collect.mjs` reconciles immutable per-shard artifacts against the complete plan for every required macOS major.
+  Its PR matrix lists one candidate for each shard before listing any alternate.
+  The first candidates alternate majors. Both candidates remain eligible.
   It rejects missing or failed reports, changed inputs, foreign jobs, ambiguous artifacts, and unconfirmed completion.
   GitHub metadata reads reuse the selector's bounded transport retries, including HTTP 5xx and HTTP/2 stream cancellation, before validating the response.
   PR failed-job retries may retain successful shard evidence within the original run and unchanged qualification session.

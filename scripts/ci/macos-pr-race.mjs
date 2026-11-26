@@ -21,7 +21,7 @@ import { allRunJobs, latestJob } from './merge-attempts.mjs'
 export const SELECT_STEP_NAME = 'Select one ready PR worker'
 export const DECISION_UPLOAD_STEP_NAME = 'Publish PR shard decision'
 export const WATCH_STEP_NAME = 'Watch selected PR worker'
-export const MACOS_PR_SELECTOR_RUNNER = 'ubuntu-slim'
+export const MACOS_PR_SELECTOR_RUNNER = 'ubuntu-24.04'
 export const NOOP_STEP_NAMES = Object.freeze([
   'Publish PR worker readiness',
   'Resolve PR shard decision',

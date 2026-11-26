@@ -268,7 +268,7 @@ test('sole-selector identity, successful select, upload phase and referenced off
   const s = await store(t),
     result = await s.decision()
   for (const changed of [
-    selector(1, { labels: ['ubuntu-24.04'] }),
+    selector(1, { labels: ['ubuntu-slim'] }),
     selector(1, { name: selectorJobName(1) }),
     selector(1, { runner_id: 0 }),
     selector(1, { run_attempt: 2 }),

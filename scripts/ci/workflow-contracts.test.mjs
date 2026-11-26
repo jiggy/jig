@@ -125,6 +125,8 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
   assert.deepEqual(native.needs, ['scope', 'host-artifacts'])
   assert.equal(native['runs-on'], '${{ matrix.runner }}')
   assert.equal(workflow.jobs.selectors['runs-on'], MACOS_PR_SELECTOR_RUNNER)
+  assert.equal(workflow.jobs.selectors['runs-on'], 'ubuntu-24.04')
+  assert.ok(workflow.jobs.selectors['timeout-minutes'] > 15)
   assert.equal(native.strategy.matrix, '${{ fromJSON(needs.scope.outputs.workers) }}')
   assert.equal(native.environment, undefined)
   assert.equal(native['continue-on-error'], "${{ github.event_name == 'pull_request' }}")
@@ -159,16 +161,22 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
     assert.ok(count <= plan.policy.maxShards)
     if (!pr) assert.equal(count, strict.shards.length)
     assert.equal(plan.inventoryDigest, strict.inventoryDigest)
-    assert.deepEqual(
-      JSON.parse(output.selectors).include,
-      plan.shards.map(({ index }) => ({ shard: index })),
-    )
+    const shards = plan.shards.map(({ index }) => index)
+    assert.deepEqual(JSON.parse(output.selectors).include, shards.map((shard) => ({ shard })))
     assert.deepEqual([...new Set(rows.map((row) => row.major))], [15, 26])
+    if (pr) {
+      assert.deepEqual(rows.slice(0, count).map(({ shard }) => shard), shards)
+      assert.deepEqual(rows.slice(count).map(({ shard }) => shard), shards)
+      for (const [index, row] of rows.slice(0, count).entries()) {
+        assert.equal(row.major, index % 2 === 0 ? 15 : 26)
+        assert.notEqual(row.major, rows[index + count].major)
+      }
+    }
     for (const major of new Set(rows.map((row) => row.major))) {
       const selected = rows.filter((row) => row.major === major)
       assert.equal(selected.length, count)
       assert.deepEqual(
-        selected.map((row) => row.shard),
+        selected.map((row) => row.shard).sort((a, b) => a - b),
         Array.from({ length: count }, (_, i) => i),
       )
       assert.ok(selected.every((row) => row.arch === 'arm64' && row.runner === `macos-${major}`))
