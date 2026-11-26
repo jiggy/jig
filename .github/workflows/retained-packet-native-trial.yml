@@ -38,10 +38,20 @@ jobs:
         run: |
           scripts/ci/provision-github-rootless-host.sh provision
           printf 'JIG_CI_BUN=%s\n' "$JIG_CI_BUN" >> "$GITHUB_ENV"
+      - name: Prepare ordinary candidate archives before host entry
+        run: |
+          archive_directory="$RUNNER_TEMP/retained-packet-archives"
+          mkdir "$archive_directory"
+          bun packages/jig/scripts/pack.ts --destination "$archive_directory"
+          flow_version=$(node -p 'require("./packages/jig/package.json").devDependencies["@jigging/flow"]')
+          flow_archive=$(npm pack "@jigging/flow@$flow_version" --ignore-scripts --pack-destination "$archive_directory" --silent)
+          find "$archive_directory" -maxdepth 1 -name 'jiggy-jig-*.tgz' -printf 'JIG_PACKAGE_ARCHIVE=%p\n' >> "$GITHUB_ENV"
+          printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s/%s\n' "$archive_directory" "$flow_archive" >> "$GITHUB_ENV"
       - name: Verify 80-file delivery and recovery through the packed CLI
         run: |
           scripts/ci/provision-github-rootless-host.sh run-acquisition-host env \
             JIG_LINUX_ROOTLESS_HOSTILE=1 \
+            "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" \
             "JIG_AUTHORING_NODE_PATH=$(command -v node)" \
             "$JIG_CI_BUN" test packages/jig/test/host/installed-attempt-export.test.ts
       - name: Check for execution residue
