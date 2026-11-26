@@ -195,6 +195,10 @@ These links locate module rules. All selected domain requirements still apply.
 
   Empty descendant directories join physical-view identity and native read-only projection under the same finite entry limit.
 
+  Packet composition and the file owner handoff allow the combined entry count
+  of up to sixteen individually bounded snapshots. Saved packet inspection uses
+  the same file count and content limit as publication.
+
 - `captured-output.ts` snapshots an already-fenced output directory into one
   anonymous immutable backing under the 16 MiB aggregate output bound. Preserve
   directory evidence, including empty directories, for native-session

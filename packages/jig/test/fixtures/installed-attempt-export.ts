@@ -77,7 +77,7 @@ export default defineJig({flows:discover('flows'),bindings:discover('bindings')}
     await put(`project/flows/${name}/FLOW.contract.json`, {
       $schema: schema,
       ...(name === 'root'
-        ? { artifactResults: ['report'] }
+        ? { artifactResults: ['report', 'gallery'] }
         : { attachments: { report: 'read-write' } }),
     })
   }
@@ -90,7 +90,10 @@ await handle(async run=>{
   await writeFile(root+'/binary.bin',new Uint8Array([0,255,128]));
   await writeFile(root+'/empty.bin',new Uint8Array());
   await mkdir(root+'/empty');
-  if(run.input==='hold-packet') await Bun.sleep(6000);
+  if(run.input==='compose'){
+    for(let index=0;index<38;index++)
+      await writeFile(root+'/file-'+index+'.bin',new Uint8Array([index,255,128]));
+  }
   return {outcome:'done',output:{produced:true}};
 });`,
   )
@@ -98,6 +101,17 @@ await handle(async run=>{
     'project/flows/root/FLOW.ts',
     `import {handle} from '@jigging/flow';
 await handle(async run=>{
+  if(run.input==='compose'||run.input==='hold-packet'){
+    const artifactResults={};
+    for(const name of ['report','gallery']){
+      const result=await run.call({operationId:name,slot:'producer',input:'compose',
+        attachments:{report:{create:true}}});
+      if(result.outcome!=='done'||!result.artifacts?.report) throw Error('No artifact');
+      artifactResults[name]=result.artifacts.report;
+    }
+    if(run.input==='hold-packet') await Bun.sleep(6000);
+    return {outcome:'done',output:{completed:true},artifactResults};
+  }
   const child=await run.call({operationId:'produce',slot:'producer',input:null,
     attachments:{report:{create:true}}});
   if(child.outcome!=='done'||!child.artifacts?.report) throw Error('No artifact');
@@ -163,6 +177,7 @@ export default defineBinding({package:'flows/root',slots:{
 const consumer = `
 import assert from 'node:assert/strict';
 import {constants,Database,SQLiteError} from 'bun:sqlite';
+import {createHash} from 'node:crypto';
 import {mkdir,open,readFile,rename,writeFile,readdir,unlink} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {AttemptClientError,createAttemptClient} from '@jigging/jig/client';
@@ -194,13 +209,33 @@ function observeCliExit([code,,stderr]){
 }
 stage='direct-control';
 const originalCount=runCount();
-const directArgs=['run','flow:flows/producer','--json','--record-calls','--timeout','2m'];
-const [controlCode,controlText]=await cli([...directArgs,'--out','direct-control']);
+const directArgs=['run','binding:root','--json','--record-calls','--timeout','2m'];
+async function verifyWidePacket(destination,record){
+  const expected=new Map();
+  for(const name of ['report','gallery']){
+    expected.set(name+'/binary.bin',Buffer.from([0,255,128]));
+    expected.set(name+'/empty.bin',Buffer.alloc(0));
+    for(let index=0;index<38;index++)
+      expected.set(name+'/file-'+index+'.bin',Buffer.from([index,255,128]));
+  }
+  assert.equal(record.delivery.status,'written');
+  assert.equal(record.delivery.files.length,expected.size);
+  for(const file of record.delivery.files){
+    const contents=expected.get(file.path);
+    assert.ok(contents);
+    assert.deepEqual(await readFile(destination+'/files/'+file.path),contents);
+    assert.equal(file.bytes,contents.length);
+    assert.equal(file.digest,'sha256:'+createHash('sha256').update(contents).digest('hex'));
+    expected.delete(file.path);
+  }
+  assert.equal(expected.size,0);
+}
+const controlResult=await cli([...directArgs,'--input','"compose"','--out','direct-control']);
+observeCliExit(controlResult);
+const [controlCode,controlText]=controlResult;
 assert.equal(controlCode,0);
 const control=JSON.parse(controlText);
-assert.equal(control.delivery.status,'written');
-const binary=await readFile('direct-control/files/binary.bin');
-assert.deepEqual(binary,Buffer.from([0,255,128]));
+await verifyWidePacket('direct-control',control);
 assert.equal(runCount(),originalCount+1);
 
 stage='direct-race-acceptance';
@@ -256,10 +291,13 @@ assert.equal(recovered.runId,lost.runId);
 assert.equal(recovered.status,lost.status);
 assert.equal(recovered.outcome,lost.outcome);
 assert.deepEqual(recovered.output,lost.output);
-assert.deepEqual(await readFile('direct-recovered/files/report/binary.bin'),binary);
-assert.equal((await readFile('direct-recovered/files/report/empty.bin')).length,0);
+await verifyWidePacket('direct-recovered',recovered);
+const inspection=await cli(['inspect','--result','direct-recovered','--json']);
+observeCliExit(inspection);
+assert.equal(inspection[0],0);
+assert.deepEqual(JSON.parse(inspection[1]),recovered);
 assert.equal((await cli([...exportArgs,'direct-control']))[0],2);
-assert.deepEqual(await readFile('direct-control/files/binary.bin'),binary);
+await verifyWidePacket('direct-control',JSON.parse(await readFile('direct-control/result.json','utf8')));
 assert.notEqual((await cli([...exportArgs,'foreign'],resolve('publication-parent-moved')))[0],0);
 assert.notEqual((await cli(['attempt','export','--run','sha256:'+'0'.repeat(64),'--out','missing']))[0],0);
 await assert.rejects(readFile('missing/result.json'),{code:'ENOENT'});

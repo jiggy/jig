@@ -37,6 +37,7 @@ import { PrivateTuiInput } from './cli-tui-input.js'
 import { CliDiagnostic } from './cli-usage.js'
 import { PrivateWebDisplay } from './cli-web.js'
 import { PrivateWebInput } from './cli-web-input.js'
+import { PRIVATE_PREVIEW_LIMITS } from './internal/image-preview-policy.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
 import type { PrivateSavedCalls } from './internal/saved-call-evidence.js'
 import type { PrivateSavedResult } from './internal/saved-result.js'
@@ -552,10 +553,11 @@ export class PrivateCliProgress {
     display: 'tui' | 'web' = 'tui',
   ): Promise<void> {
     this.#settled = true
+    const displayedFiles = packet.files.slice(0, PRIVATE_PREVIEW_LIMITS.displayedFiles)
     const previews = new Map<string, PrivatePreview | undefined>()
     const omittedPreviews = new Set<string>()
     let retainedPreviewBytes = 0
-    for (const file of packet.files) {
+    for (const file of displayedFiles) {
       const preview = packet.preview(file.path)
       const size = preview
         ? Buffer.byteLength(preview.text) + (preview.image?.base64.length ?? 0)
@@ -604,7 +606,7 @@ export class PrivateCliProgress {
         sourcePublisher: 'saved-result',
         provenance: 'recorded-capture',
         phase: 'ready',
-        files: packet.files.map((file) => ({
+        files: displayedFiles.map((file) => ({
           path: file.path,
           bytes: file.bytes,
           downloadable: file.available,
@@ -807,7 +809,11 @@ export class PrivateCliProgress {
       }
       if (artifact) {
         this.model.setArtifacts(artifact.resolve, artifact.preview, artifact.read)
-        if (artifact.capture) this.model.setArtifactCapture(artifact.capture)
+        if (artifact.capture)
+          this.model.setArtifactCapture({
+            ...artifact.capture,
+            files: artifact.capture.files.slice(0, PRIVATE_PREVIEW_LIMITS.displayedFiles),
+          })
       }
     })
     this.#web?.refreshNow()

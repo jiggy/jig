@@ -6,7 +6,7 @@ import type {
   PrivateDeliveryReceipt,
 } from './file-delivery.js'
 import { privateFilePath } from './file-input.js'
-import { PRIVATE_CAPTURE_LIMITS } from './file-input-policy.js'
+import { PRIVATE_CAPTURE_LIMITS, PRIVATE_FILE_PACKET_LIMITS } from './file-input-policy.js'
 import {
   PRIVATE_PREVIEW_LIMITS,
   privatePreviewStringBytes,
@@ -198,7 +198,8 @@ export async function privateCaptureDeliveryInspection(
   let captureFailure: unknown
   try {
     const manifest = receipt?.status === 'written' ? (receipt.files ?? []) : []
-    if (manifest.length > 64) throw new PrivateDeliveryInspectionError('INVALID_CAPTURE')
+    if (manifest.length > PRIVATE_FILE_PACKET_LIMITS.files)
+      throw new PrivateDeliveryInspectionError('INVALID_CAPTURE')
     let bytes = 0
     const paths = new Set<string>()
     for (const file of manifest) {
@@ -228,7 +229,7 @@ export async function privateCaptureDeliveryInspection(
         contents.set(file.path, new Uint8Array(content))
       }
     let retained = 0
-    for (const file of manifest) {
+    for (const file of manifest.slice(0, PRIVATE_PREVIEW_LIMITS.displayedFiles)) {
       if (
         !delivery?.inspectionPreview ||
         privatePresentationNow() >= previewDeadline ||

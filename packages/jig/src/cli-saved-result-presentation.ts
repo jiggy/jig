@@ -1,5 +1,6 @@
 import type { Block, Collection, DetailBlock, ViewItem } from '@jigging/reporting'
 import { privateCliValueFields } from './cli-value-presentation.js'
+import { PRIVATE_PREVIEW_LIMITS } from './internal/image-preview-policy.js'
 import type { PrivateSavedResult } from './internal/saved-result.js'
 import type { JsonValue } from './json.js'
 import { escapeTerminalText as privateUpdateText } from '@jigging/display-tui/text'
@@ -172,6 +173,10 @@ export function privateSavedResultViews(packet: PrivateSavedResult): ViewItem[] 
       kind: 'report',
       text: 'Additional recorded fields are omitted from this human view. Read result.json or use JSON inspection for the complete value.',
     })
+  const displayedFiles = packet.files.slice(0, PRIVATE_PREVIEW_LIMITS.displayedFiles)
+  const fileSummary = packet.complete
+    ? 'Captured files match this recorded manifest. Long table names are clipped; preview references retain each full path. File consistency does not authenticate the report.'
+    : packet.finding!
   const result: ViewItem[] = [
     {
       kind: 'view',
@@ -185,9 +190,10 @@ export function privateSavedResultViews(packet: PrivateSavedResult): ViewItem[] 
       kind: 'view',
       id: 'files',
       title: 'Files',
-      summary: packet.complete
-        ? 'Captured files match this recorded manifest. Long table names are clipped; preview references retain each full path. File consistency does not authenticate the report.'
-        : packet.finding!,
+      summary:
+        displayedFiles.length === packet.files.length
+          ? fileSummary
+          : `${fileSummary} Showing ${displayedFiles.length} of ${packet.files.length} files. See result.json for the complete manifest.`,
       sections: [
         {
           blocks: [
@@ -201,7 +207,7 @@ export function privateSavedResultViews(packet: PrivateSavedResult): ViewItem[] 
                 { key: 'captured', label: 'Capture', type: 'text' },
                 { key: 'preview', label: 'Preview', type: 'reference' },
               ],
-              rows: packet.files.map((file, index) => {
+              rows: displayedFiles.map((file, index) => {
                 const name = excerpt(file.path, 80)
                 return {
                   id: `file-${index}`,

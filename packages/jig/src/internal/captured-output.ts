@@ -21,7 +21,7 @@ import {
   privateOpenAt,
   sha256,
 } from './file-input.js'
-import { PRIVATE_CAPTURE_LIMITS } from './file-input-policy.js'
+import { PRIVATE_CAPTURE_LIMITS, PRIVATE_FILE_PACKET_LIMITS } from './file-input-policy.js'
 import { requirePrivateCapturedInput } from './input-capture.js'
 import { privateVerifyLinuxSealedFile } from './linux-file-input.js'
 import {
@@ -299,7 +299,7 @@ export function capturePrivateOutputComposition(
   }[],
   signal?: AbortSignal,
 ): PrivateCapturedOutput {
-  if (sources.length > 16) throw new PrivateOutputProfileError()
+  if (sources.length > PRIVATE_FILE_PACKET_LIMITS.sources) throw new PrivateOutputProfileError()
   const selected: {
     readonly snapshot: PrivateCapturedOutput
     readonly file: PrivateOutputFile
@@ -351,8 +351,8 @@ export function capturePrivateOutputComposition(
     }
   }
   if (
-    paths.size > PRIVATE_FILE_LIMITS.files ||
-    paths.size + directories.size > PRIVATE_FILE_LIMITS.entries ||
+    paths.size > PRIVATE_FILE_PACKET_LIMITS.files ||
+    paths.size + directories.size > PRIVATE_FILE_PACKET_LIMITS.entries ||
     bytes > PRIVATE_CAPTURE_LIMITS.output
   )
     throw new PrivateOutputProfileError()
@@ -539,9 +539,9 @@ function captureTransferredDescriptor(
     typeof identity.digest !== 'string' ||
     !/^sha256:[0-9a-f]{64}$/.test(identity.digest) ||
     !Array.isArray(identity.files) ||
-    identity.files.length > PRIVATE_FILE_LIMITS.files ||
+    identity.files.length > PRIVATE_FILE_PACKET_LIMITS.files ||
     !Array.isArray(identity.directories) ||
-    identity.files.length + identity.directories.length > PRIVATE_FILE_LIMITS.entries
+    identity.files.length + identity.directories.length > PRIVATE_FILE_PACKET_LIMITS.entries
   )
     throw new TypeError('invalid transferred output manifest')
   let offset = 0

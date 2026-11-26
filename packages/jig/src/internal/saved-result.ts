@@ -12,11 +12,12 @@ import {
   privateReadRegularFile,
   sha256,
 } from './file-input.js'
+import { PRIVATE_CAPTURE_LIMITS, PRIVATE_FILE_PACKET_LIMITS } from './file-input-policy.js'
 import { privateImagePreview } from './image-preview.js'
 import { PRIVATE_PREVIEW_LIMITS, privatePreviewStringBytes } from './image-preview-policy.js'
 import { privatePresentationNow } from './root-run-timeout-policy.js'
 
-const FILE_BYTES = 16 * 1024 * 1024
+const FILE_BYTES = PRIVATE_CAPTURE_LIMITS.output
 const PREVIEW_BYTES = PRIVATE_PREVIEW_LIMITS.textBytes
 export type PrivateSavedResultFile = Readonly<{
   path: string
@@ -54,7 +55,7 @@ function manifest(record: Record<string, JsonValue>): Omit<PrivateSavedResultFil
     !object(delivery) ||
     delivery.status !== 'written' ||
     !Array.isArray(delivery.files) ||
-    delivery.files.length > 64
+    delivery.files.length > PRIVATE_FILE_PACKET_LIMITS.files
   )
     throw new TypeError('manifest')
   const names = new Set<string>()
@@ -154,8 +155,7 @@ export async function privateCaptureSavedResult(
     try {
       listed = manifest(record)
     } catch {
-      finding =
-        'File verification is incomplete: the recorded manifest is invalid or exceeds the 64-file /16 MiB limit. No listed files were captured.'
+      finding = `File verification is incomplete: the recorded manifest is invalid or exceeds the packet limit of ${PRIVATE_FILE_PACKET_LIMITS.files} files or 16 MiB. No listed files were captured.`
     }
     if (!finding && listed.length) {
       try {
