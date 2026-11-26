@@ -1,0 +1,61 @@
+name: Offline Tool native trial
+on:
+  push:
+    branches:
+      - trial/offline-tool-native
+permissions:
+  contents: read
+jobs:
+  trial:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - name: Check out the trial
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
+        with:
+          just-version: "1.43.1"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        id: bun
+        with:
+          bun-version: "1.4.4"
+      - name: Install and verify Nix 2.34.9 in the disposable runner
+        run: |
+          set -euo pipefail
+          installer="$RUNNER_TEMP/nix-install"
+          curl --fail --silent --show-error --location --proto '=https' --max-time 60 \
+            https://releases.nixos.org/nix/nix-2.34.9/install --output "$installer"
+          printf '%s  %s\n' a03ce2e9eaf4ea1560260b9a93e311dbaf589d28fb5c9318f8d9e768ee6339d8 "$installer" |
+            sha256sum --check --strict
+          sh "$installer" --daemon --yes --no-channel-add
+          export NIX_REMOTE=daemon
+          nix=/nix/var/nix/profiles/default/bin
+          test "$("$nix/nix" --version)" = 'nix (Nix) 2.34.9'
+          runtime=/nix/store/kwc34h21my8mf7xbqm9gxs1xfx07xb4i-coreutils-9.11
+          "$nix/nix-store" --realise "$runtime"
+          printf 'JIG_OFFLINE_TOOL_TEST_RUNTIME=%s\n' "$runtime" >> "$GITHUB_ENV"
+      - name: Provision the normal Linux containment host
+        id: host
+        env:
+          JIG_CI_BUN: ${{ steps.bun.outputs.bun-path }}
+        run: |
+          scripts/ci/provision-github-rootless-host.sh provision
+          printf 'JIG_CI_BUN=%s\n' "$JIG_CI_BUN" >> "$GITHUB_ENV"
+      - name: Build Jig from the trial source
+        run: |
+          bun install --ignore-scripts --filter @jigging/jig --filter @jigging/agent-method --filter @jigging/agent-acp --filter @jigging/reporting --filter @jigging/display-model --filter @jigging/display-web --filter @jigging/display-tui
+          just --justfile packages/jig/justfile build
+      - name: Run the Offline Tool smoke test as an unprivileged user
+        run: |
+          scripts/ci/provision-github-rootless-host.sh run-delegated env \
+            "JIG_OFFLINE_TOOL_TEST_RUNTIME=$JIG_OFFLINE_TOOL_TEST_RUNTIME" \
+            "JIG_AUTHORING_NODE_PATH=$(command -v node)" \
+            "$JIG_CI_BUN" test packages/jig/test/experimental/offline-tool.test.ts
+      - name: Check for execution residue
+        if: ${{ always() && steps.host.outcome == 'success' }}
+        run: scripts/ci/provision-github-rootless-host.sh assert-clean
