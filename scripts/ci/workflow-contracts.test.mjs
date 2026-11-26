@@ -6,7 +6,6 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { parse } from 'yaml'
 import { NATIVE_PREREQUISITE_TESTS } from './macos-host-test-shards.mjs'
-import { MACOS_PR_SELECTOR_RUNNER, NOOP_STEP_NAMES } from './macos-pr-race.mjs'
 import { MAC_PYTHON_MAJOR, MAC_PYTHON_SHARD, pythonInstalledProfiles } from './python-ci-profiles.mjs'
 import {
   CI_QUALIFICATION_JOBS,
@@ -138,12 +137,10 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
     native['timeout-minutes'],
     '${{ inputs.include_startup_profile && matrix.installed && 65 || 25 }}',
   )
-  assert.equal(workflow.jobs.selectors['runs-on'], MACOS_PR_SELECTOR_RUNNER)
-  assert.equal(workflow.jobs.selectors['runs-on'], 'ubuntu-24.04')
-  assert.ok(workflow.jobs.selectors['timeout-minutes'] > 15)
+  assert.equal(workflow.jobs.selectors, undefined)
   assert.equal(native.strategy.matrix, '${{ fromJSON(needs.prepare.outputs.workers) }}')
   assert.equal(native.environment, undefined)
-  assert.equal(native['continue-on-error'], "${{ github.event_name == 'pull_request' }}")
+  assert.equal(native['continue-on-error'], undefined)
   assert.equal(native.env.JIG_MACOS_TEST_PLAN_FILE, undefined)
   assert.ok(native.steps.some((step) => step.run?.includes('JIG_MACOS_TEST_PLAN_FILE=%s')))
   for (const job of Object.values(workflow.jobs))
@@ -152,10 +149,7 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
     step.run?.includes('bun test packages/jig/test/macos/'),
   )
   assert.ok(baseline)
-  assert.equal(
-    baseline.if,
-    "${{ github.event_name != 'pull_request' || steps.selection.outputs.winner == 'true' }}",
-  )
+  assert.equal(baseline.if, undefined)
   const command = /bun test (.+?) --bail=1/.exec(baseline.run)
   assert.ok(command, 'Native baseline must execute one complete unfiltered command')
   assert.deepEqual(command[1].split(/\s+/), NATIVE_PREREQUISITE_TESTS)
@@ -170,59 +164,32 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
     const rows = JSON.parse(output.workers).include
     const count = Number(output.shard_count)
     assert.equal(plan.policy.maxShards, pr ? 5 : 3)
-    assert.equal(Number(output.max_parallel), pr ? 10 : 3)
+    assert.equal(Number(output.max_parallel), pr ? 5 : 3)
     assert.equal(plan.policy.targetSeconds, pr ? 800 : strict.policy.targetSeconds)
     assert.ok(count <= plan.policy.maxShards)
     if (!pr) assert.equal(count, strict.shards.length)
     assert.equal(plan.inventoryDigest, strict.inventoryDigest)
     const shards = plan.shards.map(({ index }) => index)
-    assert.deepEqual(JSON.parse(output.selectors).include, shards.map((shard) => ({ shard })))
+    assert.equal(output.selectors, undefined)
     assert.deepEqual([...new Set(rows.map((row) => row.major))], [15, 26])
-    if (pr) {
-      assert.deepEqual(rows.slice(0, count).map(({ shard }) => shard), shards)
-      assert.deepEqual(rows.slice(count).map(({ shard }) => shard), shards.filter((shard) => shard !== MAC_PYTHON_SHARD))
-      assert.deepEqual(rows.filter(({ pythonInstalled }) => pythonInstalled).map(({ shard, major }) => [shard, major]), [[MAC_PYTHON_SHARD, MAC_PYTHON_MAJOR]])
-      for (const [index, row] of rows.slice(0, count).entries()) {
-        assert.equal(row.major, index % 2 === 0 ? 15 : 26)
-        if (row.shard !== MAC_PYTHON_SHARD)
-          assert.notEqual(row.major, rows.slice(count).find(({ shard }) => shard === row.shard).major)
-      }
-    } else {
-      assert.ok(rows.every(({ pythonInstalled }) => pythonInstalled === false))
-    }
-    for (const major of new Set(rows.map((row) => row.major))) {
-      const selected = rows.filter((row) => row.major === major)
-      const required = shards.filter((shard) => !pr || major === MAC_PYTHON_MAJOR || shard !== MAC_PYTHON_SHARD)
-      assert.deepEqual(
-        selected.map((row) => row.shard).sort((a, b) => a - b),
-        required,
-      )
-      assert.ok(selected.every((row) => row.arch === 'arm64' && row.runner === `macos-${major}`))
-      assert.equal(selected.filter((row) => row.installed).length, 1)
-    }
+    const roles = pr
+      ? shards.map((shard) => [shard, shard === MAC_PYTHON_SHARD ? MAC_PYTHON_MAJOR : 26])
+      : [15, 26].flatMap((major) => shards.map((shard) => [shard, major]))
+    assert.deepEqual(rows.map(({ shard, major }) => [shard, major]), roles)
+    assert.ok(rows.every((row) => row.arch === 'arm64' && row.runner === `macos-${row.major}`))
+    assert.deepEqual(
+      rows.filter(({ installed }) => installed).map(({ major }) => major),
+      pr ? [26] : [15, 26],
+    )
+    assert.deepEqual(
+      rows.filter(({ pythonInstalled }) => pythonInstalled).map(({ shard, major }) => [shard, major]),
+      pr ? [[MAC_PYTHON_SHARD, MAC_PYTHON_MAJOR]] : [],
+    )
   }
-  const decide = native.steps.findIndex((step) => step.id === 'race')
-  const offer = native.steps.findIndex((step) => step.id === 'offer')
-  const resolve = native.steps.findIndex((step) => step.id === 'selection')
-  assert.ok(decide >= 0 && offer > decide && resolve > offer)
-  assert.equal(native.steps[offer].with.overwrite, false)
-  assert.equal(native.steps[offer]['continue-on-error'], undefined)
-  assert.match(native.steps[resolve].run, /macos-pr-race.mjs resolve/)
   const python = native.steps.find(({ name }) => name === 'Test installed Python reporting on macOS 15')
   assert.match(python.if, /matrix\.pythonInstalled/)
   assert.match(python.run, /test-installed-python-reporting\.sh/)
-  for (const name of NOOP_STEP_NAMES) {
-    const step = native.steps.find((step) => step.name === name)
-    assert.ok(step, `Missing observable noop step ${name}`)
-    assert.equal(step['continue-on-error'], undefined)
-  }
-  for (const step of native.steps.slice(resolve + 1)) {
-    if (step.if === "github.event_name != 'pull_request'") {
-      assert.equal(step.name, 'Download the prepared canonical Mac inputs')
-    } else {
-      assert.match(step.if, /steps.selection.outputs.winner == 'true'/)
-    }
-  }
+  assert.ok(native.steps.every((step) => step['continue-on-error'] === undefined))
   const files = await readdir(workflows)
   assert.ok(!files.includes('macos-intel-nightly.yml'))
   assert.ok(!files.includes('macos-host-conformance.yml'))
@@ -307,10 +274,7 @@ test('Mac acquisition, collection and final gate retain source identity and comp
   assert.equal(download.if, "github.event_name != 'pull_request'")
   const prAcquireIndex = workers.steps.findIndex((step) => step.id === 'pr-candidate')
   const prAcquire = workers.steps[prAcquireIndex]
-  assert.equal(
-    prAcquire.if,
-    "github.event_name == 'pull_request' && steps.selection.outputs.winner == 'true'",
-  )
+  assert.equal(prAcquire.if, "github.event_name == 'pull_request'")
   assert.match(
     prAcquire.run,
     /mac-command-budget\.mjs run node scripts\/ci\/candidate-transfer\.mjs acquire/,
@@ -380,23 +344,15 @@ test('Mac acquisition, collection and final gate retain source identity and comp
     gate.steps.some((step) => step.uses?.startsWith('actions/download-artifact@')),
     false,
   )
-  const selector = workflow.jobs.selectors
-  assert.equal(selector.needs, 'prepare')
-  assert.match(selector.if, /github.event_name == 'pull_request'/)
-  assert.equal(selector['timeout-minutes'], 70)
-  assert.equal(selector.env.MACOS_PLAN_ARTIFACT_ID, '${{ needs.prepare.outputs.plan_id }}')
-  for (const step of workers.steps.filter((step) => step.run?.includes('macos-pr-race.mjs'))) {
-    assert.equal(step.env.MACOS_PLAN_ARTIFACT_ID, '${{ needs.prepare.outputs.plan_id }}')
-  }
+  assert.equal(
+    workers.steps[verifyIndex].env.MACOS_PLAN_ARTIFACT_ID,
+    '${{ needs.prepare.outputs.plan_id }}',
+  )
   const diagnostic = gate.steps.findIndex(
     (step) => step.run === 'node scripts/ci/host-job-diagnostics.mjs',
   )
   assert.ok(diagnostic > publish)
   assert.equal(gate.steps[diagnostic].if, 'always()')
-  assert.equal(
-    gate.steps[diagnostic].env.MACOS_QUALIFICATION_COMPLETE,
-    "${{ job.status == 'success' && steps.qualification.outcome == 'success' }}",
-  )
   assert.equal(gate.steps[diagnostic]['continue-on-error'], true)
   assert.equal(gate.steps[diagnostic]['timeout-minutes'], 1)
   assert.equal(gate.permissions.checks, 'read')
@@ -472,6 +428,11 @@ test('release intent is an unconditional part of the required CI aggregate', asy
     step.run?.includes('scripts/ci/job-evidence.mjs'),
   )
   assert.ok(evidenceIndex > checkIndex)
+  assert.equal(
+    workflow.jobs['candidate-build']['runs-on'],
+    "${{ github.event_name == 'pull_request' && 'ubuntu-slim' || 'ubuntu-24.04' }}",
+  )
+  assert.equal(workflow.jobs['candidate-build']['timeout-minutes'], 15)
   assert.equal(workflow.jobs.test['runs-on'], 'ubuntu-slim')
   assert.ok(workflow.jobs.test.needs.includes('quick-checks'))
 })

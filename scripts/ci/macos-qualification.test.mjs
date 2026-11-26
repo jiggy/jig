@@ -12,7 +12,7 @@ import {
 } from './macos-qualification.mjs'
 
 const source = 'a'.repeat(40)
-function fixture(scope = 'release', selected = [15, 26, 15]) {
+function fixture(scope = 'release', selected = [15, 26, 26]) {
   const plan = createFrozenMacPlan(
     [
       ...NATIVE_PREREQUISITE_TESTS,
@@ -69,26 +69,18 @@ test('default release scope requires both complete compatibility matrices and cu
   }
 })
 
-test('explicit PR scope admits one complete role per selected major and records actual coverage', () => {
-  for (const selected of [
-    [15, 26, 15],
-    [15, 26, 26],
-    [15, 15, 15],
-  ]) {
-    const coverage = fixture('pull_request', selected)
-    assert.equal(validateMacCoverage(coverage, { source, scope: 'pull_request' }), coverage)
-    assert.deepEqual(
-      macQualificationJobNames(coverage),
-      selected.map((major, shard) => macJobName(major, shard)),
+test('explicit PR scope requires one exact profile per role and allows proven retained executions', () => {
+  const selected = [15, 26, 26]
+  const coverage = fixture('pull_request', selected)
+  assert.equal(validateMacCoverage(coverage, { source, scope: 'pull_request' }), coverage)
+  assert.deepEqual(macQualificationJobNames(coverage), selected.map((major, shard) => macJobName(major, shard)))
+  coverage.executions[0].runAttempt = 1
+  assert.equal(validateMacCoverage(coverage, { source, scope: 'pull_request' }), coverage)
+  for (const wrong of [[15, 26, 15], [26, 26, 26]])
+    assert.throws(
+      () => validateMacCoverage(fixture('pull_request', wrong), { source, scope: 'pull_request' }),
+      /executed shard identity/,
     )
-    // Retained successful PR roles need not be from the current attempt.
-    coverage.executions[0].runAttempt = 1
-    assert.equal(validateMacCoverage(coverage, { source, scope: 'pull_request' }), coverage)
-  }
-  assert.throws(
-    () => validateMacCoverage(fixture('pull_request', [26, 15, 26]), { source, scope: 'pull_request' }),
-    /executed shard identity/,
-  )
 })
 
 test('merge-only coverage cannot satisfy strict publication validation or be relabeled into it', () => {
@@ -101,7 +93,7 @@ test('merge-only coverage cannot satisfy strict publication validation or be rel
   assert.throws(() => validateMacCoverage(fixture(), { source, scope: 'unknown' }), /scope/)
 })
 
-test('PR coverage rejects missing, duplicate, loser, foreign-major and reused physical executions', () => {
+test('PR coverage rejects missing, duplicate, off-profile, foreign-major and reused physical executions', () => {
   const changes = [
     (value) => {
       value.executions.pop()

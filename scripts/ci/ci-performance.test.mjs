@@ -750,6 +750,7 @@ test('successful retry envelopes retain the original creation time and preceding
   assert.equal(report.envelopes[0].threeWorkflowEnvelopeSeconds, 1860)
   assert.equal(report.envelopes[0].requiredChecks.requiredGateElapsedSeconds, 1860)
   assert.equal(report.prRequiredChecksSummary.successfulWithRetries.medianSeconds, 1860)
+  assert.match(performanceMarkdown(report), /\| Full qualification \| 1 \| 0 \| 0 \| 0 \| 1 \| 1 \|/)
   assert.equal(report.latestRuns[2].elapsedSeconds, 60)
   assert.equal(report.attempts[2].conclusion, 'failure')
   assert.equal(report.prEnvelopeSummary.successfulFirstAttempts.count, 0)
@@ -764,6 +765,10 @@ test('successful retry envelopes retain the original creation time and preceding
   assert.ok(
     performanceMarkdown(report).includes('| After reruns | 1 | 31.0 | 31.0 | 31.0 | 31.0 | 1 |'),
   )
+  retried.run.conclusion = retried.attempts[1].conclusion = retried.attempts[1].jobs[0].conclusion =
+    'failure'
+  const failedRetry = analyzeCiPerformance(snapshot(runs))
+  assert.match(performanceMarkdown(failedRetry), /\| Full qualification \| 0 \| 1 \| 0 \| 0 \| 1 \| 0 \|/)
 })
 
 test('consolidated host jobs distinguish acquisition from scope-only execution', () => {

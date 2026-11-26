@@ -123,19 +123,9 @@ test('unavailable API diagnostics cannot fail their CLI or grant qualification',
   assert.doesNotMatch(result.stdout + result.stderr, /ENOENT|capacity unavailable/)
 })
 
-test('a verified PR collector distinguishes nonselected candidates from missing required coverage', () => {
-  const candidate = { ...unassigned, name: 'Native host shard — macos-26 / 0' }
-  const pr = { ...identity, event: 'pull_request' }
-  const passing = hostJobSummary(
-    { ...pr, macQualificationComplete: true },
-    [candidate],
-    { [candidate.id]: annotations },
-  )
-  assert.match(passing, /verified every selected shard/)
-  assert.doesNotMatch(passing, /Infrastructure allocation failure/)
-  const failed = hostJobSummary(pr, [candidate], {
-    [candidate.id]: annotations,
-  })
+test('unassigned Mac shard reports capacity failure for required PR coverage', () => {
+  const worker = { ...unassigned, name: 'Native host shard — macos-26 / 1' }
+  const failed = hostJobSummary(identity, [worker], { [worker.id]: annotations })
   assert.match(failed, /Infrastructure allocation failure/)
-  assert.equal(hostJobSummary(pr, [{ ...candidate, conclusion: 'skipped' }]), '')
+  assert.equal(hostJobSummary(identity, [{ ...worker, conclusion: 'skipped' }]), '')
 })

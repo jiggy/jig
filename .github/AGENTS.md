@@ -110,6 +110,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   build their platform's source workspace separately. Protected publishers
   download the exact original CI artifact by immutable artifact ID. They never
   rebuild a release.
+
+  The PR canonical producer uses `ubuntu-slim`. All other events use
+  `ubuntu-24.04` with the same archive builder and tool versions.
 - Installed Python consumer checks use explicit GitHub runner labels from the
   source catalog. Full PRs run the macOS 15 Python 3.14 profile on a selected
   native worker. CI runs the standalone profile when a PR omits native
@@ -410,28 +413,15 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   The PR planner targets 800 seconds of estimated test work per shard and can
   assign up to five useful workers. The first shard runs on macOS 15 and
-  supplies the installed Python proof. The other shards have two candidates.
-  Matrix creation lists one candidate per shard first, then eligible alternates.
+  supplies the installed Python proof. The other shards run on macOS 26.
+  Each shard requests one required runner directly from the frozen plan.
   Strict runs permit three concurrent workers.
   Worker count and runner labels remain separate from test membership.
 
-  Before native work, each candidate publishes a uniquely named readiness offer.
-  One Ubuntu selector per shard publishes a decision bound to its actual execution and the chosen offer.
-  The decision binds source, run, attempt, assigned worker and the frozen plan's artifact identity and digest.
-  Candidates verify that decision before tests. Artifact names are not a mutual-exclusion primitive.
-
-  The winner's failure remains a failure. A successful result on another OS cannot replace it.
-  Nonselected candidates perform no builds, native tests or consumer work.
-
-  PR candidate jobs permit job-level errors. The independent required collector validates the selected jobs' original steps, complete reports and cleanup.
-  No native or test step permits errors. Strict main and release jobs remain mandatory.
-
-  Independent selectors on `ubuntu-24.04` avoid a barrier between shards.
-  They stay assigned through worker completion, beyond the 15-minute
-  `ubuntu-slim` job limit.
-  The required `affected-macos` job starts after preparation and waits only for selected PR workers and their selectors.
-  Its gate does not depend on unused queued candidates. Those jobs may remain pending or cancelled in the overall workflow.
-  GitHub does not supply individual queued-job cancellation here.
+  Every generated worker must pass. The independent required collector
+  validates original execution steps, complete reports and cleanup.
+  The required `affected-macos` job requests its runner after preparation,
+  alongside the workers.
 
   Different observed patch builds may contribute coverage within one required major.
   This union establishes the ARM behavior contract, rather than independently certifying each observed build.
@@ -456,11 +446,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Every worker has a 25-minute execution ceiling. Optional startup profiling retains its separate manual allowance.
   Queue time remains visible separately.
 
-  PR selectors allow 40 minutes to select a worker. They then watch the exact
-  assigned job through its own execution allowance and bounded evidence
-  settlement. The collector allows 40 minutes for all shard decisions and
-  observes timely selected workers through that same completion window. The
-  selectors and gate have 70-minute job backstops.
+  The PR collector allows 40 minutes for assignment, then gives each assigned
+  worker its 25-minute execution allowance and two minutes for evidence
+  settlement. The gate has a 70-minute job backstop.
 
   Standard hosted capacity is best effort and supplies no queue guarantee.
 
@@ -476,7 +464,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   The gate reconciles scope and preparation, validates the collector's complete
   observed evidence, and publishes the qualification from the same runner.
   It can download completed shard reports while other PR workers run.
-  Its observed execution check remains mandatory. Optional bounded GitHub diagnostics distinguish missing required coverage from unused candidates after verified PR coverage.
+  Its observed execution check remains mandatory. Optional bounded GitHub
+  diagnostics report assignment failures separately from executed work.
   Native test and cleanup failures remain distinct from allocation failures.
   No spare-worker pool, exact-build matching or external scheduler participates.
 

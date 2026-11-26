@@ -148,8 +148,8 @@ preparation never becomes a consumer requirement.
 
   PR envelope reporting includes P95, maximum, and 25-minute breaches.
   Preserve failed, cancelled, incomplete and ambiguous groups in the denominator.
-  Separate runs with and without retries. Measure from original workflow creation
-  through observed completion, without claiming exact push or merge-ready latency.
+  Count retried groups across all outcomes and report successful retries
+  separately. Measure from original workflow creation through observed completion.
 
   The required-check report measures time from the first workflow creation to
   successful CI, Linux and Mac checks. The full-qualification cohort requires
@@ -158,8 +158,9 @@ preparation never becomes a consumer requirement.
   preparation from scope-only execution using observed steps.
   Historical samples use the separate scope and acquisition job observations.
   Omitted and unverified scope counts remain visible.
-  Unselected candidate failures affect the workflow report, while the required-check
-  report uses the observed final gate results.
+
+  Failures of historical optional jobs affect the workflow report. The
+  required-check report uses observed final gate results.
 
   Earlier successful jobs retained in the latest history supply observed runner
   time only. Receipt acceptance and hypothetical latency savings remain unproved.
@@ -405,53 +406,26 @@ They consume frozen package exports with tracked test helpers and installed
 - `mac-command-budget.mjs` bounds worker commands and reserves cleanup and evidence time before the GitHub job backstop.
   It verifies the current assigned execution before establishing the absolute deadline.
   Child process groups settle after completion or failure. Expired work cannot publish a completion marker.
-- `macos-pr-race.mjs` selects PR workers before native work. Candidates publish unique readiness offers.
-  One `ubuntu-24.04` selector per role publishes a decision bound to its actual execution and the chosen offer's immutable ID and digest.
-  It needs the full runner's job allowance to observe worker assignment and completion.
-
-  Both records bind source, run, attempt, allocated worker and the frozen plan's
-  immutable artifact ID and content digest. They are independent of CI archive
-  acquisition so GitHub can allocate Macs while CI builds the canonical inputs.
-  Artifact names do not provide mutual exclusion. Duplicate decisions, unverified transport and mismatched identities refuse.
-
-  A listed artifact may not yet have a readable archive. Transient archive reads remain pending under the original observation deadline.
-  A publication timestamp up to five seconds ahead of the runner clock stays pending until the runner catches up. A larger discrepancy fails.
-
-  API transport retries allow at most three reads with one-second backoff. Authorization, record, digest and identity failures remain fatal.
-  Offer selection and decision resolution probe the artifact list after three
-  initial waits of five seconds, then every thirty seconds. Matching metadata
-  triggers a full snapshot and the original identity checks. A full snapshot
-  also refreshes the run, plan and jobs at least every two minutes.
-
-  Candidates wait for their role's decision. Failed selected workers cannot inherit another OS's success.
-  Selectors watch their chosen worker so failed-job retries include failed roles.
-  Watchers poll the exact job every thirty seconds and recheck the full snapshot
-  before recording its result.
-  Selection has its own forty-minute observation window. Once selected, the
-  assigned job has its existing twenty-five minutes to execute and the selector
-  allows two further minutes for GitHub to report completion.
-
-  Verified retention no-ops preserve successful reports when only another role needs retrying.
-  A fresh plan excludes decisions older than its actual preparation attempt.
-  The gate rejects retained worker proofs from a different canonical candidate.
-  No installation, native owner, mutable fixture or Jig Run is retained.
 - `macos-qualification.mjs` validates the source-bound plan, required compatibility majors, and original execution identities in release receipts.
-  Explicit PR scope requires one selected physical execution per shard. Strict release scope requires every shard on both majors.
+  PR scope requires one physical execution per shard. The installed Python
+  shard runs on macOS 15 and the other shards on macOS 26.
+  Strict release scope requires every shard on both majors.
   Publication validators reject PR coverage, including attempts to relabel a mixed-major union as complete release coverage.
   Release readiness derives required job names from this complete receipt and verifies actual current-attempt job identities.
-- `macos-host-collect.mjs` reconciles immutable per-shard artifacts against the complete plan for every required macOS major.
-  Its PR matrix lists one candidate for each shard before listing any alternate.
-  The installed Python shard requires macOS 15. Other shards race both majors.
+- `macos-host-collect.mjs` reconciles immutable per-shard artifacts against the
+  frozen plan and exact required job matrix. GitHub requests PR workers and
+  the gate when the plan is available while CI builds the canonical inputs.
 
   The PR collector verifies the canonical candidate's producer and artifact digest.
-  It checks every worker's input ID, exact plan and candidate metadata.
+  It checks every worker's immutable input and plan IDs, plan digest, and
+  candidate metadata. A new preparation attempt excludes older worker receipts.
   Strict runs consume the prepared bundle.
 
   It rejects missing or failed reports, changed inputs, foreign jobs, ambiguous artifacts, and unconfirmed completion.
-  GitHub metadata reads reuse the selector's bounded transport retries, including HTTP 5xx and HTTP/2 stream cancellation, before validating the response.
+  GitHub metadata reads retry bounded transient transport errors, including HTTP
+  5xx and HTTP/2 stream cancellation, before validating the response.
   PR failed-job retries may retain successful shard evidence within the original run and unchanged qualification session.
-  A queued retry of a selected worker keeps collection pending before it receives a runner.
-  An unrelated queued candidate does not delay an accepted winner.
+  A queued retry of a required worker keeps collection pending before it receives a runner.
 
   The latest actual execution is authoritative. Later failures cannot fall back to earlier green.
   Original execution IDs, attempts, timestamps, and artifact identities remain visible.
@@ -459,20 +433,16 @@ They consume frozen package exports with tracked test helpers and installed
   Main and release qualification require fresh current-attempt coverage.
   This retains test evidence only. Jig Runs, installations, owners, and mutable fixtures are never reused.
 
-  The collector has no dependency on the raw candidate matrix. PR decisions
-  are due within forty minutes. When every timely decision has been verified,
-  each assigned worker gets its full execution and evidence observation window.
-  The selector and collector jobs have seventy-minute backstops.
+  The collector starts alongside the matrix jobs. PR assignment has a
+  forty-minute deadline. Assigned workers have twenty-five minutes to execute
+  and two minutes for evidence settlement. The collector has a seventy-minute job backstop.
   Strict dual-major observation allows eighty minutes, or 170 minutes with optional startup profiling, with ninety- or 180-minute job backstops.
   These bounds cover sequential capacity waves and establish no turnaround guarantee.
 
-  It does not wait for unused PR candidates. It retains original worker, selector, decision and evidence identities and verifies each worker's decision copy.
-  Decision caching retains immutable bytes only. Current retention and metadata are revalidated.
-
   The PR gate can fetch completed current-attempt reports while other workers run.
   At most four archive transfers overlap, staged by immutable artifact ID and
-  digest. Only the final selected executions supply qualification evidence.
-  With verified decisions, the gate polls jobs between full snapshots and
+  digest. Only the final required executions supply qualification evidence.
+  The gate polls jobs every thirty seconds between full snapshots and
   always refreshes artifacts and run identity before accepting completion.
 
 - `merge-attempts.mjs` selects the newest authoritative execution of each named
@@ -704,8 +674,8 @@ They consume frozen package exports with tracked test helpers and installed
   The collector CLI test verifies recovery from a transient GitHub jobs response before evidence validation.
   The staged evidence test uses the production transport with real ZIP files.
   It checks overlap, the four-transfer limit, and archive digest refusal.
-- `node --test scripts/ci/macos-pr-race.test.mjs scripts/ci/macos-qualification.test.mjs` verifies bounded offers and sole-writer decisions, pre-test worker selection, failed-winner refusal, retry no-ops and explicit mixed-major PR scope.
-  Real ZIP transports test record digests and exact contents. These portable checks establish no native enforcement or GitHub service atomicity.
+- `node --test scripts/ci/macos-qualification.test.mjs` verifies PR shard
+  placement, required release coverage on both majors, and original execution identity.
 - `node --test scripts/ci/macos-host-profiles.test.mjs` checks behavioral prerequisites, pinned runtimes, unsupported architecture refusal, and bounded evidence. Ordinary input records establish no native qualification.
 - `node --test scripts/ci/macos-candidate-archives.test.mjs` executes the
   qualifier's actual archive staging and revalidation sections with real tools.

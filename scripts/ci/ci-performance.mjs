@@ -696,6 +696,9 @@ export function performanceMarkdown(report) {
   const minutes = (value) => (value === null ? '—' : (value / 60).toFixed(1))
   const pr = report.prEnvelopeSummary
   const gates = report.prRequiredChecksSummary
+  const retriedFullPrGroups = report.envelopes.filter(
+    (row) => row.event === 'pull_request' && row.requiredChecks?.hostScope === 'full' && row.hasRetries,
+  ).length
   return [
     '## CI performance observations',
     '',
@@ -745,12 +748,12 @@ export function performanceMarkdown(report) {
     '### Required checks on full-qualification PRs',
     '',
     'Elapsed time runs from the earliest workflow creation until the CI, Linux and macOS gates pass. It includes runner waits and retains the original start on retries.',
-    'Full host scope requires observed candidate acquisition in both host workflows. Event heads still require a separate check for tested merge identity.',
+    'Full host scope requires observed Linux candidate acquisition and a frozen PR Mac plan or historical Mac acquisition. Event heads still require a separate check for tested merge identity.',
     `Observed full-qualification groups: ${gates.groupCount}. Omitted host scope: ${gates.omittedHostScope}. Unverified host scope: ${gates.unverifiedHostScope}.`,
     '',
-    '| Gate outcomes | Passed | Failed | Cancelled | Incomplete | Retried passes |',
-    '| --- | ---: | ---: | ---: | ---: | ---: |',
-    `| Full qualification | ${gates.outcomes.success} | ${gates.outcomes.failed} | ${gates.outcomes.cancelled} | ${gates.outcomes.incomplete} | ${gates.successfulWithRetries.count} |`,
+    '| Gate outcomes | Passed | Failed | Cancelled | Incomplete | Retried groups | Retried passes |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
+    `| Full qualification | ${gates.outcomes.success} | ${gates.outcomes.failed} | ${gates.outcomes.cancelled} | ${gates.outcomes.incomplete} | ${retriedFullPrGroups} | ${gates.successfulWithRetries.count} |`,
     '',
     '| Passing full-qualification PRs | Median minutes | P90 minutes | Over 25 minutes |',
     '| ---: | ---: | ---: | ---: |',
@@ -792,6 +795,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         !Array.isArray(report.workflowSummaries) ||
         !Array.isArray(report.attempts) ||
         !Array.isArray(report.latestRuns) ||
+        !Array.isArray(report.envelopes) ||
         !report.prEnvelopeSummary ||
         !Array.isArray(report.notes)
       )
