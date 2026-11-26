@@ -250,6 +250,7 @@ reference identity, immutable explicit delegation and nested final forwarding.
 The caller catches cleaned failures and checks fixed capture diagnostics without granting failed artifacts.
 `portable/captured-output.test.ts` checks real filesystem refusal categories and diagnostic privacy.
 `portable/child-artifacts.test.ts` checks real permission and retention-capacity diagnostic reasons.
+It also verifies that output above an exact operation byte limit leaves the full root snapshot capacity available.
 These source checks do not establish native settlement or installed-host behavior.
 
 `portable/child-artifacts.test.ts` owns immutable operation-result authority,
