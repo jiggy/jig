@@ -72,7 +72,7 @@ test('default release scope requires both complete compatibility matrices and cu
 test('explicit PR scope admits one complete role per selected major and records actual coverage', () => {
   for (const selected of [
     [15, 26, 15],
-    [26, 26, 26],
+    [15, 26, 26],
     [15, 15, 15],
   ]) {
     const coverage = fixture('pull_request', selected)
@@ -85,6 +85,10 @@ test('explicit PR scope admits one complete role per selected major and records 
     coverage.executions[0].runAttempt = 1
     assert.equal(validateMacCoverage(coverage, { source, scope: 'pull_request' }), coverage)
   }
+  assert.throws(
+    () => validateMacCoverage(fixture('pull_request', [26, 15, 26]), { source, scope: 'pull_request' }),
+    /executed shard identity/,
+  )
 })
 
 test('merge-only coverage cannot satisfy strict publication validation or be relabeled into it', () => {

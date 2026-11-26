@@ -15,7 +15,11 @@ import {
 import { readGitHubApiJson, transientGitHubRead } from './github-read.mjs'
 import { retainedMacBudget } from './mac-command-budget.mjs'
 import { readFrozenMacPlan } from './macos-host-test-shards.mjs'
-import { MACOS_COMPATIBILITY_MAJORS, macJobName } from './macos-qualification.mjs'
+import {
+  MACOS_COMPATIBILITY_MAJORS,
+  macJobName,
+  macPrShardMajors,
+} from './macos-qualification.mjs'
 import { allRunJobs, latestJob } from './merge-attempts.mjs'
 
 export const SELECT_STEP_NAME = 'Select one ready PR worker'
@@ -31,6 +35,7 @@ export const NOOP_STEP_NAMES = Object.freeze([
   'Build the source-test workspace packages',
   'Test native containment and recovery',
   'Run the complete assigned whole-file shard',
+  'Test installed Python reporting on macOS 15',
   'Record successful shard',
 ])
 export const selectorJobName = (shard) => `Select PR Mac worker — shard ${shard}`
@@ -112,7 +117,7 @@ function validateRecord(value, context, decision) {
     JSON.stringify(Object.keys(value).sort()) !==
       JSON.stringify(decision ? decisionFields : readyFields) ||
     value.version !== 1 ||
-    !MACOS_COMPATIBILITY_MAJORS.includes(value.major) ||
+    !macPrShardMajors(value.shard).includes(value.major) ||
     !positive(value.jobId) ||
     !Number.isSafeInteger(value.shard) ||
     value.shard < 0 ||
@@ -459,13 +464,14 @@ export function selectMacPrDecisions({
       jobs.some((job) => job.name === name)
         ? latestJob(jobs, run, name, { completed: false })
         : undefined
-    const candidates = MACOS_COMPATIBILITY_MAJORS.map((major) =>
+    const eligible = macPrShardMajors(shard)
+    const candidates = eligible.map((major) =>
       latest(macJobName(major, shard)),
     ).filter((job) => job && job.run_attempt >= (context.minimumDecisionAttempt ?? 1))
     const rows = decisions.filter((row) => row.decision.shard === shard)
     if (!rows.length) {
       if (
-        candidates.length < MACOS_COMPATIBILITY_MAJORS.length ||
+        candidates.length < eligible.length ||
         candidates.some((job) => ['queued', 'in_progress'].includes(job.status))
       )
         throw pending('Mac shard has no finalized decision yet')
@@ -608,7 +614,7 @@ function apiClient(repository) {
 }
 export async function chooseMacOffer(client, context, { jobs, artifacts, now = Date.now() }) {
   const offers = []
-  for (const major of MACOS_COMPATIBILITY_MAJORS) {
+  for (const major of macPrShardMajors(context.shard)) {
     const name = offerName({ ...context, major }),
       matches = artifacts.filter((artifact) => artifact.name === name)
     if (matches.length > 1) throw new Error('Ambiguous Mac readiness offers')
@@ -629,7 +635,7 @@ export async function chooseMacOffer(client, context, { jobs, artifacts, now = D
     }
   }
   const run = { id: context.runId, run_attempt: context.attempt, head_sha: context.headSha }
-  const candidates = MACOS_COMPATIBILITY_MAJORS.map((major) => {
+  const candidates = macPrShardMajors(context.shard).map((major) => {
     const name = macJobName(major, context.shard)
     const current = jobs.filter((job) => job.name === name && job.run_attempt === context.attempt)
     if (!current.length) return undefined

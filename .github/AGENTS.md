@@ -110,9 +110,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   build their platform's source workspace separately. Protected publishers
   download the exact original CI artifact by immutable artifact ID. They never
   rebuild a release.
-- Installed Python consumer checks use supported, explicit GitHub runner labels,
-  including `macos-15`. Their matrix must exactly match the source catalog's
-  evidence profiles. This package check does not qualify Jig's native Mac host.
+- Installed Python consumer checks use explicit GitHub runner labels from the
+  source catalog. Full PRs run the macOS 15 Python 3.14 profile on a selected
+  native worker. CI runs the standalone profile when a PR omits native
+  qualification and for every strict run.
 - CI reports quick development/release checks and site builds independently of
   the longer source suite. Quick checks validate release coverage against the
   tested PR merge's verified first parent, previous main revision, or manual
@@ -408,9 +409,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Each selected worker runs the complete native enforcement and Codex preference-boundary baseline, then its sequential assigned files. The installed owner also runs genuine offline-client checks.
 
   The PR planner targets 800 seconds of estimated test work per shard and can
-  assign up to five useful workers. Each planned PR shard has two candidates.
-  Matrix creation lists one candidate per shard first, alternating majors,
-  then lists each shard's other candidate. Either allocated candidate can win.
+  assign up to five useful workers. The first shard runs on macOS 15 and
+  supplies the installed Python proof. The other shards have two candidates.
+  Matrix creation lists one candidate per shard first, then eligible alternates.
   Strict runs permit three concurrent workers.
   Worker count and runner labels remain separate from test membership.
 
@@ -437,9 +438,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   One Ubuntu job determines Mac scope, freezes the plan and waits for the
   canonical PR build before requesting native workers. Omitted scope skips
-  input acquisition and worker requests. The native Mac workers and the required macOS Python check
-  request runners independently. The CI aggregate verifies completed Python and
-  Quick checks. Strict Mac runs wait for Quick checks before acquiring inputs.
+  input acquisition and worker requests. The selected macOS 15 worker acquires
+  exact Python artifacts from the canonical CI run after its native tests.
+  The Mac gate verifies both installed formats and every native shard. The CI
+  aggregate verifies its scheduled Python profiles and Quick checks.
+  Strict Mac runs wait for Quick checks before acquiring inputs.
 
   Every worker downloads the prepared artifact by immutable ID.
   Workers verify canonical provenance before execution and compare archive hashes afterward.

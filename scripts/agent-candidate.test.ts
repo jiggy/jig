@@ -440,7 +440,7 @@ test('Python reporting uses frozen distributions and the published FLOW dependen
   ).toBeTrue()
   expect(
     ci.jobs['python-installed'].steps.some((step) =>
-      step.run?.includes('packages/jiggy-reporting/tests/package_smoke.py'),
+      step.run?.includes('scripts/ci/test-installed-python-reporting.sh'),
     ),
   ).toBeTrue()
   expect(

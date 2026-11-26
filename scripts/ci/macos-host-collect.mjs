@@ -22,9 +22,12 @@ import {
 import {
   MACOS_COMPATIBILITY_MAJORS,
   macJobName,
+  macPrShardMajors,
   validateMacCoverage,
 } from './macos-qualification.mjs'
+import { verifyMacPython } from './macos-python-evidence.mjs'
 import { allRunJobs, latestJob } from './merge-attempts.mjs'
+import { MAC_PYTHON_SHARD } from './python-ci-profiles.mjs'
 import { readMacReports } from './test-reports.mjs'
 
 export { MACOS_COMPATIBILITY_MAJORS, macJobName } from './macos-qualification.mjs'
@@ -77,12 +80,19 @@ export function macMatrix(planFile, { pullRequest = false } = {}) {
     if (shard !== index) throw new Error('Mac plan shard identities are not contiguous')
     return { arch: 'arm64', shard, installed: shard === planned.include.length - 1 }
   })
-  const worker = (shard, major) => ({ ...shard, major, runner: `macos-${major}` })
+  const worker = (shard, major) => ({
+    ...shard,
+    major,
+    runner: `macos-${major}`,
+    pythonInstalled: pullRequest && shard.shard === MAC_PYTHON_SHARD,
+  })
   const majors = MACOS_COMPATIBILITY_MAJORS
   return {
     include: pullRequest
       ? majors.flatMap((_, wave) =>
-          shards.map((shard, index) => worker(shard, majors[(index + wave) % majors.length])),
+          shards
+            .map((shard, index) => worker(shard, majors[(index + wave) % majors.length]))
+            .filter(({ major, shard }) => macPrShardMajors(shard).includes(major)),
         )
       : majors.flatMap((major) => shards.map((shard) => worker(shard, major))),
   }
@@ -326,7 +336,7 @@ export async function collectMacHost({
   })
   const bundle = join(scratch, 'macos-host-artifacts')
   await downloadArtifactDirectory(client, inputArtifact, bundle, { extract })
-  await verifyCandidateBundle(bundle, { sourceRevision: source })
+  const candidate = await verifyCandidateBundle(bundle, { sourceRevision: source })
   const planFile = join(bundle, 'PLAN.json')
   const planBytes = await readFile(planFile)
   const pr = run.event === 'pull_request'
@@ -375,6 +385,7 @@ export async function collectMacHost({
   const evidence = join(scratch, 'macos-evidence')
   await mkdir(evidence)
   const reports = []
+  let installedPython
   if (!pr) for (const major of majors) await mkdir(join(evidence, String(major)))
   for (const row of selected) {
     const directory = join(
@@ -396,7 +407,17 @@ export async function collectMacHost({
     for (const name of ['CANDIDATE.json', 'ARTIFACT.json'])
       if (!(await readFile(join(directory, name))).equals(await readFile(join(bundle, name))))
         throw new Error('Mac shard candidate provenance changed')
+    if (pr && row.shard === MAC_PYTHON_SHARD)
+      installedPython = await verifyMacPython({
+        row,
+        directory,
+        candidateDirectory: bundle,
+        candidate,
+        env,
+        client,
+      })
   }
+  if (pr && !installedPython) throw new Error('The required macOS installed Python proof is missing')
   for (const major of pr ? [null] : majors) {
     const report = readMacReports({
       repository: process.cwd(),
@@ -461,6 +482,7 @@ export async function collectMacHost({
     hostProfiles: reports.flatMap((report) => report.hostProfiles),
     majors,
     reports,
+    ...(installedPython ? { installedPython } : {}),
     planSha256: digest(planBytes),
     executions: selected.map(({ major, shard, job, artifact, decisionArtifact, selectorJob }) => ({
       major,
@@ -497,7 +519,7 @@ export async function collectMacHost({
     '## Mac host qualification',
     '',
     pr
-      ? 'Complete whole-file PR coverage passed across the selected native ARM workers.'
+      ? 'Complete whole-file PR coverage and the installed macOS Python profile passed.'
       : `Complete whole-file coverage passed independently for macOS ${majors.join(' and ')} on native ARM.`,
     '',
     '| macOS | Shard | Runner wait | Execution | Accepted job / attempt |',
@@ -519,7 +541,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     if (mode === 'matrix' && file) {
       const pullRequest = process.env.GITHUB_EVENT_NAME === 'pull_request'
       const matrix = macMatrix(file, { pullRequest })
-      const shardCount = matrix.include.filter((row) => row.major === 26).length
+      const shardCount = new Set(matrix.include.map(({ shard }) => shard)).size
       const selectors = { include: Array.from({ length: shardCount }, (_, shard) => ({ shard })) }
       await appendFile(
         process.env.GITHUB_OUTPUT,

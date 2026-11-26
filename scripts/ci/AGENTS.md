@@ -244,8 +244,8 @@ They consume frozen package exports with tracked test helpers and installed
 
   Producer readiness has one absolute deadline, including job queues.
   Missing, queued or running jobs poll every 30 seconds. Bounded PR producer
-  waits poll every 10 seconds for the first minute. Mac preparation and the
-  installed Python check proceed independently.
+  waits poll every 10 seconds for the first minute. Mac preparation requests
+  native workers as soon as the canonical build passes.
 
   Failed, skipped, duplicate, stale or completed-but-missing proof refuses
   immediately. Strict hosted Mac runs also require
@@ -257,7 +257,18 @@ They consume frozen package exports with tracked test helpers and installed
   acquisition. Transfer retains its separate 300-second Linux and Mac PR or
   600-second strict Mac maximum and 10-second polling. Other callers retain their existing
   bounds without producer waiting. Runner assignment grants no test evidence.
-  The required CI aggregate verifies the completed Python profile separately.
+
+- `python-ci-profiles.mjs` assigns the complete installed Python profile
+  inventory. Full PRs move the macOS 15 profile to the first native Mac shard.
+  CI independently reconstructs native scope and verifies its own profiles.
+  Scope-omitted PRs and strict runs run the full installed matrix in CI.
+
+  The designated Mac worker verifies the original CI run and downloads the
+  frozen FLOW SDK wheel and Reporting wheel and sdist by immutable identity.
+  Both workflows use the same installed consumer command and typing checks.
+  `macos-python-evidence.mjs` verifies the actual selected worker, successful
+  test step, interpreter, two complete reports and exact input bindings before
+  the Mac gate passes.
 
 - `release-readiness.mjs` rechecks all current-attempt CI, Linux, hosted Mac and
   native obligations after completion events. Qualification receipts bind the
@@ -422,7 +433,7 @@ They consume frozen package exports with tracked test helpers and installed
   Release readiness derives required job names from this complete receipt and verifies actual current-attempt job identities.
 - `macos-host-collect.mjs` reconciles immutable per-shard artifacts against the complete plan for every required macOS major.
   Its PR matrix lists one candidate for each shard before listing any alternate.
-  The first candidates alternate majors. Both candidates remain eligible.
+  The installed Python shard requires macOS 15. Other shards race both majors.
 
   It rejects missing or failed reports, changed inputs, foreign jobs, ambiguous artifacts, and unconfirmed completion.
   GitHub metadata reads reuse the selector's bounded transport retries, including HTTP 5xx and HTTP/2 stream cancellation, before validating the response.

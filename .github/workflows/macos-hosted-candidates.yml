@@ -301,6 +301,27 @@ jobs:
         run: |
           set -o pipefail
           node scripts/ci/mac-command-budget.mjs run scripts/ci/qualify-macos-host.sh --shard "$MAC_HOST_ROLE" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/host-conformance.txt"
+      - name: Set up Python 3.14 on the selected macOS 15 worker
+        if: github.event_name == 'pull_request' && matrix.pythonInstalled && steps.selection.outputs.winner == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.14"
+      - name: Acquire the exact CI Python inputs
+        if: github.event_name == 'pull_request' && matrix.pythonInstalled && steps.selection.outputs.winner == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/ci/mac-command-budget.mjs run node scripts/ci/macos-python-evidence.mjs \
+            "$RUNNER_TEMP/macos-python" "$RUNNER_TEMP/macos-host-artifacts" \
+            "$RUNNER_TEMP/mac-evidence/PYTHON-INPUTS.json"
+      - name: Test installed Python reporting on macOS 15
+        if: github.event_name == 'pull_request' && matrix.pythonInstalled && steps.selection.outputs.winner == 'true'
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/ci/mac-command-budget.mjs run bash scripts/ci/test-installed-python-reporting.sh \
+            "$RUNNER_TEMP/macos-python/python" "$RUNNER_TEMP/macos-python/python-reporting" \
+            2>&1 | tee "$RUNNER_TEMP/mac-evidence/PYTHON-REPORTING.txt"
       - name: Verify canonical candidate metadata is unchanged
         if: ${{ github.event_name != 'pull_request' || steps.selection.outputs.winner == 'true' }}
         run: |

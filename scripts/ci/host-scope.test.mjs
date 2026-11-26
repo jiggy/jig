@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { checkHostJobs, hostScope, independentHostInput } from './host-scope.mjs'
+import { ciPythonProfiles, MAC_PYTHON_PROFILE, pythonInstalledProfiles } from './python-ci-profiles.mjs'
 
 function mergeFixture(t, paths) {
   const root = mkdtempSync(join(tmpdir(), 'jig-host-scope-'))
@@ -38,6 +39,16 @@ function mergeFixture(t, paths) {
     event: { pull_request: { base: { sha: base }, head: { sha: head } } },
   }
 }
+
+test('the required macOS Python profile moves only when the PR requires native qualification', async (t) => {
+  const independent = mergeFixture(t, ['packages/jiggy-reporting/tests/new.py'])
+  const full = mergeFixture(t, ['packages/jig/src/change.ts'])
+  assert.deepEqual(await ciPythonProfiles(independent), pythonInstalledProfiles)
+  assert.deepEqual(await ciPythonProfiles(full), pythonInstalledProfiles.filter((profile) => profile !== MAC_PYTHON_PROFILE))
+  for (const event of ['push', 'workflow_dispatch', 'schedule']) {
+    assert.deepEqual(await ciPythonProfiles({ ...full, env: { ...full.env, GITHUB_EVENT_NAME: event } }), pythonInstalledProfiles)
+  }
+})
 
 test('verified independent PR inputs avoid native jobs while source, mixed and unknown changes stay full', async (t) => {
   for (const paths of [

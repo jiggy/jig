@@ -20,6 +20,12 @@ import {
 } from './candidate-transfer.mjs'
 import { readGitHubApiJson, retryGitHubRead } from './github-read.mjs'
 import { allRunJobs, latestJob } from './merge-attempts.mjs'
+import {
+  ciPythonProfiles,
+  MAC_PYTHON_PROFILE,
+  pythonInstalledJob,
+  pythonInstalledProfiles,
+} from './python-ci-profiles.mjs'
 
 const WORKFLOW = '.github/workflows/ci.yml'
 const MERGE_DOWNLOAD_CONCURRENCY = 4
@@ -30,14 +36,6 @@ const SOURCE_TARGETS = [
   'source-protocol',
   'source-applications',
   'source-python',
-]
-const PYTHON = [
-  ['ubuntu-24.04', '3.11'],
-  ['ubuntu-24.04', '3.12'],
-  ['ubuntu-24.04', '3.13'],
-  ['ubuntu-24.04', '3.14'],
-  ['macos-15', '3.14'],
-  ['windows-2022', '3.13'],
 ]
 
 // This is the closed merge-CI job inventory, not a test selector. Workflow tests
@@ -65,14 +63,17 @@ export const MERGE_JOBS = Object.freeze([
     inputs: ['canonical', 'python', 'python-reporting'],
     os: 'Linux',
   },
-  ...PYTHON.map(([os, python]) => ({
-    name: 'Python ' + python + ' on ' + os,
-    stem: 'python-' + os + '-' + python,
-    targets: ['python-installed'],
-    inputs: ['python', 'python-reporting'],
-    profile: os + '/python-' + python,
-    os: os.startsWith('windows') ? 'Windows' : os.startsWith('macos') ? 'macOS' : 'Linux',
-  })),
+  ...pythonInstalledProfiles.map((profile) => {
+    const [os, python] = profile.split('/python-')
+    return {
+      name: pythonInstalledJob(profile),
+      stem: 'python-' + os + '-' + python,
+      targets: ['python-installed'],
+      inputs: ['python', 'python-reporting'],
+      profile,
+      os: os.startsWith('windows') ? 'Windows' : os.startsWith('macos') ? 'macOS' : 'Linux',
+    }
+  }),
   ...['flow', 'agent', 'acp', 'jig'].map((profile) => ({
     name: 'Build ' + profile + ' release candidate',
     stem: 'npm-' + profile,
@@ -373,6 +374,11 @@ export async function acquireMergeEvidence({
   extract,
 }) {
   const snapshot = await mergeContext({ env, client })
+  const profiles = await ciPythonProfiles({ env })
+  const nativeMac = !profiles.includes(MAC_PYTHON_PROFILE)
+  if (nativeMac && snapshot.jobs.some(({ name }) => name === pythonInstalledJob(MAC_PYTHON_PROFILE)))
+    throw new Error('The native Mac Python profile has a duplicate CI execution')
+  const specs = MERGE_JOBS.filter((spec) => !nativeMac || spec.profile !== MAC_PYTHON_PROFILE)
   // Even jobs without a test report must have completed successfully.
   latestJob(snapshot.jobs, snapshot.run, 'candidate-build')
   inputArtifact(snapshot, 'canonical')
@@ -409,8 +415,8 @@ export async function acquireMergeEvidence({
     }
   }
   const retained = []
-  for (let index = 0; index < MERGE_JOBS.length; index += MERGE_DOWNLOAD_CONCURRENCY) {
-    const batch = MERGE_JOBS.slice(index, index + MERGE_DOWNLOAD_CONCURRENCY)
+  for (let index = 0; index < specs.length; index += MERGE_DOWNLOAD_CONCURRENCY) {
+    const batch = specs.slice(index, index + MERGE_DOWNLOAD_CONCURRENCY)
     const reports = await Promise.allSettled(batch.map(collectJob))
     for (const report of reports) {
       if (report.status === 'rejected') throw report.reason
@@ -419,7 +425,7 @@ export async function acquireMergeEvidence({
   }
   await unchanged(snapshot, client)
   const jobResults = { 'candidate-build': { result: 'success' } }
-  for (const spec of MERGE_JOBS) {
+  for (const spec of specs) {
     const id = spec.stem === 'source' ? 'source-tests' : spec.targets[0]
     jobResults[id] = { result: 'success' }
   }

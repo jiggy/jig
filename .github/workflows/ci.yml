@@ -160,6 +160,8 @@ jobs:
       actions: read
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      installed-matrix: ${{ steps.installed-profiles.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -168,6 +170,9 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
+      - name: Select the installed Python job profiles
+        id: installed-profiles
+        run: node scripts/ci/python-ci-profiles.mjs
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.13"
@@ -228,20 +233,7 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            python: "3.11"
-          - os: ubuntu-24.04
-            python: "3.12"
-          - os: ubuntu-24.04
-            python: "3.13"
-          - os: ubuntu-24.04
-            python: "3.14"
-          - os: macos-15
-            python: "3.14"
-          - os: windows-2022
-            python: "3.13"
+      matrix: ${{ fromJSON(needs.python-build.outputs.installed-matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -263,7 +255,6 @@ jobs:
         with:
           name: python-candidate-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
           path: python-dist
-      - run: python -m pip install mypy==1.18.2
       - name: Read verified merge python-reporting input
         if: github.event_name == 'pull_request'
         env:
@@ -279,7 +270,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python packages/jiggy-reporting/tests/package_smoke.py python-reporting-dist/*.whl python-reporting-dist/*.tar.gz python-dist/*.whl 2>&1 | tee -a "$RUNNER_TEMP/python-installed.txt"
+          bash scripts/ci/test-installed-python-reporting.sh python-dist python-reporting-dist 2>&1 | tee -a "$RUNNER_TEMP/python-installed.txt"
       - name: Record observed execution
         run: node scripts/ci/job-evidence.mjs --id python-installed --output "$RUNNER_TEMP/evidence.json" --transcript "$RUNNER_TEMP/python-installed.txt" --artifacts --profile "${{ matrix.os }}/python-${{ matrix.python }}"
         shell: bash

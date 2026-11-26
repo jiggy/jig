@@ -99,7 +99,7 @@ esac
 
 const job = (shard, attempt = 1, id = shard + 100) => ({
   id,
-  name: macJobName(26, shard),
+  name: macJobName(shard === 0 ? 15 : 26, shard),
   run_id: 42,
   run_attempt: attempt,
   head_sha: source,
@@ -107,7 +107,7 @@ const job = (shard, attempt = 1, id = shard + 100) => ({
   conclusion: 'success',
   runner_id: 200,
   runner_name: 'disposable-ARM',
-  labels: ['macos-26'],
+  labels: [shard === 0 ? 'macos-15' : 'macos-26'],
   created_at: '2026-11-17T00:00:00Z',
   started_at: '2026-11-17T00:01:00Z',
   completed_at: '2026-11-17T00:20:00Z',
@@ -124,7 +124,7 @@ const job = (shard, attempt = 1, id = shard + 100) => ({
 })
 const artifact = (shard, attempt = 1) => ({
   id: shard + 300,
-  name: `macos-prerequisites-26-${shard}-${source}-r42-a${attempt}`,
+  name: `macos-prerequisites-${shard === 0 ? 15 : 26}-${shard}-${source}-r42-a${attempt}`,
   expired: false,
   expires_at: '2026-11-24T00:00:00Z',
   digest: `sha256:${'b'.repeat(64)}`,
@@ -147,7 +147,7 @@ const decisionRow = (shard, attempt = 1) => ({
     runId: 42,
     attempt,
     shard,
-    major: 26,
+    major: shard === 0 ? 15 : 26,
     jobId: shard + 100,
     selectorJobId: shard + 600,
     offerArtifactId: shard + 700,
@@ -184,7 +184,7 @@ const selection = (overrides = {}) =>
     decisionContext,
     matrix: {
       include: [
-        { major: 26, shard: 0 },
+        { major: 15, shard: 0 },
         { major: 26, shard: 1 },
       ],
     },
@@ -248,7 +248,7 @@ test('latest actual failure, missing evidence, ambiguous artifacts and foreign j
     { artifacts: [artifact(0), artifact(0), artifact(1, 2)] },
     { jobs: [{ ...job(0), head_sha: 'c'.repeat(40) }, job(1, 2)] },
     { jobs: [{ ...job(0), runner_id: 0, runner_name: '', steps: [] }, job(1, 2)] },
-    { jobs: [{ ...job(0), labels: ['macos-15'] }, job(1, 2)] },
+    { jobs: [{ ...job(0), labels: ['macos-26'] }, job(1, 2)] },
   ])
     assert.throws(() => selection(overrides))
 })
@@ -260,7 +260,7 @@ test('main qualification never retains earlier attempts and retries expire after
 })
 
 test('queue and execution timings require an actual assigned host and ordered timestamps', () => {
-  assert.deepEqual(macExecutionTiming(job(0), 26), { waitSeconds: 60, executionSeconds: 1140 })
+  assert.deepEqual(macExecutionTiming(job(0), 15), { waitSeconds: 60, executionSeconds: 1140 })
   for (const changes of [
     { started_at: 'invalid' },
     { completed_at: '2026-11-17T00:00:00Z' },
@@ -268,7 +268,7 @@ test('queue and execution timings require an actual assigned host and ordered ti
     { steps: [] },
     { steps: [{ status: 'completed', conclusion: 'failure' }] },
   ])
-    assert.throws(() => macExecutionTiming({ ...job(0), ...changes }, 26))
+    assert.throws(() => macExecutionTiming({ ...job(0), ...changes }, 15))
 })
 
 test('each retained shard binds the immutable prepared artifact and exact frozen plan bytes', () => {
@@ -323,7 +323,7 @@ test('worker evidence must retain its exact pre-test winning decision', () => {
   assert.doesNotThrow(() => requireMacDecisionBinding(binding, selected))
   for (const changed of [
     { ...binding, extra: true },
-    { ...binding, decision: { ...row.decision, major: 15 } },
+    { ...binding, decision: { ...row.decision, major: 26 } },
     { ...binding, artifact: { ...binding.artifact, id: 999 } },
   ])
     assert.throws(() => requireMacDecisionBinding(changed, selected))
@@ -333,8 +333,8 @@ test('PR collector finishes on fixed winners while the other OS is still queued'
   const winner = decisionRow(0)
   const loser = {
     ...job(0, 2, 999),
-    name: macJobName(15, 0),
-    labels: ['macos-15'],
+    name: macJobName(26, 0),
+    labels: ['macos-26'],
     status: 'queued',
     conclusion: null,
     runner_id: 0,
@@ -518,7 +518,7 @@ test('strict collector waits for both independent majors and rejects failed or r
     ],
   }
   const old = { ...job(0, 2, 150), name: macJobName(15, 0), labels: ['macos-15'] }
-  const current = job(0, 2, 260)
+  const current = { ...job(0, 2, 260), name: macJobName(26, 0), labels: ['macos-26'] }
   let observations = 0,
     clock = 0
   const result = await waitForMacReleaseWorkers({

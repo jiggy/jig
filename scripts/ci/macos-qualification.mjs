@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto'
 import { validateMacShardPolicy } from './macos-host-test-shards.mjs'
+import { MAC_PYTHON_MAJOR, MAC_PYTHON_SHARD } from './python-ci-profiles.mjs'
 
 export const MACOS_COMPATIBILITY_MAJORS = Object.freeze([15, 26])
+export const macPrShardMajors = (shard) =>
+  shard === MAC_PYTHON_SHARD ? [MAC_PYTHON_MAJOR] : MACOS_COMPATIBILITY_MAJORS
 export const macJobName = (major, shard) => `Native host shard — macos-${major} / ${shard}`
 const stable = (value) =>
   Array.isArray(value)
@@ -42,7 +45,10 @@ export function validateMacCoverage(coverage, { source, scope = 'release', attem
   // Releases independently qualify every role on both supported majors.
   const expected =
     scope === 'pull_request'
-      ? plan.shards.map((shard) => ({ shard: shard.index }))
+      ? plan.shards.map(({ index: shard }) => ({
+          shard,
+          ...(shard === MAC_PYTHON_SHARD ? { major: MAC_PYTHON_MAJOR } : {}),
+        }))
       : MACOS_COMPATIBILITY_MAJORS.flatMap((major) =>
           plan.shards.map((shard) => ({ major, shard: shard.index })),
         )

@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { appendFile, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -20,6 +19,7 @@ import {
   verifyArtifactMetadata,
 } from './candidate-transfer.mjs'
 import { macQualificationJobNames, validateMacCoverage } from './macos-qualification.mjs'
+import { pythonInstalledJob, pythonInstalledProfiles } from './python-ci-profiles.mjs'
 
 const WORKFLOWS = Object.freeze({
   ci: '.github/workflows/ci.yml',
@@ -28,14 +28,8 @@ const WORKFLOWS = Object.freeze({
   native: '.github/workflows/native-agent-api-qualification.yml',
 })
 
-const catalog = JSON.parse(readFileSync(new URL('./test-suites.json', import.meta.url), 'utf8'))
 export const PYTHON_INSTALLED_JOBS = Object.freeze(
-  catalog.targets
-    .find((target) => target.id === 'python-installed')
-    .profiles.map((profile) => {
-      const [os, python] = profile.split('/python-')
-      return `Python ${python} on ${os}`
-    }),
+  pythonInstalledProfiles.map(pythonInstalledJob),
 )
 
 export const CI_QUALIFICATION_JOBS = Object.freeze([

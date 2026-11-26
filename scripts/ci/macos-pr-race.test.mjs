@@ -42,7 +42,7 @@ const ready = {
   source,
   runId: 50,
   attempt: 1,
-  shard: 0,
+  shard: 1,
   major: 15,
   jobId: 150,
   preparedArtifactId: 12,
@@ -64,7 +64,7 @@ function step(name, number, start = 70, end = 80, conclusion = 'success') {
 function job(major = 15, attempt = 1, patch = {}) {
   return {
     id: major * 10 + attempt - 1,
-    name: macJobName(major, 0),
+    name: macJobName(major, 1),
     run_id: 50,
     run_attempt: attempt,
     head_sha: context.headSha,
@@ -84,7 +84,7 @@ function selector(attempt = 1, patch = {}) {
   return {
     ...job(15, attempt),
     id: 500 + attempt,
-    name: selectorJobName(0),
+    name: selectorJobName(1),
     labels: [MACOS_PR_SELECTOR_RUNNER],
     steps: [step(SELECT_STEP_NAME, 1, 125, 130), step(DECISION_UPLOAD_STEP_NAME, 2, 131, null)],
     ...patch,
@@ -192,8 +192,8 @@ async function store(t) {
 }
 
 test('readiness and decisions use distinct role-bound names and exact schemas', () => {
-  assert.equal(offerName(ready), `macos-pr-offer-15-0-${source}-r50-a1`)
-  assert.equal(decisionName(ready), `macos-pr-decision-0-${source}-r50-a1`)
+  assert.equal(offerName(ready), `macos-pr-offer-15-1-${source}-r50-a1`)
+  assert.equal(decisionName(ready), `macos-pr-decision-1-${source}-r50-a1`)
   assert.equal(validateMacReady(ready, context), ready)
   for (const patch of [{ source: 'bad' }, { runId: 0 }, { attempt: 0 }, { shard: 8 }])
     assert.throws(() => decisionName({ ...ready, ...patch }))
@@ -217,7 +217,7 @@ test('actual concurrent distinct offer ZIPs produce one sole-selector decision f
   const jobs = [job(), job(26), selector()]
   const chosen = await chooseMacOffer(
     s.client,
-    { ...context, shard: 0 },
+    { ...context, shard: 1 },
     { jobs, artifacts: offers, now },
   )
   assert.equal(chosen.ready.jobId, 150)
@@ -242,7 +242,7 @@ test('duplicate offers or duplicate sole-selector decisions fail closed without 
   await assert.rejects(
     chooseMacOffer(
       s.client,
-      { ...context, shard: 0 },
+      { ...context, shard: 1 },
       { jobs: [job()], artifacts: [offer, { ...offer, id: 999 }], now },
     ),
     /Ambiguous/,
@@ -258,7 +258,7 @@ test('duplicate offers or duplicate sole-selector decisions fail closed without 
         decisions: [row, row],
         jobs: [success(job()), success(selector())],
         context,
-        shards: [0],
+        shards: [1],
       }),
     /Ambiguous/,
   )
@@ -269,7 +269,7 @@ test('sole-selector identity, successful select, upload phase and referenced off
     result = await s.decision()
   for (const changed of [
     selector(1, { labels: ['ubuntu-slim'] }),
-    selector(1, { name: selectorJobName(1) }),
+    selector(1, { name: selectorJobName(0) }),
     selector(1, { runner_id: 0 }),
     selector(1, { run_attempt: 2 }),
     selector(1, {
@@ -402,7 +402,7 @@ test('a fixed failed Mac never hands off to the other ready candidate', async (t
     const row = await readMacDecisionArtifact(s.client, result.artifact, context, { jobs, now })
     assert.equal(row.decision.jobId, 150)
     assert.throws(
-      () => selectMacPrDecisions({ decisions: [row], jobs, context, shards: [0] }),
+      () => selectMacPrDecisions({ decisions: [row], jobs, context, shards: [1] }),
       /fixed Mac worker did not succeed/,
     )
     assert.equal(loser.name, offerName({ ...ready, major: 26 }))
@@ -414,7 +414,7 @@ test('collector waits raw winner and selector outcomes; failed selector cannot i
     result = await s.decision()
   const jobs = [success(job()), selector()]
   const row = await readMacDecisionArtifact(s.client, result.artifact, context, { jobs, now })
-  assert.throws(() => selectMacPrDecisions({ decisions: [row], jobs, context, shards: [0] }), {
+  assert.throws(() => selectMacPrDecisions({ decisions: [row], jobs, context, shards: [1] }), {
     code: 'MAC_RACE_PENDING',
   })
   assert.throws(
@@ -423,7 +423,7 @@ test('collector waits raw winner and selector outcomes; failed selector cannot i
         decisions: [row],
         jobs: [job(), success(selector())],
         context,
-        shards: [0],
+        shards: [1],
       }),
     { code: 'MAC_RACE_PENDING' },
   )
@@ -433,7 +433,7 @@ test('collector waits raw winner and selector outcomes; failed selector cannot i
         decisions: [row],
         jobs: [success(job()), { ...success(selector()), conclusion: 'failure' }],
         context,
-        shards: [0],
+        shards: [1],
       }),
     /selector did not succeed/,
   )
@@ -442,7 +442,7 @@ test('collector waits raw winner and selector outcomes; failed selector cannot i
       decisions: [row],
       jobs: [success(job()), success(selector())],
       context,
-      shards: [0],
+      shards: [1],
     })[0].job.id,
     150,
   )
@@ -456,7 +456,7 @@ test('explicit completed Mac noops retain old success; later actual work or fail
     next = { ...context, attempt: 2 }
   const retained = [...jobs, macNoop(15, 2), macNoop(26, 2)]
   assert.equal(
-    selectMacPrDecisions({ decisions: [row], jobs: retained, context: next, shards: [0] })[0].job
+    selectMacPrDecisions({ decisions: [row], jobs: retained, context: next, shards: [1] })[0].job
       .id,
     150,
   )
@@ -467,7 +467,7 @@ test('explicit completed Mac noops retain old success; later actual work or fail
           decisions: [row],
           jobs: [...jobs, bad],
           context: next,
-          shards: [0],
+          shards: [1],
         }),
       /replacement decision or verified noop/,
     )
@@ -477,7 +477,7 @@ test('explicit completed Mac noops retain old success; later actual work or fail
         decisions: [row],
         jobs: [...jobs, job(26, 2)],
         context: next,
-        shards: [0],
+        shards: [1],
       }),
     { code: 'MAC_RACE_PENDING' },
   )
@@ -491,7 +491,7 @@ test('a later verified selector retention noop can repair original watch failure
   const row = await readMacDecisionArtifact(s.client, result.artifact, context, { jobs, now })
   const retained = await retainedMacPrDecision(
     s.client,
-    { ...context, attempt: 2, shard: 0 },
+    { ...context, attempt: 2, shard: 1 },
     { jobs, artifacts: [result.artifact], now },
   )
   assert.equal(retained.decision.jobId, 150)
@@ -499,7 +499,7 @@ test('a later verified selector retention noop can repair original watch failure
     decisions: [row],
     jobs: [...jobs, selectorNoop(2)],
     context: { ...context, attempt: 2 },
-    shards: [0],
+    shards: [1],
   })[0]
   assert.equal(selected.selectorJob.id, 502)
   assert.equal(selected.decisionSelectorJob.id, 501)
@@ -508,7 +508,7 @@ test('a later verified selector retention noop can repair original watch failure
       decisions: [row],
       jobs: [...jobs, { ...selectorNoop(2), conclusion: 'failure' }],
       context: { ...context, attempt: 2 },
-      shards: [0],
+      shards: [1],
     }),
   )
 })
@@ -516,7 +516,7 @@ test('a later verified selector retention noop can repair original watch failure
 test('new preparation requires fresh offers and decisions without downloading old input proof', async (t) => {
   const s = await store(t),
     result = await s.decision(),
-    fresh = { ...context, attempt: 2, minimumDecisionAttempt: 2, shard: 0, preparedArtifactId: 99 }
+    fresh = { ...context, attempt: 2, minimumDecisionAttempt: 2, shard: 1, preparedArtifactId: 99 }
   assert.equal(
     await retainedMacPrDecision(
       {
@@ -535,7 +535,7 @@ test('new preparation requires fresh offers and decisions without downloading ol
         decisions: [],
         jobs: [success(job()), macNoop(26, 1)],
         context: fresh,
-        shards: [0],
+        shards: [1],
       }),
     { code: 'MAC_RACE_PENDING' },
   )
@@ -548,7 +548,7 @@ test('new preparation requires fresh offers and decisions without downloading ol
   const jobs = [success(job(15, 2)), success(selector(2))]
   const row = await readMacDecisionArtifact(s.client, next.artifact, fresh, { jobs, now })
   assert.equal(
-    selectMacPrDecisions({ decisions: [row], jobs, context: fresh, shards: [0] })[0].decision
+    selectMacPrDecisions({ decisions: [row], jobs, context: fresh, shards: [1] })[0].decision
       .preparedArtifactId,
     99,
   )
@@ -599,7 +599,7 @@ test('prepared input identity derives from the latest actual successful producer
 
 test('incomplete candidate registration remains pending; terminal missing decisions refuse', () => {
   for (const jobs of [[], [success(job())], [job(), success(job(26))]])
-    assert.throws(() => selectMacPrDecisions({ decisions: [], jobs, context, shards: [0] }), {
+    assert.throws(() => selectMacPrDecisions({ decisions: [], jobs, context, shards: [1] }), {
       code: 'MAC_RACE_PENDING',
     })
   assert.throws(
@@ -608,7 +608,7 @@ test('incomplete candidate registration remains pending; terminal missing decisi
         decisions: [],
         jobs: [success(job()), success(job(26))],
         context,
-        shards: [0],
+        shards: [1],
       }),
     /no immutable selector decision/,
   )
@@ -637,7 +637,7 @@ test('raw failed steps cannot be hidden beneath successful Mac or selector job c
     ],
   ])
     assert.throws(
-      () => selectMacPrDecisions({ decisions: [row], jobs, context, shards: [0] }),
+      () => selectMacPrDecisions({ decisions: [row], jobs, context, shards: [1] }),
       /did not succeed/,
     )
 })
@@ -657,7 +657,7 @@ test('selectors stop promptly only after every current platform candidate is aut
   await assert.rejects(
     chooseMacOffer(
       {},
-      { ...context, shard: 0 },
+      { ...context, shard: 1 },
       {
         ...options,
         jobs: [unassigned(15), unassigned(26)],
@@ -670,7 +670,7 @@ test('selectors stop promptly only after every current platform candidate is aut
     await assert.rejects(
       chooseMacOffer(
         {},
-        { ...context, attempt, shard: 0 },
+        { ...context, attempt, shard: 1 },
         {
           ...options,
           jobs,
@@ -689,7 +689,7 @@ test('selectors stop promptly only after every current platform candidate is aut
   await assert.rejects(
     chooseMacOffer(
       {},
-      { ...context, attempt: 2, shard: 0 },
+      { ...context, attempt: 2, shard: 1 },
       {
         ...options,
         jobs: [...originals, ...copies],
@@ -700,7 +700,7 @@ test('selectors stop promptly only after every current platform candidate is aut
   await assert.rejects(
     chooseMacOffer(
       {},
-      { ...context, shard: 0 },
+      { ...context, shard: 1 },
       {
         ...options,
         jobs: [unassigned(15), { ...unassigned(26), head_sha: source }],
@@ -715,7 +715,7 @@ test('a live verified readiness offer is selected without waiting for the other 
     artifact = await s.offer()
   const row = await chooseMacOffer(
     s.client,
-    { ...context, shard: 0 },
+    { ...context, shard: 1 },
     {
       jobs: [job(), { ...success(job(26)), conclusion: 'failure' }],
       artifacts: [artifact],
@@ -941,12 +941,12 @@ test('selection tries another readable live offer after archive visibility is pe
     },
   }
   const options = { jobs: [job(), job(26)], artifacts: [first, second], now }
-  const selected = await chooseMacOffer(delayed, { ...context, shard: 0 }, options)
+  const selected = await chooseMacOffer(delayed, { ...context, shard: 1 }, options)
   assert.equal(selected.ready.jobId, 260)
   await assert.rejects(
     chooseMacOffer(
       s.client,
-      { ...context, shard: 0 },
+      { ...context, shard: 1 },
       {
         ...options,
         artifacts: [{ ...first, digest: `sha256:${'d'.repeat(64)}` }, second],

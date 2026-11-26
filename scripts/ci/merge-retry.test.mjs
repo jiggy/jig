@@ -9,6 +9,7 @@ import { parse } from 'yaml'
 import { digest } from './candidate-provenance.mjs'
 import { transientGitHubRead } from './github-read.mjs'
 import { collectJobEvidence, executionInventory } from './job-evidence.mjs'
+import { verifyMacPython } from './macos-python-evidence.mjs'
 import { allRunJobs, latestJob } from './merge-attempts.mjs'
 import {
   acquireMergeEvidence,
@@ -20,6 +21,9 @@ import {
   workflowSourceDigest,
 } from './merge-retry.mjs'
 
+import { MAC_PYTHON_PROFILE, pythonInstalledProfiles } from './python-ci-profiles.mjs'
+
+const fullPrJobs = MERGE_JOBS.filter((item) => item.profile !== MAC_PYTHON_PROFILE)
 const source = executionInventory().source
 const head = 'b'.repeat(40)
 const repository = 'jiggy/jig'
@@ -109,8 +113,8 @@ async function fixture(t) {
   }
   const jobs = [
     job(1, 'candidate-build'),
-    ...MERGE_JOBS.map((spec, i) =>
-      job(i + 2, spec.name, spec.name === 'Python 3.14 on macos-15' ? 2 : 1),
+    ...fullPrJobs.map((spec, i) =>
+      job(i + 2, spec.name, spec.name === 'Python 3.14 on ubuntu-24.04' ? 2 : 1),
     ),
   ]
   const artifacts = [
@@ -137,7 +141,7 @@ async function fixture(t) {
       await writeFile(path, archiveBytes.get(id))
     },
   }
-  for (const spec of MERGE_JOBS) {
+  for (const spec of fullPrJobs) {
     const selected = latestJob(jobs, run, spec.name)
     const rows = spec.targets.map((id) => {
       const target = inventory.targets.find((item) => item.id === id)
@@ -173,10 +177,10 @@ async function fixture(t) {
   }
   async function pack() {
     const archivePlan = []
-    for (const spec of MERGE_JOBS) {
+    for (const spec of fullPrJobs) {
       const selected = latestJob(jobs, run, spec.name)
       const name = 'ci-evidence-' + spec.stem + '-' + source + '-a' + selected.run_attempt
-      const a = artifact(10 + MERGE_JOBS.indexOf(spec), name)
+      const a = artifact(10 + fullPrJobs.indexOf(spec), name)
       const folder = join(root, 'pack-' + spec.stem)
       await rm(folder, { recursive: true, force: true })
       await mkdir(folder)
@@ -314,7 +318,7 @@ test('merge input CLI retries GitHub reads before validating and binding an arti
 test('the production merge CLI overlaps four archive downloads and verifies every ZIP', async (t) => {
   const { root, env, snapshot } = await fixture(t)
   const archives = Object.fromEntries(
-    MERGE_JOBS.map((spec, index) => [10 + index, join(root, spec.stem + '.zip')]),
+    fullPrJobs.map((spec, index) => [10 + index, join(root, spec.stem + '.zip')]),
   )
   const ids = Object.keys(archives).map(Number)
   const batches = []
@@ -458,7 +462,7 @@ test('real ZIP collection accepts copied GitHub checks only through their origin
     env: f.env,
     client: f.client,
   })
-  assert.equal(receipt.jobs.filter((job) => job.attempt === 1).length, MERGE_JOBS.length - 1)
+  assert.equal(receipt.jobs.filter((job) => job.attempt === 1).length, fullPrJobs.length - 1)
   for (const retained of receipt.jobs.filter((job) => job.attempt === 1)) {
     assert.equal(retained.jobId, originals.find((job) => job.name === retained.name).id)
     assert.ok(retained.jobId < 1000)
@@ -485,10 +489,10 @@ test('partial PR retry combines immutable successful jobs and the freshly retrie
     ].sort(),
   )
   assert.ok(Object.values(receipt.jobResults).every((item) => item.result === 'success'))
-  assert.equal(receipt.jobs.length, MERGE_JOBS.length)
-  assert.equal(receipt.jobs.find((item) => item.name === 'Python 3.14 on macos-15').attempt, 2)
-  assert.equal(receipt.jobs.filter((item) => item.attempt === 1).length, MERGE_JOBS.length - 1)
-  assert.equal(new Set(f.downloaded).size, MERGE_JOBS.length)
+  assert.equal(receipt.jobs.length, fullPrJobs.length)
+  assert.equal(receipt.jobs.find((item) => item.name === 'Python 3.14 on ubuntu-24.04').attempt, 2)
+  assert.equal(receipt.jobs.filter((item) => item.attempt === 1).length, fullPrJobs.length - 1)
+  assert.equal(new Set(f.downloaded).size, fullPrJobs.length)
   const statuses = Object.fromEntries(
     executionInventory({ scope: 'ci' }).targets.map((item) => [item.id, 'success']),
   )
@@ -497,12 +501,13 @@ test('partial PR retry combines immutable successful jobs and the freshly retrie
     directory,
     output: join(f.root, 'combined.json'),
     resultsPath: join(f.root, 'statuses.json'),
+    env: f.env,
   })
   const combined = JSON.parse(await readFile(join(f.root, 'combined.json')))
   assert.equal(combined.results.length, Object.keys(statuses).length)
   const summary = await readFile(f.env.GITHUB_STEP_SUMMARY, 'utf8')
   assert.ok(summary.includes(`Tested merge source: \`${source}\``))
-  assert.ok(summary.includes('**1 current-attempt** and **13 retained from earlier attempts**'))
+  assert.ok(summary.includes(`**1 current-attempt** and **${fullPrJobs.length - 1} retained from earlier attempts**`))
   for (const accepted of receipt.jobs) {
     assert.ok(summary.includes(`| ${accepted.name} | ${accepted.attempt} |`))
     assert.ok(summary.includes(`/actions/runs/100/job/${accepted.jobId})`))
@@ -527,7 +532,7 @@ test('first-attempt summaries identify fresh jobs and unavailable summaries pres
   })
   assert.ok(
     (await readFile(f.env.GITHUB_STEP_SUMMARY, 'utf8')).includes(
-      '**14 current-attempt** and **0 retained from earlier attempts**',
+      `**${fullPrJobs.length} current-attempt** and **0 retained from earlier attempts**`,
     ),
   )
   f.env.GITHUB_STEP_SUMMARY = f.root
@@ -661,6 +666,52 @@ test('missing reports, duplicate targets and run changes fail closed', async (t)
   }
 })
 
+test('the selected macOS 15 worker proves both installed tests on the exact CI inputs', async (t) => {
+  const f = await fixture(t)
+  const env = {
+    ...f.env,
+    GITHUB_RUN_ID: '200',
+    GITHUB_WORKFLOW_REF: repository + '/.github/workflows/macos-hosted-candidates.yml@refs/pull/1/merge',
+  }
+  const candidate = {
+    producer: { repository, runId: run.id, runAttempt: 1 },
+    sourceRevision: source,
+    receiptSha256: 'd'.repeat(64),
+  }
+  const canonical = inputArtifact(f.snapshot, 'canonical')
+  await writeFile(join(f.root, 'ARTIFACT.json'), JSON.stringify({
+    schemaVersion: 1, repository, runId: run.id, runAttempt: 1, sourceRevision: source,
+    receiptSha256: candidate.receiptSha256, artifactId: canonical.artifactId, artifactDigest: canonical.artifactDigest,
+  }))
+  const row = {
+    major: 15,
+    shard: 0,
+    job: { id: 987, steps: [{ name: 'Test installed Python reporting on macOS 15', status: 'completed', conclusion: 'success' }] },
+  }
+  const receipt = {
+    source, profile: MAC_PYTHON_PROFILE, jobId: row.job.id, producerRunId: run.id,
+    inputs: ['python', 'python-reporting'].map((kind) => inputArtifact(f.snapshot, kind)),
+    runtime: runtime('macOS'),
+  }
+  const path = join(f.root, 'PYTHON-INPUTS.json')
+  const transcript = join(f.root, 'PYTHON-REPORTING.txt')
+  const summary = 'Ran 25 tests in 1.2s\n\nOK\n'
+  await writeFile(path, JSON.stringify(receipt))
+  await writeFile(transcript, 'CI installed Python: Python 3.14.1\n' + summary + summary)
+  const options = { row, directory: f.root, candidateDirectory: f.root, candidate, env, client: f.client }
+  assert.equal((await verifyMacPython(options)).executedCount, 50)
+  await assert.rejects(verifyMacPython({ ...options, row: { ...row, major: 26 } }), /macOS 15/)
+  await assert.rejects(verifyMacPython({ ...options, row: { ...row, job: { ...row.job, steps: [] } } }), /macOS 15/)
+  await writeFile(path, JSON.stringify({ ...receipt, jobId: 988 }))
+  await assert.rejects(verifyMacPython(options), /worker identity/)
+  await writeFile(path, JSON.stringify(receipt))
+  await writeFile(transcript, 'CI installed Python: Python 3.14.1\n' + summary)
+  await assert.rejects(verifyMacPython(options), /both wheel and source distribution/)
+  await writeFile(transcript, 'CI installed Python: Python 3.14.1\n' + summary + summary)
+  f.artifacts.find(({ id }) => id === receipt.inputs[1].artifactId).digest = 'sha256:' + 'b'.repeat(64)
+  await assert.rejects(verifyMacPython(options), /different immutable inputs/)
+})
+
 test('main/manual publication and unrelated workflow identities cannot enter merge retry collection', async (t) => {
   const f = await fixture(t)
   for (const changed of [
@@ -681,7 +732,12 @@ test('merge retry inventory matches every CI matrix row and leaves native/releas
   for (const [id, job] of Object.entries(workflow.jobs)) {
     if (['candidate-build', 'test'].includes(id)) continue
     const matrix = job.strategy?.matrix
-    const rows = matrix?.include ?? matrix?.package?.map((name) => ({ package: name })) ?? [{}]
+    const rows = id === 'python-installed'
+      ? pythonInstalledProfiles.map((profile) => {
+          const [os, python] = profile.split('/python-')
+          return { os, python }
+        })
+      : matrix?.package?.map((name) => ({ package: name })) ?? [{}]
     for (const row of rows)
       names.push((job.name ?? id).replace(/\$\{\{\s*matrix\.(\w+)\s*\}\}/g, (_, key) => row[key]))
     assert.ok(job.steps.some((step) => step.run?.includes('merge-retry.mjs record')))
@@ -791,5 +847,5 @@ test('collection refuses a platform-dependent workflow hash and names its exact 
     env: f.env,
     client: f.client,
   })
-  assert.equal(receipt.jobs.length, MERGE_JOBS.length)
+  assert.equal(receipt.jobs.length, fullPrJobs.length)
 })

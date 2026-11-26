@@ -7,6 +7,7 @@ import { test } from 'node:test'
 import { parse } from 'yaml'
 import { NATIVE_PREREQUISITE_TESTS } from './macos-host-test-shards.mjs'
 import { MACOS_PR_SELECTOR_RUNNER, NOOP_STEP_NAMES } from './macos-pr-race.mjs'
+import { MAC_PYTHON_MAJOR, MAC_PYTHON_SHARD, pythonInstalledProfiles } from './python-ci-profiles.mjs'
 import {
   CI_QUALIFICATION_JOBS,
   LINUX_QUALIFICATION_JOBS,
@@ -101,7 +102,12 @@ test('release readiness requires the current CI job names and matrix', async () 
   for (const [id, job] of Object.entries(workflow.jobs)) {
     const template = job.name ?? id
     const matrix = job.strategy?.matrix
-    const rows = matrix?.include ?? matrix?.package?.map((name) => ({ package: name })) ?? [{}]
+    const rows = id === 'python-installed'
+      ? pythonInstalledProfiles.map((profile) => {
+          const [os, python] = profile.split('/python-')
+          return { os, python }
+        })
+      : matrix?.package?.map((name) => ({ package: name })) ?? [{}]
     for (const row of rows)
       names.push(template.replace(/\$\{\{\s*matrix\.(\w+)\s*\}\}/g, (_, key) => row[key]))
   }
@@ -111,13 +117,13 @@ test('release readiness requires the current CI job names and matrix', async () 
 
 test('installed Python jobs exactly cover the declared evidence profiles', async () => {
   const workflow = parse(await readFile(new URL('ci.yml', workflows), 'utf8'))
-  const catalog = JSON.parse(await readFile(new URL('./test-suites.json', import.meta.url), 'utf8'))
-  const profiles = workflow.jobs['python-installed'].strategy.matrix.include.map(
-    ({ os, python }) => `${os}/python-${python}`,
-  )
-  assert.deepEqual(
-    profiles.sort(),
-    [...catalog.targets.find(({ id }) => id === 'python-installed').profiles].sort(),
+  const builder = workflow.jobs['python-build']
+  const installed = workflow.jobs['python-installed']
+  assert.equal(installed.strategy.matrix, '${{ fromJSON(needs.python-build.outputs.installed-matrix) }}')
+  assert.equal(builder.outputs['installed-matrix'], '${{ steps.installed-profiles.outputs.matrix }}')
+  assert.equal(
+    builder.steps.find(({ id }) => id === 'installed-profiles').run,
+    'node scripts/ci/python-ci-profiles.mjs',
   )
 })
 
@@ -174,18 +180,22 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
     assert.deepEqual([...new Set(rows.map((row) => row.major))], [15, 26])
     if (pr) {
       assert.deepEqual(rows.slice(0, count).map(({ shard }) => shard), shards)
-      assert.deepEqual(rows.slice(count).map(({ shard }) => shard), shards)
+      assert.deepEqual(rows.slice(count).map(({ shard }) => shard), shards.filter((shard) => shard !== MAC_PYTHON_SHARD))
+      assert.deepEqual(rows.filter(({ pythonInstalled }) => pythonInstalled).map(({ shard, major }) => [shard, major]), [[MAC_PYTHON_SHARD, MAC_PYTHON_MAJOR]])
       for (const [index, row] of rows.slice(0, count).entries()) {
         assert.equal(row.major, index % 2 === 0 ? 15 : 26)
-        assert.notEqual(row.major, rows[index + count].major)
+        if (row.shard !== MAC_PYTHON_SHARD)
+          assert.notEqual(row.major, rows.slice(count).find(({ shard }) => shard === row.shard).major)
       }
+    } else {
+      assert.ok(rows.every(({ pythonInstalled }) => pythonInstalled === false))
     }
     for (const major of new Set(rows.map((row) => row.major))) {
       const selected = rows.filter((row) => row.major === major)
-      assert.equal(selected.length, count)
+      const required = shards.filter((shard) => !pr || major === MAC_PYTHON_MAJOR || shard !== MAC_PYTHON_SHARD)
       assert.deepEqual(
         selected.map((row) => row.shard).sort((a, b) => a - b),
-        Array.from({ length: count }, (_, i) => i),
+        required,
       )
       assert.ok(selected.every((row) => row.arch === 'arm64' && row.runner === `macos-${major}`))
       assert.equal(selected.filter((row) => row.installed).length, 1)
@@ -198,6 +208,9 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
   assert.equal(native.steps[offer].with.overwrite, false)
   assert.equal(native.steps[offer]['continue-on-error'], undefined)
   assert.match(native.steps[resolve].run, /macos-pr-race.mjs resolve/)
+  const python = native.steps.find(({ name }) => name === 'Test installed Python reporting on macOS 15')
+  assert.match(python.if, /matrix\.pythonInstalled/)
+  assert.match(python.run, /test-installed-python-reporting\.sh/)
   for (const name of NOOP_STEP_NAMES) {
     const step = native.steps.find((step) => step.name === name)
     assert.ok(step, `Missing observable noop step ${name}`)
