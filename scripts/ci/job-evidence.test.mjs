@@ -94,11 +94,12 @@ test('full aggregate refuses missing, stale, skipped, cancelled and duplicate pr
     })),
   )
   const report = { schemaVersion: 1, source: inventory.source, results: rows }
-  const collect = (output) =>
+  const collect = (output, env = {}) =>
     collectJobEvidence({
       directory: join(f.root, 'reports'),
       resultsPath,
       output: join(f.root, output),
+      env,
     })
   await f.put('reports/proof.json', report)
   await collect('complete.json')
@@ -118,6 +119,15 @@ test('full aggregate refuses missing, stale, skipped, cancelled and duplicate pr
     await f.put('statuses.json', { ...statuses, [inventory.targets[0].id]: state })
     await assert.rejects(() => collect('refused.json'), /did not succeed/)
   }
+  await f.put('statuses.json', statuses)
+  const fullPr = { GITHUB_EVENT_NAME: 'pull_request' }
+  await assert.rejects(() => collect('refused.json', fullPr), /Missing complete execution reports/)
+  await f.put('reports/proof.json', {
+    ...report,
+    results: rows.filter(({ profiles }) => !profiles.includes('macos-15/python-3.14')),
+  })
+  await assert.rejects(() => collect('refused.json'), /Incomplete or repeated execution profile/)
+  await collect('complete-pr.json', fullPr)
 })
 
 test('mixed successful Node, Bun and Python reports count cases, not job statuses', async (t) => {
