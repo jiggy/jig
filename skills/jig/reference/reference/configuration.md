@@ -270,3 +270,25 @@ nested sandbox. It does not supply missing namespace or cgroup support.
 
 `XDG_CACHE_HOME` relocates the installation verification cache described above.
 The cache contains no project approval or credentials.
+
+### Use an existing delegated Linux session
+
+Jig can run inside a Linux session whose operator already delegated a cgroup subtree.
+This works for a foreground development session or an automated runner.
+Jig checks the inherited delegation before launching work.
+Otherwise it attempts to acquire its own transient scope through the systemd user manager.
+
+Place the session in a leaf cgroup whose immediate parent it owns.
+Leave that parent free of direct processes and other subgroups at startup.
+The delegated parent must have the CPU, memory, and process controllers enabled.
+The session must see the same cgroup paths through procfs and cgroupfs.
+Jig also needs its usual Bubblewrap and namespace capabilities.
+
+Use a separate delegation for each overlapping command that launches contained work.
+If commands share a delegation, wait for each command and its cleanup to settle.
+Allow cancellation to reach the active command while it holds the delegation.
+Use separate Jig projects for concurrent Runs because each project has one session owner.
+
+The operator retains control of the outer session.
+Jig applies its ordinary per-Flow permissions, resource limits, and cleanup.
+See the [delegated Linux walkthrough](https://jig.md/start/delegated-linux.md) for a NixOS example and installed acceptance checks.

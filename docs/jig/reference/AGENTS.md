@@ -6,7 +6,7 @@ Help readers locate settings, terms, limits, diagnostic steps, and exact contrac
 
 ## Ownership
 
-`index.md` routes exact lookup. `configuration.md` owns operator settings.
+`index.md` routes exact lookup. `configuration.md` owns operator settings and inherited Linux delegation.
 `glossary.md` defines introductory terms.
 `limits.md` contains tables derived by `scripts/limit-reference.ts`.
 `troubleshooting.md` owns operational diagnosis and recovery across setup, review, execution, conversations, results, and cleanup.
