@@ -672,7 +672,9 @@ The optional observation callback cannot change admission, execution, recovery o
 Selected input captures retain identities and provenance separate from delivered outputs.
 Full-byte suppliers require the exact capture generation and declared retained availability.
 Unavailable previews do not imply missing retained download bytes.
+
 Saved packet inventories advertise downloads only for manifest-verified retained bytes, including non-text files without previews.
+Interactive capture lists keep their first 64 files. Saved collections disclose omitted rows and route readers to the complete verified manifest.
 Closing the model fences pending preview and download completions.
 Authored names never choose host status or roles.
 

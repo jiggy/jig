@@ -11,6 +11,13 @@ export const PRIVATE_FILE_LIMITS = Object.freeze({
   captureMs: 10_000,
   deliveryMs: 20_000,
 })
+// A published packet can combine several independently bounded artifact trees.
+const PACKET_SOURCES = 16
+export const PRIVATE_FILE_PACKET_LIMITS = Object.freeze({
+  sources: PACKET_SOURCES,
+  files: PACKET_SOURCES * PRIVATE_FILE_LIMITS.files,
+  entries: PACKET_SOURCES * (PRIVATE_FILE_LIMITS.entries + 1),
+})
 export const PRIVATE_CAPTURE_LIMITS = Object.freeze({
   input: PRIVATE_FILE_LIMITS.bytes,
   'artifact-input': 16 * 1024 * 1024,

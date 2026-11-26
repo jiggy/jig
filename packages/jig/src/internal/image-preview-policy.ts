@@ -2,6 +2,7 @@ import { type DisplayImagePreview, validDisplayImage } from '@jigging/display-mo
 
 /** One closed profile for capture, renderer, transport and inspection retention. */
 export const PRIVATE_PREVIEW_LIMITS = Object.freeze({
+  displayedFiles: 64,
   sourceBytes: 8 * 1024 * 1024,
   svgSourceBytes: 64 * 1024,
   textBytes: 4 * 1024,

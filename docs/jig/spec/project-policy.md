@@ -1354,8 +1354,11 @@ Operating-system cleanup may remove temporary packets.
 Publication uses one no-replace atomic directory rename. Directories have mode
 `0700`, files `0600`. Empty directories and source permissions are not preserved.
 `files/` contains Flow deliverables: native root writable output remains flat,
-while each forwarded result is prefixed by its declared result name. Empty
-forwarded selections are valid.
+while each forwarded result is prefixed by its declared result name.
+
+A packet can combine up to 16 snapshots, with up to 64 files and 256 tree entries per
+snapshot. The complete packet can contain up to 1,024 files and 16 MiB of file
+content. Empty forwarded selections are valid.
 
 Path collisions fail rather than overwrite.
 Checkpoint associations use `artifacts/<association-name>/` beneath `files/`,

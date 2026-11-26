@@ -17,6 +17,7 @@ import {
   privateSavedResultPlain,
   privateSavedResultViews,
 } from '../../src/cli-saved-result-presentation.js'
+import { PRIVATE_FILE_PACKET_LIMITS } from '../../src/internal/file-input-policy.js'
 import { sha256 } from '../../src/internal/file-input.js'
 import { privateCaptureSavedResult } from '../../src/internal/saved-result.js'
 import { canonicalJson, JSON_1_LIMITS, type JsonValue } from '../../src/json.js'
@@ -279,7 +280,10 @@ test('whole manifest refusal precedes reads and preserves only the valid report'
       [{ ...valid, bytes: 16_777_217 }],
       [{ ...valid, digest: 'not-a-digest' }],
       [{ ...valid, path: '.jig/private' }],
-      Array.from({ length: 65 }, (_, i) => ({ ...valid, path: `file-${i}` })),
+      Array.from({ length: PRIVATE_FILE_PACKET_LIMITS.files + 1 }, (_, i) => ({
+        ...valid,
+        path: `file-${i}`,
+      })),
     ]) {
       await writeFile(join(root, 'result.json'), JSON.stringify(report(invalid)))
       const capture = await privateCaptureSavedResult(root)
@@ -370,6 +374,27 @@ test('all saved views fit retained model capacity with 64 maximum escaped file p
         expect(Object.hasOwn(contents, reference.path)).toBeTrue()
         expect(capture.preview(reference.path)?.text).toBe(contents[reference.path]!.toString())
       }
+    } finally {
+      capture.close()
+    }
+  }))
+test('saved packet verification covers files beyond the interactive preview limit', async () =>
+  fixture(async (root) => {
+    const contents = Object.fromEntries(
+      Array.from({ length: 80 }, (_, index) => [`file-${index}.bin`, Buffer.from([index, 255])]),
+    )
+    await packet(root, contents)
+    const capture = await privateCaptureSavedResult(root)
+    try {
+      expect(capture.complete).toBeTrue()
+      expect(capture.files).toHaveLength(80)
+      expect(capture.read('file-79.bin')).toEqual(new Uint8Array([79, 255]))
+      const files = privateSavedResultViews(capture).find((view) => view.id === 'files')
+      expect(files?.summary).toContain('Showing 64 of 80 files')
+      const collection = files?.sections[0]?.blocks[0]
+      if (collection?.kind !== 'collection') throw new Error('missing file collection')
+      expect(collection.rows).toHaveLength(64)
+      expect(collection.total).toBe(80)
     } finally {
       capture.close()
     }
@@ -956,7 +981,14 @@ test('saved comparison groups exact paths and keeps missing observations uncerta
       slot: 'format',
       later: [],
     })
-    for (const hidden of [firstRun, secondRun, firstRevision, secondRevision, 'forged', 'Checked patch'])
+    for (const hidden of [
+      firstRun,
+      secondRun,
+      firstRevision,
+      secondRevision,
+      'forged',
+      'Checked patch',
+    ])
       expect(compared.stdout).not.toContain(hidden)
     const combined = await inspect(first, ['--compare', second, '--display', 'web', '--json'])
     expect(combined.code).toBe(2)

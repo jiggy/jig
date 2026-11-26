@@ -413,8 +413,10 @@ Native residue checks remain separate from portable archive cases and unfamiliar
 `host/installed-attempt-export.test.ts` exercises protected acquisition and publication.
 Pins and delivery receipts must come from the production owner.
 Its direct Run cases cover normal publication and moving an anchored destination
-parent during execution. Recover the original Run with the public CLI and
-verify exact bytes, foreign-project refusal, no replacement and no new Runs.
+parent during execution. Both paths compose independently bounded named
+artifacts whose combined file count exceeds the per-artifact limit. Recover the
+original Run with the public CLI and verify exact bytes, foreign-project
+refusal, no replacement and no new Runs.
 
 The direct Run observer waits briefly for a concurrent SQLite writer. It reports
 the stage and a closed diagnostic code if publication or recovery fails.
