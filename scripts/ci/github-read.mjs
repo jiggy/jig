@@ -6,6 +6,8 @@ export function transientGitHubRead(error, allow404 = false) {
   const status = observed ? Number(observed[1]) : Number(error?.statusCode ?? error?.status)
   if (status >= 400 && status <= 599) return status >= 500 || (allow404 && status === 404)
   return (
+    (error?.code === 'ABORT_ERR' && error.cause?.name === 'TimeoutError') ||
+    /^unexpected end of JSON input\r?$/im.test(String(error?.stderr ?? '')) ||
     [
       'ECONNRESET',
       'ETIMEDOUT',

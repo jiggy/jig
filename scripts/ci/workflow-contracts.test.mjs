@@ -6,8 +6,12 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { parse } from 'yaml'
 import { NATIVE_PREREQUISITE_TESTS } from './macos-host-test-shards.mjs'
-import { NOOP_STEP_NAMES } from './macos-pr-race.mjs'
-import { CI_QUALIFICATION_JOBS, LINUX_QUALIFICATION_JOBS } from './release-readiness.mjs'
+import { MAC_PYTHON_MAJOR, MAC_PYTHON_SHARD, pythonInstalledProfiles } from './python-ci-profiles.mjs'
+import {
+  CI_QUALIFICATION_JOBS,
+  LINUX_QUALIFICATION_JOBS,
+  MACOS_QUALIFICATION_JOBS,
+} from './release-readiness.mjs'
 
 const workflows = new URL('../../.github/workflows/', import.meta.url)
 const rootKeys = new Set([
@@ -22,11 +26,11 @@ const rootKeys = new Set([
 ])
 
 async function macScopePlan(workflow, event) {
-  const step = workflow.jobs.scope.steps.find((step) => step.id === 'plan')
+  const step = workflow.jobs.prepare.steps.find((step) => step.id === 'plan')
   assert.ok(step)
-  assert.equal(step.if, undefined)
-  assert.equal(workflow.jobs.scope.outputs.workers, '${{ steps.plan.outputs.workers }}')
-  assert.equal(workflow.jobs.scope.outputs.shard_count, '${{ steps.plan.outputs.shard_count }}')
+  assert.equal(step.if, "steps.scope.outputs.required == 'true'")
+  assert.equal(workflow.jobs.prepare.outputs.workers, '${{ steps.plan.outputs.workers }}')
+  assert.equal(workflow.jobs.prepare.outputs.shard_count, '${{ steps.plan.outputs.shard_count }}')
   const directory = await mkdtemp(join(tmpdir(), 'jig-mac-scope-plan-'))
   try {
     const output = join(directory, 'outputs')
@@ -97,7 +101,12 @@ test('release readiness requires the current CI job names and matrix', async () 
   for (const [id, job] of Object.entries(workflow.jobs)) {
     const template = job.name ?? id
     const matrix = job.strategy?.matrix
-    const rows = matrix?.include ?? matrix?.package?.map((name) => ({ package: name })) ?? [{}]
+    const rows = id === 'python-installed'
+      ? pythonInstalledProfiles.map((profile) => {
+          const [os, python] = profile.split('/python-')
+          return { os, python }
+        })
+      : matrix?.package?.map((name) => ({ package: name })) ?? [{}]
     for (const row of rows)
       names.push(template.replace(/\$\{\{\s*matrix\.(\w+)\s*\}\}/g, (_, key) => row[key]))
   }
@@ -107,26 +116,31 @@ test('release readiness requires the current CI job names and matrix', async () 
 
 test('installed Python jobs exactly cover the declared evidence profiles', async () => {
   const workflow = parse(await readFile(new URL('ci.yml', workflows), 'utf8'))
-  const catalog = JSON.parse(await readFile(new URL('./test-suites.json', import.meta.url), 'utf8'))
-  const profiles = workflow.jobs['python-installed'].strategy.matrix.include.map(
-    ({ os, python }) => `${os}/python-${python}`,
-  )
-  assert.deepEqual(
-    profiles.sort(),
-    [...catalog.targets.find(({ id }) => id === 'python-installed').profiles].sort(),
+  const builder = workflow.jobs['python-build']
+  const installed = workflow.jobs['python-installed']
+  assert.equal(installed.strategy.matrix, '${{ fromJSON(needs.python-build.outputs.installed-matrix) }}')
+  assert.equal(builder.outputs['installed-matrix'], '${{ steps.installed-profiles.outputs.matrix }}')
+  assert.equal(
+    builder.steps.find(({ id }) => id === 'installed-profiles').run,
+    'node scripts/ci/python-ci-profiles.mjs',
   )
 })
 
 test('Mac workflow runs only generated useful ARM shards with full native baselines', async () => {
   const workflow = parse(await readFile(new URL('macos-hosted-candidates.yml', workflows), 'utf8'))
   const native = workflow.jobs.prerequisites
-  assert.equal(native.strategy['max-parallel'], '${{ fromJSON(needs.scope.outputs.max_parallel) }}')
+  assert.equal(native.strategy['max-parallel'], '${{ fromJSON(needs.prepare.outputs.max_parallel) }}')
   assert.equal(native.strategy['fail-fast'], false)
-  assert.deepEqual(native.needs, ['scope', 'host-artifacts'])
+  assert.equal(native.needs, 'prepare')
   assert.equal(native['runs-on'], '${{ matrix.runner }}')
-  assert.equal(native.strategy.matrix, '${{ fromJSON(needs.scope.outputs.workers) }}')
+  assert.equal(
+    native['timeout-minutes'],
+    '${{ inputs.include_startup_profile && matrix.installed && 65 || 25 }}',
+  )
+  assert.equal(workflow.jobs.selectors, undefined)
+  assert.equal(native.strategy.matrix, '${{ fromJSON(needs.prepare.outputs.workers) }}')
   assert.equal(native.environment, undefined)
-  assert.equal(native['continue-on-error'], "${{ github.event_name == 'pull_request' }}")
+  assert.equal(native['continue-on-error'], undefined)
   assert.equal(native.env.JIG_MACOS_TEST_PLAN_FILE, undefined)
   assert.ok(native.steps.some((step) => step.run?.includes('JIG_MACOS_TEST_PLAN_FILE=%s')))
   for (const job of Object.values(workflow.jobs))
@@ -135,10 +149,7 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
     step.run?.includes('bun test packages/jig/test/macos/'),
   )
   assert.ok(baseline)
-  assert.equal(
-    baseline.if,
-    "${{ github.event_name != 'pull_request' || steps.selection.outputs.winner == 'true' }}",
-  )
+  assert.equal(baseline.if, undefined)
   const command = /bun test (.+?) --bail=1/.exec(baseline.run)
   assert.ok(command, 'Native baseline must execute one complete unfiltered command')
   assert.deepEqual(command[1].split(/\s+/), NATIVE_PREREQUISITE_TESTS)
@@ -152,41 +163,33 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
     const pr = event === 'pull_request'
     const rows = JSON.parse(output.workers).include
     const count = Number(output.shard_count)
-    assert.equal(plan.policy.maxShards, pr ? 4 : 3)
-    assert.equal(Number(output.max_parallel), pr ? 8 : 3)
-    assert.equal(count, pr && !strict.withinTarget ? 4 : strict.shards.length)
-    assert.equal(plan.policy.targetSeconds, strict.policy.targetSeconds)
+    assert.equal(plan.policy.maxShards, pr ? 5 : 3)
+    assert.equal(Number(output.max_parallel), pr ? 5 : 3)
+    assert.equal(plan.policy.targetSeconds, pr ? 800 : strict.policy.targetSeconds)
+    assert.ok(count <= plan.policy.maxShards)
+    if (!pr) assert.equal(count, strict.shards.length)
     assert.equal(plan.inventoryDigest, strict.inventoryDigest)
-    assert.deepEqual(
-      JSON.parse(output.selectors).include,
-      plan.shards.map(({ index }) => ({ shard: index })),
-    )
+    const shards = plan.shards.map(({ index }) => index)
+    assert.equal(output.selectors, undefined)
     assert.deepEqual([...new Set(rows.map((row) => row.major))], [15, 26])
-    for (const major of new Set(rows.map((row) => row.major))) {
-      const selected = rows.filter((row) => row.major === major)
-      assert.equal(selected.length, count)
-      assert.deepEqual(
-        selected.map((row) => row.shard),
-        Array.from({ length: count }, (_, i) => i),
-      )
-      assert.ok(selected.every((row) => row.arch === 'arm64' && row.runner === `macos-${major}`))
-      assert.equal(selected.filter((row) => row.installed).length, 1)
-    }
+    const roles = pr
+      ? shards.map((shard) => [shard, shard === MAC_PYTHON_SHARD ? MAC_PYTHON_MAJOR : 26])
+      : [15, 26].flatMap((major) => shards.map((shard) => [shard, major]))
+    assert.deepEqual(rows.map(({ shard, major }) => [shard, major]), roles)
+    assert.ok(rows.every((row) => row.arch === 'arm64' && row.runner === `macos-${row.major}`))
+    assert.deepEqual(
+      rows.filter(({ installed }) => installed).map(({ major }) => major),
+      pr ? [26] : [15, 26],
+    )
+    assert.deepEqual(
+      rows.filter(({ pythonInstalled }) => pythonInstalled).map(({ shard, major }) => [shard, major]),
+      pr ? [[MAC_PYTHON_SHARD, MAC_PYTHON_MAJOR]] : [],
+    )
   }
-  const decide = native.steps.findIndex((step) => step.id === 'race')
-  const offer = native.steps.findIndex((step) => step.id === 'offer')
-  const resolve = native.steps.findIndex((step) => step.id === 'selection')
-  assert.ok(decide >= 0 && offer > decide && resolve > offer)
-  assert.equal(native.steps[offer].with.overwrite, false)
-  assert.equal(native.steps[offer]['continue-on-error'], undefined)
-  assert.match(native.steps[resolve].run, /macos-pr-race.mjs resolve/)
-  for (const name of NOOP_STEP_NAMES) {
-    const step = native.steps.find((step) => step.name === name)
-    assert.ok(step, `Missing observable noop step ${name}`)
-    assert.equal(step['continue-on-error'], undefined)
-  }
-  for (const step of native.steps.slice(resolve + 1))
-    assert.match(step.if, /steps.selection.outputs.winner == 'true'/)
+  const python = native.steps.find(({ name }) => name === 'Test installed Python reporting on macOS 15')
+  assert.match(python.if, /matrix\.pythonInstalled/)
+  assert.match(python.run, /test-installed-python-reporting\.sh/)
+  assert.ok(native.steps.every((step) => step['continue-on-error'] === undefined))
   const files = await readdir(workflows)
   assert.ok(!files.includes('macos-intel-nightly.yml'))
   assert.ok(!files.includes('macos-host-conformance.yml'))
@@ -197,9 +200,60 @@ test('release readiness requires every canonical Linux shard including example e
   const shards = workflow.jobs['host-suite'].strategy.matrix.suite
   assert.ok(shards.includes('examples'))
   assert.deepEqual(LINUX_QUALIFICATION_JOBS, [
-    'rootless-linux',
+    workflow.jobs['affected-linux'].name,
     ...shards.map((suite) => `Linux host — ${suite}`),
   ])
+})
+
+test('Linux PR runner requests precede candidate acquisition and retain exact archive reconciliation', async () => {
+  const workflow = parse(await readFile(new URL('linux-host-conformance.yml', workflows), 'utf8'))
+  const prepare = workflow.jobs.prepare
+  const workers = workflow.jobs['host-suite']
+  const gate = workflow.jobs['affected-linux']
+  const pr = "github.event_name == 'pull_request'"
+  const strict = "github.event_name != 'pull_request'"
+  const required = "steps.scope.outputs.required == 'true'"
+  const ready = "needs.prepare.outputs.required == 'true' && needs.host-suite.result == 'success'"
+  const transfer = /--source "\$GITHUB_SHA" --producer-timeout-seconds 1800 --timeout-seconds 300/
+  assert.equal(prepare['runs-on'], `\${{ ${pr} && 'ubuntu-slim' || 'ubuntu-24.04' }}`)
+  assert.equal(prepare['timeout-minutes'], `\${{ ${pr} && 15 || 40 }}`)
+  const plan = prepare.steps.find((step) => step.name === 'Plan the complete Linux host qualification')
+  assert.equal(plan.if, `${pr} && ${required}`)
+  assert.match(plan.run, /\$LINUX_COMMAND_PLANNER/)
+  const strictInput = prepare.steps.find((step) => step.run?.includes('candidate-transfer.mjs acquire'))
+  assert.equal(strictInput.if, `${strict} && ${required}`)
+  assert.match(strictInput.run, transfer)
+  assert.doesNotMatch(strictInput.run, /--after-quick/)
+
+  assert.equal(workers.needs, 'prepare')
+  assert.equal(workers['runs-on'], 'ubuntu-24.04')
+  assert.equal(workers.permissions.actions, 'read')
+  const prInputIndex = workers.steps.findIndex((step) =>
+    step.run?.includes('candidate-transfer.mjs acquire'),
+  )
+  const provisionIndex = workers.steps.findIndex((step) => step.id === 'host')
+  assert.ok(prInputIndex >= 0 && prInputIndex < provisionIndex)
+  const prInput = workers.steps[prInputIndex]
+  assert.equal(prInput.if, pr)
+  assert.equal(prInput['timeout-minutes'], 35)
+  assert.match(prInput.run, transfer)
+  assert.doesNotMatch(prInput.run, /--after-quick/)
+  const strictDownload = workers.steps.find((step) => step.name === 'Download the frozen archives')
+  assert.equal(strictDownload.if, strict)
+
+  const reconciliation = gate.steps.find((step) =>
+    step.run?.includes('candidate-transfer.mjs acquire'),
+  )
+  assert.equal(reconciliation.if, `\${{ ${pr} && ${ready} }}`)
+  assert.match(reconciliation.run, /--source "\$GITHUB_SHA" --timeout-seconds 90/)
+  const canonicalDownload = gate.steps.find((step) =>
+    step.with?.name?.startsWith('linux-host-artifacts-'),
+  )
+  assert.equal(canonicalDownload.if, `\${{ ${strict} && ${ready} }}`)
+  const proof = gate.steps.find((step) => step.id === 'qualification')
+  assert.match(proof.run, /retained\.read_bytes\(\) != canonical\.read_bytes\(\)/)
+  assert.match(proof.run, /manifest\.get\("commands"\) != expected_commands\[suite\]/)
+  assert.match(proof.run, /--artifacts --residue/)
 })
 
 test('Linux memory rejection diagnostics cross acquisition into existing retained evidence', async () => {
@@ -234,36 +288,125 @@ test('Linux memory rejection diagnostics cross acquisition into existing retaine
 
 test('Mac acquisition, collection and final gate retain source identity and complete proof', async () => {
   const workflow = parse(await readFile(new URL('macos-hosted-candidates.yml', workflows), 'utf8'))
-  const inputs = workflow.jobs['host-artifacts']
-  assert.equal(inputs['runs-on'], 'ubuntu-24.04')
-  const acquire = inputs.steps.find((step) => step.run?.includes('candidate-transfer.mjs acquire'))
-  assert.match(acquire.run, /--source "\$GITHUB_SHA" --after-quick true/)
-  const download = workflow.jobs.prerequisites.steps.find(
-    (step) => step.with?.['artifact-ids'] === '${{ needs.host-artifacts.outputs.artifact_id }}',
+  const inputs = workflow.jobs.prepare
+  assert.equal(
+    inputs['runs-on'],
+    "${{ github.event_name == 'pull_request' && 'ubuntu-slim' || 'ubuntu-24.04' }}",
   )
-  assert.equal(download.with['artifact-ids'], '${{ needs.host-artifacts.outputs.artifact_id }}')
-  const collect = workflow.jobs['qualified-architecture']
-  assert.ok(collect.if.includes('always()'))
-  assert.deepEqual(collect.needs, ['scope', 'host-artifacts'])
-  assert.ok(collect.steps.some((step) => step.run?.includes('macos-host-collect.mjs collect')))
+  assert.equal(inputs['timeout-minutes'], "${{ github.event_name == 'pull_request' && 15 || 45 }}")
+  assert.equal(inputs.needs, undefined)
+  assert.equal(workflow.jobs.scope, undefined)
+  assert.equal(workflow.jobs['host-artifacts'], undefined)
+  const acquire = inputs.steps.find((step) => step.run?.includes('candidate-transfer.mjs acquire'))
+  assert.match(
+    acquire.run,
+    /--after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600/,
+  )
+  const scopeIndex = inputs.steps.findIndex((step) => step.id === 'scope')
+  assert.equal(inputs.steps[scopeIndex].if, undefined)
+  const full = "steps.scope.outputs.required == 'true'"
+  const strict = `github.event_name != 'pull_request' && ${full}`
+  assert.deepEqual(inputs.steps.slice(scopeIndex + 1).map((step) => step.if), [
+    full,
+    full,
+    strict,
+    strict,
+  ])
+  assert.match(acquire.run, /cp "\$RUNNER_TEMP\/PLAN\.json"/)
+  assert.equal(
+    inputs.steps.some((step) => step.uses?.startsWith('actions/download-artifact@')),
+    false,
+  )
+  const workers = workflow.jobs.prerequisites
+  assert.equal(workers.needs, 'prepare')
+  const download = workers.steps.find(
+    (step) => step.with?.['artifact-ids'] === '${{ needs.prepare.outputs.artifact_id }}',
+  )
+  assert.equal(download.if, "github.event_name != 'pull_request'")
+  const prAcquireIndex = workers.steps.findIndex((step) => step.id === 'pr-candidate')
+  const prAcquire = workers.steps[prAcquireIndex]
+  assert.equal(prAcquire.if, "github.event_name == 'pull_request'")
+  assert.match(
+    prAcquire.run,
+    /mac-command-budget\.mjs run node scripts\/ci\/candidate-transfer\.mjs acquire/,
+  )
+  assert.match(prAcquire.run, /--source "\$GITHUB_SHA"/)
+  assert.match(prAcquire.run, /cp "\$RUNNER_TEMP\/mac-plan\/PLAN\.json"/)
+  const verifyIndex = workers.steps.findIndex((step) =>
+    step.run?.includes('candidate-provenance.mjs verify'),
+  )
+  const sourceSetup = workers.steps.findIndex((step) =>
+    step.run?.includes('just --justfile packages/jig/justfile build'),
+  )
+  const native = workers.steps.findIndex((step) => step.env?.JIG_MACOS_PROCESS_TEST === '1')
+  const shard = workers.steps.findIndex((step) => step.run?.includes('qualify-macos-host.sh'))
+  const strictAcquireIndex = workers.steps.indexOf(download)
   assert.ok(
-    collect.steps.some((step) => step.run?.includes('candidate-provenance.mjs qualification')),
+    sourceSetup >= 0 &&
+      sourceSetup < native &&
+      native < strictAcquireIndex &&
+      strictAcquireIndex < verifyIndex &&
+      native < prAcquireIndex &&
+      prAcquireIndex < verifyIndex &&
+      verifyIndex < shard,
+  )
+  assert.equal(
+    workers.steps[verifyIndex].env.MACOS_INPUT_ARTIFACT_ID,
+    '${{ steps.pr-candidate.outputs.artifact_id || needs.prepare.outputs.artifact_id }}',
   )
   const gate = workflow.jobs['affected-macos']
-  assert.ok(!gate.needs.includes('prerequisites'))
-  assert.ok(gate.needs.includes('qualified-architecture'))
-  const selector = workflow.jobs.selectors
-  assert.deepEqual(selector.needs, ['scope', 'host-artifacts'])
-  assert.match(selector.if, /github.event_name == 'pull_request'/)
-  assert.ok(!collect.needs.includes('selectors'))
+  assert.deepEqual(MACOS_QUALIFICATION_JOBS, [gate.name])
+  assert.equal(gate.needs, 'prepare')
   assert.equal(gate.if, 'always()')
+  assert.equal(
+    gate['timeout-minutes'],
+    "${{ github.event_name == 'pull_request' && 70 || inputs.include_startup_profile && 180 || 90 }}",
+  )
+  const collect = gate.steps.findIndex((step) =>
+    step.run?.includes('macos-host-collect.mjs collect'),
+  )
+  const qualify = gate.steps.findIndex((step) => step.id === 'qualification')
+  const scope = gate.steps.findIndex((step) =>
+    step.run?.includes('host-scope.mjs --scope macos --results'),
+  )
+  const reconcile = gate.steps.findIndex((step) =>
+    step.run?.includes('job-evidence.mjs --directory'),
+  )
+  const publish = gate.steps.findIndex((step) =>
+    step.with?.name?.startsWith('macos-qualification-arm64-'),
+  )
+  assert.ok(
+    collect >= 0 &&
+      collect < qualify &&
+      qualify < scope &&
+      scope < reconcile &&
+      reconcile < publish,
+  )
+  assert.match(gate.steps[qualify].run, /candidate-provenance\.mjs qualification/)
+  assert.match(gate.steps[qualify].run, /--artifacts --residue/)
+  assert.equal(gate.steps[collect].if, gate.steps[qualify].if)
+  assert.match(gate.steps[collect].if, /needs\.prepare\.outputs\.required == 'true'/)
+  assert.match(gate.steps[collect].if, /needs\.prepare\.result == 'success'/)
+  const qualificationOutcome = '${{ toJSON(steps.qualification.outcome) }}'
+  assert.ok(
+    gate.steps[scope].env.JOB_RESULTS.includes('"prepare": ${{ toJSON(needs.prepare.result) }}'),
+  )
+  assert.ok(gate.steps[scope].env.JOB_RESULTS.includes(qualificationOutcome))
+  assert.ok(gate.steps[reconcile].env.JOB_RESULTS.includes(qualificationOutcome))
+  assert.equal(gate.steps[publish].if, "${{ needs.prepare.outputs.required == 'true' }}")
+  assert.equal(
+    gate.steps.some((step) => step.uses?.startsWith('actions/download-artifact@')),
+    false,
+  )
+  assert.equal(
+    workers.steps[verifyIndex].env.MACOS_PLAN_ARTIFACT_ID,
+    '${{ needs.prepare.outputs.plan_id }}',
+  )
   const diagnostic = gate.steps.findIndex(
     (step) => step.run === 'node scripts/ci/host-job-diagnostics.mjs',
   )
-  const check = gate.steps.findIndex((step) =>
-    step.run?.includes('host-scope.mjs --scope macos --results'),
-  )
-  assert.ok(diagnostic >= 0 && diagnostic < check)
+  assert.ok(diagnostic > publish)
+  assert.equal(gate.steps[diagnostic].if, 'always()')
   assert.equal(gate.steps[diagnostic]['continue-on-error'], true)
   assert.equal(gate.steps[diagnostic]['timeout-minutes'], 1)
   assert.equal(gate.permissions.checks, 'read')
@@ -339,6 +482,12 @@ test('release intent is an unconditional part of the required CI aggregate', asy
     step.run?.includes('scripts/ci/job-evidence.mjs'),
   )
   assert.ok(evidenceIndex > checkIndex)
+  assert.equal(
+    workflow.jobs['candidate-build']['runs-on'],
+    "${{ github.event_name == 'pull_request' && 'ubuntu-slim' || 'ubuntu-24.04' }}",
+  )
+  assert.equal(workflow.jobs['candidate-build']['timeout-minutes'], 15)
+  assert.equal(workflow.jobs.test['runs-on'], 'ubuntu-slim')
   assert.ok(workflow.jobs.test.needs.includes('quick-checks'))
 })
 

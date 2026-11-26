@@ -16,6 +16,7 @@ import {
 import { type ChannelGrant, ChannelOperationError, type ChannelParticipant } from './channels.js'
 
 const ROOT_ID = 'host:1'
+const STDOUT_CLOSED_BEFORE_ROOT_RESPONSE = 'component stdout closed before a root response'
 const MAX_PENDING_COMPONENT_REQUESTS = 64
 const MAX_COMPONENT_REQUEST_IDS = 65_536
 const MAX_RETAINED_OPERATION_BYTES = 32 * 1024 * 1024
@@ -447,7 +448,7 @@ export class RunHostSession {
         this.localTerminal === undefined &&
         this.protocolFailure === undefined
       ) {
-        this.recordChannelFailure('component stdout closed before a root response')
+        this.recordChannelFailure(STDOUT_CLOSED_BEFORE_ROOT_RESPONSE)
         this.startTermination()
       }
     } catch (error) {
@@ -1156,7 +1157,15 @@ export class RunHostSession {
         'owned execution crashed and was fenced during core dumping',
       )
     }
-    if (this.channelFailure !== undefined) {
+    // A confirmed payload exit can close stdout before its native receipt arrives.
+    const confirmedPayloadKill =
+      this.channelFailure === STDOUT_CLOSED_BEFORE_ROOT_RESPONSE &&
+      exit?.stopReason === 'payload_exit' &&
+      exit.fenced &&
+      exit.cleanupError === undefined &&
+      exit.exitCode === null &&
+      exit.signal === 'SIGKILL'
+    if (this.channelFailure !== undefined && !confirmedPayloadKill) {
       if (this.rootResponse === undefined && exit?.stopReason === 'deadline') {
         return failure(
           'DEADLINE_EXCEEDED',

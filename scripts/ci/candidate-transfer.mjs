@@ -1,8 +1,9 @@
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import {
   candidateBinding,
   digest,
@@ -12,8 +13,11 @@ import {
   requireRevision,
   verifyCandidateBundle,
 } from './candidate-provenance.mjs'
+import { readGitHubApiJson, retryGitHubRead } from './github-read.mjs'
 import { allRunJobs, latestJob } from './merge-attempts.mjs'
 import { LINUX_QUALIFICATION_JOBS, requireJobs, verifyQualification } from './release-readiness.mjs'
+
+const execFileAsync = promisify(execFile)
 
 export function githubClient(
   repository = process.env.GITHUB_REPOSITORY,
@@ -33,13 +37,15 @@ export function githubClient(
     download: async (artifactId, destination) => {
       if (!Number.isSafeInteger(artifactId) || artifactId <= 0)
         throw new Error('Invalid artifact ID')
-      const bytes = await readArchive(() =>
-        execFileSync('gh', ['api', `repos/${repository}/actions/artifacts/${artifactId}/zip`], {
-          timeout: 120_000,
+      const { stdout } = await readArchive(() =>
+        execFileAsync('gh', ['api', `repos/${repository}/actions/artifacts/${artifactId}/zip`], {
+          encoding: 'buffer',
+          signal: AbortSignal.timeout(120_000),
+          killSignal: 'SIGKILL',
           maxBuffer: 256 * 1024 * 1024,
         }),
       )
-      await writeFile(destination, bytes, { flag: 'wx' })
+      await writeFile(destination, stdout, { flag: 'wx' })
     },
   }
 }
@@ -137,15 +143,18 @@ export async function acquisitionExpectation(sourceRevision, env = process.env) 
   }
 }
 
-async function producerJobReady(client, expected, run, name) {
-  const merge = run.event === 'pull_request'
-  const jobs = merge
-    ? await allRunJobs(client, expected.repository, run)
-    : await paginated(
+function producerJobs(client, expected, run) {
+  return run.event === 'pull_request'
+    ? allRunJobs(client, expected.repository, run)
+    : paginated(
         client,
         `repos/${expected.repository}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`,
         'jobs',
       )
+}
+
+function producerJobReady(jobs, run, name) {
+  const merge = run.event === 'pull_request'
   const matching = jobs.filter((job) => job.name === name)
   if (!merge && matching.length > 1) throw new Error(`Ambiguous current-attempt ${name}`)
   if (!matching.length) {
@@ -209,7 +218,8 @@ export async function acquireCandidate({
     throw new Error('Candidate producer timeout must be 0–1800 whole seconds')
   if (producerRunId !== undefined && (!Number.isSafeInteger(producerRunId) || producerRunId <= 0))
     throw new Error('Invalid producer run ID')
-  const producerDeadline = now() + producerTimeoutSeconds * 1000
+  const producerStarted = now()
+  const producerDeadline = producerStarted + producerTimeoutSeconds * 1000
   let deadline = producerTimeoutSeconds ? undefined : now() + timeoutSeconds * 1000
   let readyProducer
   while (true) {
@@ -254,8 +264,11 @@ export async function acquireCandidate({
       )
         throw new Error('Canonical CI producer changed after readiness')
       let producerJob
-      if (run.event === 'pull_request') {
-        producerJob = await producerJobReady(client, expected, run, 'candidate-build')
+      const checkBuild = run.event === 'pull_request' || (!readyProducer && producerTimeoutSeconds)
+      const checkQuick = !readyProducer && afterQuick
+      const jobs = checkBuild || checkQuick ? await producerJobs(client, expected, run) : []
+      if (checkBuild) {
+        producerJob = producerJobReady(jobs, run, 'candidate-build')
         if (
           readyProducer &&
           (!producerJob ||
@@ -265,12 +278,8 @@ export async function acquireCandidate({
           throw new Error('Merge candidate build changed after readiness')
       }
       if (!readyProducer) {
-        if (run.event !== 'pull_request' && producerTimeoutSeconds)
-          producerJob = await producerJobReady(client, expected, run, 'candidate-build')
-        const buildReady =
-          run.event === 'pull_request' || producerTimeoutSeconds ? Boolean(producerJob) : true
-        const quickReady =
-          !afterQuick || (await producerJobReady(client, expected, run, 'Quick development checks'))
+        const buildReady = !checkBuild || Boolean(producerJob)
+        const quickReady = !checkQuick || producerJobReady(jobs, run, 'Quick development checks')
         if (!buildReady || !quickReady) continue
         if (producerTimeoutSeconds) {
           if (now() >= producerDeadline)
@@ -353,9 +362,10 @@ export async function acquireCandidate({
           ? 'Canonical CI candidate producer was not ready before the producer deadline'
           : 'Canonical CI candidate was not available before the acquisition deadline',
       )
-    await sleep(
-      Math.min(deadline === undefined ? 30000 : 10000, Math.max(1, phaseDeadline - now())),
-    )
+    const fastPoll =
+      deadline !== undefined ||
+      (expected.event === 'pull_request' && now() - producerStarted < 60_000)
+    await sleep(Math.min(fastPoll ? 10_000 : 30_000, Math.max(1, phaseDeadline - now())))
   }
 }
 
@@ -493,7 +503,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         throw new Error(`--${key} requires a nonempty integer`)
     }
     const expected = await acquisitionExpectation(options.source)
-    const client = githubClient(expected.repository)
+    const client = githubClient(
+      expected.repository,
+      expected.event === 'pull_request'
+        ? { readApiJson: readGitHubApiJson, readArchive: retryGitHubRead }
+        : {},
+    )
     let envelope
     if (positional[0] === 'acquire-linux') {
       if (!options['qualification-output'])

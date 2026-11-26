@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { checkHostJobs, hostScope, independentHostInput } from './host-scope.mjs'
+import { ciPythonProfiles, MAC_PYTHON_PROFILE, pythonInstalledProfiles } from './python-ci-profiles.mjs'
 
 function mergeFixture(t, paths) {
   const root = mkdtempSync(join(tmpdir(), 'jig-host-scope-'))
@@ -38,6 +39,16 @@ function mergeFixture(t, paths) {
     event: { pull_request: { base: { sha: base }, head: { sha: head } } },
   }
 }
+
+test('the required macOS Python profile moves only when the PR requires native qualification', async (t) => {
+  const independent = mergeFixture(t, ['packages/jiggy-reporting/tests/new.py'])
+  const full = mergeFixture(t, ['packages/jig/src/change.ts'])
+  assert.deepEqual(await ciPythonProfiles(independent), pythonInstalledProfiles)
+  assert.deepEqual(await ciPythonProfiles(full), pythonInstalledProfiles.filter((profile) => profile !== MAC_PYTHON_PROFILE))
+  for (const event of ['push', 'workflow_dispatch', 'schedule']) {
+    assert.deepEqual(await ciPythonProfiles({ ...full, env: { ...full.env, GITHUB_EVENT_NAME: event } }), pythonInstalledProfiles)
+  }
+})
 
 test('verified independent PR inputs avoid native jobs while source, mixed and unknown changes stay full', async (t) => {
   for (const paths of [
@@ -88,15 +99,12 @@ test('unverified main, manual, unavailable and forged PR comparisons cannot omit
 
 test('always-present host gates require successful scope and exactly complete or omitted role sets', () => {
   for (const scope of ['linux', 'macos']) {
-    const jobs =
-      scope === 'linux'
-        ? ['host-artifacts', 'host-suite', 'rootless-linux']
-        : ['host-artifacts', 'qualified-architecture']
+    const jobs = scope === 'linux' ? ['host-suite', 'qualification'] : ['qualification']
     for (const event of ['pull_request', 'push', 'workflow_dispatch']) {
       for (const required of [true, false]) {
         const report = { required }
         const statuses = {
-          scope: 'success',
+          prepare: 'success',
           ...Object.fromEntries(jobs.map((job) => [job, required ? 'success' : 'skipped'])),
         }
         assert.equal(checkHostJobs(scope, report, statuses, event), report)
@@ -111,7 +119,11 @@ test('always-present host gates require successful scope and exactly complete or
           delete missing[job]
           assert.throws(() => checkHostJobs(scope, report, missing, event))
         }
-        assert.throws(() => checkHostJobs(scope, report, { ...statuses, scope: 'failure' }, event))
+        for (const outcome of ['failure', 'cancelled', 'skipped']) {
+          assert.throws(() =>
+            checkHostJobs(scope, report, { ...statuses, prepare: outcome }, event),
+          )
+        }
       }
     }
   }

@@ -1,28 +1,26 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { digest } from './candidate-provenance.mjs'
+import { githubClient } from './candidate-transfer.mjs'
 import {
-  latestMacDecisionArtifacts,
   MACOS_WORKFLOW,
   macExecutionTiming,
   macJobName,
-  requireMacDecisionBinding,
   requireMacInputBinding,
   selectMacShardArtifacts,
-  waitForMacPrWinners,
-  waitForMacReleaseWorkers,
+  stageMacShardEvidence,
+  waitForMacWorkers,
 } from './macos-host-collect.mjs'
 import {
   createFrozenMacPlan,
   INSTALLED_STARTUP_TEST,
   NATIVE_PREREQUISITE_TESTS,
 } from './macos-host-test-shards.mjs'
-import { selectorJobName } from './macos-pr-race.mjs'
 import { macQualificationJobNames, validateMacCoverage } from './macos-qualification.mjs'
 
 const source = 'a'.repeat(40)
@@ -34,6 +32,74 @@ const run = {
   event: 'pull_request',
   created_at: '2026-11-17T00:00:00Z',
 }
+
+test('staged Mac evidence overlaps four real ZIP transfers and joins them before use', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-mac-evidence-downloads-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const archive = join(directory, 'evidence.zip')
+  const downloads = join(directory, 'downloads')
+  await mkdir(downloads)
+  execFileSync('python3', [
+    '-c',
+    'from zipfile import ZipFile; import sys; z = ZipFile(sys.argv[1], "w"); z.writestr("report", "proof"); z.close()',
+    archive,
+  ])
+  const archiveDigest = `sha256:${digest(await readFile(archive))}`
+  await writeFile(
+    join(directory, 'gh'),
+    `#!/bin/sh
+set -eu
+root="$(dirname "$0")"
+id="$(basename "$(dirname "$2")")"
+printf 'start %s\\n' "$id" >> "$root/events"
+if [ "$id" -le 4 ]; then
+  touch "$root/started-$id"
+  count=0
+  until [ -f "$root/started-1" ] && [ -f "$root/started-2" ] && [ -f "$root/started-3" ] && [ -f "$root/started-4" ]; do
+    count=$((count + 1))
+    [ "$count" -le 50 ] || exit 5
+    sleep 0.05
+  done
+fi
+cat "$root/evidence.zip"
+printf 'finish %s\\n' "$id" >> "$root/events"
+`,
+    { mode: 0o700 },
+  )
+  const originalPath = process.env.PATH
+  process.env.PATH = `${directory}${delimiter}${originalPath}`
+  try {
+    const stage = stageMacShardEvidence({
+      client: githubClient('jiggy/jig'),
+      directory: downloads,
+    })
+    const first = stage.download({ id: 1, digest: archiveDigest })
+    assert.equal(stage.download({ id: 1, digest: archiveDigest }), first)
+    const staged = [first]
+    for (let id = 2; id <= 6; id++) staged.push(stage.download({ id, digest: archiveDigest }))
+    const paths = await Promise.all(staged)
+    assert.throws(
+      () => stage.download({ id: 1, digest: `sha256:${'a'.repeat(64)}` }),
+      /digest changed/,
+    )
+    await assert.rejects(
+      stage.download({ id: 7, digest: `sha256:${'a'.repeat(64)}` }),
+      /transport digest mismatch/,
+    )
+    await stage.drain()
+    for (const path of paths) assert.equal(await readFile(join(path, 'report'), 'utf8'), 'proof')
+    const events = (await readFile(join(directory, 'events'), 'utf8')).trim().split('\n')
+    assert.deepEqual(events.slice(0, 4).sort(), ['start 1', 'start 2', 'start 3', 'start 4'])
+    let active = 0
+    for (const event of events) {
+      active += event.startsWith('start ') ? 1 : -1
+      assert.ok(active >= 0 && active <= 4)
+    }
+    assert.equal(active, 0)
+  } finally {
+    process.env.PATH = originalPath
+  }
+})
 
 test('release collector retries transient jobs API errors before validating the metadata', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'jig-mac-collector-api-'))
@@ -99,7 +165,7 @@ esac
 
 const job = (shard, attempt = 1, id = shard + 100) => ({
   id,
-  name: macJobName(26, shard),
+  name: macJobName(shard === 0 ? 15 : 26, shard),
   run_id: 42,
   run_attempt: attempt,
   head_sha: source,
@@ -107,7 +173,7 @@ const job = (shard, attempt = 1, id = shard + 100) => ({
   conclusion: 'success',
   runner_id: 200,
   runner_name: 'disposable-ARM',
-  labels: ['macos-26'],
+  labels: [shard === 0 ? 'macos-15' : 'macos-26'],
   created_at: '2026-11-17T00:00:00Z',
   started_at: '2026-11-17T00:01:00Z',
   completed_at: '2026-11-17T00:20:00Z',
@@ -124,109 +190,29 @@ const job = (shard, attempt = 1, id = shard + 100) => ({
 })
 const artifact = (shard, attempt = 1) => ({
   id: shard + 300,
-  name: `macos-prerequisites-26-${shard}-${source}-r42-a${attempt}`,
+  name: `macos-prerequisites-${shard === 0 ? 15 : 26}-${shard}-${source}-r42-a${attempt}`,
   expired: false,
   expires_at: '2026-11-24T00:00:00Z',
   digest: `sha256:${'b'.repeat(64)}`,
   workflow_run: { id: 42, head_sha: source },
 })
-const decisionContext = {
-  repository: 'jiggy/jig',
-  source,
-  headSha: source,
-  runId: 42,
-  attempt: 2,
-  preparedArtifactId: 40,
-  planSha256: 'd'.repeat(64),
-}
-const decisionRow = (shard, attempt = 1) => ({
-  decision: {
-    version: 1,
-    repository: 'jiggy/jig',
-    source,
-    runId: 42,
-    attempt,
-    shard,
-    major: 26,
-    jobId: shard + 100,
-    selectorJobId: shard + 600,
-    offerArtifactId: shard + 700,
-    offerArtifactDigest: `sha256:${'c'.repeat(64)}`,
-    preparedArtifactId: 40,
-    planSha256: 'd'.repeat(64),
-  },
-  artifact: {
-    ...artifact(shard, attempt),
-    id: shard + 400,
-    name: `macos-pr-decision-${shard}-${source}-r42-a${attempt}`,
-  },
-  job: job(shard, attempt),
-  selectorJob: selector(shard, attempt),
-})
-function selector(shard, attempt = 1) {
-  return {
-    ...job(shard, attempt, shard + 600),
-    name: selectorJobName(shard),
-    labels: ['ubuntu-24.04'],
-    steps: [
-      'Select one ready PR worker',
-      'Publish PR shard decision',
-      'Watch selected PR worker',
-    ].map((name, number) => ({ ...job(shard).steps[0], name, number: number + 1 })),
-  }
+const prMatrix = {
+  include: [
+    { major: 15, shard: 0 },
+    { major: 26, shard: 1 },
+  ],
 }
 const selection = (overrides = {}) =>
   selectMacShardArtifacts({
     run,
+    jobs: [job(0), job(1, 2)],
     artifacts: [artifact(0), artifact(1, 2)],
     source,
-    decisions: [decisionRow(0), decisionRow(1, 2)],
-    decisionContext,
-    matrix: {
-      include: [
-        { major: 26, shard: 0 },
-        { major: 26, shard: 1 },
-      ],
-    },
+    minimumAttempt: 1,
+    matrix: prMatrix,
     now,
     ...overrides,
-    jobs: [...(overrides.jobs ?? [job(0), job(1, 2)]), selector(0), selector(1, 2)],
   })
-
-test('only latest decisions for the current prepared-input attempt are eligible', () => {
-  const earlier = decisionRow(0)
-  const current = decisionRow(0, 2)
-  assert.deepEqual(
-    latestMacDecisionArtifacts([earlier.artifact, current.artifact], decisionContext, [0]),
-    [current.artifact],
-  )
-  assert.deepEqual(
-    latestMacDecisionArtifacts(
-      [earlier.artifact],
-      { ...decisionContext, minimumDecisionAttempt: 2 },
-      [0],
-    ),
-    [],
-  )
-  assert.throws(
-    () =>
-      latestMacDecisionArtifacts(
-        [current.artifact, { ...current.artifact, id: 999 }],
-        decisionContext,
-        [0],
-      ),
-    /Ambiguous/,
-  )
-  assert.throws(
-    () =>
-      latestMacDecisionArtifacts(
-        [{ ...current.artifact, name: current.artifact.name.replace(source, 'e'.repeat(40)) }],
-        decisionContext,
-        [0],
-      ),
-    /Foreign/,
-  )
-})
 
 test('failed-job retry retains immutable successful original execution, including GitHub carried rows', () => {
   const original = job(0)
@@ -248,19 +234,19 @@ test('latest actual failure, missing evidence, ambiguous artifacts and foreign j
     { artifacts: [artifact(0), artifact(0), artifact(1, 2)] },
     { jobs: [{ ...job(0), head_sha: 'c'.repeat(40) }, job(1, 2)] },
     { jobs: [{ ...job(0), runner_id: 0, runner_name: '', steps: [] }, job(1, 2)] },
-    { jobs: [{ ...job(0), labels: ['macos-15'] }, job(1, 2)] },
+    { jobs: [{ ...job(0), labels: ['macos-26'] }, job(1, 2)] },
   ])
     assert.throws(() => selection(overrides))
 })
 
 test('main qualification never retains earlier attempts and retries expire after 24 hours', () => {
-  assert.throws(() => selection({ run: { ...run, event: 'push' } }), /fresh current-attempt/)
+  assert.throws(() => selection({ run: { ...run, event: 'push' }, minimumAttempt: 2 }), /fresh execution/)
   assert.throws(() => selection({ now: now + 24 * 60 * 60 * 1000 }), /24-hour/)
   assert.throws(() => selection({ run: { ...run, created_at: 'invalid' } }), /24-hour/)
 })
 
 test('queue and execution timings require an actual assigned host and ordered timestamps', () => {
-  assert.deepEqual(macExecutionTiming(job(0), 26), { waitSeconds: 60, executionSeconds: 1140 })
+  assert.deepEqual(macExecutionTiming(job(0), 15), { waitSeconds: 60, executionSeconds: 1140 })
   for (const changes of [
     { started_at: 'invalid' },
     { completed_at: '2026-11-17T00:00:00Z' },
@@ -268,22 +254,26 @@ test('queue and execution timings require an actual assigned host and ordered ti
     { steps: [] },
     { steps: [{ status: 'completed', conclusion: 'failure' }] },
   ])
-    assert.throws(() => macExecutionTiming({ ...job(0), ...changes }, 26))
+    assert.throws(() => macExecutionTiming({ ...job(0), ...changes }, 15))
 })
 
-test('each retained shard binds the immutable prepared artifact and exact frozen plan bytes', () => {
+test('each retained shard binds the immutable input artifact and exact frozen plan bytes', () => {
   const planBytes = Buffer.from('{"frozen":"plan"}\n')
-  const inputArtifact = { id: 40 }
+  const inputArtifactId = 40
   const binding = { sourceRevision: source, inputArtifactId: 40, planSha256: digest(planBytes) }
-  assert.doesNotThrow(() => requireMacInputBinding(binding, { source, inputArtifact, planBytes }))
+  assert.doesNotThrow(() => requireMacInputBinding(binding, { source, inputArtifactId, planBytes }))
   for (const changes of [
     { sourceRevision: 'c'.repeat(40) },
     { inputArtifactId: 41 },
     { planSha256: '0'.repeat(64) },
   ])
     assert.throws(() =>
-      requireMacInputBinding({ ...binding, ...changes }, { source, inputArtifact, planBytes }),
+      requireMacInputBinding({ ...binding, ...changes }, { source, inputArtifactId, planBytes }),
     )
+  const prExpected = { source, inputArtifactId, planBytes, planArtifactId: 17 }
+  assert.doesNotThrow(() => requireMacInputBinding({ ...binding, planArtifactId: 17 }, prExpected))
+  assert.throws(() => requireMacInputBinding({ ...binding, planArtifactId: 18 }, prExpected))
+  assert.throws(() => requireMacInputBinding(binding, prExpected))
 })
 
 function coverageFixture() {
@@ -313,79 +303,84 @@ function coverageFixture() {
   return { scope: 'release', plan, majors, executions }
 }
 
-test('worker evidence must retain its exact pre-test winning decision', () => {
-  const row = decisionRow(0)
-  const selected = { decision: row.decision, decisionArtifact: row.artifact }
-  const binding = {
-    decision: row.decision,
-    artifact: { id: row.artifact.id, digest: row.artifact.digest },
+test('PR workers assigned on time retain their bounded execution and evidence window', async () => {
+  const minute = 60_000
+  const deadline = now + 40 * minute
+  const finished = deadline + 10 * minute
+  const stamp = (time) => new Date(time).toISOString()
+  for (const [started, finishes, expires] of [
+    [deadline - 2 * minute, true, finished],
+    [deadline - 2 * minute, false, deadline + 25 * minute],
+    [deadline + minute, true, deadline],
+  ]) {
+    let clock = deadline - minute
+    const result = waitForMacWorkers({
+      matrix: { include: [{ major: 15, shard: 0 }] },
+      deadline,
+      now: () => clock,
+      observe: async () => {
+        const assigned = clock >= started
+        const completed = finishes && clock >= finished
+        return {
+          run,
+          jobs: [{
+            ...job(0, 2),
+            runner_id: assigned ? 200 : 0,
+            started_at: assigned ? stamp(started) : null,
+            completed_at: completed ? stamp(finished) : null,
+            status: completed ? 'completed' : assigned ? 'in_progress' : 'queued',
+            conclusion: completed ? 'success' : null,
+          }],
+        }
+      },
+      sleep: async (ms) => { clock += ms },
+      report: () => {},
+    })
+    if (finishes && started < deadline) assert.equal((await result).jobs[0].id, job(0, 2).id)
+    else await assert.rejects(result, /observation deadline expired/)
+    assert.equal(clock, expires)
   }
-  assert.doesNotThrow(() => requireMacDecisionBinding(binding, selected))
-  for (const changed of [
-    { ...binding, extra: true },
-    { ...binding, decision: { ...row.decision, major: 15 } },
-    { ...binding, artifact: { ...binding.artifact, id: 999 } },
-  ])
-    assert.throws(() => requireMacDecisionBinding(changed, selected))
 })
 
-test('PR collector finishes on fixed winners while the other OS is still queued', async () => {
-  const winner = decisionRow(0)
-  const loser = {
-    ...job(0, 2, 999),
-    name: macJobName(15, 0),
-    labels: ['macos-15'],
-    status: 'queued',
-    conclusion: null,
-    runner_id: 0,
-    runner_name: '',
-    steps: [],
-  }
-  let observations = 0,
-    downloads = 0,
-    clock = now
-  const result = await waitForMacPrWinners({
-    context: decisionContext,
-    shards: [0],
-    deadline: now + 1000,
+test('Mac collection stages finished workers and refreshes artifacts after a jobs-only completion', async () => {
+  const first = job(0, 2)
+  const second = job(1, 2)
+  let clock = now
+  let snapshots = 0, jobsReads = 0
+  const progress = []
+  const completed = await waitForMacWorkers({
+    matrix: prMatrix,
+    deadline: now + 5 * 60_000,
     now: () => clock,
-    observe: async () => ({
-      artifacts: [winner.artifact],
-      jobs: [
-        selector(0),
-        loser,
-        {
-          ...winner.job,
-          ...(observations++ === 0 ? { status: 'in_progress', conclusion: null } : {}),
-        },
-      ],
-    }),
-    readDecision: async () => {
-      downloads++
-      return winner
+    observe: async () => {
+      snapshots++
+      return {
+        run,
+        jobs: snapshots === 1
+          ? [first, { ...second, status: 'in_progress', conclusion: null }]
+          : [first, second],
+        snapshot: snapshots,
+      }
     },
-    sleep: async () => {
-      clock += 100
+    readJobs: async () => {
+      jobsReads++
+      return [first, second]
     },
+    onProgress: (_state, workers) => progress.push(workers.map(({ job }) => job.id)),
+    sleep: async (ms) => { clock += ms },
     report: () => {},
   })
-  assert.equal(observations, 2)
-  assert.equal(downloads, 1)
-  assert.equal(result.selected[0].job.id, winner.job.id)
-  assert.equal(result.jobs.find(({ id }) => id === loser.id).status, 'queued')
+  assert.deepEqual(progress, [[first.id], [first.id, second.id]])
+  assert.equal(jobsReads, 1)
+  assert.equal(completed.snapshot, 2)
+  assert.equal(clock, now + 30_000)
 })
 
-test('PR collector waits for a queued retry of a failed winner and uses its new decision', async () => {
-  const original = decisionRow(0)
-  const replacement = decisionRow(0, 2)
-  replacement.job = job(0, 2, 200)
-  replacement.selectorJob = { ...selector(0, 2), id: 601 }
-  replacement.decision.jobId = replacement.job.id
-  replacement.decision.selectorJobId = replacement.selectorJob.id
-  replacement.artifact.id = 401
-  const failed = { ...original.job, conclusion: 'failure' }
+test('PR collection waits for a current assigned retry instead of a retained execution', async () => {
+  const original = job(0)
+  const replacement = job(0, 2, 200)
   const queued = {
-    ...replacement.job,
+    ...replacement,
     status: 'queued',
     conclusion: null,
     started_at: null,
@@ -394,69 +389,47 @@ test('PR collector waits for a queued retry of a failed winner and uses its new 
     runner_name: '',
     steps: [],
   }
-  let observations = 0
-  let clock = now
-  const result = await waitForMacPrWinners({
-    context: decisionContext,
-    shards: [0],
-    deadline: now + 1000,
-    now: () => clock,
-    observe: async () => {
-      const waiting = observations++ === 0
-      return {
-        artifacts: waiting ? [original.artifact] : [original.artifact, replacement.artifact],
-        jobs: [
-          failed,
-          original.selectorJob,
-          waiting ? queued : replacement.job,
-          replacement.selectorJob,
-        ],
-      }
-    },
-    readDecision: async (selected) =>
-      selected.id === original.artifact.id ? original : replacement,
-    sleep: async () => {
-      clock += 100
-    },
-    report: () => {},
-  })
-  assert.equal(observations, 2)
-  assert.equal(result.selected[0].job.id, replacement.job.id)
-  assert.equal(result.selected[0].decision.attempt, 2)
+  for (const [minimumAttempt, initial] of [[1, [original, queued]], [2, [original]]]) {
+    let observations = 0
+    let clock = now
+    const result = await waitForMacWorkers({
+      matrix: { include: [{ major: 15, shard: 0 }] },
+      minimumAttempt,
+      deadline: now + 1000,
+      now: () => clock,
+      observe: async () => ({
+        run,
+        jobs: observations++ === 0 ? initial : [original, replacement],
+      }),
+      sleep: async (ms) => { clock += Math.min(ms, 100) },
+      report: () => {},
+    })
+    assert.equal(observations, 2)
+    assert.equal(result.jobs.at(-1).id, replacement.id)
+  }
 })
 
-test('PR collector refuses a failed fixed winner and bounds missing-decision observation', async () => {
-  const winner = decisionRow(0)
+test('an off-profile Mac job cannot replace the failed or missing required execution', async () => {
+  const alternate = { ...job(0, 2, 300), name: macJobName(26, 0), labels: ['macos-26'] }
+  const options = {
+    matrix: { include: [{ major: 15, shard: 0 }] },
+    report: () => {},
+  }
   await assert.rejects(
-    waitForMacPrWinners({
-      context: decisionContext,
-      shards: [0],
-      deadline: now + 1000,
-      now: () => now,
-      observe: async () => ({
-        artifacts: [winner.artifact],
-        jobs: [selector(0), { ...winner.job, conclusion: 'failure' }],
-      }),
-      readDecision: async () => winner,
-      report: () => {},
+    waitForMacWorkers({
+      ...options,
+      observe: async () => ({ run, jobs: [alternate, { ...job(0, 2), conclusion: 'failure' }] }),
     }),
-    /fixed Mac worker did not succeed/,
+    /Required Mac worker did not succeed/,
   )
   let clock = 0
   await assert.rejects(
-    waitForMacPrWinners({
-      context: decisionContext,
-      shards: [0],
+    waitForMacWorkers({
+      ...options,
       deadline: 2,
       now: () => clock,
-      observe: async () => ({ artifacts: [], jobs: [] }),
-      readDecision: async () => {
-        throw Error('unexpected decision download')
-      },
-      sleep: async () => {
-        clock++
-      },
-      report: () => {},
+      observe: async () => ({ run, jobs: [alternate] }),
+      sleep: async (ms) => { clock += ms },
     }),
     /observation deadline expired/,
   )
@@ -470,10 +443,10 @@ test('strict collector waits for both independent majors and rejects failed or r
     ],
   }
   const old = { ...job(0, 2, 150), name: macJobName(15, 0), labels: ['macos-15'] }
-  const current = job(0, 2, 260)
+  const current = { ...job(0, 2, 260), name: macJobName(26, 0), labels: ['macos-26'] }
   let observations = 0,
     clock = 0
-  const result = await waitForMacReleaseWorkers({
+  const result = await waitForMacWorkers({
     matrix,
     deadline: 1000,
     now: () => clock,
@@ -498,7 +471,7 @@ test('strict collector waits for both independent majors and rejects failed or r
     { run_attempt: 1 },
   ])
     await assert.rejects(
-      waitForMacReleaseWorkers({
+      waitForMacWorkers({
         matrix,
         observe: async () => ({
           run: { ...run, event: 'push' },
@@ -506,7 +479,7 @@ test('strict collector waits for both independent majors and rejects failed or r
         }),
         report: () => {},
       }),
-      /did not succeed|fresh current-attempt/,
+      /did not succeed|fresh execution/,
     )
 })
 

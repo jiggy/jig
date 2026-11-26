@@ -5,6 +5,7 @@ import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { regularFile } from './candidate-provenance.mjs'
+import { ciPythonProfiles } from './python-ci-profiles.mjs'
 import { filesForTarget, gitRepositoryTests } from './suite-inventory.mjs'
 import { parseBunTranscript, readJUnitCases } from './test-reports.mjs'
 
@@ -380,8 +381,10 @@ export async function collectJobEvidence({
   output,
   scope = 'ci',
   repository,
+  env = process.env,
 }) {
   const { source, targets } = executionInventory({ repository, scope })
+  const pythonProfiles = scope === 'ci' ? await ciPythonProfiles({ repository, env }) : undefined
   const statuses = JSON.parse(await readFile(resultsPath, 'utf8'))
   const reports = []
   async function walk(path) {
@@ -403,6 +406,7 @@ export async function collectJobEvidence({
       throw new Error('Stale or malformed job evidence')
   }
   const results = targets.map((target) => {
+    const requiredProfiles = target.id === 'python-installed' ? pythonProfiles : target.runtimeProfiles
     if (statuses[target.id] !== 'success')
       throw new Error(`Required job did not succeed: ${target.id}`)
     const rows = reports.flatMap((report) => report.results.filter((row) => row.id === target.id))
@@ -423,7 +427,7 @@ export async function collectJobEvidence({
           !Array.isArray(row.profiles) ||
           !row.profiles.length ||
           !['test-cases', 'built-pages', 'qualified-artifacts'].includes(row.basis) ||
-          row.profiles.some((profile) => !target.runtimeProfiles.includes(profile)) ||
+          row.profiles.some((profile) => !requiredProfiles.includes(profile)) ||
           (target.requiresArtifacts && row.artifactsVerified !== true) ||
           (target.requiresResidue && row.residueVerified !== true),
       )
@@ -432,7 +436,7 @@ export async function collectJobEvidence({
     const profiles = rows.flatMap((row) => row.profiles)
     if (
       new Set(profiles).size !== profiles.length ||
-      JSON.stringify([...profiles].sort()) !== JSON.stringify([...target.runtimeProfiles].sort())
+      JSON.stringify([...profiles].sort()) !== JSON.stringify([...requiredProfiles].sort())
     )
       throw new Error(`Incomplete or repeated execution profile: ${target.id}`)
     return {

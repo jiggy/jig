@@ -278,6 +278,7 @@ test('streams are capped and forced close completes with open readers', async ()
   const f = fixture()
   f.display.activate()
   const controllers: AbortController[] = []
+  const readers: ReadableStreamDefaultReader<Uint8Array>[] = []
   try {
     for (let i = 0; i < 4; i++) {
       const controller = new AbortController()
@@ -287,6 +288,9 @@ test('streams are capped and forced close completes with open readers', async ()
         signal: controller.signal,
       })
       expect(events.status).toBe(200)
+      const reader = events.body!.getReader()
+      readers.push(reader)
+      expect((await reader.read()).done).toBe(false)
     }
     const extra = await f.get('/api/events')
     expect(extra.status).toBe(429)
@@ -301,6 +305,7 @@ test('streams are capped and forced close completes with open readers', async ()
     expect(f.counts().closes).toBe(1)
   } finally {
     for (const controller of controllers) controller.abort()
+    for (const reader of readers) reader.releaseLock()
   }
 })
 test('closing never waits for an unfinished preview supplier or exposes its late bytes', async () => {

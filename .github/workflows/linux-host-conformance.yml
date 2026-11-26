@@ -79,10 +79,13 @@ env:
     if (suites.some(suite => !commands[suite].length)) throw Error('Empty Linux source shard');
     console.log(JSON.stringify(commands));
 jobs:
-  scope:
-    name: "Determine linux host scope"
-    runs-on: "ubuntu-24.04"
-    timeout-minutes: 5
+  prepare:
+    name: "Prepare Linux inputs"
+    runs-on: "${{ github.event_name == 'pull_request' && 'ubuntu-slim' || 'ubuntu-24.04' }}"
+    timeout-minutes: "${{ github.event_name == 'pull_request' && 15 || 40 }}"
+    permissions:
+      contents: "read"
+      actions: "read"
     outputs:
       required: "${{ steps.scope.outputs.required }}"
     steps:
@@ -99,31 +102,19 @@ jobs:
         name: "Determine whether complete host qualification is required"
         id: "scope"
         run: 'node scripts/ci/host-scope.mjs --scope linux --github-output "$GITHUB_OUTPUT"'
-  host-artifacts:
-    name: "Acquire canonical linux host artifacts"
-    needs: "scope"
-    if: "${{ needs.scope.outputs.required == 'true' }}"
-    runs-on: "ubuntu-24.04"
-    timeout-minutes: 40
-    permissions:
-      contents: "read"
-      actions: "read"
-    steps:
       -
-        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-        with:
-          persist-credentials: false
-      -
-        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
-        with:
-          node-version: "24"
+        name: "Plan the complete Linux host qualification"
+        if: "github.event_name == 'pull_request' && steps.scope.outputs.required == 'true'"
+        run: 'node --input-type=module -e "$LINUX_COMMAND_PLANNER" >/dev/null'
       -
         name: "Acquire the exact canonical CI candidates"
+        if: "github.event_name != 'pull_request' && steps.scope.outputs.required == 'true'"
         env:
           GH_TOKEN: "${{ github.token }}"
         run: "node scripts/ci/candidate-transfer.mjs acquire \"$RUNNER_TEMP/linux-host-artifacts\" --source \"$GITHUB_SHA\" --producer-timeout-seconds 1800 --timeout-seconds 300"
       -
         name: "Retain exact linux host artifacts"
+        if: "github.event_name != 'pull_request' && steps.scope.outputs.required == 'true'"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
           name: "linux-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
@@ -132,12 +123,14 @@ jobs:
           if-no-files-found: "error"
   host-suite:
     name: "Linux host — ${{ matrix.suite }}"
-    needs:
-      - "scope"
-      - "host-artifacts"
-    if: "${{ needs.scope.outputs.required == 'true' }}"
+    needs: "prepare"
+    if: "${{ needs.prepare.outputs.required == 'true' }}"
     runs-on: "ubuntu-24.04"
-    timeout-minutes: "${{ matrix.suite == 'examples' && 90 || matrix.suite == 'installed-evidence' && inputs.include_startup_profile && 60 || 20 }}"
+    # Allow the producer wait without consuming the prior Linux job allowance.
+    timeout-minutes: "${{ matrix.suite == 'examples' && (github.event_name == 'pull_request' && 125 || 90) || matrix.suite == 'installed-evidence' && inputs.include_startup_profile && 60 || github.event_name == 'pull_request' && 55 || 20 }}"
+    permissions:
+      contents: "read"
+      actions: "read"
     strategy:
       fail-fast: false
       matrix:
@@ -173,6 +166,15 @@ jobs:
           JIG_CI_BUN: "${{ steps.setup-bun.outputs.bun-path }}"
         run: "printf 'JIG_CI_BUN=%s\\n' \"$JIG_CI_BUN\" >> \"$GITHUB_ENV\""
       -
+        name: "Acquire the original canonical CI inputs for PR qualification"
+        if: "github.event_name == 'pull_request'"
+        timeout-minutes: 35
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: >-
+          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/linux-host-artifacts"
+          --source "$GITHUB_SHA" --producer-timeout-seconds 1800 --timeout-seconds 300
+      -
         name: "Provision and preflight the ephemeral host"
         id: "host"
         run: |
@@ -191,6 +193,7 @@ jobs:
         run: "just --justfile packages/jig/justfile build"
       -
         name: "Download the frozen archives"
+        if: "github.event_name != 'pull_request'"
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
           name: "linux-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
@@ -429,42 +432,44 @@ jobs:
           path: "/tmp/jig-operational-baseline-*/command-*.json"
           if-no-files-found: "ignore"
           retention-days: 7
-  rootless-linux:
-    name: "rootless-linux"
-    if: "${{ always() && needs.scope.result == 'success' && needs.scope.outputs.required == 'true' }}"
+  affected-linux:
+    name: "affected-linux"
+    if: "always()"
     needs:
-      - "scope"
-      - "host-artifacts"
+      - "prepare"
       - "host-suite"
     runs-on: "ubuntu-24.04"
     timeout-minutes: 5
+    permissions:
+      contents: "read"
+      actions: "read"
     steps:
-      -
-        name: "Require every Linux host shard"
-        env:
-          ARTIFACT_RESULT: "${{ needs.host-artifacts.result }}"
-          SUITE_RESULT: "${{ needs.host-suite.result }}"
-        run: |
-          set -eu
-          if [ "$ARTIFACT_RESULT" != success ] || [ "$SUITE_RESULT" != success ]; then
-            echo "Linux host conformance requires successful artifacts and every suite; artifacts=$ARTIFACT_RESULT suites=$SUITE_RESULT" >&2
-            exit 1
-          fi
       -
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
         with:
           persist-credentials: false
+          fetch-depth: 0
       -
         uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
         with:
           node-version: "24"
       -
+        name: "Acquire the original PR canonical proof for reconciliation"
+        if: "${{ github.event_name == 'pull_request' && needs.prepare.outputs.required == 'true' && needs.host-suite.result == 'success' }}"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: >-
+          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/linux-host-artifacts"
+          --source "$GITHUB_SHA" --timeout-seconds 90
+      -
+        if: "${{ github.event_name != 'pull_request' && needs.prepare.outputs.required == 'true' && needs.host-suite.result == 'success' }}"
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
           name: "linux-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "${{ runner.temp }}/linux-host-artifacts"
       -
         name: "Download every current-attempt host shard"
+        if: "${{ needs.prepare.outputs.required == 'true' && needs.host-suite.result == 'success' }}"
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
           pattern: "linux-shard-*-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
@@ -472,6 +477,8 @@ jobs:
           merge-multiple: false
       -
         name: "Require exact complete shard evidence and retain observed cases"
+        id: "qualification"
+        if: "${{ needs.prepare.outputs.required == 'true' && needs.host-suite.result == 'success' }}"
         run: |
           set -eu
           python3 - <<'PY'
@@ -513,10 +520,32 @@ jobs:
                   commands.append(rewritten)
           (root / "linux-evidence" / "manifest.json").write_text(json.dumps({"schemaVersion": 1, "commands": commands}))
           PY
-          mkdir "$RUNNER_TEMP/linux-qualification"
-          node scripts/ci/job-evidence.mjs --id linux --transcript-manifest "$RUNNER_TEMP/linux-evidence/manifest.json" --artifacts --residue --output "$RUNNER_TEMP/linux-observed.json"
+          mkdir "$RUNNER_TEMP/linux-qualification" "$RUNNER_TEMP/observed-evidence"
+          node scripts/ci/job-evidence.mjs --id linux --transcript-manifest "$RUNNER_TEMP/linux-evidence/manifest.json" --artifacts --residue --output "$RUNNER_TEMP/observed-evidence/linux-observed.json"
           node scripts/ci/candidate-provenance.mjs qualification "$RUNNER_TEMP/linux-host-artifacts" "$RUNNER_TEMP/linux-qualification/QUALIFICATION.json" --kind linux
       -
+        name: "Revalidate host scope and every required job result"
+        if: "always()"
+        env:
+          JOB_RESULTS: >-
+            {"prepare": ${{ toJSON(needs.prepare.result) }},
+             "host-suite": ${{ toJSON(needs.host-suite.result) }},
+             "qualification": ${{ toJSON(steps.qualification.outcome) }}}
+        run: |
+          set -eu
+          printf '%s\n' "$JOB_RESULTS" > "$RUNNER_TEMP/host-job-results.json"
+          node scripts/ci/host-scope.mjs --scope linux --results "$RUNNER_TEMP/host-job-results.json" > "$RUNNER_TEMP/affected-report.json"
+      -
+        name: "Require complete observed host qualification"
+        if: "${{ needs.prepare.outputs.required == 'true' }}"
+        env:
+          JOB_RESULTS: '{"linux": ${{ toJSON(steps.qualification.outcome) }}}'
+        run: |
+          set -eu
+          printf '%s\n' "$JOB_RESULTS" > "$RUNNER_TEMP/host-evidence-results.json"
+          node scripts/ci/job-evidence.mjs --directory "$RUNNER_TEMP/observed-evidence" --results "$RUNNER_TEMP/host-evidence-results.json" --scope linux --output "$RUNNER_TEMP/host-evidence.json"
+      -
+        if: "${{ needs.prepare.outputs.required == 'true' }}"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
           name: "linux-qualification-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
@@ -524,57 +553,13 @@ jobs:
           retention-days: 7
           if-no-files-found: "error"
       -
+        if: "${{ needs.prepare.outputs.required == 'true' }}"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
           name: "linux-observed-full-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/linux-observed.json"
+          path: "${{ runner.temp }}/observed-evidence/linux-observed.json"
           retention-days: 7
           if-no-files-found: "error"
-  affected-linux:
-    name: "affected-linux"
-    if: "always()"
-    needs:
-      - "scope"
-      - "host-artifacts"
-      - "host-suite"
-      - "rootless-linux"
-    runs-on: "ubuntu-24.04"
-    timeout-minutes: 5
-    steps:
-      -
-        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      -
-        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
-        with:
-          node-version: "24"
-      -
-        name: "Revalidate host scope and every required job result"
-        env:
-          JOB_RESULTS: "${{ toJSON(needs) }}"
-        run: |
-          set -eu
-          node -e 'const fs=require("node:fs"),jobs=JSON.parse(process.env.JOB_RESULTS);fs.writeFileSync(process.argv[1],JSON.stringify(Object.fromEntries(Object.entries(jobs).map(([id,job])=>[id,job.result]))));' "$RUNNER_TEMP/host-job-results.json"
-          node scripts/ci/host-scope.mjs --scope linux --results "$RUNNER_TEMP/host-job-results.json" > "$RUNNER_TEMP/affected-report.json"
-      -
-        name: "Download complete observed execution evidence"
-        if: "${{ needs.scope.outputs.required == 'true' }}"
-        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
-        with:
-          pattern: "linux-observed-*-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/observed-evidence"
-          merge-multiple: false
-      -
-        name: "Require complete observed host qualification"
-        if: "${{ needs.scope.outputs.required == 'true' }}"
-        env:
-          JOB_RESULTS: "${{ toJSON(needs) }}"
-        run: |
-          set -eu
-          node -e 'const fs=require("node:fs"),jobs=JSON.parse(process.env.JOB_RESULTS);fs.writeFileSync(process.argv[1],JSON.stringify({"linux":jobs["rootless-linux"].result}));' "$RUNNER_TEMP/host-evidence-results.json"
-          node scripts/ci/job-evidence.mjs --directory "$RUNNER_TEMP/observed-evidence" --results "$RUNNER_TEMP/host-evidence-results.json" --scope linux --output "$RUNNER_TEMP/host-evidence.json"
       -
         name: "Retain host scope and complete qualification reconciliation"
         if: "always()"

@@ -339,6 +339,10 @@ These links locate module rules. All selected domain requirements still apply.
   Return the original rejecting promises: observation must not replace failures
   with success or weaken enforcement uncertainty.
 
+  A confirmed, fenced payload SIGKILL remains an execution failure when stdout
+  reaches a clean EOF before the root response and native completion arrives
+  later. Other channel failures retain their own diagnostics.
+
 - Linux startup expiry before the prepared handshake retains
   `PrivateExecutionPreparationDeadlineError` only after the exact native owner
   has an authenticated deadline fence. Local custody must close and automatic

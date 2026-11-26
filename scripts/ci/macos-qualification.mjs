@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto'
 import { validateMacShardPolicy } from './macos-host-test-shards.mjs'
+import { MAC_PYTHON_MAJOR, MAC_PYTHON_SHARD } from './python-ci-profiles.mjs'
 
 export const MACOS_COMPATIBILITY_MAJORS = Object.freeze([15, 26])
+export const macPrShardMajor = (shard) =>
+  shard === MAC_PYTHON_SHARD ? MAC_PYTHON_MAJOR : MACOS_COMPATIBILITY_MAJORS.at(-1)
 export const macJobName = (major, shard) => `Native host shard — macos-${major} / ${shard}`
 const stable = (value) =>
   Array.isArray(value)
@@ -38,11 +41,14 @@ export function validateMacCoverage(coverage, { source, scope = 'release', attem
     plan.shards.some((shard, index) => shard.index !== index || !Array.isArray(shard.groups))
   )
     throw new Error('Mac qualification frozen plan is incomplete or changed')
-  // PRs qualify each frozen role once, on its already selected physical host.
+  // PRs qualify each frozen role once on its required physical host profile.
   // Releases independently qualify every role on both supported majors.
   const expected =
     scope === 'pull_request'
-      ? plan.shards.map((shard) => ({ shard: shard.index }))
+      ? plan.shards.map(({ index: shard }) => ({
+          shard,
+          major: macPrShardMajor(shard),
+        }))
       : MACOS_COMPATIBILITY_MAJORS.flatMap((major) =>
           plan.shards.map((shard) => ({ major, shard: shard.index })),
         )
@@ -51,9 +57,7 @@ export function validateMacCoverage(coverage, { source, scope = 'release', attem
   const jobs = new Set()
   const artifacts = new Set()
   for (const { major, shard } of expected) {
-    const rows = coverage.executions.filter(
-      (row) => row?.shard === shard && (major === undefined || row.major === major),
-    )
+    const rows = coverage.executions.filter((row) => row?.shard === shard && row.major === major)
     const row = rows[0]
     if (
       rows.length !== 1 ||

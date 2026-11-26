@@ -512,7 +512,7 @@ async function acquireAfterQuick(fixture, changes = {}) {
 }
 
 for (const initial of ['queued', 'missing']) {
-  test(`Mac scheduling waits for ${initial} Quick work before downloading the existing canonical bundle`, async () => {
+  test(`strict Mac scheduling waits for ${initial} Quick work before downloading the existing canonical bundle`, async () => {
     const ci = run(100)
     await withFixture([ci], async (fixture) => {
       fixture.jobsByRun.set(
@@ -727,42 +727,103 @@ test('PR scheduling binds the Quick head to the producer metadata rather than it
   })
 })
 
-test('Mac hosts queue after Quick and consume immutable prepared inputs', async () => {
+test('PR Mac preparation acquires the exact candidate while Python is still queued', async () => {
+  const ci = run(100, 'pull_request', { head_sha: prHead, head_branch: 'feature' })
+  await withFixture([ci], async (fixture) => {
+    const expected = {
+      repository,
+      workflowPath,
+      event: 'pull_request',
+      headSha: prHead,
+      headBranch: 'feature',
+      headRepository: repository,
+    }
+    const python = quickJob(ci, {
+      id: 10002,
+      name: 'Python 3.14 on macos-15',
+      status: 'queued',
+      conclusion: null,
+    })
+    let clock = 0
+    let polls = 0
+    fixture.jobsByRun.set(ci.id, [buildJob(ci, { status: 'queued', conclusion: null }), python])
+    const acquired = await acquireCandidate({
+      destination: join(fixture.temporary, 'mac-pr'),
+      sourceRevision: source,
+      expected,
+      client: fixture.client,
+      extract: fixture.extract,
+      producerTimeoutSeconds: 40,
+      now: () => clock,
+      sleep: async (milliseconds) => {
+        assert.deepEqual(fixture.requestedArtifacts, [])
+        assert.equal(milliseconds, 10_000)
+        clock += milliseconds
+        if (++polls === 2) fixture.jobsByRun.set(ci.id, [buildJob(ci), python])
+      },
+    })
+    assert.equal(polls, 2)
+    assert.equal(python.status, 'queued')
+    assert.equal(acquired.artifactId, 1000)
+  })
+})
+
+test('Mac PR runners allocate before acquisition while strict preparation waits for Quick', async () => {
   const workflow = parse(
     await readFile(
       new URL('../../.github/workflows/macos-hosted-candidates.yml', import.meta.url),
       'utf8',
     ),
   )
-  const acquisition = workflow.jobs['host-artifacts']
+  const acquisition = workflow.jobs.prepare
+  assert.equal(acquisition.needs, undefined)
+  const scope = acquisition.steps.find((step) => step.id === 'scope')
   const acquire = acquisition.steps.find((step) =>
     step.run?.includes('candidate-transfer.mjs acquire'),
   )
+  assert.ok(acquisition.steps.indexOf(scope) < acquisition.steps.indexOf(acquire))
+  assert.match(acquire.if, /github.event_name != 'pull_request'/)
+  assert.match(acquire.run, /--source "\$GITHUB_SHA"/)
   assert.match(
     acquire.run,
-    /--source "\$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600/,
+    /--after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600/,
   )
   const upload = acquisition.steps.find((step) => step.id === 'prepared-artifacts')
   assert.ok(acquisition.steps.indexOf(upload) > acquisition.steps.indexOf(acquire))
+  assert.equal(upload.if, acquire.if)
   assert.equal(
     acquisition.outputs.artifact_id,
     '${{ steps.prepared-artifacts.outputs.artifact-id }}',
   )
   const workers = workflow.jobs.prerequisites
-  assert.deepEqual(workers.needs, ['scope', 'host-artifacts'])
+  assert.equal(workers.needs, 'prepare')
   const download = workers.steps.find(
     (step) =>
       step.uses?.startsWith('actions/download-artifact@') &&
-      step.with?.['artifact-ids'] === '${{ needs.host-artifacts.outputs.artifact_id }}',
+      step.with?.['artifact-ids'] === '${{ needs.prepare.outputs.artifact_id }}',
   )
-  assert.equal(download.with['artifact-ids'], '${{ needs.host-artifacts.outputs.artifact_id }}')
-  assert.ok(!workers.steps.some((step) => step.run?.includes('candidate-transfer.mjs acquire')))
+  assert.equal(download.with['artifact-ids'], '${{ needs.prepare.outputs.artifact_id }}')
+  assert.equal(download.if, "github.event_name != 'pull_request'")
+  const prAcquire = workers.steps.find((step) =>
+    step.run?.includes('candidate-transfer.mjs acquire'),
+  )
+  assert.match(prAcquire.if, /github.event_name == 'pull_request'/)
+  assert.match(prAcquire.run, /--producer-timeout-seconds 1800/)
+  assert.match(prAcquire.run, /--timeout-seconds 300/)
+  assert.doesNotMatch(prAcquire.run, /--after-quick/)
   const verified = workers.steps.findIndex((step) =>
     step.run?.includes('candidate-provenance.mjs verify'),
   )
   assert.ok(verified > workers.steps.indexOf(download))
-  for (const command of ['bun test packages/jig/test/macos/', 'qualify-macos-host.sh --shard'])
-    assert.ok(workers.steps.findIndex((step) => step.run?.includes(command)) > verified)
+  assert.ok(verified > workers.steps.indexOf(prAcquire))
+  const baseline = workers.steps.findIndex((step) =>
+    step.run?.includes('bun test packages/jig/test/macos/'),
+  )
+  assert.ok(baseline >= 0 && baseline < workers.steps.indexOf(prAcquire))
+  const shard = workers.steps.findIndex((step) =>
+    step.run?.includes('qualify-macos-host.sh --shard'),
+  )
+  assert.ok(shard > verified)
 })
 
 test('host acquisition waits for the exact queued producer before starting its transfer deadline', async () => {
@@ -1007,20 +1068,6 @@ test('either failed prerequisite refuses while the other producer job is pending
   })
 })
 
-test('Linux acquisition separates producer readiness from transfer within its outer job bound', async () => {
-  const workflow = await readFile(
-    new URL('../../.github/workflows/linux-host-conformance.yml', import.meta.url),
-    'utf8',
-  )
-  const acquisition = workflow.slice(
-    workflow.indexOf('  host-artifacts:\n'),
-    workflow.indexOf('  host-suite:\n'),
-  )
-  assert.match(acquisition, /timeout-minutes: 40/)
-  assert.match(acquisition, /--producer-timeout-seconds 1800 --timeout-seconds 300/)
-  assert.doesNotMatch(acquisition, /--after-quick/)
-})
-
 for (const producerTimeoutSeconds of [0, 1800]) {
   test(`PR native acquisition retains the original immutable producer with a ${producerTimeoutSeconds}-second readiness wait`, async () => {
     const ci = run(100, 'pull_request', { head_sha: prHead, head_branch: 'feature' })
@@ -1049,10 +1096,23 @@ for (const producerTimeoutSeconds of [0, 1800]) {
         }),
       )
       const inputsPath = join(fixture.temporary, 'inputs.json')
+      const api = fixture.client.api
+      let pendingInventory = producerTimeoutSeconds > 0
+      fixture.client.api = async (path) => {
+        const response = await api(path)
+        if (pendingInventory && response.jobs) {
+          pendingInventory = false
+          const producer = response.jobs.find((job) => job.name === 'candidate-build')
+          producer.status = 'queued'
+          producer.conclusion = null
+        }
+        return response
+      }
       const binding = await acquireMergeInput({
         kind: 'canonical',
         destination: join(fixture.temporary, 'ci-consumer'),
         inputsPath,
+        producerTimeoutSeconds,
         client: fixture.client,
         extract: fixture.extract,
         env: {
@@ -1065,6 +1125,7 @@ for (const producerTimeoutSeconds of [0, 1800]) {
           GITHUB_WORKFLOW_REF: repository + '/.github/workflows/ci.yml@refs/pull/1/merge',
         },
       })
+      assert.equal(pendingInventory, false)
       assert.equal(binding.producerAttempt, 1)
       assert.equal(binding.artifactId, 1000)
       assert.deepEqual(JSON.parse(await readFile(inputsPath, 'utf8')), [binding])

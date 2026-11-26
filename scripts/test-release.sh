@@ -59,6 +59,9 @@ for stage in source-portable source-protocol source-applications source-python; 
     echo "Source evidence destination must be fresh" >&2; exit 1
   fi
 done
+if has_stage source-portable || has_stage source-protocol || has_stage source-applications; then
+  "$FLOW_NODE" scripts/ci/check-bun-test-focus.mjs
+fi
 archive_packages=
 if has_stage source-portable || has_stage source-applications; then
   just jig::build
@@ -123,6 +126,9 @@ run_source_stage() {
   if [ -s "$release_tmp/$stage_id.bun.files" ]; then
     set --
     while IFS= read -r test_file; do set -- "$@" "./$test_file"; done < "$release_tmp/$stage_id.bun.files"
+    if [ -n "${JIG_CI_SOURCE_BUN_WORKERS:-}" ]; then
+      set -- "--parallel=$JIG_CI_SOURCE_BUN_WORKERS" --timings=scripts/ci/source-test-durations.json "$@"
+    fi
     bun test --timeout 420000 "$@" --reporter=junit "--reporter-outfile=$stage_reports/bun.xml"
   fi
   if [ -s "$release_tmp/$stage_id.node.files" ]; then

@@ -59,6 +59,7 @@ const out=args[args.indexOf('--pack-destination')+1];fs.writeFileSync(path.join(
     'qualified-node',
     `#!/bin/sh
 case "$1" in
+  scripts/ci/check-bun-test-focus.mjs) printf 'check-focus\\n' >> "$FIXTURE_EVENTS"; exit 0 ;;
   scripts/ci/candidate-provenance.mjs) printf 'canonical-verified\\n' >> "$FIXTURE_EVENTS"; exit 0 ;;
   --input-type=module) case "$3" in *createHash*) printf 'archive-hash\\n' >> "$FIXTURE_EVENTS" ;; esac; exit 0 ;;
   scripts/ci/suite-inventory.mjs)
@@ -84,6 +85,10 @@ if(a.includes('--destination')) {
  fs.mkdirSync(destination,{recursive:true});fs.writeFileSync(path.join(destination,'fixture.tgz'),'frozen fixture');event('pack');
 } else if(a[0]==='test') {
  const stage=a.includes('./fixtures/source-portable.test.ts')?'portable':'protocol';event(stage+'-start');
+ const workers=a.find(arg=>arg.startsWith('--parallel='));
+ if(workers)event(stage+':'+workers);
+ const timings=a.find(arg=>arg.startsWith('--timings='));
+ if(timings)event(stage+':'+timings);
  if(process.env.FIXTURE_FAIL===stage)process.exit(7);
  if(a.some(arg=>arg.endsWith('.node.mjs')))throw Error('Node files must not execute under Bun');
  for(const arg of a)if(arg.startsWith('--reporter-outfile='))fs.writeFileSync(arg.slice(19),'<testsuites tests="1"><testcase file="fixtures/source-'+stage+'.test.ts" name="'+stage+' controller fixture"/></testsuites>');
@@ -122,15 +127,31 @@ if(a.includes('--destination')) {
 
 test('source stages run serially after one shared build on both supported shells', (t) => {
   for (const shell of ['/bin/sh', '/bin/bash']) {
+    const workers = shell === '/bin/bash' ? '4' : ''
     const f = fixture(t),
-      result = f.run(shell)
+      result = f.run(shell, { JIG_CI_SOURCE_BUN_WORKERS: workers })
     assert.equal(result.status, 0, result.stderr)
     const events = f.events()
+    assert.deepEqual(
+      events.filter((event) => event.includes(':--parallel=')),
+      workers ? ['portable:--parallel=4', 'protocol:--parallel=4'] : [],
+    )
+    assert.deepEqual(
+      events.filter((event) => event.includes(':--timings=')),
+      workers
+        ? [
+            'portable:--timings=scripts/ci/source-test-durations.json',
+            'protocol:--timings=scripts/ci/source-test-durations.json',
+          ]
+        : [],
+    )
     assert.deepEqual(
       events.filter((event) => event.startsWith('build:')),
       ['build:jig::build'],
     )
     assert.ok(events.indexOf('build:jig::build') < events.indexOf('portable-start'))
+    assert.equal(events.filter((event) => event === 'check-focus').length, 1)
+    assert.ok(events.indexOf('check-focus') < events.indexOf('build:jig::build'))
     assert.ok(events.indexOf('portable-done') < events.indexOf('portable-node-start'))
     assert.ok(events.indexOf('portable-node-done') < events.indexOf('protocol-start'))
     assert.ok(events.indexOf('protocol-done') < events.indexOf('protocol-node-start'))

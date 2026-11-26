@@ -20,8 +20,12 @@ provision() {
   command -v sudo >/dev/null 2>&1 || fail "the ephemeral runner has no sudo provisioning boundary"
   sudo -n true || fail "the ephemeral runner cannot provision its host noninteractively"
 
-  sudo -n apt-get -q update
-  sudo -n apt-get -q -y install \
+  # The build tools come from the image's signed Ubuntu archive.
+  ubuntu_sources=/etc/apt/sources.list.d/ubuntu.sources
+  [ -s "$ubuntu_sources" ] || fail "the Ubuntu package sources are unavailable"
+  set -- -o "Dir::Etc::sourcelist=$ubuntu_sources" -o Dir::Etc::sourceparts=-
+  sudo -n apt-get -q "$@" -o APT::Get::List-Cleanup=0 update
+  sudo -n apt-get -q "$@" -y install \
     build-essential \
     ca-certificates \
     curl \

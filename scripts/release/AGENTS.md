@@ -78,6 +78,8 @@ Exercise the same publication path before merging release changes.
 
 - `node --test scripts/release/*.test.mjs` verifies real registry convergence, qualification metadata and OIDC protocol responses.
   These cases run in ordinary tooling checks without production credentials.
+  The publication suite can run two scenarios at once. Each uses its own
+  registry, checkout and npm state.
 - `just test-release-rehearsal` also generates and builds the complete reviewed source in a disposable checkout.
   It proves local publication and installation, not production authentication, provenance or host qualification.
 

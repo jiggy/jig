@@ -99,7 +99,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Linux Host Conformance's optional `workflow_dispatch` input
   `include_startup_profile` runs a bounded startup diagnostic inside the
   installed-evidence host shard, against the exact frozen archives. It is
-  explicitly non-gating for the `rootless-linux` check. The host's final
+  explicitly non-gating for the `affected-linux` check. The host's final
   archive-identity and zero-residue assertions remain mandatory. Retain only its
   bounded mode-0600 profile artifacts for seven days. It performs no model calls
   and does not establish a performance claim. Its 60-minute shard allows the
@@ -110,9 +110,17 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   build their platform's source workspace separately. Protected publishers
   download the exact original CI artifact by immutable artifact ID. They never
   rebuild a release.
-- Installed Python consumer checks use supported, explicit GitHub runner labels,
-  including `macos-15`. Their matrix must exactly match the source catalog's
-  evidence profiles. This package check does not qualify Jig's native Mac host.
+
+  The PR canonical producer uses `ubuntu-slim`. All other events use
+  `ubuntu-24.04` with the same archive builder and tool versions.
+
+  Source testing requests its runner after the Python build. Tool installation
+  can overlap canonical npm production. A bounded step verifies the original
+  candidate before running any source and package gates.
+- Installed Python consumer checks use explicit GitHub runner labels from the
+  source catalog. Full PRs run the macOS 15 Python 3.14 profile on a selected
+  native worker. CI runs the standalone profile when a PR omits native
+  qualification and for every strict run.
 - CI reports quick development/release checks and site builds independently of
   the longer source suite. Quick checks validate release coverage against the
   tested PR merge's verified first parent, previous main revision, or manual
@@ -135,6 +143,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   full inventory. Each job must finish successfully with nonempty proof and
   complete profiles. Main and manual release runs require complete Linux and
   Apple Silicon coverage.
+
+  The `test` evidence collector uses the lightweight `ubuntu-slim` runner.
+  Each producing job still supplies evidence for its required runtime profile.
 
   PR CI permits failed-job retries within the original run. Resolve the latest
   execution of every job and retain only its immutable successful artifact.
@@ -204,8 +215,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Never use the built-in token to merge a release and suppress main-push CI.
 - CI runs its complete fixed source, site, Python and npm profiles. Source
   targets run serially in one workspace after shared builds and archive
-  freezing, with separate complete reports for each stage. A failed stage stops
-  later work. Installed smoke checks use the canonical candidate profiles.
+  freezing, with separate complete reports for each stage. Bun runs the
+  portable and protocol files with four isolated workers on the Ubuntu CI
+  runner. A failed stage stops later work. Installed smoke checks use the
+  canonical candidate profiles.
 - Host workflows always report `affected-linux` and `affected-macos` for PRs. A
   small verified-Git scope check can omit native jobs for independent site,
   non-specification documentation or Python changes. The shared Reporting
@@ -246,6 +259,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   It uses repository and Actions read permission without builds, native
   allocation or publication.
+  The report tracks median and P90 time to green for full-qualification PRs.
   Retain its JSON metadata and Markdown observations for fourteen days.
   Collection preserves the qualification API reserve and requires complete
   coverage for the reported interval.
@@ -313,11 +327,17 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   retain explicit lowercase `jig-` paths and automatic `/Volumes/Jig-` volume
   names, plus native helpers including the trusted Codex preference observer.
   These are observations, not process, mount or filesystem cleanup authority.
-- Acquire the original canonical CI bundle once, then run the complete Linux
-  suite in independent shards on separately provisioned hosts. Every shard
-  rechecks the frozen archive hashes, performs zero-residue verification, and
-  contributes to the aggregate `rootless-linux` check. A skipped, cancelled, or
-  failed shard must prevent that aggregate from succeeding.
+- PR Linux preparation determines scope and validates the source command plan
+  on `ubuntu-slim`. The native jobs request separately provisioned hosts before
+  the canonical build finishes. Each PR worker acquires the exact CI bundle
+  before provisioning and has a separate 35-minute acquisition allowance.
+  Other events acquire and retain the original bundle in preparation.
+
+  Every shard rechecks archive hashes and verifies zero residue. The
+  `affected-linux` gate independently acquires the original CI bundle for
+  PRs and verifies matching frozen bytes across every current-attempt shard.
+  The gate revalidates scope and retains observed and qualification receipts.
+  A skipped, cancelled or failed required shard prevents a pass.
 - Linux's `examples` shard runs every original example through installation,
   public review and its authored default invocation. It uses unchanged candidate
   packages, a digest-pinned genuine Codex client and a local HTTPS model peer.
@@ -392,7 +412,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Frozen archives are test inputs, never embedded dependencies.
 
 - `workflows/macos-hosted-candidates.yml` qualifies Apple Silicon using a generated, bounded whole-file shard matrix.
-  Each applicable PR shard races macOS 15 and macOS 26 candidates. Releases, manual runs, and nightly diagnostics independently test both majors.
+  Releases, manual runs, and nightly diagnostics independently test both majors.
   Every required major retains complete host-dependent, portable, installed-consumer, and cleanup coverage.
 
   Intel execution support is retired.
@@ -400,36 +420,46 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Scope freezes a source-bound plan before requesting Macs. Measured durations choose useful shards within the checked-in capacity limit.
   Each selected worker runs the complete native enforcement and Codex preference-boundary baseline, then its sequential assigned files. The installed owner also runs genuine offline-client checks.
 
-  The PR planner tries up to three useful workers first. When their estimate
-  exceeds the target, it can assign a fourth worker. Each planned PR shard
-  has two candidates. Strict runs permit three concurrent workers.
+  The PR planner targets 800 seconds of estimated test work per shard and can
+  assign up to five useful workers. The first shard runs on macOS 15 and
+  supplies the installed Python proof. The other shards run on macOS 26.
+  Each shard requests one required runner directly from the frozen plan.
+  Strict runs permit three concurrent workers.
   Worker count and runner labels remain separate from test membership.
 
-  Before native work, each candidate publishes a uniquely named readiness offer.
-  One Ubuntu selector per shard publishes a decision bound to its actual execution and the chosen offer.
-  The decision binds source, run, attempt, assigned worker, prepared inputs and frozen plan.
-  Candidates verify that decision before tests. Artifact names are not a mutual-exclusion primitive.
-
-  The winner's failure remains a failure. A successful result on another OS cannot replace it.
-  Nonselected candidates perform no builds, native tests or consumer work.
-
-  PR candidate jobs permit job-level errors. The independent required collector validates the selected jobs' original steps, complete reports and cleanup.
-  No native or test step permits errors. Strict main and release jobs remain mandatory.
-
-  Independent Ubuntu selectors avoid a barrier between shards.
-  The collector starts after preparation and waits only for selected PR workers and their selectors.
-  Its gate does not depend on unused queued candidates. Those jobs may remain pending or cancelled in the overall workflow.
-  GitHub does not supply individual queued-job cancellation here.
+  Every generated worker must pass. The independent required collector
+  validates original execution steps, complete reports and cleanup.
+  The required `affected-macos` job requests its runner after preparation,
+  alongside the workers.
 
   Different observed patch builds may contribute coverage within one required major.
   This union establishes the ARM behavior contract, rather than independently certifying each observed build.
 
-  One Ubuntu preparation job acquires canonical inputs after Quick checks pass. Every worker downloads that artifact by immutable ID.
-  Workers verify canonical provenance before execution and compare archive hashes afterward.
+  A short `ubuntu-slim` job determines PR scope and freezes the plan. PR runner requests
+  start when the plan is available, independently of the canonical CI build.
+  The selected workers and the gate acquire and verify the original CI
+  artifacts. The gate checks that every worker used the same canonical bytes
+  and plan. Omitted scope skips artifact acquisition and worker requests.
+
+  The selected macOS 15 worker acquires exact Python artifacts from the
+  canonical CI run after its native tests.
+  The Mac gate verifies both installed formats and every native shard. The CI
+  aggregate verifies its scheduled Python profiles and Quick checks.
+  Strict Mac runs plan on `ubuntu-24.04` and wait for Quick checks before
+  acquiring inputs and requesting workers. Those workers download the
+  prepared artifact by immutable ID.
+
+  Source-only containment checks can run while the canonical bundle builds.
+  Workers verify canonical provenance before the whole-file and installed
+  checks, then compare archive hashes afterward.
   Complete reports, confirmed cleanup, and unchanged input identity remain mandatory.
 
   Every worker has a 25-minute execution ceiling. Optional startup profiling retains its separate manual allowance.
   Queue time remains visible separately.
+
+  The PR collector allows 40 minutes for assignment, then gives each assigned
+  worker its 25-minute execution allowance and two minutes for evidence
+  settlement. The gate has a 70-minute job backstop.
 
   Standard hosted capacity is best effort and supplies no queue guarantee.
 
@@ -442,8 +472,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Main and release qualification remain fresh and complete for their current attempt.
   Expired or rebuilt inputs require fresh complete qualification.
 
-  The final gate requires collector success and complete observed execution evidence.
-  Its observed execution check remains mandatory. Optional bounded GitHub diagnostics distinguish missing required coverage from unused candidates after verified PR coverage.
+  The gate reconciles scope and preparation, validates the collector's complete
+  observed evidence, and publishes the qualification from the same runner.
+  It can download completed shard reports while other PR workers run.
+  Its observed execution check remains mandatory. Optional bounded GitHub
+  diagnostics report assignment failures separately from executed work.
   Native test and cleanup failures remain distinct from allocation failures.
   No spare-worker pool, exact-build matching or external scheduler participates.
 
@@ -501,7 +534,8 @@ The workbench visual workflow builds the exact PR-base renderer in an isolated w
 ## Verification
 
 - Quick development checks mount production web assets in Chromium against an authenticated inert producer.
-  The job allowance covers browser dependency installation alongside development and browser checks.
+  Install Playwright's headless Chromium shell and its system dependencies for
+  this job.
   They verify application material, host inspection, responsive navigation, focus and evidence delivery.
   These checks establish browser behavior, not native execution or visual parity with an approved mockup.
 - After any automation change, validate the called script locally where

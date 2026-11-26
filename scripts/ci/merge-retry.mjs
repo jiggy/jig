@@ -8,9 +8,9 @@ import {
   parseOptions,
   readMetadata,
   requireRevision,
-  verifyCandidateBundle,
 } from './candidate-provenance.mjs'
 import {
+  acquireCandidate,
   acquisitionExpectation,
   downloadArtifactDirectory,
   githubClient,
@@ -20,8 +20,15 @@ import {
 } from './candidate-transfer.mjs'
 import { readGitHubApiJson, retryGitHubRead } from './github-read.mjs'
 import { allRunJobs, latestJob } from './merge-attempts.mjs'
+import {
+  ciPythonProfiles,
+  MAC_PYTHON_PROFILE,
+  pythonInstalledJob,
+  pythonInstalledProfiles,
+} from './python-ci-profiles.mjs'
 
 const WORKFLOW = '.github/workflows/ci.yml'
+const MERGE_DOWNLOAD_CONCURRENCY = 4
 const mergeGitHubClient = (repository) =>
   githubClient(repository, { readApiJson: readGitHubApiJson, readArchive: retryGitHubRead })
 const SOURCE_TARGETS = [
@@ -29,14 +36,6 @@ const SOURCE_TARGETS = [
   'source-protocol',
   'source-applications',
   'source-python',
-]
-const PYTHON = [
-  ['ubuntu-24.04', '3.11'],
-  ['ubuntu-24.04', '3.12'],
-  ['ubuntu-24.04', '3.13'],
-  ['ubuntu-24.04', '3.14'],
-  ['macos-15', '3.14'],
-  ['windows-2022', '3.13'],
 ]
 
 // This is the closed merge-CI job inventory, not a test selector. Workflow tests
@@ -64,14 +63,17 @@ export const MERGE_JOBS = Object.freeze([
     inputs: ['canonical', 'python', 'python-reporting'],
     os: 'Linux',
   },
-  ...PYTHON.map(([os, python]) => ({
-    name: 'Python ' + python + ' on ' + os,
-    stem: 'python-' + os + '-' + python,
-    targets: ['python-installed'],
-    inputs: ['python', 'python-reporting'],
-    profile: os + '/python-' + python,
-    os: os.startsWith('windows') ? 'Windows' : os.startsWith('macos') ? 'macOS' : 'Linux',
-  })),
+  ...pythonInstalledProfiles.map((profile) => {
+    const [os, python] = profile.split('/python-')
+    return {
+      name: pythonInstalledJob(profile),
+      stem: 'python-' + os + '-' + python,
+      targets: ['python-installed'],
+      inputs: ['python', 'python-reporting'],
+      profile,
+      os: os.startsWith('windows') ? 'Windows' : os.startsWith('macos') ? 'macOS' : 'Linux',
+    }
+  }),
   ...['flow', 'agent', 'acp', 'jig'].map((profile) => ({
     name: 'Build ' + profile + ' release candidate',
     stem: 'npm-' + profile,
@@ -197,42 +199,40 @@ export async function acquireMergeInput({
   kind,
   destination,
   inputsPath,
+  producerTimeoutSeconds = 0,
   env = process.env,
   client = mergeGitHubClient(env.GITHUB_REPOSITORY),
   extract,
 }) {
-  const snapshot = await mergeContext({ env, client })
-  const binding = inputArtifact(snapshot, kind)
-  const artifact = snapshot.artifacts.find((item) => item.id === binding.artifactId)
-  await downloadArtifactDirectory(client, artifact, destination, { extract })
-  if (kind === 'canonical') {
-    const receipt = await verifyCandidateBundle(destination, {
-      sourceRevision: snapshot.source,
-      producerRunId: snapshot.run.id,
-      producerRunAttempt: binding.producerAttempt,
-      producerRepository: snapshot.context.repository,
-    })
-    for (const key of ['workflowPath', 'event', 'headBranch', 'headRepository', 'headSha'])
-      if (receipt.producer[key] !== snapshot.context[key])
-        throw new Error('Merge candidate ' + key + ' mismatch')
-    await writeFile(
-      join(destination, 'ARTIFACT.json'),
-      JSON.stringify(
-        {
-          schemaVersion: 1,
-          repository: snapshot.context.repository,
+  if (!INPUTS[kind]) throw new Error('Unknown merge input')
+  if (kind !== 'canonical' && producerTimeoutSeconds !== 0)
+    throw new Error('Producer waiting is available for the canonical merge input')
+  let snapshot = await mergeContext({ env, client })
+  const canonical =
+    kind === 'canonical'
+      ? await acquireCandidate({
+          destination,
           sourceRevision: snapshot.source,
-          runId: snapshot.run.id,
-          runAttempt: binding.producerAttempt,
-          artifactId: binding.artifactId,
-          artifactDigest: binding.artifactDigest,
-          receiptSha256: receipt.receiptSha256,
-        },
-        null,
-        2,
-      ) + '\n',
-      { flag: 'wx' },
+          producerRunId: snapshot.run.id,
+          expected: snapshot.expected,
+          client,
+          timeoutSeconds: producerTimeoutSeconds ? 300 : 0,
+          producerTimeoutSeconds,
+          extract,
+        })
+      : null
+  if (canonical) snapshot = await mergeContext({ env, client })
+  const binding = inputArtifact(snapshot, kind)
+  if (canonical) {
+    if (
+      canonical.artifactId !== binding.artifactId ||
+      canonical.artifactDigest !== binding.artifactDigest ||
+      canonical.runAttempt !== binding.producerAttempt
     )
+      throw new Error('Canonical merge input changed after acquisition')
+  } else {
+    const artifact = snapshot.artifacts.find((item) => item.id === binding.artifactId)
+    await downloadArtifactDirectory(client, artifact, destination, { extract })
   }
   let inputs = []
   try {
@@ -372,6 +372,11 @@ export async function acquireMergeEvidence({
   extract,
 }) {
   const snapshot = await mergeContext({ env, client })
+  const profiles = await ciPythonProfiles({ env })
+  const nativeMac = !profiles.includes(MAC_PYTHON_PROFILE)
+  if (nativeMac && snapshot.jobs.some(({ name }) => name === pythonInstalledJob(MAC_PYTHON_PROFILE)))
+    throw new Error('The native Mac Python profile has a duplicate CI execution')
+  const specs = MERGE_JOBS.filter((spec) => !nativeMac || spec.profile !== MAC_PYTHON_PROFILE)
   // Even jobs without a test report must have completed successfully.
   latestJob(snapshot.jobs, snapshot.run, 'candidate-build')
   inputArtifact(snapshot, 'canonical')
@@ -379,8 +384,7 @@ export async function acquireMergeEvidence({
   inputArtifact(snapshot, 'python-reporting')
   const workflowDigest = workflowSourceDigest(snapshot.source)
   await mkdir(directory)
-  const retained = []
-  for (const spec of MERGE_JOBS) {
+  const collectJob = async (spec) => {
     const job = latestJob(snapshot.jobs, snapshot.run, spec.name)
     const name = 'ci-evidence-' + spec.stem + '-' + snapshot.source + '-a' + job.run_attempt
     const matches = snapshot.artifacts.filter((artifact) => artifact.name === name)
@@ -400,17 +404,26 @@ export async function acquireMergeEvidence({
     }
     if (!same(targets.sort(), [...spec.targets].sort()))
       throw new Error('Incomplete or repeated merge job target inventory')
-    retained.push({
+    return {
       name: spec.name,
       jobId: job.id,
       attempt: job.run_attempt,
       artifactId: artifact.id,
       artifactDigest: artifact.digest,
-    })
+    }
+  }
+  const retained = []
+  for (let index = 0; index < specs.length; index += MERGE_DOWNLOAD_CONCURRENCY) {
+    const batch = specs.slice(index, index + MERGE_DOWNLOAD_CONCURRENCY)
+    const reports = await Promise.allSettled(batch.map(collectJob))
+    for (const report of reports) {
+      if (report.status === 'rejected') throw report.reason
+      retained.push(report.value)
+    }
   }
   await unchanged(snapshot, client)
   const jobResults = { 'candidate-build': { result: 'success' } }
-  for (const spec of MERGE_JOBS) {
+  for (const spec of specs) {
     const id = spec.stem === 'source' ? 'source-tests' : spec.targets[0]
     jobResults[id] = { result: 'success' }
   }
@@ -466,13 +479,16 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       positional.length === 2 &&
       options.destination &&
       options.inputs
-    )
+    ) {
+      const wait = options['producer-timeout-seconds'] ?? '0'
+      if (!/^\d+$/.test(wait)) throw new Error('--producer-timeout-seconds requires an integer')
       await acquireMergeInput({
         kind: positional[1],
         destination: resolve(options.destination),
         inputsPath: resolve(options.inputs),
+        producerTimeoutSeconds: Number(wait),
       })
-    else if (
+    } else if (
       positional[0] === 'record' &&
       positional.length === 1 &&
       options.job &&
@@ -495,7 +511,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       })
     else
       throw new Error(
-        'Use input KIND --destination DIR --inputs FILE, record --job NAME --evidence PATH [--inputs FILE], or collect --directory DIR --output FILE',
+        'Use input KIND --destination DIR --inputs FILE [--producer-timeout-seconds N], record --job NAME --evidence PATH [--inputs FILE], or collect --directory DIR --output FILE',
       )
   } catch (error) {
     console.error(error.message)
