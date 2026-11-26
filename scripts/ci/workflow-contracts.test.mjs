@@ -124,6 +124,7 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
   assert.equal(native.strategy['fail-fast'], false)
   assert.deepEqual(native.needs, ['scope', 'host-artifacts'])
   assert.equal(native['runs-on'], '${{ matrix.runner }}')
+  assert.equal(workflow.jobs.selectors['runs-on'], 'ubuntu-slim')
   assert.equal(native.strategy.matrix, '${{ fromJSON(needs.scope.outputs.workers) }}')
   assert.equal(native.environment, undefined)
   assert.equal(native['continue-on-error'], "${{ github.event_name == 'pull_request' }}")
@@ -340,6 +341,7 @@ test('release intent is an unconditional part of the required CI aggregate', asy
     step.run?.includes('scripts/ci/job-evidence.mjs'),
   )
   assert.ok(evidenceIndex > checkIndex)
+  assert.equal(workflow.jobs.test['runs-on'], 'ubuntu-slim')
   assert.ok(workflow.jobs.test.needs.includes('quick-checks'))
 })
 

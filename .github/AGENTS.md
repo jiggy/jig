@@ -136,6 +136,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   complete profiles. Main and manual release runs require complete Linux and
   Apple Silicon coverage.
 
+  The `test` evidence collector uses the lightweight `ubuntu-slim` runner.
+  Each producing job still supplies evidence for its required runtime profile.
+
   PR CI permits failed-job retries within the original run. Resolve the latest
   execution of every job and retain only its immutable successful artifact.
   Verify the exact merge source, workflow digest, runtime profile and complete
@@ -418,7 +421,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   PR candidate jobs permit job-level errors. The independent required collector validates the selected jobs' original steps, complete reports and cleanup.
   No native or test step permits errors. Strict main and release jobs remain mandatory.
 
-  Independent Ubuntu selectors avoid a barrier between shards.
+  Independent `ubuntu-slim` selectors avoid a barrier between shards.
   The collector starts after preparation and waits only for selected PR workers and their selectors.
   Its gate does not depend on unused queued candidates. Those jobs may remain pending or cancelled in the overall workflow.
   GitHub does not supply individual queued-job cancellation here.
