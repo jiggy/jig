@@ -162,20 +162,28 @@ test('the source focus check rejects focused Bun registrations in imported helpe
   assert.equal(regular.status, 0, regular.stderr)
   writeFileSync(registration, `${header}\ntest.only("focused helper case", () => {});`)
 
-  // The pinned runner and the whole-file report merger both accept this incomplete result.
   const report = join(root, 'bun.xml')
-  const run = spawnSync(
-    'bun',
-    [
-      'test',
-      '--parallel=4',
-      '--reporter=junit',
-      `--reporter-outfile=${report}`,
-      `./${first}`,
-      `./${second}`,
-    ],
-    { cwd: root, encoding: 'utf8', timeout: 10_000 },
-  )
+  const runBun = (ci) =>
+    spawnSync(
+      'bun',
+      [
+        'test',
+        '--parallel=4',
+        '--reporter=junit',
+        `--reporter-outfile=${report}`,
+        `./${first}`,
+        `./${second}`,
+      ],
+      { cwd: root, encoding: 'utf8', timeout: 10_000, env: { ...process.env, CI: ci } },
+    )
+  const hosted = runBun('true')
+  assert.ifError(hosted.error)
+  assert.equal(hosted.status, 1, hosted.stderr)
+  assert.match(hosted.stderr, /\.only is disabled in CI environments/)
+
+  // Without the runtime CI guard, both the runner and the report merger accept the incomplete result.
+  const run = runBun('false')
+  assert.ifError(run.error)
   assert.equal(run.status, 0, run.stderr)
   const output = join(root, 'merged.xml')
   const merged = python(root, 'merge-source-junit.py', [output, report, '--files', inventory])
