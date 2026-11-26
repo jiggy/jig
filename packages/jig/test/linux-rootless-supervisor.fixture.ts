@@ -46,6 +46,7 @@ interface Configuration {
   readonly inputEmptyDirectories: readonly []
   readonly evaluationWorkspace: null
   readonly evaluationEntries: readonly []
+  readonly offlineToolOutputBytes: null
   readonly output: false
   readonly preparationOutput: null
   readonly command: readonly [string, ...string[]]
@@ -103,6 +104,7 @@ async function fixtureFor(runId: string): Promise<Fixture> {
     inputEmptyDirectories: [],
     evaluationWorkspace: null,
     evaluationEntries: [],
+    offlineToolOutputBytes: null,
     output: false,
     preparationOutput: null,
     command: [bunPath, ...POLICY, '-e', `await Bun.write(${JSON.stringify(marker)}, "ran")`],

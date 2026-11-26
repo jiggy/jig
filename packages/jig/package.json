@@ -51,6 +51,7 @@
     "dist/project/commands.d.ts",
     "dist/project/evaluation.d.ts",
     "dist/project/grants.d.ts",
+    "dist/project/offline-tool.d.ts",
     "dist/schema/types.d.ts",
     "dist/json.d.ts",
     "libexec/installed-cli.js",

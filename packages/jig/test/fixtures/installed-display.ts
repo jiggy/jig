@@ -41,6 +41,7 @@ export const expectedInstalledFiles = [
   'dist/project/evaluation.d.ts',
   'dist/project/grants.d.ts',
   'dist/project/limits.d.ts',
+  'dist/project/offline-tool.d.ts',
   'dist/schema/types.d.ts',
   'libexec/installed-cli.js',
   'libexec/flow-behavior.typescript-notices.txt',
