@@ -1,7 +1,7 @@
 const suiteTestUrl = new URL('../' + import.meta.url.split('/').at(-1), import.meta.url).href
 
 import { describe, expect, test } from 'bun:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
 import { connect, type Socket } from 'node:net'
@@ -33,7 +33,13 @@ import { defineBinding } from '../../src/project/author.js'
 import { normalizeGrant } from '../../src/project/grants.js'
 import { resolveInvocationSlots } from '../../src/project/invocation-slots.js'
 import { compileSchemaFile } from '../../src/schema/index.js'
-import { untrustedCertificate, untrustedKey } from '.././http-tls-fixture.js'
+import {
+  reviewedOriginHost,
+  reviewedOriginTls,
+  reviewedProxyTls,
+  untrustedCertificate,
+  untrustedKey,
+} from '.././http-tls-fixture.js'
 
 async function endpoint(
   handler: (request: IncomingMessage, response: ServerResponse) => unknown,
@@ -492,9 +498,9 @@ describe('delegated HTTP policy and trusted transport', () => {
 
   test('uses only the reviewed CONNECT and TLS request even with direct DNS unavailable', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-http-proxy-'))
-    const certFile = join(root, 'peer.pem')
-    const keyFile = join(root, 'key.pem')
-    const name = 'jig-reviewed-http.invalid'
+    const trustFiles = { both: join(root, 'peers.pem'), origin: join(root, 'origin.pem') }
+    const wrongName = 'wrong-reviewed-http.invalid'
+    let originHits = 0
     const originRequests: unknown[] = []
     const connectRequests: unknown[] = []
     const sockets = new Set<Socket>()
@@ -510,27 +516,12 @@ describe('delegated HTTP policy and trusted transport', () => {
       return address.port
     }
     try {
-      const generated = Bun.spawnSync([
-        'openssl',
-        'req',
-        '-x509',
-        '-newkey',
-        'rsa:2048',
-        '-nodes',
-        '-days',
-        '2',
-        '-subj',
-        `/CN=${name}`,
-        '-addext',
-        `subjectAltName=DNS:${name},IP:127.0.0.1`,
-        '-keyout',
-        keyFile,
-        '-out',
-        certFile,
+      await Promise.all([
+        writeFile(trustFiles.origin, `${reviewedOriginTls.cert}\n`),
+        writeFile(trustFiles.both, `${reviewedOriginTls.cert}\n${reviewedProxyTls.cert}\n`),
       ])
-      if (generated.exitCode !== 0) throw new Error(generated.stderr.toString())
-      const tls = { cert: await readFile(certFile), key: await readFile(keyFile) }
-      const origin = createHttpsServer(tls, async (request, response) => {
+      const origin = createHttpsServer(reviewedOriginTls, async (request, response) => {
+        originHits++
         const chunks: Buffer[] = []
         for await (const chunk of request) chunks.push(Buffer.from(chunk))
         originRequests.push({
@@ -544,14 +535,20 @@ describe('delegated HTTP policy and trusted transport', () => {
         response.end('redirect')
       })
       const originPort = await listen(origin)
+      const approvedAuthority = `${reviewedOriginHost}:${originPort}`
+      const wrongAuthority = `${wrongName}:${originPort}`
       const policy = {
-        url: `https://${name}:${originPort}/approved?q=1`,
+        url: `https://${approvedAuthority}/approved?q=1`,
         method: 'POST',
         bearerEnv: 'TOKEN',
         timeoutMs: 1500,
       }
       const bearer = 'endpoint-test-token'
-      const run = async (url: string, proxy?: string, trust = true) => {
+      const run = async (
+        url: string,
+        proxy?: string,
+        trust: 'both' | 'origin' | 'none' = 'both',
+      ) => {
         const request = parseHttpRequest(
           { body: { term: 'hello' } },
           normalizeHttpGrant({ ...policy, url }),
@@ -564,7 +561,7 @@ describe('delegated HTTP policy and trusted transport', () => {
           ],
           {
             env: {
-              ...(trust ? { NODE_EXTRA_CA_CERTS: certFile } : {}),
+              ...(trust === 'none' ? {} : { NODE_EXTRA_CA_CERTS: trustFiles[trust] }),
               NO_PROXY: '*',
               HTTPS_PROXY: 'http://127.0.0.1:1',
               NODE_USE_ENV_PROXY: '1',
@@ -586,11 +583,14 @@ describe('delegated HTTP policy and trusted transport', () => {
       const ok = { response: { status: 302, body: 'redirect' }, bodyBytes: 8 }
       const failure = { failure: 'UNCERTAIN' }
       const localUrl = `https://127.0.0.1:${originPort}/approved?q=1`
-      expect(await run(localUrl)).toEqual(ok)
+      expect(await run(localUrl, undefined, 'origin')).toEqual(ok)
       expect(await run(policy.url)).toEqual(failure)
       const proxyAuth = `Basic ${Buffer.from('runner:proxy@test').toString('base64')}`
       for (const protocol of ['http', 'https']) {
-        const proxy = protocol === 'http' ? createServer() : createHttpsServer(tls)
+        const proxy = protocol === 'http' ? createServer() : createHttpsServer(reviewedProxyTls)
+        let proxyConnections = 0
+        let tunnels = 0
+        proxy.on('connection', () => proxyConnections++)
         proxy.on('connect', (request, client) => {
           connectRequests.push({
             authority: request.url,
@@ -598,13 +598,14 @@ describe('delegated HTTP policy and trusted transport', () => {
             bearer: request.headers.authorization,
           })
           if (
-            request.url !== `${name}:${originPort}` ||
+            (request.url !== approvedAuthority && request.url !== wrongAuthority) ||
             request.headers['proxy-authorization'] !== proxyAuth
           ) {
             client.end('HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n')
             return
           }
           const upstream = connect(originPort, '127.0.0.1', () => {
+            tunnels++
             client.write('HTTP/1.1 200 Connection Established\r\n\r\n')
             client.pipe(upstream).pipe(client)
           })
@@ -615,12 +616,29 @@ describe('delegated HTTP policy and trusted transport', () => {
           client.on('close', () => upstream.destroy())
         })
         const proxyUrl = `${protocol}://runner:proxy%40test@127.0.0.1:${await listen(proxy)}/`
-        expect(await run(policy.url, proxyUrl)).toEqual(ok)
+        expect(await run(policy.url, proxyUrl, protocol === 'http' ? 'origin' : 'both')).toEqual(ok)
         expect(await run(localUrl, proxyUrl)).toEqual(failure)
-        if (protocol === 'http') expect(await run(policy.url, proxyUrl, false)).toEqual(failure)
+        const originHitsBeforeRefusals = originHits
+        const tunnelsBeforeRefusals = tunnels
+        if (protocol === 'http') {
+          expect(await run(policy.url, proxyUrl, 'none')).toEqual(failure)
+          expect(originHits).toBe(originHitsBeforeRefusals)
+          expect(await run(`https://${wrongAuthority}/approved?q=1`, proxyUrl, 'origin')).toEqual(
+            failure,
+          )
+          expect(tunnels).toBe(tunnelsBeforeRefusals + 2)
+        } else {
+          const connectionsBeforeRefusal = proxyConnections
+          const connectsBeforeRefusal = connectRequests.length
+          expect(await run(policy.url, proxyUrl, 'origin')).toEqual(failure)
+          expect(proxyConnections).toBe(connectionsBeforeRefusal + 1)
+          expect(connectRequests).toHaveLength(connectsBeforeRefusal)
+          expect(tunnels).toBe(tunnelsBeforeRefusals)
+        }
+        expect(originHits).toBe(originHitsBeforeRefusals)
       }
       const approvedConnect = {
-        authority: `${name}:${originPort}`,
+        authority: approvedAuthority,
         auth: proxyAuth,
         bearer: undefined,
       }
@@ -629,6 +647,7 @@ describe('delegated HTTP policy and trusted transport', () => {
         approvedConnect,
         deniedConnect,
         approvedConnect,
+        { ...approvedConnect, authority: wrongAuthority },
         approvedConnect,
         deniedConnect,
       ])
@@ -640,6 +659,7 @@ describe('delegated HTTP policy and trusted transport', () => {
         body: '{"term":"hello"}',
       }
       expect(originRequests).toEqual([expected, expected, expected])
+      expect(originHits).toBe(3)
     } finally {
       for (const socket of sockets) socket.destroy()
       await Promise.all(

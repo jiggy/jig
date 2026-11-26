@@ -844,8 +844,12 @@ private. Missing or unsafe profile selection cannot change execution outcomes.
 
 `portable/http-request.test.ts` checks operator transport selection and private
 credential separation. A real CONNECT peer routes a DNS-unavailable grant to a
-trusted TLS origin. The suite checks its direct control, tunnel refusal, TLS
-refusal, and a redirect outside the grant with no additional request.
+trusted TLS origin. The suite checks its direct control, tunnel refusal, and a
+redirect outside the grant with no additional request. The origin and HTTPS
+proxy use separate checked-in TLS fixtures trusted only by the test worker.
+A trusted origin certificate with the wrong hostname and an untrusted HTTPS
+proxy each fail before an origin HTTP request. The untrusted proxy also receives
+zero CONNECT requests.
 
 `portable/cli-explorer-web.test.ts` uses real loopback transport, bundled assets, and an actual unreviewed project session.
 It checks capability separation, strict input decoding, refused selection, duplicate identities, and idle-owner closure without synthetic execution.
