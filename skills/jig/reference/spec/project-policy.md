@@ -75,7 +75,7 @@ explicit review requirements as the default project.
 
 ```text
 project/
-├── .agents/skills/{flow,jig}/
+├── .agents/skills/jig/
 ├── .gitignore       contains `.jig/`
 ├── AGENTS.md
 ├── README.md
@@ -85,9 +85,12 @@ project/
 └── bindings/AGENTS.md
 ```
 
-Each scaffold includes the FLOW and Jig authoring skills and their reference files.
-It records their upstream sources in `skills-lock.json` for project skill updates.
-The root `AGENTS.md` establishes the DOX hierarchy and points agents to both skills.
+Each scaffold includes the Jig authoring skill and its references.
+The published npm package also supplies the FLOW skill under `.agents/skills/flow/`.
+Initialization copies its bundled skills offline and records their sources in `skills-lock.json`.
+When the FLOW skill is missing, initialization succeeds and prints a warning with the [installation command](../for-agents.md#install-authoring-skills) on stderr.
+
+The root `AGENTS.md` establishes the DOX hierarchy and points to the bundled guidance or FLOW installation.
 The nearest `AGENTS.md` owns local work guidance. Each generated Flow has its own.
 The root directs cross-Flow edits to read-only inspection and checks for changed and preserved routes.
 

@@ -19,10 +19,14 @@ It covers exact bundle and metadata preservation, collision refusal, concurrent 
 
 `portable/cli.test.ts` checks the installed Flow type projection with ordinary TypeScript.
 It covers package input and returned outcomes, broad SDK fallbacks, settings, and declared child calls.
-It checks the generated DOX guidance, bundled skills, and fixtures for default and kitchen shifts initialization.
+It checks generated DOX guidance, the bundled Jig skill, and fixtures for default and kitchen shifts initialization.
+Scaffold assertions cover the installed artifact’s skill files and lock entries.
+Source builds warn on successful initialization when the FLOW skill is missing.
 It checks current-directory initialization, collision refusal, and the common success message.
 
 `package-smoke.ts` checks that the generated root guide links to the bundled composition testing section and its public copy.
+It verifies the bundled FLOW skill digest and scaffold bytes when present.
+Canonical npm qualification requires the bundled FLOW skill.
 
 `portable/cli-discovery.test.ts` covers configured-topology grammar, readable collision-safe identities, contextual focus, complete inventories including disconnected targets, shared package uses, cycles, explicit boundary omissions, and graph bounds.
 Package scope preserves independent uses, distinct caller slots, and settings differences without expanding the caller's callers.

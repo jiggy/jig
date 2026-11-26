@@ -14,6 +14,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - `workflows/` owns automation triggers, permissions, jobs, and retained
   artifacts.
 - Checked-in justfiles and scripts own reusable build and test logic.
+- `workflows/ci.yml` prepares the newest upstream FLOW authoring skill before
+  freezing the Jig candidate. The npm qualification gate verifies its presence.
 - `workflows/release-rehearsal.yml` tests source versioning, canonical builds, npm publication, retries and installation against a disposable Verdaccio registry.
   PR execution has repository read permission and no production credentials.
 - `workflows/native-agent-preflight.yml` diagnoses an explicitly reviewed same-repository PR merge through protected native tests.

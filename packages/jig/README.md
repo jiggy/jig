@@ -30,7 +30,8 @@ jig review --allow-resolution-network
 jig run flow:flows/hello --input '"Ada"'
 ```
 
-The generated DOX hierarchy and local FLOW and Jig skills guide scoped edits and verification.
+The generated DOX hierarchy and bundled skills guide scoped edits and verification.
+Source builds warn when the [FLOW skill](https://jig.md/for-agents#install-authoring-skills) needs separate installation.
 Initialization installs nothing and approves nothing. Review prepares the SDK
 privately and asks for approval. The resolution flag allows dependency-selected
 network requests before approval; declining cannot undo those requests. Runs

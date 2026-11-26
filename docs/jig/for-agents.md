@@ -36,16 +36,22 @@ The [kitchen shifts starter](./build/compose.md#test-a-scoped-route) shows how t
 
 ## Install authoring skills
 
-`jig init` writes both authoring skills under `.agents/skills/` with their references.
-The generated `AGENTS.md` points agents to them and to the relevant child guidance.
-Run `npx skills update --project` to refresh the skills and `skills-lock.json` from their upstream sources.
-
-For a hand-authored project, run these commands from its directory.
+`jig init` from the published npm package writes both the Jig and FLOW skills under `.agents/skills/`.
+The generated `AGENTS.md` points to the bundled skills and related project guidance.
+An ordinary source build supplies the Jig skill and prints a warning about the missing FLOW skill.
+For method design and contracts, install the FLOW skill from your project directory.
 
 ```sh
 npx skills add jiggy/flow --skill flow
+```
+
+For a hand-authored project, also install the Jig skill.
+
+```sh
 npx skills add jiggy/jig --skill jig
 ```
+
+Run `npx skills update --project` to refresh installed project skills and `skills-lock.json`.
 
 | Skill | Use it for |
 | --- | --- |

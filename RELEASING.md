@@ -83,6 +83,8 @@ PR coverage does not establish complete independent coverage of both majors and 
 Intel execution support is retired. Patch-build observations remain evidence without becoming exact-build admission rules.
 
 The publisher then publishes the exact tested archives, followed by source tags and GitHub prereleases.
+Canonical CI captures the newest FLOW authoring skill from the upstream default branch before packing Jig.
+The candidate records the captured commit and digest in `libexec/init-skills.json`.
 Current releases use `alpha`. Installation uses `@alpha`, not `@latest`.
 Reporting, display, and Python artifacts remain qualification inputs.
 FLOW releases independently from [jiggy/flow](https://github.com/jiggy/flow).
@@ -207,6 +209,8 @@ just --justfile packages/jig/justfile pack --destination /absolute/output/direct
 
 Installation needs registry access and resolves transitive dependencies.
 This does not promise offline or byte-identical reproduction.
+The source build uses the local Jig skill and warns when the FLOW skill is missing.
+To use FLOW guidance, [install the skill in your project](docs/jig/for-agents.md#install-authoring-skills).
 Running Jig also requires the supported host configuration in its [README](packages/jig/README.md).
 The npm archive retains the license, pricing, and applicable notices.
 Its matching GitHub release supplies source and links these build instructions.

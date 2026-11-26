@@ -37,7 +37,12 @@ jobs:
           test "$("$npm_prefix/bin/npm" --version)" = 11.6.2
           printf '%s\n' "$npm_prefix/bin" >> "$GITHUB_PATH"
       - name: Freeze canonical packages before qualification
-        run: node scripts/ci/build-candidates.mjs "$RUNNER_TEMP/candidates"
+        env:
+          JIG_BUILD_FLOW_SKILL_INPUT: ${{ runner.temp }}/flow-authoring-skill.json
+        run: |
+          set -eu
+          bun --no-env-file packages/jig/scripts/flow-skill.ts "$JIG_BUILD_FLOW_SKILL_INPUT"
+          node scripts/ci/build-candidates.mjs "$RUNNER_TEMP/candidates"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: candidates-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
@@ -453,6 +458,8 @@ jobs:
       - name: Install candidate qualification dependencies
         run: bun install --ignore-scripts
       - name: Qualify the frozen candidate
+        env:
+          JIG_REQUIRE_BUNDLED_FLOW_SKILL: '1'
         run: |
           set -eu
           FLOW_NODE=$(command -v node)

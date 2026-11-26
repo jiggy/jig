@@ -15,6 +15,10 @@ import {
 const packageRoot = resolve(import.meta.dir, '../..')
 let root: string
 let cli: string
+let flowSkillBundled: boolean
+const flowSkillWarning =
+  'WARNING: FLOW authoring skill is missing.\n' +
+  'From the project directory, run `npx skills add jiggy/flow --skill flow`.\n'
 let sequence = 0
 let passed = 0
 beforeAll(async () => {
@@ -37,6 +41,10 @@ beforeAll(async () => {
     120_000,
   )
   cli = join(root, 'node_modules/.bin/jig')
+  const bundle = await Bun.file(
+    join(root, 'node_modules/@jigging/jig/libexec/init-skills.json'),
+  ).json()
+  flowSkillBundled = bundle.flow !== undefined
 }, 300_000)
 
 async function invoke(
@@ -201,7 +209,11 @@ test('installed init defaults to the current directory and refuses existing scaf
   await mkdir(project)
   await writeFile(join(project, 'notes.txt'), 'keep\n')
   const initialized = await invoke(['init'], project)
-  expect(initialized).toMatchObject({ code: 0, stdout: initMessage('.'), stderr: '' })
+  expect(initialized).toMatchObject({
+    code: 0,
+    stdout: initMessage('.'),
+    stderr: flowSkillBundled ? '' : flowSkillWarning,
+  })
   expect((await lstat(join(project, 'flows/hello/FLOW.ts'))).isFile()).toBe(true)
   expect(await readFile(join(project, 'notes.txt'), 'utf8')).toBe('keep\n')
 
@@ -220,7 +232,7 @@ test('installed bare init writes only the inert envelope and preserves existing 
   const project = join(root, 'bare')
   const initialized = await invoke(['init', '--bare', project])
   expect(initialized.code).toBe(0)
-  expect(initialized.stderr).toBe('')
+  expect(initialized.stderr).toBe(flowSkillBundled ? '' : flowSkillWarning)
   expect(initialized.stdout).toBe(initMessage(project))
   expect((await readdir(project)).sort()).toEqual([
     '.agents',
@@ -245,24 +257,28 @@ test('installed bare init writes only the inert envelope and preserves existing 
   expect(guidance).toContain('](./bindings/AGENTS.md)')
   expect(await readdir(join(project, 'flows'))).toEqual(['AGENTS.md'])
   expect(await readdir(join(project, 'bindings'))).toEqual(['AGENTS.md'])
-  for (const name of ['jig', 'flow']) {
-    const skill = join(project, '.agents/skills', name)
-    expect(guidance).toContain(`](./.agents/skills/${name}/SKILL.md)`)
-    expect(await readFile(join(skill, 'SKILL.md'), 'utf8')).toContain(`name: ${name}\n`)
-    expect((await lstat(join(skill, 'reference/build/design.md'))).isFile()).toBe(true)
-  }
+  const skill = join(project, '.agents/skills/jig')
+  expect((await readdir(join(project, '.agents/skills'))).sort()).toEqual(
+    flowSkillBundled ? ['flow', 'jig'] : ['jig'],
+  )
+  expect(guidance).toContain('](./.agents/skills/jig/SKILL.md)')
+  expect(guidance).toContain(
+    flowSkillBundled
+      ? '](./.agents/skills/flow/SKILL.md)'
+      : 'https://jig.md/for-agents#install-authoring-skills',
+  )
+  expect(await readFile(join(skill, 'SKILL.md'), 'utf8')).toContain('name: jig\n')
+  expect((await lstat(join(skill, 'reference/build/design.md'))).isFile()).toBe(true)
   const lock = JSON.parse(await readFile(join(project, 'skills-lock.json'), 'utf8'))
   expect(lock.version).toBe(2)
-  expect(Object.keys(lock.skills)).toEqual(['flow', 'jig'])
-  for (const name of ['flow', 'jig']) {
-    expect(lock.skills[name]).toMatchObject({
-      source: `jiggy/${name}`,
-      sourceType: 'github',
-      sourceUrl: `https://github.com/jiggy/${name}.git`,
-      skillPath: `skills/${name}/SKILL.md`,
-      computedHash: '',
-    })
-  }
+  expect(Object.keys(lock.skills)).toEqual(flowSkillBundled ? ['flow', 'jig'] : ['jig'])
+  expect(lock.skills.jig).toMatchObject({
+    source: 'jiggy/jig',
+    sourceType: 'github',
+    sourceUrl: 'https://github.com/jiggy/jig.git',
+    skillPath: 'skills/jig/SKILL.md',
+    computedHash: '',
+  })
   expect(await readFile(join(project, '.gitignore'), 'utf8')).toBe('.jig/\n')
   expect(await readFile(join(project, 'jig.ts'), 'utf8')).toBe(
     [
@@ -317,7 +333,7 @@ test('installed greeting and Agent initialization create ordinary editable files
     const project = join(root, client ?? 'greeting')
     const result = await invoke(['init', project, ...(client ? ['--agent', client] : [])])
     expect(result.code).toBe(0)
-    expect(result.stderr).toBe('')
+    expect(result.stderr).toBe(flowSkillBundled ? '' : flowSkillWarning)
     expect(result.stdout).toBe(initMessage(project))
     expect(result.stdout).not.toContain('\u001b')
     const guidance = await readFile(join(project, 'AGENTS.md'), 'utf8')
@@ -334,7 +350,10 @@ test('installed greeting and Agent initialization create ordinary editable files
     const projectManifest = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'))
     expect(projectManifest.engines).toEqual({ jig: current.version })
     expect(projectManifest.peerDependencies).toBeUndefined()
-    expect((await readdir(join(project, 'tests'))).sort()).toEqual(['AGENTS.md', 'greeting.test.ts'])
+    expect((await readdir(join(project, 'tests'))).sort()).toEqual([
+      'AGENTS.md',
+      'greeting.test.ts',
+    ])
     expect(guidance).toContain('](./tests/AGENTS.md)')
     const greetingTest = await readFile(join(project, 'tests/greeting.test.ts'), 'utf8')
     expect(greetingTest).toContain("from 'bun:test'")
@@ -361,7 +380,7 @@ test('installed kitchen shifts starter writes scoped guidance and native route t
   const project = join(root, 'kitchen-shifts')
   const initialized = await invoke(['init', project, '--starter', 'kitchen-shifts'])
   expect(initialized.code).toBe(0)
-  expect(initialized.stderr).toBe('')
+  expect(initialized.stderr).toBe(flowSkillBundled ? '' : flowSkillWarning)
   expect(initialized.stdout).toBe(initMessage(project))
   expect((await readdir(join(project, 'flows'))).sort()).toEqual([
     'AGENTS.md',
@@ -382,7 +401,11 @@ test('installed kitchen shifts starter writes scoped guidance and native route t
   expect(weekend).toHaveLength(4)
   expect(weekend[1]).toEqual({ shift: 'Saturday lunch', available: ['Ada', 'Bea'] })
   const shortStaffed = await readFixture('short-staffed')
-  expect(shortStaffed).toEqual([weekend[0], { shift: 'Saturday lunch', available: [] }, ...weekend.slice(2)])
+  expect(shortStaffed).toEqual([
+    weekend[0],
+    { shift: 'Saturday lunch', available: [] },
+    ...weekend.slice(2),
+  ])
   const testSource = await readFile(join(project, 'tests/shifts.test.ts'), 'utf8')
   expect(testSource).toContain("from 'bun:test'")
   expect(testSource).toContain('--record-calls')
