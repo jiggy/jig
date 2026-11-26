@@ -455,21 +455,24 @@ test('Linux host scope preserves complete qualification and always reports its f
   const workflow = Bun.YAML.parse(
     await Bun.file(join(root, '.github/workflows/linux-host-conformance.yml')).text(),
   ) as any
-  const artifacts = workflow.jobs['host-artifacts']
+  const artifacts = workflow.jobs.prepare
   const suites = workflow.jobs['host-suite']
-  const aggregate = workflow.jobs['rootless-linux']
-  const scope = workflow.jobs.scope
+  const aggregate = workflow.jobs['affected-linux']
   expect(workflow.jobs.plan).toBeUndefined()
   expect(workflow.jobs['linux-witness']).toBeUndefined()
   expect(workflowTriggers(workflow).pull_request?.paths).toBeUndefined()
   expect(workflowTriggers(workflow).schedule).toBeUndefined()
-  expect(scope.outputs.required).toBe('${{ steps.scope.outputs.required }}')
-  expect(scope.steps.find((step: any) => step.run?.includes('host-scope.mjs')).run).toContain(
-    '--scope linux --github-output "$GITHUB_OUTPUT"',
-  )
-  expect(artifacts.if).toBe("${{ needs.scope.outputs.required == 'true' }}")
-  expect(suites.if).toBe("${{ needs.scope.outputs.required == 'true' }}")
-  expect(suites.needs).toContain('host-artifacts')
+  expect(artifacts.outputs.required).toBe('${{ steps.scope.outputs.required }}')
+  const scope = artifacts.steps.find((step: any) => step.id === 'scope')
+  expect(scope.run).toContain('--scope linux --github-output "$GITHUB_OUTPUT"')
+  expect(artifacts.needs).toBeUndefined()
+  expect(workflow.jobs.scope).toBeUndefined()
+  expect(workflow.jobs['rootless-linux']).toBeUndefined()
+  expect(
+    artifacts.steps.slice(artifacts.steps.indexOf(scope) + 1).map((step: any) => step.if),
+  ).toEqual(["steps.scope.outputs.required == 'true'", "steps.scope.outputs.required == 'true'"])
+  expect(suites.if).toBe("${{ needs.prepare.outputs.required == 'true' }}")
+  expect(suites.needs).toBe('prepare')
   expect(
     artifacts.steps.some((step: any) => step.run?.includes('candidate-transfer.mjs')),
   ).toBeTrue()
@@ -547,26 +550,9 @@ test('Linux host scope preserves complete qualification and always reports its f
   expect(suites.steps.find((step: any) => step.name === 'Require zero host residue').if).toContain(
     'always()',
   )
-  expect(aggregate.name).toBe('rootless-linux')
-  expect(aggregate.if).toContain('always()')
-  expect(aggregate.if).toContain("needs.scope.outputs.required == 'true'")
-  expect(aggregate.if).toContain("needs.scope.result == 'success'")
-  expect(aggregate.needs).toContain('host-artifacts')
-  expect(aggregate.needs).toContain('host-suite')
-  const shardGate = aggregate.steps.find((step: any) => step.env?.ARTIFACT_RESULT !== undefined)
-  for (const key of ['ARTIFACT_RESULT', 'SUITE_RESULT']) {
-    for (const result of ['success', 'failure', 'cancelled', 'skipped', '']) {
-      const child = spawnSync('/bin/sh', ['-c', shardGate.run], {
-        env: {
-          PATH: process.env.PATH,
-          ARTIFACT_RESULT: 'success',
-          SUITE_RESULT: 'success',
-          [key]: result,
-        },
-      })
-      expect(child.status).toBe(result === 'success' ? 0 : 1)
-    }
-  }
+  expect(aggregate.name).toBe('affected-linux')
+  expect(aggregate.if).toBe('always()')
+  expect(aggregate.needs).toEqual(['prepare', 'host-suite'])
   const proof = aggregate.steps.find(
     (step: any) => step.name === 'Require exact complete shard evidence and retain observed cases',
   )
@@ -575,13 +561,25 @@ test('Linux host scope preserves complete qualification and always reports its f
     proof.run.indexOf('candidate-provenance.mjs qualification'),
   )
   expect(proof.run).not.toContain('--plan')
-  const affected = workflow.jobs['affected-linux']
-  expect(affected.if).toBe('always()')
-  expect(affected.needs).toEqual(['scope', 'host-artifacts', 'host-suite', 'rootless-linux'])
-  const linuxGate = affected.steps.find((step: any) =>
+  expect(proof.if).toBe(
+    "${{ needs.prepare.outputs.required == 'true' && needs.host-suite.result == 'success' }}",
+  )
+  const linuxGate = aggregate.steps.find((step: any) =>
     step.run?.includes('host-scope.mjs --scope linux --results'),
   )
-  expect(linuxGate.env.JOB_RESULTS).toBe('${{ toJSON(needs) }}')
+  expect(linuxGate.if).toBe('always()')
+  for (const result of [
+    'needs.prepare.result',
+    'needs.host-suite.result',
+    'steps.qualification.outcome',
+  ])
+    expect(linuxGate.env.JOB_RESULTS).toContain('${{ toJSON(' + result + ') }}')
+  const observed = aggregate.steps.find((step: any) =>
+    step.run?.includes('job-evidence.mjs --directory'),
+  )
+  expect(observed.env.JOB_RESULTS).toContain('${{ toJSON(steps.qualification.outcome) }}')
+  expect(aggregate.steps.indexOf(proof)).toBeLessThan(aggregate.steps.indexOf(linuxGate))
+  expect(aggregate.steps.indexOf(linuxGate)).toBeLessThan(aggregate.steps.indexOf(observed))
   const fixture = await linuxCommandFixture(workflow)
   try {
     const sourceCommands = [
@@ -668,7 +666,7 @@ for (const scenario of linuxAggregateScenarios) {
     ) as any
     const suites = workflow.jobs['host-suite']
     const record = suites.steps.find((step: any) => step.name === 'Record complete shard proof').run
-    const proof = workflow.jobs['rootless-linux'].steps.find(
+    const proof = workflow.jobs['affected-linux'].steps.find(
       (step: any) =>
         step.name === 'Require exact complete shard evidence and retain observed cases',
     )
@@ -818,8 +816,7 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
   )
   const publishAuthorization = publish.jobs.authorize
 
-  expect(host.jobs['rootless-linux'].needs).toContain('host-artifacts')
-  expect(host.jobs['rootless-linux'].needs).toContain('host-suite')
+  expect(host.jobs['affected-linux'].needs).toEqual(['prepare', 'host-suite'])
   expect(trigger.workflows).toEqual(['Linux host conformance'])
   expect(trigger.types).toEqual(['completed'])
   expect(workflowTriggers(live).workflow_dispatch).toBeNull()

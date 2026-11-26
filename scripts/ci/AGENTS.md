@@ -152,8 +152,11 @@ preparation never becomes a consumer requirement.
   through observed completion, without claiming exact push or merge-ready latency.
 
   The required-check report measures time from the first workflow creation to
-  successful CI, Linux and Mac checks. Both host preparation jobs must be observed
-  for the full-qualification cohort. Omitted and unverified scope counts remain visible.
+  successful CI, Linux and Mac checks. The full-qualification cohort requires
+  observed candidate acquisition in both host workflows. Consolidated preparation
+  jobs distinguish acquisition from scope-only execution using observed steps.
+  Historical samples use the separate scope and acquisition job observations.
+  Omitted and unverified scope counts remain visible.
   Unselected candidate failures affect the workflow report, while the required-check
   report uses the observed final gate results.
 

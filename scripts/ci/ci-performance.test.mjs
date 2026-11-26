@@ -766,6 +766,34 @@ test('successful retry envelopes retain the original creation time and preceding
   )
 })
 
+test('consolidated host jobs distinguish acquisition from scope-only execution', () => {
+  for (const [acquisition, scope, groupCount] of [
+    [{ conclusion: 'success', started_at: stamp(380) }, 'full', 1],
+    [{ conclusion: 'skipped' }, 'omitted', 0],
+    [{ conclusion: 'cancelled' }, 'unverified', 0],
+    [null, 'unverified', 0],
+  ]) {
+    const runs = requiredGateGroup(930, 1190)
+    for (const host of runs.slice(1)) {
+      const [required, , prepare] = host.attempts[0].jobs
+      prepare.steps = [
+        {
+          name: 'Determine whether complete host qualification is required',
+          conclusion: 'success',
+        },
+      ]
+      if (acquisition)
+        prepare.steps.push({ name: 'Acquire the exact canonical CI candidates', ...acquisition })
+      host.attempts[0].jobs = [required, prepare]
+    }
+    const report = analyzeCiPerformance(snapshot(runs))
+    assert.equal(report.envelopes[0].requiredChecks.hostScope, scope)
+    assert.equal(report.prRequiredChecksSummary.groupCount, groupCount)
+    if (scope === 'full')
+      assert.equal(report.prRequiredChecksSummary.successful.medianSeconds, 1190)
+  }
+})
+
 test('full qualification timing ends at the required checks and retains nonpassing runs', () => {
   const fast = requiredGateGroup(410)
   const mac = fast[2]

@@ -48,7 +48,7 @@ export const CI_QUALIFICATION_JOBS = Object.freeze([
   ...['flow', 'agent', 'acp', 'jig'].map((kind) => `Build ${kind} release candidate`),
 ])
 export const LINUX_QUALIFICATION_JOBS = Object.freeze([
-  'rootless-linux',
+  'affected-linux',
   ...[
     'agent-lifecycle',
     'delegated-authority',

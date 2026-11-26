@@ -145,6 +145,28 @@ function summarizePrEnvelopes(envelopes, elapsedField = 'threeWorkflowEnvelopeSe
   }
 }
 
+function combinedPreparationScope(job) {
+  const scope = job.steps?.find(
+    ({ name }) => name === 'Determine whether complete host qualification is required',
+  )
+  const acquisition = job.steps?.find(
+    ({ name }) => name === 'Acquire the exact canonical CI candidates',
+  )
+  if (scope?.conclusion !== 'success' || !acquisition) return 'unverified'
+  if (acquisition.conclusion === 'skipped')
+    return job.conclusion === 'success' ? 'omitted' : 'unverified'
+  return acquisition.started_at ? 'full' : 'unverified'
+}
+
+function observeHostScope(scopeJob, inputJob) {
+  if (!inputJob || inputJob.carriedExecution) return 'unverified'
+  if (!scopeJob) return inputJob.hostPreparationScope ?? 'unverified'
+  // Historical samples retain separate scope and preparation jobs.
+  if (scopeJob.conclusion !== 'success' || scopeJob.carriedExecution) return 'unverified'
+  if (inputJob.conclusion === 'skipped') return 'omitted'
+  return inputJob.jobQueueSeconds !== null ? 'full' : 'unverified'
+}
+
 function observePrGate(workflow, latestJobs) {
   const { gate, scope, inputs } = PR_GATE_JOBS[workflow]
   const required = latestJobs.get(gate)
@@ -155,15 +177,7 @@ function observePrGate(workflow, latestJobs) {
       required && !required.carriedExecution
         ? { id: required.id, conclusion: required.conclusion, completedAt: required.completedAt }
         : null,
-    // Preparation is conditional on the host scope job's full-qualification decision.
-    hostScope:
-      scopeJob?.conclusion === 'success' && !scopeJob.carriedExecution && inputJob
-        ? inputJob.conclusion === 'skipped'
-          ? 'omitted'
-          : inputJob.jobQueueSeconds !== null
-            ? 'full'
-            : 'unverified'
-        : 'unverified',
+    hostScope: observeHostScope(scopeJob, inputJob),
   }
 }
 
@@ -326,6 +340,9 @@ export function analyzeCiPerformance(snapshot) {
           executionSeconds,
           unassignedSeconds,
           carriedExecution,
+          ...(job.name === PR_GATE_JOBS[run.path].inputs
+            ? { hostPreparationScope: combinedPreparationScope(job) }
+            : {}),
           failedSteps: Array.isArray(job.steps)
             ? job.steps.filter((step) => step.conclusion === 'failure').map((step) => step.name)
             : null,
@@ -722,7 +739,7 @@ export function performanceMarkdown(report) {
     '### Required checks on full-qualification PRs',
     '',
     'Elapsed time runs from the earliest workflow creation until the CI, Linux and macOS gates pass. It includes runner waits and retains the original start on retries.',
-    'A full host scope requires observed preparation in both host workflows. Event heads still require a separate check for tested merge identity.',
+    'Full host scope requires observed candidate acquisition in both host workflows. Event heads still require a separate check for tested merge identity.',
     `Observed full-qualification groups: ${gates.groupCount}. Omitted host scope: ${gates.omittedHostScope}. Unverified host scope: ${gates.unverifiedHostScope}.`,
     '',
     '| Gate outcomes | Passed | Failed | Cancelled | Incomplete | Retried passes |',

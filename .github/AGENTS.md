@@ -99,7 +99,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Linux Host Conformance's optional `workflow_dispatch` input
   `include_startup_profile` runs a bounded startup diagnostic inside the
   installed-evidence host shard, against the exact frozen archives. It is
-  explicitly non-gating for the `rootless-linux` check. The host's final
+  explicitly non-gating for the `affected-linux` check. The host's final
   archive-identity and zero-residue assertions remain mandatory. Retain only its
   bounded mode-0600 profile artifacts for seven days. It performs no model calls
   and does not establish a performance claim. Its 60-minute shard allows the
@@ -319,11 +319,12 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   retain explicit lowercase `jig-` paths and automatic `/Volumes/Jig-` volume
   names, plus native helpers including the trusted Codex preference observer.
   These are observations, not process, mount or filesystem cleanup authority.
-- Acquire the original canonical CI bundle once, then run the complete Linux
-  suite in independent shards on separately provisioned hosts. Every shard
-  rechecks the frozen archive hashes, performs zero-residue verification, and
-  contributes to the aggregate `rootless-linux` check. A skipped, cancelled, or
-  failed shard must prevent that aggregate from succeeding.
+- Determine Linux scope and acquire the original canonical CI bundle in one
+  preparation job. Run the complete Linux suite on separately provisioned
+  hosts. Every shard rechecks the frozen archive hashes and performs zero-residue
+  verification. The `affected-linux` gate revalidates scope, verifies every
+  current-attempt shard and retains the observed and qualification receipts.
+  A skipped, cancelled or failed required shard prevents the gate from succeeding.
 - Linux's `examples` shard runs every original example through installation,
   public review and its authored default invocation. It uses unchanged candidate
   packages, a digest-pinned genuine Codex client and a local HTTPS model peer.
@@ -434,8 +435,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Different observed patch builds may contribute coverage within one required major.
   This union establishes the ARM behavior contract, rather than independently certifying each observed build.
 
-  One Ubuntu preparation job waits for the canonical PR build before requesting
-  native workers. The native Mac workers and the required macOS Python check
+  One Ubuntu job determines Mac scope, freezes the plan and waits for the
+  canonical PR build before requesting native workers. Omitted scope skips
+  input acquisition and worker requests. The native Mac workers and the required macOS Python check
   request runners independently. The CI aggregate verifies completed Python and
   Quick checks. Strict Mac runs wait for Quick checks before acquiring inputs.
 

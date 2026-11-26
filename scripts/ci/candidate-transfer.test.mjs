@@ -775,10 +775,13 @@ test('PR Mac hosts acquire as soon as the canonical build passes and strict host
       'utf8',
     ),
   )
-  const acquisition = workflow.jobs['host-artifacts']
+  const acquisition = workflow.jobs.prepare
+  assert.equal(acquisition.needs, undefined)
+  const scope = acquisition.steps.find((step) => step.id === 'scope')
   const acquire = acquisition.steps.find((step) =>
     step.run?.includes('candidate-transfer.mjs acquire'),
   )
+  assert.ok(acquisition.steps.indexOf(scope) < acquisition.steps.indexOf(acquire))
   assert.match(
     acquire.run,
     /if \[ "\$GITHUB_EVENT_NAME" = pull_request \]; then\s+set -- --timeout-seconds 300\s+else\s+set -- --after-quick true --timeout-seconds 600\s+fi/,
@@ -791,13 +794,13 @@ test('PR Mac hosts acquire as soon as the canonical build passes and strict host
     '${{ steps.prepared-artifacts.outputs.artifact-id }}',
   )
   const workers = workflow.jobs.prerequisites
-  assert.deepEqual(workers.needs, ['scope', 'host-artifacts'])
+  assert.equal(workers.needs, 'prepare')
   const download = workers.steps.find(
     (step) =>
       step.uses?.startsWith('actions/download-artifact@') &&
-      step.with?.['artifact-ids'] === '${{ needs.host-artifacts.outputs.artifact_id }}',
+      step.with?.['artifact-ids'] === '${{ needs.prepare.outputs.artifact_id }}',
   )
-  assert.equal(download.with['artifact-ids'], '${{ needs.host-artifacts.outputs.artifact_id }}')
+  assert.equal(download.with['artifact-ids'], '${{ needs.prepare.outputs.artifact_id }}')
   assert.ok(!workers.steps.some((step) => step.run?.includes('candidate-transfer.mjs acquire')))
   const verified = workers.steps.findIndex((step) =>
     step.run?.includes('candidate-provenance.mjs verify'),
@@ -1055,7 +1058,7 @@ test('Linux acquisition separates producer readiness from transfer within its ou
     'utf8',
   )
   const acquisition = workflow.slice(
-    workflow.indexOf('  host-artifacts:\n'),
+    workflow.indexOf('  prepare:\n'),
     workflow.indexOf('  host-suite:\n'),
   )
   assert.match(acquisition, /timeout-minutes: 40/)
