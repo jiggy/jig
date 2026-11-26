@@ -36,6 +36,7 @@ preparation never becomes a consumer requirement.
 
   Final `affected-linux` and `affected-macos` checks
   independently reconstruct this decision and require complete observed native qualification or explicit omission.
+  The Mac check runs collection and final reconciliation in the same job.
   The collector verifies selected workers for PRs and the complete major matrix for other events.
   Raw candidate results grant no qualification.
 

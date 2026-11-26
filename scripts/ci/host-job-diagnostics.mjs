@@ -68,12 +68,7 @@ export function hostJobSummary(identity, jobs, annotations = {}) {
   if (!failures.length) return ''
   if (
     identity.event === 'pull_request' &&
-    jobs.some(
-      (job) =>
-        job.name === 'Native host qualification — arm64' &&
-        job.status === 'completed' &&
-        job.conclusion === 'success',
-    ) &&
+    identity.macQualificationComplete === true &&
     failures.every((job) => /^Native host shard — macos-(15|26) \/ [0-7]$/.test(job.name))
   )
     return '## Mac PR allocation\n\nThe required collector verified every selected shard. Other candidates supplied no required coverage; their allocation or setup failures do not invalidate the verified winners.\n'
@@ -111,6 +106,7 @@ export function collectHostJobSummary(environment = process.env) {
     runId: Number(environment.GITHUB_RUN_ID),
     attempt: Number(environment.GITHUB_RUN_ATTEMPT),
     event: environment.GITHUB_EVENT_NAME,
+    macQualificationComplete: environment.MACOS_QUALIFICATION_COMPLETE === 'true',
   }
   requireIdentity(identity)
   const deadline = Date.now() + 20_000

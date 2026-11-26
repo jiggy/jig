@@ -57,7 +57,7 @@ export const LINUX_QUALIFICATION_JOBS = Object.freeze([
     'installed-evidence',
   ].map((suite) => `Linux host — ${suite}`),
 ])
-export const MACOS_QUALIFICATION_JOBS = Object.freeze(['Native host qualification — arm64'])
+export const MACOS_QUALIFICATION_JOBS = Object.freeze(['affected-macos'])
 
 function mainExpectation(repository, workflowPath, source) {
   return {

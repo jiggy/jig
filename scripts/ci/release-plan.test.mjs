@@ -274,7 +274,7 @@ test('automatic Mac hosts select eligible releases while Linux and manual diagno
   const macJobs = (state) => ({
     scope: 'success',
     'host-artifacts': state,
-    'qualified-architecture': state,
+    qualification: state,
   })
   const nonrelease = async (reason) => {
     const report = await select('macos')

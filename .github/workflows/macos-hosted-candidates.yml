@@ -359,9 +359,9 @@ jobs:
       - scope
       - host-artifacts
     if: ${{ needs.scope.outputs.required == 'true' }}
-  qualified-architecture:
-    name: Native host qualification — arm64
-    if: ${{ always() && needs.scope.result == 'success' && needs.scope.outputs.required == 'true' }}
+  affected-macos:
+    name: affected-macos
+    if: always()
     needs:
       - scope
       - host-artifacts
@@ -369,15 +369,18 @@ jobs:
     permissions:
       contents: read
       actions: read
+      checks: read
     timeout-minutes: ${{ github.event_name == 'pull_request' && 45 || inputs.include_startup_profile && 180 || 90 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
       - name: Validate the latest actual executions and complete native coverage
+        if: ${{ needs.scope.outputs.required == 'true' && needs.host-artifacts.result == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
           MACOS_COLLECTION_MINUTES: ${{ github.event_name == 'pull_request' && 40 || inputs.include_startup_profile && 170 || 80 }}
@@ -391,75 +394,56 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
       - name: Bind complete native qualification to the canonical candidate
+        id: qualification
+        if: ${{ needs.scope.outputs.required == 'true' && needs.host-artifacts.result == 'success' }}
         run: |-
           set -eu
-          mkdir "$RUNNER_TEMP/macos-qualification"
-          node scripts/ci/job-evidence.mjs --id macos-arm64 --summary "$RUNNER_TEMP/mac-summary.json" --artifacts --residue --output "$RUNNER_TEMP/macos-observed.json"
+          mkdir "$RUNNER_TEMP/macos-qualification" "$RUNNER_TEMP/observed-evidence"
+          node scripts/ci/job-evidence.mjs --id macos-arm64 --summary "$RUNNER_TEMP/mac-summary.json" --artifacts --residue --output "$RUNNER_TEMP/observed-evidence/macos-observed.json"
           node scripts/ci/candidate-provenance.mjs qualification "$RUNNER_TEMP/macos-host-artifacts" "$RUNNER_TEMP/macos-qualification/QUALIFICATION.json" --kind macos --profile arm64 --coverage-summary "$RUNNER_TEMP/mac-summary.json"
           cp "$RUNNER_TEMP/mac-summary.json" "$RUNNER_TEMP/macos-qualification/mac-summary.json"
           cp "$RUNNER_TEMP/macos-host-artifacts/PLAN.json" "$RUNNER_TEMP/macos-qualification/PLAN.json"
+      - name: Revalidate host scope and every required result
+        if: always()
+        env:
+          JOB_RESULTS: >-
+            {"scope": ${{ toJSON(needs.scope.result) }},
+             "host-artifacts": ${{ toJSON(needs.host-artifacts.result) }},
+             "qualification": ${{ toJSON(steps.qualification.outcome) }}}
+        run: |
+          set -eu
+          printf '%s\n' "$JOB_RESULTS" > "$RUNNER_TEMP/host-job-results.json"
+          node scripts/ci/host-scope.mjs --scope macos --results "$RUNNER_TEMP/host-job-results.json" > "$RUNNER_TEMP/affected-report.json"
+      - name: Require complete observed host qualification
+        if: ${{ needs.scope.outputs.required == 'true' }}
+        env:
+          JOB_RESULTS: '{"macos-arm64": ${{ toJSON(steps.qualification.outcome) }}}'
+        run: |
+          set -eu
+          printf '%s\n' "$JOB_RESULTS" > "$RUNNER_TEMP/host-evidence-results.json"
+          node scripts/ci/job-evidence.mjs --directory "$RUNNER_TEMP/observed-evidence" --results "$RUNNER_TEMP/host-evidence-results.json" --scope macos --output "$RUNNER_TEMP/host-evidence.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ needs.scope.outputs.required == 'true' }}
         with:
           name: macos-qualification-arm64-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
           path: ${{ runner.temp }}/macos-qualification
           retention-days: 7
           if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ needs.scope.outputs.required == 'true' }}
         with:
           name: macos-observed-arm64-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
-          path: ${{ runner.temp }}/macos-observed.json
+          path: ${{ runner.temp }}/observed-evidence/macos-observed.json
           retention-days: 7
           if-no-files-found: error
-  affected-macos:
-    name: affected-macos
-    permissions:
-      contents: read
-      actions: read
-      checks: read
-    if: always()
-    needs:
-      - scope
-      - host-artifacts
-      - qualified-architecture
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: "24"
       - name: Explain runner allocation and execution failures
         timeout-minutes: 1
         if: always()
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
+          MACOS_QUALIFICATION_COMPLETE: ${{ success() && steps.qualification.outcome == 'success' }}
         run: node scripts/ci/host-job-diagnostics.mjs
-      - name: Revalidate host scope and every required job result
-        env:
-          JOB_RESULTS: ${{ toJSON(needs) }}
-        run: |
-          set -eu
-          node -e 'const fs=require("node:fs"),jobs=JSON.parse(process.env.JOB_RESULTS);fs.writeFileSync(process.argv[1],JSON.stringify(Object.fromEntries(Object.entries(jobs).map(([id,job])=>[id,job.result]))));' "$RUNNER_TEMP/host-job-results.json"
-          node scripts/ci/host-scope.mjs --scope macos --results "$RUNNER_TEMP/host-job-results.json" > "$RUNNER_TEMP/affected-report.json"
-      - name: Download complete observed execution evidence
-        if: ${{ needs.scope.outputs.required == 'true' }}
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          pattern: macos-observed-*-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
-          path: ${{ runner.temp }}/observed-evidence
-          merge-multiple: false
-      - name: Require complete observed host qualification
-        if: ${{ needs.scope.outputs.required == 'true' }}
-        env:
-          JOB_RESULTS: ${{ toJSON(needs) }}
-        run: |
-          set -eu
-          node -e 'const fs=require("node:fs"),jobs=JSON.parse(process.env.JOB_RESULTS);fs.writeFileSync(process.argv[1],JSON.stringify({"macos-arm64":jobs["qualified-architecture"].result}));' "$RUNNER_TEMP/host-evidence-results.json"
-          node scripts/ci/job-evidence.mjs --directory "$RUNNER_TEMP/observed-evidence" --results "$RUNNER_TEMP/host-evidence-results.json" --scope macos --output "$RUNNER_TEMP/host-evidence.json"
       - name: Retain host scope and complete qualification reconciliation
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

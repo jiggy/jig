@@ -426,7 +426,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Independent selectors on `ubuntu-24.04` avoid a barrier between shards.
   They stay assigned through worker completion, beyond the 15-minute
   `ubuntu-slim` job limit.
-  The collector starts after preparation and waits only for selected PR workers and their selectors.
+  The required `affected-macos` job starts after preparation and waits only for selected PR workers and their selectors.
   Its gate does not depend on unused queued candidates. Those jobs may remain pending or cancelled in the overall workflow.
   GitHub does not supply individual queued-job cancellation here.
 
@@ -455,7 +455,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Main and release qualification remain fresh and complete for their current attempt.
   Expired or rebuilt inputs require fresh complete qualification.
 
-  The final gate requires collector success and complete observed execution evidence.
+  The gate reconciles scope and preparation, validates the collector's complete
+  observed evidence, and publishes the qualification from the same runner.
   Its observed execution check remains mandatory. Optional bounded GitHub diagnostics distinguish missing required coverage from unused candidates after verified PR coverage.
   Native test and cleanup failures remain distinct from allocation failures.
   No spare-worker pool, exact-build matching or external scheduler participates.

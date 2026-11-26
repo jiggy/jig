@@ -7,7 +7,11 @@ import { test } from 'node:test'
 import { parse } from 'yaml'
 import { NATIVE_PREREQUISITE_TESTS } from './macos-host-test-shards.mjs'
 import { MACOS_PR_SELECTOR_RUNNER, NOOP_STEP_NAMES } from './macos-pr-race.mjs'
-import { CI_QUALIFICATION_JOBS, LINUX_QUALIFICATION_JOBS } from './release-readiness.mjs'
+import {
+  CI_QUALIFICATION_JOBS,
+  LINUX_QUALIFICATION_JOBS,
+  MACOS_QUALIFICATION_JOBS,
+} from './release-readiness.mjs'
 
 const workflows = new URL('../../.github/workflows/', import.meta.url)
 const rootKeys = new Set([
@@ -252,28 +256,40 @@ test('Mac acquisition, collection and final gate retain source identity and comp
     (step) => step.with?.['artifact-ids'] === '${{ needs.host-artifacts.outputs.artifact_id }}',
   )
   assert.equal(download.with['artifact-ids'], '${{ needs.host-artifacts.outputs.artifact_id }}')
-  const collect = workflow.jobs['qualified-architecture']
-  assert.ok(collect.if.includes('always()'))
-  assert.deepEqual(collect.needs, ['scope', 'host-artifacts'])
-  assert.ok(collect.steps.some((step) => step.run?.includes('macos-host-collect.mjs collect')))
-  assert.ok(
-    collect.steps.some((step) => step.run?.includes('candidate-provenance.mjs qualification')),
-  )
   const gate = workflow.jobs['affected-macos']
-  assert.ok(!gate.needs.includes('prerequisites'))
-  assert.ok(gate.needs.includes('qualified-architecture'))
+  assert.deepEqual(MACOS_QUALIFICATION_JOBS, [gate.name])
+  assert.deepEqual(gate.needs, ['scope', 'host-artifacts'])
+  assert.equal(gate.if, 'always()')
+  const collect = gate.steps.findIndex((step) => step.run?.includes('macos-host-collect.mjs collect'))
+  const qualify = gate.steps.findIndex((step) => step.id === 'qualification')
+  const scope = gate.steps.findIndex((step) =>
+    step.run?.includes('host-scope.mjs --scope macos --results'),
+  )
+  const reconcile = gate.steps.findIndex((step) => step.run?.includes('job-evidence.mjs --directory'))
+  const publish = gate.steps.findIndex((step) =>
+    step.with?.name?.startsWith('macos-qualification-arm64-'),
+  )
+  assert.ok(
+    collect >= 0 && collect < qualify && qualify < scope && scope < reconcile && reconcile < publish,
+  )
+  assert.match(gate.steps[qualify].run, /candidate-provenance\.mjs qualification/)
+  assert.match(gate.steps[qualify].run, /--artifacts --residue/)
+  assert.equal(gate.steps[collect].if, gate.steps[qualify].if)
+  assert.match(gate.steps[collect].if, /needs\.scope\.outputs\.required == 'true'/)
+  assert.match(gate.steps[collect].if, /needs\.host-artifacts\.result == 'success'/)
+  const qualificationOutcome = '${{ toJSON(steps.qualification.outcome) }}'
+  assert.ok(gate.steps[scope].env.JOB_RESULTS.includes(qualificationOutcome))
+  assert.ok(gate.steps[reconcile].env.JOB_RESULTS.includes(qualificationOutcome))
+  assert.equal(gate.steps[publish].if, "${{ needs.scope.outputs.required == 'true' }}")
+  assert.equal(gate.steps.some((step) => step.uses?.startsWith('actions/download-artifact@')), false)
   const selector = workflow.jobs.selectors
   assert.deepEqual(selector.needs, ['scope', 'host-artifacts'])
   assert.match(selector.if, /github.event_name == 'pull_request'/)
-  assert.ok(!collect.needs.includes('selectors'))
-  assert.equal(gate.if, 'always()')
   const diagnostic = gate.steps.findIndex(
     (step) => step.run === 'node scripts/ci/host-job-diagnostics.mjs',
   )
-  const check = gate.steps.findIndex((step) =>
-    step.run?.includes('host-scope.mjs --scope macos --results'),
-  )
-  assert.ok(diagnostic >= 0 && diagnostic < check)
+  assert.ok(diagnostic > publish)
+  assert.equal(gate.steps[diagnostic].if, 'always()')
   assert.equal(gate.steps[diagnostic]['continue-on-error'], true)
   assert.equal(gate.steps[diagnostic]['timeout-minutes'], 1)
   assert.equal(gate.permissions.checks, 'read')

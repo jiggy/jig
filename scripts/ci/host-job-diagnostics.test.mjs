@@ -125,20 +125,17 @@ test('unavailable API diagnostics cannot fail their CLI or grant qualification',
 
 test('a verified PR collector distinguishes nonselected candidates from missing required coverage', () => {
   const candidate = { ...unassigned, name: 'Native host shard — macos-26 / 0' }
-  const qualified = {
-    ...unassigned,
-    id: 99,
-    name: 'Native host qualification — arm64',
-    conclusion: 'success',
-  }
-  const passing = hostJobSummary({ ...identity, event: 'pull_request' }, [candidate, qualified], {
-    [candidate.id]: annotations,
-  })
+  const pr = { ...identity, event: 'pull_request' }
+  const passing = hostJobSummary(
+    { ...pr, macQualificationComplete: true },
+    [candidate],
+    { [candidate.id]: annotations },
+  )
   assert.match(passing, /verified every selected shard/)
   assert.doesNotMatch(passing, /Infrastructure allocation failure/)
-  const failed = hostJobSummary(identity, [candidate, { ...qualified, conclusion: 'failure' }], {
+  const failed = hostJobSummary(pr, [candidate], {
     [candidate.id]: annotations,
   })
   assert.match(failed, /Infrastructure allocation failure/)
-  assert.equal(hostJobSummary(identity, [{ ...qualified, conclusion: 'skipped' }]), '')
+  assert.equal(hostJobSummary(pr, [{ ...candidate, conclusion: 'skipped' }]), '')
 })
