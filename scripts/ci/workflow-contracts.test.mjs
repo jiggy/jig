@@ -340,12 +340,15 @@ test('Mac acquisition, collection and final gate retain source identity and comp
   )
   const native = workers.steps.findIndex((step) => step.env?.JIG_MACOS_PROCESS_TEST === '1')
   const shard = workers.steps.findIndex((step) => step.run?.includes('qualify-macos-host.sh'))
+  const strictAcquireIndex = workers.steps.indexOf(download)
   assert.ok(
     sourceSetup >= 0 &&
-      sourceSetup < prAcquireIndex &&
+      sourceSetup < native &&
+      native < strictAcquireIndex &&
+      strictAcquireIndex < verifyIndex &&
+      native < prAcquireIndex &&
       prAcquireIndex < verifyIndex &&
-      verifyIndex < native &&
-      native < shard,
+      verifyIndex < shard,
   )
   assert.equal(
     workers.steps[verifyIndex].env.MACOS_INPUT_ARTIFACT_ID,

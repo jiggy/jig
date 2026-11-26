@@ -816,8 +816,14 @@ test('Mac PR runners allocate before acquisition while strict preparation waits 
   )
   assert.ok(verified > workers.steps.indexOf(download))
   assert.ok(verified > workers.steps.indexOf(prAcquire))
-  for (const command of ['bun test packages/jig/test/macos/', 'qualify-macos-host.sh --shard'])
-    assert.ok(workers.steps.findIndex((step) => step.run?.includes(command)) > verified)
+  const baseline = workers.steps.findIndex((step) =>
+    step.run?.includes('bun test packages/jig/test/macos/'),
+  )
+  assert.ok(baseline >= 0 && baseline < workers.steps.indexOf(prAcquire))
+  const shard = workers.steps.findIndex((step) =>
+    step.run?.includes('qualify-macos-host.sh --shard'),
+  )
+  assert.ok(shard > verified)
 })
 
 test('host acquisition waits for the exact queued producer before starting its transfer deadline', async () => {

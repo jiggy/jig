@@ -347,7 +347,10 @@ They consume frozen package exports with tracked test helpers and installed
   It verifies same-source frozen archives, sequential native execution, installed consumers, genuine offline clients, and host residue.
   Mount observations include explicit lowercase `jig-` paths and automatic `/Volumes/Jig-` volumes.
   Observations never authorize cleanup or detachment.
+
   Hosted shards consume one frozen plan. Every worker runs native prerequisites, and the installed owner runs consumer checks.
+  The source-only native baseline runs before canonical acquisition.
+  The assigned shard and installed checks require the verified inputs.
 
   The full Jig package smoke receives `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY`
   from the existing Mac evidence directory or Linux's installed-evidence command directory.

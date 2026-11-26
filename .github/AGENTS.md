@@ -449,7 +449,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   acquiring inputs and requesting workers. Those workers download the
   prepared artifact by immutable ID.
 
-  Workers verify canonical provenance before execution and compare archive hashes afterward.
+  Source-only containment checks can run while the canonical bundle builds.
+  Workers verify canonical provenance before the whole-file and installed
+  checks, then compare archive hashes afterward.
   Complete reports, confirmed cleanup, and unchanged input identity remain mandatory.
 
   Every worker has a 25-minute execution ceiling. Optional startup profiling retains its separate manual allowance.
