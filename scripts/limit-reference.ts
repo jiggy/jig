@@ -19,6 +19,7 @@ import {
 import {
   PRIVATE_CAPTURE_LIMITS,
   PRIVATE_FILE_LIMITS,
+  PRIVATE_FILE_PACKET_LIMITS,
 } from '../packages/jig/src/internal/file-input-policy.js'
 import { PRIVATE_FINITE_ACP_LIMITS } from '../packages/jig/src/internal/finite-acp-policy.js'
 import { PRIVATE_FLOW_CONTEXT_LIMITS } from '../packages/jig/src/internal/inspection-policy.js'
@@ -217,8 +218,12 @@ export const LIMIT_REFERENCE: readonly Group[] = [
         `${bytes(PRIVATE_CAPTURE_LIMITS.input)} / ${bytes(PRIVATE_CAPTURE_LIMITS['artifact-input'])} / ${bytes(PRIVATE_CAPTURE_LIMITS.output)}`,
       ),
       fixed(
-        'Files / tree entries',
+        'Files / tree entries per input or output capture',
         `${PRIVATE_FILE_LIMITS.files} / ${PRIVATE_FILE_LIMITS.entries}`,
+      ),
+      fixed(
+        'Delivered packet files / file content',
+        `${PRIVATE_FILE_PACKET_LIMITS.files.toLocaleString('en-US')} / ${bytes(PRIVATE_CAPTURE_LIMITS.output)}`,
       ),
       fixed(
         'Relative path depth / length',
