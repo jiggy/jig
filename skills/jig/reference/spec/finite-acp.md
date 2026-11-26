@@ -636,6 +636,11 @@ Stages distinguish executable discovery, installation, and Codex sandbox support
 They also distinguish subscription login, API configuration, and missing model selection.
 These stages use `EXECUTABLE`, `INSTALLATION`, `SANDBOX`, `LOGIN`, `API`, and `MODEL` respectively.
 
+Review uses `LOCATION` for a client file targeting a sandbox-reserved path.
+It uses `MOUNT_CONFLICT` when Jig and the selected client require different
+files at the same sandbox path. Identical source and destination pairs can
+share a mount. Launch validates the composed file mounts before dispatch.
+
 Mac Codex also distinguishes
 unavailable `PREFERENCES` observation from unsupported `MANAGED_POLICY`.
 The CLI gives client-specific
