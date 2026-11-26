@@ -221,7 +221,8 @@ export async function executePrivateContainedEffect(
       }
       httpInput = Buffer.from(encodeHttpWorkerInput(prepared.value, bearer, proxy)).toString('utf8')
     }
-  } catch {
+  } catch (error) {
+    if (route.native === 'offline-tool') console.error('Native input trial:', error)
     return failed(
       'INVALID_INPUT',
       route.native === 'offline-tool'
