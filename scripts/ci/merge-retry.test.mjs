@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
+import { promisify } from 'node:util'
 import { parse } from 'yaml'
 import { digest } from './candidate-provenance.mjs'
+import { transientGitHubRead } from './github-read.mjs'
 import { collectJobEvidence, executionInventory } from './job-evidence.mjs'
 import { allRunJobs, latestJob } from './merge-attempts.mjs'
 import {
@@ -348,6 +350,24 @@ test('the production merge CLI overlaps four archive downloads and verifies ever
     ids,
   )
   for (const id of ids) await stat(join(counters, 'done-' + id))
+})
+
+test('a subprocess deadline is retryable without treating ordinary cancellation as transient', async () => {
+  const execute = promisify(execFile)
+  const start = (signal) =>
+    execute(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+      signal,
+      killSignal: 'SIGKILL',
+    })
+  await assert.rejects(start(AbortSignal.timeout(100)), (error) => transientGitHubRead(error))
+
+  const controller = new AbortController()
+  const cancelled = start(controller.signal)
+  controller.abort()
+  await assert.rejects(
+    cancelled,
+    (error) => error.code === 'ABORT_ERR' && !transientGitHubRead(error),
+  )
 })
 
 test('merge retry uses latest execution and never falls back from a later failure', () => {

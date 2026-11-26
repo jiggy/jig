@@ -39,7 +39,7 @@ export function githubClient(
       const { stdout } = await readArchive(() =>
         execFileAsync('gh', ['api', `repos/${repository}/actions/artifacts/${artifactId}/zip`], {
           encoding: 'buffer',
-          timeout: 120_000,
+          signal: AbortSignal.timeout(120_000),
           killSignal: 'SIGKILL',
           maxBuffer: 256 * 1024 * 1024,
         }),
