@@ -53,6 +53,11 @@ These links locate module rules. All selected domain requirements still apply.
   FLOW uses versioned public artifacts, not a local SDK
   build. Do not repeat those prerequisite requests directly in Jig.
 
+  `scripts/flow-skill.ts` captures the latest official FLOW skill for canonical
+  CI candidates. The CLI build checks the prepared file contents and records
+  their upstream revision and digest in `libexec/init-skills.json`. Ordinary
+  source builds read the local Jig skill and warn when FLOW guidance is missing.
+
   Standalone package recipes keep their complete dependencies.
   The Claude Agent bundle uses the exact Anthropic SDK peer pinned in Jig's
   development dependencies. Check its registry archive and rebuild the bundle

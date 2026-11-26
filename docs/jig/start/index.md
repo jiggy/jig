@@ -148,7 +148,7 @@ Do not automatically repeat an interrupted or uncertain operation.
 Then [choose an Agent](../build/agents.md) and [compose methods](../build/compose.md).
 The [contact importer](../examples/contact-import.md) demonstrates code, Agent, and mixed implementations behind one calling boundary.
 
-For Agent-assisted development, use the [FLOW and Jig authoring skills](../for-agents.md#install-authoring-skills) bundled with the project.
+For Agent-assisted development, use the [Jig and FLOW skills](../for-agents.md#install-authoring-skills).
 See [How Jig works](../understand/index.md) for the responsibilities behind review, execution, and cleanup.
 
 ## Supported host

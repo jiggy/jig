@@ -228,10 +228,11 @@ remain supported and are not rewritten by a review default.
 
   Keep generated fixture files under `tests/fixtures`.
   The greeting's README, CLI instructions, and Bun test use the same inline JSON string.
-  Every scaffold copies the packaged FLOW and Jig authoring skill trees into `.agents/skills/`.
-  Build from `skills/jig/` and the pinned upstream FLOW source without introducing another authored skill tree.
-  Record both upstream paths in `skills-lock.json` so the project can use `npx skills update --project`.
-  Initialization reads the local bundle and writes editable project files offline.
+  Every scaffold copies the packaged Jig skill from `skills/jig/` offline.
+  Published candidates also supply the FLOW skill. Record only the bundled
+  skills in `skills-lock.json` for `npx skills update --project`.
+  When FLOW guidance is absent, print its installation command on stderr after
+  successful initialization and link to the [agent guide](../../docs/jig/for-agents.md#install-authoring-skills).
 
   `--starter kitchen-shifts` generates the composed exercise owned by
   [the composition guide](../../docs/jig/build/compose.md#test-a-scoped-route).

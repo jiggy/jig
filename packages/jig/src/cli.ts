@@ -1999,7 +1999,7 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
   }
   try {
     runtime.signal?.throwIfAborted()
-    await createProject(
+    const flowSkillBundled = await createProject(
       resolve(runtime.currentDirectory, directory),
       undefined,
       bare,
@@ -2010,6 +2010,13 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
     runtime.writeOutput(
       `Created Jig project ${asciiJsonString(directory)}.\n\nOpen README.md in the project directory to get started.\n`,
     )
+    if (!flowSkillBundled) {
+      runtime.progress.notice(
+        'WARNING: FLOW authoring skill is missing.\n' +
+          'From the project directory, run `npx skills add jiggy/flow --skill flow`.\n',
+        'warning',
+      )
+    }
     return 0
   } catch (error) {
     if (error instanceof ProjectInitError) {

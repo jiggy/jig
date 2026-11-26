@@ -34,9 +34,9 @@ SOFTWARE.
 FLOW AUTHORING SKILL
 --------------------
 
-The initialization bundle includes the upstream FLOW authoring skill and its
-references. The exact source revision is pinned in scripts/build-cli.ts.
-Its generated project copy retains the upstream scope mapping and licenses
+Published npm packages bundle the upstream FLOW authoring skill and references.
+The initialization bundle records its captured revision and content digest.
+The generated project retains the upstream scope mapping and license texts
 under .agents/skills/flow/.
 
 BUNDLED CONTRACT AUTHORING

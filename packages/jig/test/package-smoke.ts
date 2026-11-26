@@ -231,10 +231,36 @@ try {
     /jig review --allow-resolution-network/,
   )
   assert.match(await readFile(join(greeting, 'flows/hello/FLOW.ts'), 'utf8'), /@jigging\/flow/)
-  for (const name of ['jig', 'flow']) {
-    const path = join(greeting, '.agents/skills', name, 'SKILL.md')
-    assert.ok((await readFile(path, 'utf8')).includes(`name: ${name}\n`))
+  const skillBundle = JSON.parse(
+    await readFile(join(installed, 'libexec/init-skills.json'), 'utf8'),
+  )
+  const flowFiles: [string, string][] = skillBundle.files.filter(([name]: [string, string]) =>
+    name.startsWith('flow/'),
+  )
+  if (process.env.JIG_REQUIRE_BUNDLED_FLOW_SKILL === '1') assert.ok(skillBundle.flow)
+  if (skillBundle.flow) {
+    assert.match(skillBundle.flow.revision, /^[a-f0-9]{40}$/)
+    assert.equal(
+      skillBundle.flow.sha256,
+      createHash('sha256').update(JSON.stringify(flowFiles)).digest('hex'),
+    )
+    assert.ok(flowFiles.some(([name]) => name === 'flow/SKILL.md'))
+    for (const [name, contents] of flowFiles)
+      assert.equal(await readFile(join(greeting, '.agents/skills', name), 'utf8'), contents)
+    assert.equal(initializedGreeting.stderr, '')
+  } else {
+    assert.deepEqual(flowFiles, [])
+    assert.match(initializedGreeting.stderr, /WARNING: FLOW authoring skill is missing/)
+    assert.match(initializedGreeting.stderr, /npx skills add jiggy\/flow --skill flow/)
   }
+  assert.deepEqual(
+    await readdir(join(greeting, '.agents/skills')),
+    skillBundle.flow ? ['flow', 'jig'] : ['jig'],
+  )
+  assert.match(
+    await readFile(join(greeting, '.agents/skills/jig/SKILL.md'), 'utf8'),
+    /^name: jig$/m,
+  )
   const greetingGuide = await readFile(join(greeting, 'AGENTS.md'), 'utf8')
   const compositionGuide = '.agents/skills/jig/reference/build/compose.md'
   const testSection = 'test-callers-in-your-application'
@@ -435,7 +461,8 @@ using FLOW;
     initialized.stdout,
     `Created Jig project ${JSON.stringify(bareProject)}.\n\nOpen README.md in the project directory to get started.\n`,
   )
-  assert.equal(initialized.stderr, '')
+  if (skillBundle.flow) assert.equal(initialized.stderr, '')
+  else assert.match(initialized.stderr, /WARNING: FLOW authoring skill is missing/)
   assert.deepEqual((await readdir(bareProject)).sort(), [
     '.agents',
     '.gitignore',

@@ -41,9 +41,9 @@ const AGENT_ACP_VERSION = '0.1.0-alpha.16'
 const AUTHORING_SKILLS_README = [
   '## Develop with an Agent',
   '',
-  'Follow [AGENTS.md](./AGENTS.md) and the bundled',
-  '[FLOW](./.agents/skills/flow/SKILL.md) and [Jig](./.agents/skills/jig/SKILL.md) authoring skills.',
-  'Refresh the project skills and their lock with `npx skills update --project`.',
+  'Follow [AGENTS.md](./AGENTS.md) and the bundled [Jig skill](./.agents/skills/jig/SKILL.md).',
+  'Use the FLOW skill for method design and contracts. See [installation and updates](https://jig.md/for-agents#install-authoring-skills).',
+  'Refresh installed project skills with `npx skills update --project`.',
   '',
 ] as const
 export type ProjectInitAgent = 'codex' | 'claude'
@@ -264,7 +264,7 @@ export async function createProject(
   agent?: ProjectInitAgent,
   starter?: ProjectInitStarter,
   inPlace = false,
-): Promise<void> {
+): Promise<boolean> {
   const target = resolve(destination)
   const created: Array<{ readonly kind: 'directory' | 'file'; readonly path: string }> = []
   try {
@@ -301,9 +301,11 @@ export async function createProject(
       ...(agent === undefined ? [] : agentFiles(agent)),
     ]
     const hasTests = !bare
+    const skills = await readAuthoringSkills()
+    const flowSkillBundled = skills.some(([path]) => path === '.agents/skills/flow/SKILL.md')
     const files: readonly (readonly [string, string])[] = [
       ['.gitignore', '.jig/\n'],
-      ['AGENTS.md', projectAgentGuidance(hasTests)],
+      ['AGENTS.md', projectAgentGuidance(hasTests, flowSkillBundled)],
       ...(hasTests ? ([['tests/AGENTS.md', testAgentGuidance]] as const) : []),
       ['flows/AGENTS.md', flowsAgentGuidance(sourceFiles)],
       [
@@ -311,8 +313,8 @@ export async function createProject(
         '# Bindings\n\nBindings select collaborators and settings for an application.\nUse `jig inspect --flow` to identify shared uses before changing a selection.\nCheck the changed caller and its preserved neighbors after approval.\n',
       ],
       ['.agents/DOX.LICENSE', doxLicense],
-      ['skills-lock.json', authoringSkillsLock()],
-      ...(await readAuthoringSkills()),
+      ['skills-lock.json', authoringSkillsLock(flowSkillBundled)],
+      ...skills,
       ...sourceFiles,
     ]
     if (inPlace) {
@@ -346,6 +348,7 @@ export async function createProject(
       })
       created.push({ kind: 'file', path })
     }
+    return flowSkillBundled
   } catch (error) {
     let cleanupFailed = false
     for (const entry of created.reverse()) {
@@ -400,9 +403,10 @@ const bareReadme = [
   ...AUTHORING_SKILLS_README,
 ].join('\n')
 
-function authoringSkillsLock(): string {
+function authoringSkillsLock(flowSkillBundled: boolean): string {
+  const names = flowSkillBundled ? ['flow', 'jig'] : ['jig']
   const skills = Object.fromEntries(
-    ['flow', 'jig'].map((name) => [
+    names.map((name) => [
       name,
       {
         source: `jiggy/${name}`,
@@ -419,11 +423,11 @@ function authoringSkillsLock(): string {
 }
 
 async function readAuthoringSkills(): Promise<readonly (readonly [string, string])[]> {
-  const files: unknown = JSON.parse(
+  const bundle = JSON.parse(
     await readFile(new URL('../libexec/init-skills.json', import.meta.url), 'utf8'),
-  )
-  if (!Array.isArray(files)) throw Error('Invalid packaged authoring skills')
-  return files.map((entry: unknown) => {
+  ) as { readonly files?: unknown } | null
+  if (!Array.isArray(bundle?.files)) throw Error('Invalid packaged authoring skills')
+  return bundle.files.map((entry: unknown) => {
     if (
       !Array.isArray(entry) ||
       entry.length !== 2 ||
@@ -436,13 +440,15 @@ async function readAuthoringSkills(): Promise<readonly (readonly [string, string
   })
 }
 
-function projectAgentGuidance(hasTests: boolean): string {
+function projectAgentGuidance(hasTests: boolean, flowSkillBundled: boolean): string {
   return [
     '# Workflow edits',
     '',
     'Read the bundled [Jig skill](./.agents/skills/jig/SKILL.md)',
-    'for project wiring, review, Runs, and tests. Read the bundled',
-    '[FLOW skill](./.agents/skills/flow/SKILL.md) for method design and contracts.',
+    'for project wiring, review, Runs, and tests.',
+    flowSkillBundled
+      ? 'Read the bundled [FLOW skill](./.agents/skills/flow/SKILL.md) for method design and contracts.'
+      : '[Install the FLOW skill](https://jig.md/for-agents#install-authoring-skills) for method design and contracts.',
     'For a change within one Flow, work from its own guidance, source, and tests.',
     '',
     'For a routing or shared Binding change, run `jig inspect --flow` from the',
@@ -465,9 +471,7 @@ function projectAgentGuidance(hasTests: boolean): string {
     '',
     '- [Flows](./flows/AGENTS.md) — portable methods and their packages.',
     '- [Bindings](./bindings/AGENTS.md) — project-owned settings and selections.',
-    ...(hasTests
-      ? ['- [Tests](./tests/AGENTS.md) — input fixtures and application tests.']
-      : []),
+    ...(hasTests ? ['- [Tests](./tests/AGENTS.md) — input fixtures and application tests.'] : []),
     '',
   ].join('\n')
 }
