@@ -422,7 +422,7 @@ function createController(input: {
           if (settled.state !== 'pending') break
           if (performance.now() >= retryUntil) {
             throw new RootAdministrationError(
-              'PROJECT_BUSY',
+              'CLEANUP_UNRESOLVED',
               'a prior root Run still has unconfirmed execution ownership',
             )
           }

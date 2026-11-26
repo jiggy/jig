@@ -3318,6 +3318,7 @@ const PROJECT_FAILURE_CAUSES: Readonly<Record<ProjectAdministrationError['code']
   PLAN_NOT_FOUND: 'The reviewed project plan was unavailable.',
   STALE_PLAN: 'The reviewed project plan was stale.',
   PROJECT_BUSY: 'The project was already in use.',
+  CLEANUP_UNRESOLVED: 'Jig could not confirm cleanup of earlier work.',
   PROJECT_CLOSED: 'The project session was closed.',
   UNAVAILABLE: 'Required project support was unavailable.',
   INTERNAL: 'The host reported an internal failure.',
@@ -3328,6 +3329,7 @@ const ROOT_FAILURE_CAUSES: Readonly<Record<RootAdministrationError['code'], stri
   SUBMISSION_CONFLICT: 'The Run request conflicted with existing work.',
   RUN_NOT_FOUND: 'The Run could not be found.',
   PROJECT_BUSY: 'The project was already in use.',
+  CLEANUP_UNRESOLVED: 'Jig could not confirm cleanup of earlier work.',
   PROJECT_CLOSED: 'The project session was closed.',
   UNAVAILABLE: 'Required execution support was unavailable.',
   INTERNAL: 'The host reported an internal failure.',
@@ -4042,6 +4044,8 @@ function projectError(code: ProjectAdministrationError['code']): {
       'The project changed before approval could be recorded. Let source edits settle, then:\n\n  $ jig review',
     PROJECT_BUSY:
       'the project is already in use; wait for its current command to finish or cancel that command; do not delete .jig to bypass ownership',
+    CLEANUP_UNRESOLVED:
+      'Jig could not confirm cleanup of earlier work. Preserve .jig and the original recovery record. See https://jig.md/reference/troubleshooting#unconfirmed-cleanup.',
     PROJECT_CLOSED:
       'The project session is closed. Inspect any result and cleanup status before starting another command.',
     UNAVAILABLE:
@@ -4067,6 +4071,8 @@ function rootError(code: RootAdministrationError['code']): {
       'The Run could not be found. Its effects are not established by this failure. Check https://jig.md/build/results before starting new work.',
     PROJECT_BUSY:
       'The project is already in use. Wait for the current command to finish or cancel it and wait for cleanup.',
+    CLEANUP_UNRESOLVED:
+      'Jig could not confirm cleanup of earlier work. Preserve .jig and the original recovery record. See https://jig.md/reference/troubleshooting#unconfirmed-cleanup.',
     PROJECT_CLOSED:
       'The project session is closed. Inspect any result and cleanup status before starting another command.',
     UNAVAILABLE:

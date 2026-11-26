@@ -1125,6 +1125,12 @@ export function projectError(
   operation: 'acquire' | 'plan' | 'apply',
 ): ProjectAdministrationError {
   if (error instanceof ProjectAdministrationError) return error
+  if (error instanceof RootAdministrationError && error.code === 'CLEANUP_UNRESOLVED') {
+    return new ProjectAdministrationError(
+      'CLEANUP_UNRESOLVED',
+      'Jig could not confirm cleanup of a prior Run. Preserve its original recovery record and project state.',
+    )
+  }
   if (error instanceof RootAdministrationError && error.code === 'PROJECT_BUSY') {
     return new ProjectAdministrationError(
       'PROJECT_BUSY',

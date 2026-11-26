@@ -421,7 +421,7 @@ export function privateAttemptFailureMessage(code: AttemptErrorCode): string {
     case 'RESOURCE_EXHAUSTED':
       return 'The bounded host capacity is unavailable. Inspect existing work; do not replay uncertain attempts.'
     case 'CLEANUP_UNRESOLVED':
-      return 'Cleanup is not confirmed. Preserve the original ticket and resolve its ownership before new work.'
+      return 'Jig could not confirm cleanup of prior work in this project. Preserve the original ticket and project state. Use lookup to observe the original attempt before starting new work.'
     case 'PROJECT_BUSY':
       return 'Protected project state remains busy. Observe the original ticket again; do not replay work whose dispatch or cleanup is uncertain.'
     default:

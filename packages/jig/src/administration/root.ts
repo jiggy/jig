@@ -9,6 +9,7 @@ export type RootAdministrationErrorCode =
   | 'SUBMISSION_CONFLICT'
   | 'RUN_NOT_FOUND'
   | 'PROJECT_BUSY'
+  | 'CLEANUP_UNRESOLVED'
   | 'PROJECT_CLOSED'
   | 'UNAVAILABLE'
   | 'INTERNAL'

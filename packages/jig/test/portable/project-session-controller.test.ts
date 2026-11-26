@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ProjectAdministrationError } from '../../src/administration/project.js'
 import { RootAdministrationError } from '../../src/administration/root.js'
+import { renderFailure } from '../../src/cli.js'
 import { CheckError } from '../../src/diagnostics.js'
 import { PrivateBunManifestError } from '../../src/internal/bun-native-lock-policy.js'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
@@ -744,11 +745,19 @@ describe('private finite project session', () => {
     expect(JSON.stringify(evidence)).not.toContain(root)
     expect(JSON.stringify(evidence)).not.toContain('diagnostic observer failed')
     const pendingFence = projectError(
-      new RootAdministrationError('PROJECT_BUSY', 'private fence detail'),
+      new RootAdministrationError('CLEANUP_UNRESOLVED', 'private fence detail'),
       'acquire',
     )
-    expect(pendingFence.code).toBe('PROJECT_BUSY')
+    expect(pendingFence.code).toBe('CLEANUP_UNRESOLVED')
+    expect(projectError(new RootAdministrationError('PROJECT_BUSY', 'lease'), 'acquire').code).toBe(
+      'PROJECT_BUSY',
+    )
     expect(JSON.stringify(pendingFence)).not.toContain('private fence detail')
+    const rendered: string[] = []
+    expect(renderFailure(pendingFence, { writeError: (value) => rendered.push(value) })).toBe(2)
+    expect(rendered.join('')).toContain('CLEANUP_UNRESOLVED')
+    expect(rendered.join('')).toContain('Preserve .jig and the original recovery record')
+    expect(rendered.join('')).not.toContain('private fence detail')
   })
   test('unreadable retained candidates fail distinctly without resetting state', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-project-state-'))
