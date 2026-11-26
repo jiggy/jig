@@ -22,7 +22,7 @@ import {
   sha256,
 } from './file-input.js'
 import { PRIVATE_CAPTURE_LIMITS } from './file-input-policy.js'
-import { readPrivateCapturedInput } from './input-capture.js'
+import { requirePrivateCapturedInput } from './input-capture.js'
 import { privateVerifyLinuxSealedFile } from './linux-file-input.js'
 import {
   type PrivateMacosReceivedDescriptors,
@@ -208,12 +208,13 @@ export function capturePrivateInputViewOutput(
   }
   function* chunks() {
     for (const file of files) {
-      const bytes = readPrivateCapturedInput(file.input)
-      try {
-        yield bytes
-      } finally {
-        bytes.fill(0)
+      const { fd, bytes, digest } = requirePrivateCapturedInput(file.input)
+      const hash = createHash('sha256')
+      for (const chunk of privateDescriptorByteChunks(fd, bytes)) {
+        hash.update(chunk)
+        yield chunk
       }
+      if (`sha256:${hash.digest('hex')}` !== digest) throw new Error('captured input bytes changed')
     }
   }
   return mint(

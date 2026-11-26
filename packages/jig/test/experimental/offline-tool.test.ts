@@ -58,7 +58,7 @@ export default defineJig({flows:discover('flows'),bindings:discover('bindings')}
     )
     await put(
       'flows/check/FLOW.ts',
-      `import {handle} from './sdk/index.js'
+      `import {handle,OperationError} from './sdk/index.js'
 await handle(async run => {
   try {
     const checked = await run.call({
@@ -69,7 +69,9 @@ await handle(async run => {
     })
     return {outcome: 'done', output: checked.output, artifactResults: {report: checked.artifacts.deliverables}}
   } catch (error) {
-    return {outcome: 'done', output: {code: error.code, details: error.details}}
+    if (!(error instanceof OperationError)) throw error
+    return {outcome: 'done', output: {code: error.code, message: error.message,
+      ...(error.details === undefined ? {} : {details: error.details})}}
   }
 })`,
     )
@@ -97,7 +99,7 @@ export default defineBinding({package: 'flows/check', slots: {tool: ${JSON.strin
     await mkdir(dirname(source))
     const original = Buffer.alloc(192 * 1024, 0x89)
     await writeFile(source, original)
-    await invoke('review', '--yes')
+    await invoke('review', '--yes', '--allow-authority-changes')
     const run = async (binding: string, dest: string) =>
       JSON.parse(
         await invoke(
