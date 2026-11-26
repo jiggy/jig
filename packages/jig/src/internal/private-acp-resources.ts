@@ -4,6 +4,7 @@ import type { InvocationSlots } from '../project/invocation-slots.js'
 import {
   type PrivateAcpAgentProvider,
   privateAcpAgentRuntime,
+  privateAcpExecutionProjections,
   requirePrivateAcpAgentProvider,
 } from './acp-agent-provider.js'
 import {
@@ -228,6 +229,7 @@ export async function selectPrivateAcpResources(
         ].some(privateLinuxProtectedDestination)
       )
         throw new PrivateAcpSetupError('location')
+      privateAcpExecutionProjections(installedSupport.runtimeMounts, runtime)
     } catch (error) {
       // Native errors may include private paths or host configuration. Publish only the selection.
       throw new PrivateAcpResourceUnavailableError(name, client, error)

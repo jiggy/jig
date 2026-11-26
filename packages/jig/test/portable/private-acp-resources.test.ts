@@ -102,6 +102,7 @@ describe('target-selected private ACP resources', () => {
         'executable',
         'installation',
         'location',
+        'mount-conflict',
         'wrapper',
         'login',
         'login-layout',

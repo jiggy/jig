@@ -564,6 +564,9 @@ Its registry dependencies are ordinary exact-version test inputs, not provider c
 validation, metadata mismatch, link refusal and decoded preparation limits.
 These cases do not qualify native collector transfer, fencing or cleanup.
 
+`portable/bun-direct-run.test.ts` verifies ACP readiness for compatible, identical
+and conflicting installed file projections once the exact client is selected.
+
 `portable/private-acp-resources.test.ts` checks closed policy inputs and actual
 missing-client discovery. Never replace the native client opener or mechanism.
 Existing provider identity tests retain actual-file revalidation evidence.

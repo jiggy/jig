@@ -11,6 +11,7 @@ import { RunHostFatalOperationError } from '../run/session.js'
 import {
   type PrivateAcpAgentProvider,
   privateAcpAgentRuntime,
+  privateAcpExecutionProjections,
   requirePrivateAcpAgentProvider,
   revalidatePrivateAcpAgentProvider,
 } from './acp-agent-provider.js'
@@ -65,11 +66,7 @@ import {
   releasePrivateExecutionOwnerState,
   sealPrivateExecutionOwner,
 } from './execution-backend.js'
-import {
-  type PrivateExecutionIntent,
-  privateExecutionFileProjections,
-  privateExecutionPath,
-} from './execution-intent.js'
+import { type PrivateExecutionIntent, privateExecutionPath } from './execution-intent.js'
 import {
   closePrivateExecutionOutput,
   type PrivateExecutionOutput,
@@ -920,18 +917,6 @@ function agentExecutionIntent(
   bootDeadline?: PrivateBootDeadline,
 ): PrivateExecutionIntent {
   const acp = privateAcpAgentRuntime(provider)
-  const mounts = [
-    ...recipe.installedSupport.runtimeMounts,
-    { source: acp.adapterPath, destination: acp.sandboxAdapterPath },
-    { source: acp.executablePath, destination: acp.sandboxExecutablePath },
-    ...acp.readOnlyMounts.filter(
-      (mount) =>
-        !recipe.installedSupport.runtimeMounts.some(
-          (existing) =>
-            existing.destination === mount.destination && existing.source === mount.source,
-        ),
-    ),
-  ]
   return {
     runId: `agent-${identity.slice(0, 42)}`,
     limits: {
@@ -941,7 +926,7 @@ function agentExecutionIntent(
       ...(bootDeadline === undefined ? {} : { bootDeadline }),
       cancellationGraceMs: CANCELLATION_GRACE_MS,
     },
-    projections: privateExecutionFileProjections(mounts),
+    projections: privateAcpExecutionProjections(recipe.installedSupport.runtimeMounts, acp),
     command: [
       privateExecutionPath(recipe.sandboxExecutablePath),
       ...recipe.bunPolicy,

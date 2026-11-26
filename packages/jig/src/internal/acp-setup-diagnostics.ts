@@ -14,6 +14,7 @@ export type AcpSetupStage =
   | 'executable'
   | 'installation'
   | 'location'
+  | 'mount-conflict'
   | 'wrapper'
   | 'sandbox'
   | 'login'
@@ -79,7 +80,6 @@ const clients = {
     model:
       'Set a valid model in the ACP grant, or ANTHROPIC_MODEL for API access / CLAUDE_MODEL for subscription access.',
   },
-
 } as const
 
 export function acpSetupCode(client: Client, stage: AcpSetupStage): string {
@@ -95,6 +95,7 @@ export const ACP_SETUP_CAUSES: Readonly<Record<string, string>> = Object.freeze(
           'no usable executable was found through the configured override or operator PATH',
         installation: 'its installation or required runtime files could not be verified',
         location: 'its runtime files use locations reserved by the sandbox',
+        'mount-conflict': 'its runtime and Jig require different files at the same sandbox path',
         wrapper: 'its launcher is an unsupported wrapper',
         sandbox: 'its required sandbox helper is unavailable',
         login: 'its subscription authentication is missing, expired, or unsupported',
@@ -123,6 +124,7 @@ export function acpSetupHints(platform: 'linux' | 'darwin'): Readonly<Record<str
           executable: `Select an executable ${profile.name} installation using ${profile.path} or operator PATH. Shell aliases and functions are not executable installations. An explicit ${profile.path} must be an absolute executable file and never falls back to PATH.`,
           installation: profile.installation[platform],
           location: `Select a ${profile.name} installation whose executable and runtime files are outside reserved sandbox paths (/dev, /jig, /proc, /run, /sys, /tmp and /work). Use an operator-owned installation directory and update ${profile.path}.`,
+          'mount-conflict': `Select a compatible ${profile.name} installation and its supported sandbox helper using ${profile.path}. The selected runtime conflicts with Jig's installed runtime.`,
           wrapper: `The selected ${profile.name} launcher is an unsupported wrapper. Select the underlying supported native executable with ${profile.path}; Jig does not execute shell or npm wrappers to discover their dependencies.`,
           sandbox:
             platform === 'darwin'

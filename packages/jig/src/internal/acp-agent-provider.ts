@@ -4,7 +4,12 @@ import { access, lstat, realpath } from 'node:fs/promises'
 import type * as acpV2 from '@agentclientprotocol/sdk/experimental/v2'
 
 import type { JsonObject, JsonValue } from '../json.js'
-import { checkAcpSetup } from './acp-setup-diagnostics.js'
+import {
+  checkAcpSetup,
+  markExpectedAcpRefusal,
+  PrivateAcpSetupError,
+} from './acp-setup-diagnostics.js'
+import { privateExecutionFileProjections } from './execution-intent.js'
 import { privateDomainDigest } from './identity.js'
 import { privateInstallationFileDigest } from './installation-verification.js'
 import type { PrivateLinuxReadOnlyMount } from './linux-rootless-backend.js'
@@ -94,6 +99,26 @@ export interface PrivateAcpAgentRuntime {
   readonly startupInput?: () => Uint8Array
   /** Fresh mutable rejection patterns for one launch. The caller clears them. */
   readonly secretBytes: () => Uint8Array[]
+}
+
+/** Compose the exact file projection used by both review and finite ACP dispatch. */
+export function privateAcpExecutionProjections(
+  runtimeMounts: readonly PrivateLinuxReadOnlyMount[],
+  agent: PrivateAcpAgentRuntime,
+) {
+  const mounts = new Map<string, PrivateLinuxReadOnlyMount>()
+  for (const mount of [
+    ...runtimeMounts,
+    { source: agent.adapterPath, destination: agent.sandboxAdapterPath },
+    { source: agent.executablePath, destination: agent.sandboxExecutablePath },
+    ...agent.readOnlyMounts,
+  ]) {
+    const existing = mounts.get(mount.destination)
+    if (existing === undefined) mounts.set(mount.destination, mount)
+    else if (existing.source !== mount.source)
+      throw markExpectedAcpRefusal(new PrivateAcpSetupError('mount-conflict'))
+  }
+  return privateExecutionFileProjections([...mounts.values()])
 }
 
 interface ExactMount extends PrivateLinuxReadOnlyMount {
