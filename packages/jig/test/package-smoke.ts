@@ -254,7 +254,7 @@ try {
     assert.match(initializedGreeting.stderr, /npx skills add jiggy\/flow --skill flow/)
   }
   assert.deepEqual(
-    await readdir(join(greeting, '.agents/skills')),
+    (await readdir(join(greeting, '.agents/skills'))).sort(),
     skillBundle.flow ? ['flow', 'jig'] : ['jig'],
   )
   assert.match(
