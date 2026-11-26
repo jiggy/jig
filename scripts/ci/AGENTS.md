@@ -153,8 +153,9 @@ preparation never becomes a consumer requirement.
 
   The required-check report measures time from the first workflow creation to
   successful CI, Linux and Mac checks. The full-qualification cohort requires
-  observed candidate acquisition in both host workflows. Consolidated preparation
-  jobs distinguish acquisition from scope-only execution using observed steps.
+  observed candidate acquisition in Linux and a frozen PR plan or historical
+  candidate acquisition in Mac. Consolidated preparation jobs distinguish
+  preparation from scope-only execution using observed steps.
   Historical samples use the separate scope and acquisition job observations.
   Omitted and unverified scope counts remain visible.
   Unselected candidate failures affect the workflow report, while the required-check
@@ -408,7 +409,9 @@ They consume frozen package exports with tracked test helpers and installed
   One `ubuntu-24.04` selector per role publishes a decision bound to its actual execution and the chosen offer's immutable ID and digest.
   It needs the full runner's job allowance to observe worker assignment and completion.
 
-  Both records bind source, run, attempt, allocated worker, frozen plan and prepared inputs.
+  Both records bind source, run, attempt, allocated worker and the frozen plan's
+  immutable artifact ID and content digest. They are independent of CI archive
+  acquisition so GitHub can allocate Macs while CI builds the canonical inputs.
   Artifact names do not provide mutual exclusion. Duplicate decisions, unverified transport and mismatched identities refuse.
 
   A listed artifact may not yet have a readable archive. Transient archive reads remain pending under the original observation deadline.
@@ -425,7 +428,8 @@ They consume frozen package exports with tracked test helpers and installed
   allows two further minutes for GitHub to report completion.
 
   Verified retention no-ops preserve successful reports when only another role needs retrying.
-  Rebuilt inputs exclude decisions older than the actual preparation attempt.
+  A fresh plan excludes decisions older than its actual preparation attempt.
+  The gate rejects retained worker proofs from a different canonical candidate.
   No installation, native owner, mutable fixture or Jig Run is retained.
 - `macos-qualification.mjs` validates the source-bound plan, required compatibility majors, and original execution identities in release receipts.
   Explicit PR scope requires one selected physical execution per shard. Strict release scope requires every shard on both majors.
@@ -434,6 +438,10 @@ They consume frozen package exports with tracked test helpers and installed
 - `macos-host-collect.mjs` reconciles immutable per-shard artifacts against the complete plan for every required macOS major.
   Its PR matrix lists one candidate for each shard before listing any alternate.
   The installed Python shard requires macOS 15. Other shards race both majors.
+
+  The PR collector verifies the canonical candidate's producer and artifact digest.
+  It checks every worker's input ID, exact plan and candidate metadata.
+  Strict runs consume the prepared bundle.
 
   It rejects missing or failed reports, changed inputs, foreign jobs, ambiguous artifacts, and unconfirmed completion.
   GitHub metadata reads reuse the selector's bounded transport retries, including HTTP 5xx and HTTP/2 stream cancellation, before validating the response.

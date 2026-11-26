@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { digest } from './candidate-provenance.mjs'
 import { readGitHubApiJson } from './github-read.mjs'
 import {
-  bindMacDecisionPreparation,
+  bindMacDecisionPlan,
   chooseMacOffer,
   DECISION_UPLOAD_STEP_NAME,
   decisionName,
@@ -33,7 +33,7 @@ const context = {
   headSha: 'b'.repeat(40),
   runId: 50,
   attempt: 1,
-  preparedArtifactId: 12,
+  planArtifactId: 12,
   planSha256: 'c'.repeat(64),
 }
 const ready = {
@@ -45,7 +45,7 @@ const ready = {
   shard: 1,
   major: 15,
   jobId: 150,
-  preparedArtifactId: 12,
+  planArtifactId: 12,
   planSha256: context.planSha256,
 }
 const now = Date.parse('2026-11-17T12:10:00Z')
@@ -202,7 +202,7 @@ test('readiness and decisions use distinct role-bound names and exact schemas', 
     { extra: true },
     { major: 14 },
     { jobId: 0 },
-    { preparedArtifactId: 99 },
+    { planArtifactId: 99 },
     { planSha256: 'd'.repeat(64) },
     { attempt: 2 },
   ])
@@ -368,7 +368,7 @@ test('transport, expired metadata, foreign inputs, oversized expansion and unsaf
     readMacOfferArtifact(
       s.client,
       artifact,
-      { ...context, preparedArtifactId: 99 },
+      { ...context, planArtifactId: 99 },
       { jobs: [job()], now },
     ),
     /identity mismatch/,
@@ -516,7 +516,7 @@ test('a later verified selector retention noop can repair original watch failure
 test('new preparation requires fresh offers and decisions without downloading old input proof', async (t) => {
   const s = await store(t),
     result = await s.decision(),
-    fresh = { ...context, attempt: 2, minimumDecisionAttempt: 2, shard: 1, preparedArtifactId: 99 }
+    fresh = { ...context, attempt: 2, minimumDecisionAttempt: 2, shard: 1, planArtifactId: 99 }
   assert.equal(
     await retainedMacPrDecision(
       {
@@ -543,27 +543,27 @@ test('new preparation requires fresh offers and decisions without downloading ol
     readMacDecisionArtifact(s.client, result.artifact, fresh, { jobs: [job(), selector()], now }),
     /attempt mismatch/,
   )
-  const current = { ...ready, attempt: 2, jobId: 151, preparedArtifactId: 99 }
+  const current = { ...ready, attempt: 2, jobId: 151, planArtifactId: 99 }
   const next = await s.decision(current)
   const jobs = [success(job(15, 2)), success(selector(2))]
   const row = await readMacDecisionArtifact(s.client, next.artifact, fresh, { jobs, now })
   assert.equal(
     selectMacPrDecisions({ decisions: [row], jobs, context: fresh, shards: [1] })[0].decision
-      .preparedArtifactId,
+      .planArtifactId,
     99,
   )
   for (const minimumDecisionAttempt of [0, -1, 1.5, 3])
     assert.throws(() => validateMacReady(current, { ...fresh, minimumDecisionAttempt }), /context/)
 })
 
-test('prepared input identity derives from the latest actual successful producer', async (t) => {
+test('frozen plan identity derives from the latest actual successful producer', async (t) => {
   const s = await store(t),
     artifact = await s.offer(),
     run = { id: 50, run_attempt: 2, head_sha: context.headSha }
   const producer = { ...success(job()), id: 900, name: 'Prepare Mac inputs' }
-  const prepared = { ...artifact, id: 12, name: `macos-host-artifacts-${source}-r50-a1` }
+  const prepared = { ...artifact, id: 12, name: `macos-plan-${source}-r50-a1` }
   assert.equal(
-    bindMacDecisionPreparation({
+    bindMacDecisionPlan({
       jobs: [producer],
       artifacts: [prepared],
       run,
@@ -573,27 +573,27 @@ test('prepared input identity derives from the latest actual successful producer
     1,
   )
   const newer = { ...producer, id: 901, run_attempt: 2 },
-    fresh = { ...prepared, id: 99, name: `macos-host-artifacts-${source}-r50-a2` }
+    fresh = { ...prepared, id: 99, name: `macos-plan-${source}-r50-a2` }
   assert.equal(
-    bindMacDecisionPreparation({
+    bindMacDecisionPlan({
       jobs: [producer, newer],
       artifacts: [fresh],
       run,
-      context: { ...context, attempt: 2, preparedArtifactId: 99 },
+      context: { ...context, attempt: 2, planArtifactId: 99 },
       now,
     }).minimumDecisionAttempt,
     2,
   )
   assert.throws(
     () =>
-      bindMacDecisionPreparation({
+      bindMacDecisionPlan({
         jobs: [producer, newer],
         artifacts: [prepared, fresh],
         run,
         context: { ...context, attempt: 2 },
         now,
       }),
-    /exact current prepared/,
+    /exact current plan/,
   )
 })
 

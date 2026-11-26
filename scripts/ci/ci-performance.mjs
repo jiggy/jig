@@ -153,8 +153,14 @@ function combinedPreparationScope(job) {
     ({ name }) => name === 'Acquire the exact canonical CI candidates',
   )
   if (scope?.conclusion !== 'success' || !acquisition) return 'unverified'
-  if (acquisition.conclusion === 'skipped')
+  if (acquisition.conclusion === 'skipped') {
+    const freeze = job.steps.find(
+      ({ name }) => name === 'Freeze the complete source-bound useful-shard plan',
+    )
+    if (freeze?.conclusion === 'success') return 'full'
+    if (freeze && freeze.conclusion !== 'skipped') return 'unverified'
     return job.conclusion === 'success' ? 'omitted' : 'unverified'
+  }
   return acquisition.started_at ? 'full' : 'unverified'
 }
 

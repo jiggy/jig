@@ -794,6 +794,26 @@ test('consolidated host jobs distinguish acquisition from scope-only execution',
   }
 })
 
+test('a PR Mac plan declares full scope before its workers obtain the canonical build', () => {
+  for (const [plan, scope] of [
+    ['success', 'full'],
+    ['skipped', 'omitted'],
+    ['failure', 'unverified'],
+  ]) {
+    const runs = requiredGateGroup(935, 1190)
+    const [gate, , prepare] = runs[2].attempts[0].jobs
+    prepare.steps = [
+      { name: 'Determine whether complete host qualification is required', conclusion: 'success' },
+      { name: 'Freeze the complete source-bound useful-shard plan', conclusion: plan },
+      { name: 'Acquire the exact canonical CI candidates', conclusion: 'skipped' },
+    ]
+    runs[2].attempts[0].jobs = [gate, prepare]
+    const report = analyzeCiPerformance(snapshot(runs))
+    assert.equal(report.envelopes[0].requiredChecks.hostScope, scope)
+    assert.equal(report.prRequiredChecksSummary.successful.count, scope === 'full' ? 1 : 0)
+  }
+})
+
 test('full qualification timing ends at the required checks and retains nonpassing runs', () => {
   const fast = requiredGateGroup(410)
   const mac = fast[2]

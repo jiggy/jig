@@ -136,7 +136,7 @@ const decisionContext = {
   headSha: source,
   runId: 42,
   attempt: 2,
-  preparedArtifactId: 40,
+  planArtifactId: 40,
   planSha256: 'd'.repeat(64),
 }
 const decisionRow = (shard, attempt = 1) => ({
@@ -152,7 +152,7 @@ const decisionRow = (shard, attempt = 1) => ({
     selectorJobId: shard + 600,
     offerArtifactId: shard + 700,
     offerArtifactDigest: `sha256:${'c'.repeat(64)}`,
-    preparedArtifactId: 40,
+    planArtifactId: 40,
     planSha256: 'd'.repeat(64),
   },
   artifact: {
@@ -193,7 +193,7 @@ const selection = (overrides = {}) =>
     jobs: [...(overrides.jobs ?? [job(0), job(1, 2)]), selector(0), selector(1, 2)],
   })
 
-test('only latest decisions for the current prepared-input attempt are eligible', () => {
+test('only latest decisions for the current frozen-plan attempt are eligible', () => {
   const earlier = decisionRow(0)
   const current = decisionRow(0, 2)
   assert.deepEqual(
@@ -271,18 +271,18 @@ test('queue and execution timings require an actual assigned host and ordered ti
     assert.throws(() => macExecutionTiming({ ...job(0), ...changes }, 15))
 })
 
-test('each retained shard binds the immutable prepared artifact and exact frozen plan bytes', () => {
+test('each retained shard binds the immutable input artifact and exact frozen plan bytes', () => {
   const planBytes = Buffer.from('{"frozen":"plan"}\n')
-  const inputArtifact = { id: 40 }
+  const inputArtifactId = 40
   const binding = { sourceRevision: source, inputArtifactId: 40, planSha256: digest(planBytes) }
-  assert.doesNotThrow(() => requireMacInputBinding(binding, { source, inputArtifact, planBytes }))
+  assert.doesNotThrow(() => requireMacInputBinding(binding, { source, inputArtifactId, planBytes }))
   for (const changes of [
     { sourceRevision: 'c'.repeat(40) },
     { inputArtifactId: 41 },
     { planSha256: '0'.repeat(64) },
   ])
     assert.throws(() =>
-      requireMacInputBinding({ ...binding, ...changes }, { source, inputArtifact, planBytes }),
+      requireMacInputBinding({ ...binding, ...changes }, { source, inputArtifactId, planBytes }),
     )
 })
 

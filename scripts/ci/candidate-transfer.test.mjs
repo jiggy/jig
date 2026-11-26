@@ -768,7 +768,7 @@ test('PR Mac preparation acquires the exact candidate while Python is still queu
   })
 })
 
-test('PR Mac hosts acquire as soon as the canonical build passes and strict hosts wait for Quick', async () => {
+test('Mac PR runners allocate before acquisition while strict preparation waits for Quick', async () => {
   const workflow = parse(
     await readFile(
       new URL('../../.github/workflows/macos-hosted-candidates.yml', import.meta.url),
@@ -782,13 +782,15 @@ test('PR Mac hosts acquire as soon as the canonical build passes and strict host
     step.run?.includes('candidate-transfer.mjs acquire'),
   )
   assert.ok(acquisition.steps.indexOf(scope) < acquisition.steps.indexOf(acquire))
+  assert.match(acquire.if, /github.event_name != 'pull_request'/)
+  assert.match(acquire.run, /--source "\$GITHUB_SHA"/)
   assert.match(
     acquire.run,
-    /if \[ "\$GITHUB_EVENT_NAME" = pull_request \]; then\s+set -- --timeout-seconds 300\s+else\s+set -- --after-quick true --timeout-seconds 600\s+fi/,
+    /--after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600/,
   )
-  assert.match(acquire.run, /--source "\$GITHUB_SHA" --producer-timeout-seconds 1800 "\$@"/)
   const upload = acquisition.steps.find((step) => step.id === 'prepared-artifacts')
   assert.ok(acquisition.steps.indexOf(upload) > acquisition.steps.indexOf(acquire))
+  assert.equal(upload.if, acquire.if)
   assert.equal(
     acquisition.outputs.artifact_id,
     '${{ steps.prepared-artifacts.outputs.artifact-id }}',
@@ -801,11 +803,19 @@ test('PR Mac hosts acquire as soon as the canonical build passes and strict host
       step.with?.['artifact-ids'] === '${{ needs.prepare.outputs.artifact_id }}',
   )
   assert.equal(download.with['artifact-ids'], '${{ needs.prepare.outputs.artifact_id }}')
-  assert.ok(!workers.steps.some((step) => step.run?.includes('candidate-transfer.mjs acquire')))
+  assert.equal(download.if, "github.event_name != 'pull_request'")
+  const prAcquire = workers.steps.find((step) =>
+    step.run?.includes('candidate-transfer.mjs acquire'),
+  )
+  assert.match(prAcquire.if, /github.event_name == 'pull_request'/)
+  assert.match(prAcquire.run, /--producer-timeout-seconds 1800/)
+  assert.match(prAcquire.run, /--timeout-seconds 300/)
+  assert.doesNotMatch(prAcquire.run, /--after-quick/)
   const verified = workers.steps.findIndex((step) =>
     step.run?.includes('candidate-provenance.mjs verify'),
   )
   assert.ok(verified > workers.steps.indexOf(download))
+  assert.ok(verified > workers.steps.indexOf(prAcquire))
   for (const command of ['bun test packages/jig/test/macos/', 'qualify-macos-host.sh --shard'])
     assert.ok(workers.steps.findIndex((step) => step.run?.includes(command)) > verified)
 })

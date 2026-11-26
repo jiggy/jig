@@ -54,7 +54,7 @@ const readyFields = [
   'shard',
   'major',
   'jobId',
-  'preparedArtifactId',
+  'planArtifactId',
   'planSha256',
 ].sort()
 const decisionFields = [
@@ -85,7 +85,7 @@ function validateContext(context) {
     !positive(context.attempt) ||
     !positive(context.minimumDecisionAttempt ?? 1) ||
     (context.minimumDecisionAttempt ?? 1) > context.attempt ||
-    !positive(context.preparedArtifactId) ||
+    !positive(context.planArtifactId) ||
     !sha256(context.planSha256)
   )
     throw new Error('Invalid Mac decision context')
@@ -125,7 +125,7 @@ function validateRecord(value, context, decision) {
     !positive(value.attempt) ||
     value.attempt > context.attempt ||
     value.attempt < (context.minimumDecisionAttempt ?? 1) ||
-    ['repository', 'source', 'runId', 'preparedArtifactId', 'planSha256'].some(
+    ['repository', 'source', 'runId', 'planArtifactId', 'planSha256'].some(
       (key) => value[key] !== context[key],
     ) ||
     (context.shard !== undefined && value.shard !== context.shard) ||
@@ -141,7 +141,7 @@ function validateRecord(value, context, decision) {
 export const validateMacReady = (value, context) => validateRecord(value, context, false)
 export const validateMacDecision = (value, context) => validateRecord(value, context, true)
 function readyFor(context, major, jobId) {
-  const { repository, source, runId, attempt, shard, preparedArtifactId, planSha256 } = context
+  const { repository, source, runId, attempt, shard, planArtifactId, planSha256 } = context
   return validateMacReady(
     {
       version: 1,
@@ -152,7 +152,7 @@ function readyFor(context, major, jobId) {
       shard,
       major,
       jobId,
-      preparedArtifactId,
+      planArtifactId,
       planSha256,
     },
     context,
@@ -579,13 +579,13 @@ export async function retainedMacPrDecision(
     requireSelectorSuccess: false,
   })[0]
 }
-export function bindMacDecisionPreparation({ jobs, artifacts, run, context, now = Date.now() }) {
+export function bindMacDecisionPlan({ jobs, artifacts, run, context, now = Date.now() }) {
   validateContext(context)
   const preparation = latestJob(jobs, run, 'Prepare Mac inputs')
-  const name = `macos-host-artifacts-${context.source}-r${context.runId}-a${preparation.run_attempt}`
+  const name = `macos-plan-${context.source}-r${context.runId}-a${preparation.run_attempt}`
   const matches = artifacts.filter((artifact) => artifact.name === name)
-  if (matches.length !== 1 || matches[0].id !== context.preparedArtifactId)
-    throw new Error('Mac decision does not use the exact current prepared input artifact')
+  if (matches.length !== 1 || matches[0].id !== context.planArtifactId)
+    throw new Error('Mac decision does not use the exact current plan artifact')
   verifyArtifactMetadata(matches[0], { name, runId: context.runId, headSha: context.headSha, now })
   return { ...context, minimumDecisionAttempt: preparation.run_attempt }
 }
@@ -690,7 +690,7 @@ async function cli() {
     runId: github.runId,
     attempt: github.runAttempt,
     shard: Number(env.MACOS_SHARD),
-    preparedArtifactId: Number(env.MACOS_PREPARED_ARTIFACT_ID),
+    planArtifactId: Number(env.MACOS_PLAN_ARTIFACT_ID),
     planSha256: digest(bytes),
   }
   validateContext(context)
@@ -717,7 +717,7 @@ async function cli() {
         'artifacts',
       ),
     ])
-    context = bindMacDecisionPreparation({ jobs, artifacts, run, context })
+    context = bindMacDecisionPlan({ jobs, artifacts, run, context })
     return { run, jobs, artifacts }
   }
   let state = await snapshot()

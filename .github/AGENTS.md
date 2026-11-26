@@ -400,7 +400,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Frozen archives are test inputs, never embedded dependencies.
 
 - `workflows/macos-hosted-candidates.yml` qualifies Apple Silicon using a generated, bounded whole-file shard matrix.
-  Each applicable PR shard races macOS 15 and macOS 26 candidates. Releases, manual runs, and nightly diagnostics independently test both majors.
+  Releases, manual runs, and nightly diagnostics independently test both majors.
   Every required major retains complete host-dependent, portable, installed-consumer, and cleanup coverage.
 
   Intel execution support is retired.
@@ -417,7 +417,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   Before native work, each candidate publishes a uniquely named readiness offer.
   One Ubuntu selector per shard publishes a decision bound to its actual execution and the chosen offer.
-  The decision binds source, run, attempt, assigned worker, prepared inputs and frozen plan.
+  The decision binds source, run, attempt, assigned worker and the frozen plan's artifact identity and digest.
   Candidates verify that decision before tests. Artifact names are not a mutual-exclusion primitive.
 
   The winner's failure remains a failure. A successful result on another OS cannot replace it.
@@ -436,15 +436,20 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Different observed patch builds may contribute coverage within one required major.
   This union establishes the ARM behavior contract, rather than independently certifying each observed build.
 
-  One Ubuntu job determines Mac scope, freezes the plan and waits for the
-  canonical PR build before requesting native workers. Omitted scope skips
-  input acquisition and worker requests. The selected macOS 15 worker acquires
-  exact Python artifacts from the canonical CI run after its native tests.
+  A short `ubuntu-slim` job determines PR scope and freezes the plan. PR runner requests
+  start when the plan is available, independently of the canonical CI build.
+  The selected workers and the gate acquire and verify the original CI
+  artifacts. The gate checks that every worker used the same canonical bytes
+  and plan. Omitted scope skips artifact acquisition and worker requests.
+
+  The selected macOS 15 worker acquires exact Python artifacts from the
+  canonical CI run after its native tests.
   The Mac gate verifies both installed formats and every native shard. The CI
   aggregate verifies its scheduled Python profiles and Quick checks.
-  Strict Mac runs wait for Quick checks before acquiring inputs.
+  Strict Mac runs plan on `ubuntu-24.04` and wait for Quick checks before
+  acquiring inputs and requesting workers. Those workers download the
+  prepared artifact by immutable ID.
 
-  Every worker downloads the prepared artifact by immutable ID.
   Workers verify canonical provenance before execution and compare archive hashes afterward.
   Complete reports, confirmed cleanup, and unchanged input identity remain mandatory.
 

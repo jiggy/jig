@@ -21,8 +21,8 @@ concurrency:
 jobs:
   prepare:
     name: Prepare Mac inputs
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-slim' || 'ubuntu-24.04' }}
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 15 || 45 }}
     permissions:
       contents: read
       actions: read
@@ -64,21 +64,16 @@ jobs:
           retention-days: 7
           if-no-files-found: error
       - name: Acquire the exact canonical CI candidates
-        if: steps.scope.outputs.required == 'true'
+        if: github.event_name != 'pull_request' && steps.scope.outputs.required == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |-
           set -eu
-          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            set -- --timeout-seconds 300
-          else
-            set -- --after-quick true --timeout-seconds 600
-          fi
-          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --producer-timeout-seconds 1800 "$@"
+          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600
           cp "$RUNNER_TEMP/PLAN.json" "$RUNNER_TEMP/macos-host-artifacts/PLAN.json"
       - name: Retain exact macos host artifacts
         id: prepared-artifacts
-        if: steps.scope.outputs.required == 'true'
+        if: github.event_name != 'pull_request' && steps.scope.outputs.required == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: macos-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
@@ -100,7 +95,7 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.selectors) }}
     env:
       MACOS_SHARD: ${{ matrix.shard }}
-      MACOS_PREPARED_ARTIFACT_ID: ${{ needs.prepare.outputs.artifact_id }}
+      MACOS_PLAN_ARTIFACT_ID: ${{ needs.prepare.outputs.plan_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -178,7 +173,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MACOS_SHARD: ${{ matrix.shard }}
           MACOS_MAJOR: ${{ matrix.major }}
-          MACOS_PREPARED_ARTIFACT_ID: ${{ needs.prepare.outputs.artifact_id }}
+          MACOS_PLAN_ARTIFACT_ID: ${{ needs.prepare.outputs.plan_id }}
           JIG_MACOS_TEST_PLAN_FILE: ${{ runner.temp }}/mac-plan/PLAN.json
         run: node scripts/ci/macos-pr-race.mjs prepare "$RUNNER_TEMP/READY.json"
       - name: Publish PR worker readiness
@@ -198,7 +193,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MACOS_SHARD: ${{ matrix.shard }}
           MACOS_MAJOR: ${{ matrix.major }}
-          MACOS_PREPARED_ARTIFACT_ID: ${{ needs.prepare.outputs.artifact_id }}
+          MACOS_PLAN_ARTIFACT_ID: ${{ needs.prepare.outputs.plan_id }}
           JIG_MACOS_TEST_PLAN_FILE: ${{ runner.temp }}/mac-plan/PLAN.json
           MACOS_DECISION_EVIDENCE_FILE: ${{ runner.temp }}/mac-decision-evidence.json
         run: node scripts/ci/macos-pr-race.mjs resolve
@@ -248,13 +243,25 @@ jobs:
         timeout-minutes: 3
         run: node scripts/ci/mac-command-budget.mjs run bun scripts/ci/install-macos-test-clients.ts "$RUNNER_TEMP/jig-native-clients" >> "$GITHUB_ENV"
       - name: Download the prepared canonical Mac inputs
-        if: ${{ github.event_name != 'pull_request' || steps.selection.outputs.winner == 'true' }}
+        if: github.event_name != 'pull_request'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         timeout-minutes: 3
         with:
           artifact-ids: ${{ needs.prepare.outputs.artifact_id }}
           merge-multiple: true
           path: ${{ runner.temp }}/macos-host-artifacts
+      - name: Acquire the original canonical CI inputs for PR qualification
+        id: pr-candidate
+        if: github.event_name == 'pull_request' && steps.selection.outputs.winner == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          node scripts/ci/mac-command-budget.mjs run node scripts/ci/candidate-transfer.mjs acquire \
+            "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --producer-timeout-seconds 1800 \
+            --timeout-seconds 300 --github-output "$GITHUB_OUTPUT"
+          test ! -e "$RUNNER_TEMP/macos-host-artifacts/PLAN.json"
+          cp "$RUNNER_TEMP/mac-plan/PLAN.json" "$RUNNER_TEMP/macos-host-artifacts/PLAN.json"
       - name: Verify exact canonical publication archives
         if: ${{ github.event_name != 'pull_request' || steps.selection.outputs.winner == 'true' }}
         run: |-
@@ -268,11 +275,11 @@ jobs:
           import {readFileSync,writeFileSync} from "node:fs"
           import {digest} from "./scripts/ci/candidate-provenance.mjs"
           const inputArtifactId=Number(process.env.MACOS_INPUT_ARTIFACT_ID)
-          if(!Number.isSafeInteger(inputArtifactId)||inputArtifactId<=0)throw Error("Invalid prepared artifact identity")
+          if(!Number.isSafeInteger(inputArtifactId)||inputArtifactId<=0)throw Error("Invalid Mac input artifact identity")
           writeFileSync(`${process.env.RUNNER_TEMP}/mac-evidence/INPUT.json`,JSON.stringify({sourceRevision:process.env.GITHUB_SHA,inputArtifactId,planSha256:digest(readFileSync(process.env.JIG_MACOS_TEST_PLAN_FILE))})+"\n",{flag:"wx"})
           JS
         env:
-          MACOS_INPUT_ARTIFACT_ID: ${{ needs.prepare.outputs.artifact_id }}
+          MACOS_INPUT_ARTIFACT_ID: ${{ steps.pr-candidate.outputs.artifact_id || needs.prepare.outputs.artifact_id }}
       - name: Test native containment and recovery
         if: ${{ github.event_name != 'pull_request' || steps.selection.outputs.winner == 'true' }}
         env:

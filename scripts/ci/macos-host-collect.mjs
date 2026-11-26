@@ -1,18 +1,20 @@
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { constants, readFileSync } from 'node:fs'
+import { appendFile, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 import { digest, githubContext, verifyCandidateBundle } from './candidate-provenance.mjs'
 import {
+  acquireCandidate,
+  acquisitionExpectation,
   downloadArtifactDirectory,
   githubClient,
   paginated,
   validateWorkflowRun,
   verifyArtifactMetadata,
 } from './candidate-transfer.mjs'
-import { readGitHubApiJson } from './github-read.mjs'
+import { readGitHubApiJson, retryGitHubRead } from './github-read.mjs'
 import {
   MACOS_PR_ALLOCATION_MINUTES,
   macPrWorkerObservationDeadline,
@@ -288,16 +290,16 @@ async function snapshot(env, client) {
   return { context, run, jobs, artifacts }
 }
 
-export function requireMacInputBinding(binding, { source, inputArtifact, planBytes }) {
+export function requireMacInputBinding(binding, { source, inputArtifactId, planBytes }) {
   if (
     JSON.stringify(binding) !==
     JSON.stringify({
       sourceRevision: source,
-      inputArtifactId: inputArtifact.id,
+      inputArtifactId,
       planSha256: digest(planBytes),
     })
   )
-    throw new Error('Mac shard used changed source, plan or immutable prepared inputs')
+    throw new Error('Mac shard used changed source, plan or immutable inputs')
 }
 
 export function requireMacDecisionBinding(binding, { decision, decisionArtifact }) {
@@ -315,7 +317,10 @@ export function requireMacDecisionBinding(binding, { decision, decisionArtifact 
 
 export async function collectMacHost({
   env = process.env,
-  client = githubClient(env.GITHUB_REPOSITORY, { readApiJson: readGitHubApiJson }),
+  client = githubClient(env.GITHUB_REPOSITORY, {
+    readApiJson: readGitHubApiJson,
+    readArchive: retryGitHubRead,
+  }),
   extract,
 } = {}) {
   let state = await snapshot(env, client)
@@ -323,23 +328,45 @@ export async function collectMacHost({
   let { jobs, artifacts } = state
   const source = env.GITHUB_SHA
   const scratch = env.RUNNER_TEMP
+  const pr = run.event === 'pull_request'
+  const minutes = Number(env.MACOS_COLLECTION_MINUTES ?? (pr ? MACOS_PR_ALLOCATION_MINUTES : 80))
+  if (pr ? minutes !== MACOS_PR_ALLOCATION_MINUTES : ![80, 170].includes(minutes))
+    throw new Error('Invalid Mac collection allowance')
+  const collectionStarted = Date.now()
   const preparation = latestJob(jobs, run, 'Prepare Mac inputs')
-  if (run.event !== 'pull_request' && preparation.run_attempt !== run.run_attempt)
+  if (!pr && preparation.run_attempt !== run.run_attempt)
     throw new Error('Mac main inputs must be prepared in the current attempt')
-  const inputName = `macos-host-artifacts-${source}-r${run.id}-a${preparation.run_attempt}`
+  const inputKind = pr ? 'macos-plan' : 'macos-host-artifacts'
+  const inputName = `${inputKind}-${source}-r${run.id}-a${preparation.run_attempt}`
   const matching = artifacts.filter((artifact) => artifact.name === inputName)
   if (matching.length !== 1) throw new Error('Missing or ambiguous prepared Mac inputs')
-  const inputArtifact = verifyArtifactMetadata(matching[0], {
+  const preparedArtifact = verifyArtifactMetadata(matching[0], {
     name: inputName,
     runId: run.id,
     headSha: run.head_sha,
   })
   const bundle = join(scratch, 'macos-host-artifacts')
-  await downloadArtifactDirectory(client, inputArtifact, bundle, { extract })
-  const candidate = await verifyCandidateBundle(bundle, { sourceRevision: source })
   const planFile = join(bundle, 'PLAN.json')
+  let inputArtifactId = preparedArtifact.id
+  if (pr) {
+    const planDirectory = join(scratch, 'macos-collection-plan')
+    await downloadArtifactDirectory(client, preparedArtifact, planDirectory, { extract })
+    const acquisition = await acquireCandidate({
+      destination: bundle,
+      sourceRevision: source,
+      expected: await acquisitionExpectation(source, env),
+      client,
+      producerTimeoutSeconds: 1800,
+      timeoutSeconds: 300,
+      extract,
+    })
+    inputArtifactId = acquisition.artifactId
+    await copyFile(join(planDirectory, 'PLAN.json'), planFile, constants.COPYFILE_EXCL)
+  } else {
+    await downloadArtifactDirectory(client, preparedArtifact, bundle, { extract })
+  }
+  const candidate = await verifyCandidateBundle(bundle, { sourceRevision: source })
   const planBytes = await readFile(planFile)
-  const pr = run.event === 'pull_request'
   const matrix = macMatrix(planFile, { pullRequest: pr })
   const decisionContext = {
     repository: context.repository,
@@ -347,7 +374,7 @@ export async function collectMacHost({
     headSha: run.head_sha,
     runId: run.id,
     attempt: run.run_attempt,
-    preparedArtifactId: inputArtifact.id,
+    planArtifactId: preparedArtifact.id,
     minimumDecisionAttempt: preparation.run_attempt,
     planSha256: digest(planBytes),
   }
@@ -357,10 +384,7 @@ export async function collectMacHost({
       throw new Error('Mac preparation changed while waiting for workers')
     return current
   }
-  const minutes = Number(env.MACOS_COLLECTION_MINUTES ?? (pr ? MACOS_PR_ALLOCATION_MINUTES : 80))
-  if (pr ? minutes !== MACOS_PR_ALLOCATION_MINUTES : ![80, 170].includes(minutes))
-    throw new Error('Invalid Mac collection allowance')
-  const deadline = Date.now() + minutes * 60_000
+  const deadline = (pr ? collectionStarted : Date.now()) + minutes * 60_000
   if (pr) {
     state = await waitForMacPrWinners({
       context: decisionContext,
@@ -396,7 +420,7 @@ export async function collectMacHost({
     await downloadArtifactDirectory(client, row.artifact, directory, { extract })
     requireMacInputBinding(JSON.parse(await readFile(join(directory, 'INPUT.json'), 'utf8')), {
       source,
-      inputArtifact,
+      inputArtifactId,
       planBytes,
     })
     if (pr)

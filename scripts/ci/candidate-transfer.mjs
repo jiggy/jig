@@ -13,6 +13,7 @@ import {
   requireRevision,
   verifyCandidateBundle,
 } from './candidate-provenance.mjs'
+import { readGitHubApiJson, retryGitHubRead } from './github-read.mjs'
 import { allRunJobs, latestJob } from './merge-attempts.mjs'
 import { LINUX_QUALIFICATION_JOBS, requireJobs, verifyQualification } from './release-readiness.mjs'
 
@@ -502,7 +503,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         throw new Error(`--${key} requires a nonempty integer`)
     }
     const expected = await acquisitionExpectation(options.source)
-    const client = githubClient(expected.repository)
+    const client = githubClient(
+      expected.repository,
+      expected.event === 'pull_request'
+        ? { readApiJson: readGitHubApiJson, readArchive: retryGitHubRead }
+        : {},
+    )
     let envelope
     if (positional[0] === 'acquire-linux') {
       if (!options['qualification-output'])

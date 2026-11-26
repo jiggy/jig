@@ -216,8 +216,13 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
     assert.ok(step, `Missing observable noop step ${name}`)
     assert.equal(step['continue-on-error'], undefined)
   }
-  for (const step of native.steps.slice(resolve + 1))
-    assert.match(step.if, /steps.selection.outputs.winner == 'true'/)
+  for (const step of native.steps.slice(resolve + 1)) {
+    if (step.if === "github.event_name != 'pull_request'") {
+      assert.equal(step.name, 'Download the prepared canonical Mac inputs')
+    } else {
+      assert.match(step.if, /steps.selection.outputs.winner == 'true'/)
+    }
+  }
   const files = await readdir(workflows)
   assert.ok(!files.includes('macos-intel-nightly.yml'))
   assert.ok(!files.includes('macos-host-conformance.yml'))
@@ -266,27 +271,71 @@ test('Linux memory rejection diagnostics cross acquisition into existing retaine
 test('Mac acquisition, collection and final gate retain source identity and complete proof', async () => {
   const workflow = parse(await readFile(new URL('macos-hosted-candidates.yml', workflows), 'utf8'))
   const inputs = workflow.jobs.prepare
-  assert.equal(inputs['runs-on'], 'ubuntu-24.04')
+  assert.equal(
+    inputs['runs-on'],
+    "${{ github.event_name == 'pull_request' && 'ubuntu-slim' || 'ubuntu-24.04' }}",
+  )
+  assert.equal(inputs['timeout-minutes'], "${{ github.event_name == 'pull_request' && 15 || 45 }}")
   assert.equal(inputs.needs, undefined)
   assert.equal(workflow.jobs.scope, undefined)
   assert.equal(workflow.jobs['host-artifacts'], undefined)
   const acquire = inputs.steps.find((step) => step.run?.includes('candidate-transfer.mjs acquire'))
-  assert.match(acquire.run, /--source "\$GITHUB_SHA" --producer-timeout-seconds 1800 "\$@"/)
+  assert.match(
+    acquire.run,
+    /--after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600/,
+  )
   const scopeIndex = inputs.steps.findIndex((step) => step.id === 'scope')
   assert.equal(inputs.steps[scopeIndex].if, undefined)
-  assert.deepEqual(
-    inputs.steps.slice(scopeIndex + 1).map((step) => step.if),
-    Array(4).fill("steps.scope.outputs.required == 'true'"),
-  )
+  const full = "steps.scope.outputs.required == 'true'"
+  const strict = `github.event_name != 'pull_request' && ${full}`
+  assert.deepEqual(inputs.steps.slice(scopeIndex + 1).map((step) => step.if), [
+    full,
+    full,
+    strict,
+    strict,
+  ])
   assert.match(acquire.run, /cp "\$RUNNER_TEMP\/PLAN\.json"/)
   assert.equal(
     inputs.steps.some((step) => step.uses?.startsWith('actions/download-artifact@')),
     false,
   )
-  const download = workflow.jobs.prerequisites.steps.find(
+  const workers = workflow.jobs.prerequisites
+  assert.equal(workers.needs, 'prepare')
+  const download = workers.steps.find(
     (step) => step.with?.['artifact-ids'] === '${{ needs.prepare.outputs.artifact_id }}',
   )
-  assert.equal(download.with['artifact-ids'], '${{ needs.prepare.outputs.artifact_id }}')
+  assert.equal(download.if, "github.event_name != 'pull_request'")
+  const prAcquireIndex = workers.steps.findIndex((step) => step.id === 'pr-candidate')
+  const prAcquire = workers.steps[prAcquireIndex]
+  assert.equal(
+    prAcquire.if,
+    "github.event_name == 'pull_request' && steps.selection.outputs.winner == 'true'",
+  )
+  assert.match(
+    prAcquire.run,
+    /mac-command-budget\.mjs run node scripts\/ci\/candidate-transfer\.mjs acquire/,
+  )
+  assert.match(prAcquire.run, /--source "\$GITHUB_SHA"/)
+  assert.match(prAcquire.run, /cp "\$RUNNER_TEMP\/mac-plan\/PLAN\.json"/)
+  const verifyIndex = workers.steps.findIndex((step) =>
+    step.run?.includes('candidate-provenance.mjs verify'),
+  )
+  const sourceSetup = workers.steps.findIndex((step) =>
+    step.run?.includes('just --justfile packages/jig/justfile build'),
+  )
+  const native = workers.steps.findIndex((step) => step.env?.JIG_MACOS_PROCESS_TEST === '1')
+  const shard = workers.steps.findIndex((step) => step.run?.includes('qualify-macos-host.sh'))
+  assert.ok(
+    sourceSetup >= 0 &&
+      sourceSetup < prAcquireIndex &&
+      prAcquireIndex < verifyIndex &&
+      verifyIndex < native &&
+      native < shard,
+  )
+  assert.equal(
+    workers.steps[verifyIndex].env.MACOS_INPUT_ARTIFACT_ID,
+    '${{ steps.pr-candidate.outputs.artifact_id || needs.prepare.outputs.artifact_id }}',
+  )
   const gate = workflow.jobs['affected-macos']
   assert.deepEqual(MACOS_QUALIFICATION_JOBS, [gate.name])
   assert.equal(gate.needs, 'prepare')
@@ -335,6 +384,10 @@ test('Mac acquisition, collection and final gate retain source identity and comp
   assert.equal(selector.needs, 'prepare')
   assert.match(selector.if, /github.event_name == 'pull_request'/)
   assert.equal(selector['timeout-minutes'], 70)
+  assert.equal(selector.env.MACOS_PLAN_ARTIFACT_ID, '${{ needs.prepare.outputs.plan_id }}')
+  for (const step of workers.steps.filter((step) => step.run?.includes('macos-pr-race.mjs'))) {
+    assert.equal(step.env.MACOS_PLAN_ARTIFACT_ID, '${{ needs.prepare.outputs.plan_id }}')
+  }
   const diagnostic = gate.steps.findIndex(
     (step) => step.run === 'node scripts/ci/host-job-diagnostics.mjs',
   )
