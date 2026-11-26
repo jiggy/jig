@@ -15,6 +15,11 @@ import {
   HTTP_REQUEST_CONTRACT_VERSION,
 } from '../internal/private-http-request.js'
 import {
+  OFFLINE_TOOL_CONTRACT_DIGEST,
+  OFFLINE_TOOL_CONTRACT_ID,
+  OFFLINE_TOOL_CONTRACT_VERSION,
+} from '../internal/private-offline-tool.js'
+import {
   PROJECT_COMMAND_CONTRACT_DIGEST,
   PROJECT_COMMAND_CONTRACT_ID,
   PROJECT_COMMAND_CONTRACT_VERSION,
@@ -57,6 +62,7 @@ export type NativeInvocation =
   | 'http-request'
   | 'project-command'
   | 'project-evaluation'
+  | 'offline-tool'
   | 'run-checkpoint'
   | 'child-checkpoint'
   | 'finite-acp'
@@ -77,6 +83,11 @@ export type InvocationSlot =
 export type InvocationSlots = Readonly<Record<string, InvocationSlot>>
 
 const NATIVE: Readonly<Record<NativeInvocation, InvocationIdentity>> = Object.freeze({
+  'offline-tool': Object.freeze({
+    id: OFFLINE_TOOL_CONTRACT_ID,
+    version: OFFLINE_TOOL_CONTRACT_VERSION,
+    digest: OFFLINE_TOOL_CONTRACT_DIGEST,
+  }),
   'project-evaluation': Object.freeze({
     id: PROJECT_EVALUATION_CONTRACT_ID,
     version: PROJECT_EVALUATION_CONTRACT_VERSION,
@@ -117,6 +128,8 @@ function grantInvocationKind(policy: GrantPolicy): NativeInvocation {
       return 'project-command'
     case 'evaluation':
       return 'project-evaluation'
+    case 'tool':
+      return 'offline-tool'
     case 'acp':
       return 'finite-acp'
   }
@@ -127,6 +140,7 @@ function isGrantedInvocation(native: NativeInvocation): boolean {
     native === 'http-request' ||
     native === 'project-command' ||
     native === 'project-evaluation' ||
+    native === 'offline-tool' ||
     native === 'finite-acp'
   )
 }
@@ -361,7 +375,13 @@ export function normalizeInvocationSlots(value: unknown): InvocationSlots {
       })
     } else throw new TypeError(`slot ${name} has an unknown implementation kind`)
   }
-  for (const native of ['http-request', 'project-command', 'project-evaluation', 'finite-acp']) {
+  for (const native of [
+    'http-request',
+    'project-command',
+    'project-evaluation',
+    'offline-tool',
+    'finite-acp',
+  ]) {
     if (
       Object.values(output).filter((slot) => slot.kind === 'native' && slot.native === native)
         .length > 8

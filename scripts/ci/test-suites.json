@@ -47,6 +47,11 @@
       "profiles": ["experimental"]
     },
     {
+      "id": "offline-tool-candidate",
+      "files": ["packages/jig/test/experimental/offline-tool.test.ts"],
+      "profiles": ["experimental"]
+    },
+    {
       "id": "display-model",
       "roots": ["packages/display-model/test/"],
       "profiles": ["portable", "portable-linux", "linux", "macos-arm64"]

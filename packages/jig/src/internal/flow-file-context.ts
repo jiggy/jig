@@ -375,6 +375,26 @@ export function resolvePrivateFlowArtifact(
   return selectedPrivateFlowArtifacts(context, ['artifact'], { artifact: reference }).artifact!
 }
 
+/** Borrow the existing quota-accounted input view for a native artifact reader. */
+export function privateFlowArtifactExecutionProjection(
+  context: PrivateFlowFileContext,
+  reference: string,
+  name: string,
+): Pick<PrivateExecutionIntent, 'capturedInputs' | 'inputDirectories' | 'inputEmptyDirectories'> {
+  const artifact = requireRight(requireContext(context), reference)
+  const destination = `/jig-input/${bindingAttachmentLocalName(name)}`
+  return {
+    capturedInputs: projection(artifact).map(({ path, input }) => ({
+      input,
+      destination: `${destination}/${path}`,
+    })),
+    inputDirectories: [destination],
+    inputEmptyDirectories: (artifact.snapshot?.directories ?? []).map(
+      (path) => `${destination}/${path}`,
+    ),
+  }
+}
+
 /** Transfer final snapshot retirement to the command/ticket owner, without copying bytes. */
 export function retainPrivateFlowArtifactResults(
   context: PrivateFlowFileContext,

@@ -19,7 +19,7 @@ Own this repository's Rspress configuration, assets, assembly, and direct GitHub
 - `../scripts/build-site.sh` owns fresh assembly, schema inventory, and Markdown publication checks.
   It installs `../docs/jig/index.html` after Rspress builds the documentation.
 - Jig's client and evaluator references use `/spec/execution-client` and
-  `/spec/project-evaluation`. Assembly publishes the exact evaluator invocation
+  `/spec/project-evaluation` and `/spec/offline-tool`. Assembly publishes each exact invocation
   and recipe schema beside its human identity page. Downloads grant no authority.
 
 ## Local Contracts

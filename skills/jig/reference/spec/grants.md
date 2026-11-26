@@ -22,8 +22,9 @@ export default defineBinding({
 ```
 
 Each slot must declare the exact supported contract for its grant kind:
-[HTTP Request](http-request.md), [Project Command](project-command.md), or
-[Finite ACP](finite-acp.md).
+[HTTP Request](http-request.md), [Project Command](project-command.md),
+[Project Evaluation](https://jig.md/spec/project-evaluation.md), [Offline Tool](offline-tool.md),
+or [Finite ACP](finite-acp.md).
 The call selects the slot, not another resource name inside its input.
 Flow and Binding selectors remain available in the same `slots` map.
 
@@ -95,10 +96,9 @@ grant and cannot cross the exact admitted recipient/provider scope. The
 [finite ACP contract](finite-acp.md#retained-native-state) owns limits,
 single-use claims and clean-close requirements.
 
-Only these three resource kinds are supported. A grant is closed policy data,
-not a plugin, executable code, generic permission bag, or credentials object.
-Inline authoring validates inert value structure; trusted project linking also
-validates exact URLs, embedded schemas, contract compatibility and resource bounds.
+A grant is closed policy data for a supported resource.
+Inline authoring validates inert value structure. Project linking also checks
+URLs, embedded schemas, contract compatibility and resource bounds.
 
 ## Reuse a named policy when useful
 

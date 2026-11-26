@@ -398,7 +398,7 @@ export function privateActivationCandidateEffectMemoryBytes(
       for (const route of Object.values(request.slots)) {
         if (route.kind === 'flow')
           memory = Math.max(memory, calculate(privateActivationTargetKey(route.target)))
-        else if (route.native === 'project-evaluation')
+        else if (route.native === 'project-evaluation' || route.native === 'offline-tool')
           memory = Math.max(memory, 2 * PRIVATE_FLOW_RESOURCE_CEILINGS.memoryBytes)
       }
       calculated.set(key, memory)

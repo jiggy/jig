@@ -20,6 +20,7 @@
       "docs/jig/build/http.md",
       "docs/jig/spec/http-request.md",
       "docs/jig/spec/project-command.md",
+      "docs/jig/spec/offline-tool.md",
       "docs/jig/spec/grants.md",
       "docs/jig/build/contracts.md",
       "docs/jig/spec/contract-authoring.md",
@@ -50,6 +51,7 @@
       "docs/jig/spec/contracts/finite-acp/responses.json",
       "docs/jig/spec/contracts/http-request/contract.json",
       "docs/jig/spec/contracts/project-command/contract.json",
+      "docs/jig/spec/contracts/offline-tool/contract.json",
       "docs/jig/spec/contracts/project-evaluation/contract.json",
       "docs/jig/spec/contracts/run-checkpoint/contract.json",
       "docs/jig/spec/contracts/child-checkpoint/contract.json"

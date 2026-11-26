@@ -333,6 +333,7 @@ async function executePreparedChild(
       backend: input.backend,
       httpGrants: input.httpGrants,
       acpResources: input.acpResources,
+      signal: input.signal,
     })
   } catch {
     return failed('UNAVAILABLE', 'the admitted child recipe cannot be reproduced')
@@ -813,6 +814,7 @@ function specialistDispatcher(
         if (
           route.native === 'project-command' ||
           route.native === 'http-request' ||
+          route.native === 'offline-tool' ||
           route.native === 'project-evaluation'
         ) {
           if (Object.keys(call.channels ?? {}).length !== 0)

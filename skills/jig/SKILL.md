@@ -78,6 +78,7 @@ Select the following references according to the task before implementing their 
 | Markdown methods or executable Skill adaptation | [Markdown methods](reference/build/markdown.md) |
 | Files, captured resources, child artifacts, or output delivery | [Files](reference/build/files.md) and the applicable [execution policy](reference/spec/project-policy.md) sections |
 | HTTP requests or command execution | [HTTP guidance](reference/build/http.md), [HTTP Request](reference/spec/http-request.md), or [Project Command](reference/spec/project-command.md) |
+| Run an installed offline tool on held files | [Offline Tool](reference/spec/offline-tool.md) |
 | Resource authority or named policy reuse | [Grants](reference/spec/grants.md) |
 | Managed contract generation | [Contract authoring](reference/build/contracts.md) and its [exact contract](reference/spec/contract-authoring.md) |
 | Type-check Flow inputs, returns, settings and declared child calls | [Flow type declarations](reference/build/contracts.md#type-check-a-flow) |

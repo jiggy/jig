@@ -27,6 +27,7 @@ export async function planPrivateDirectRun(input: {
   readonly execution?: PrivateBunExecutionArtifact
   readonly httpGrants?: PrivateHttpGrants | undefined
   readonly acpResources?: PrivateAcpResources | undefined
+  readonly signal?: AbortSignal | undefined
 }): Promise<PrivateDirectRunRecipe> {
   const request = requirePrivateActivationRequest(input.request)
   if (request.entrypoint.path !== 'FLOW.ts' && request.entrypoint.path !== 'FLOW.md') {

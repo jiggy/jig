@@ -301,6 +301,7 @@ try {
   for (const name of [
     'agent-run',
     'project-command',
+    'offline-tool',
     'http-request',
     'run-checkpoint',
     'child-checkpoint',

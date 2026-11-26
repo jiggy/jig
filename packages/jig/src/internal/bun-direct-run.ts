@@ -1,6 +1,7 @@
 import { unavailable } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
 import { nativeSlotRoutes } from '../project/invocation-slots.js'
+import { OFFLINE_TOOL_LIMITS } from '../project/offline-tool.js'
 import {
   type PrivateActivationRequest,
   requirePrivateActivationRequest,
@@ -28,6 +29,10 @@ import {
   type PrivateInstalledBunSupport,
   requirePrivateInstalledBunSupport,
 } from './installed-bun-support.js'
+import {
+  inspectPrivateOfflineToolRuntime,
+  type PrivateOfflineToolRuntime,
+} from './offline-tool-runtime.js'
 import {
   type PrivateAcpResources,
   PrivateAcpResourceUnavailableError,
@@ -73,6 +78,7 @@ export interface PrivateBunDirectRecipe {
   readonly privateRuntimeDevices: true
   readonly http: Readonly<Record<string, HttpGrant>>
   readonly acp: Readonly<Record<string, PrivateAcpAgentProvider>>
+  readonly tools: Readonly<Record<string, PrivateOfflineToolRuntime>>
 }
 
 /** Plan one exact, dependency-closed Bun FLOW.ts Run. */
@@ -84,6 +90,7 @@ export async function planPrivateBunDirectRun(input: {
   readonly selector?: string
   readonly httpGrants?: PrivateHttpGrants | undefined
   readonly acpResources?: PrivateAcpResources | undefined
+  readonly signal?: AbortSignal | undefined
 }): Promise<PrivateBunDirectRecipe> {
   const backend = requirePrivateExecutionBackend(input.backend)
   const fields = await describePrivateBunDirectRun(
@@ -165,6 +172,25 @@ async function describePrivateBunDirectRun(
       `${request.packagePath}/${request.entrypoint.path}`,
     )
   }
+  const toolSlots = Object.entries(request.slots).filter(
+    ([, route]) => route.kind === 'native' && route.native === 'offline-tool',
+  )
+  const tools: Record<string, PrivateOfflineToolRuntime> = Object.create(null)
+  for (const [slot, route] of toolSlots) {
+    if (route.kind !== 'native' || route.grant?.kind !== 'tool')
+      throw new TypeError('missing offline tool grant')
+    try {
+      tools[slot] = await inspectPrivateOfflineToolRuntime(route.grant, input.signal)
+    } catch {
+      input.signal?.throwIfAborted()
+      unavailable(
+        'PROJECT_TOOL_UNAVAILABLE',
+        'provision the reviewed runtime in a system-managed Linux Nix store before review',
+        `${request.packagePath}/${request.entrypoint.path}`,
+        `/slots/${slot}`,
+      )
+    }
+  }
   const support = await observeSupport()
   const { digest, observation } = directIdentity(
     request,
@@ -174,6 +200,7 @@ async function describePrivateBunDirectRun(
     support.digest,
     http,
     acp,
+    tools,
     selector,
   )
   const recipe = Object.freeze({
@@ -183,6 +210,7 @@ async function describePrivateBunDirectRun(
     execution,
     http,
     acp,
+    tools: Object.freeze(tools),
     installedSupport,
     runtimeMounts: Object.freeze([
       ...installedSupport.runtimeMounts,
@@ -242,6 +270,7 @@ export function inspectPrivateBunDirectIdentityWithCurrentEnvironment(
     current.mechanismDigest,
     current.http,
     current.acp,
+    current.tools,
     request.entrypoint.selector ?? DEFAULT_SELECTOR,
   )
   return { digest: identity.digest, observationDigest: identity.observation.digest }
@@ -255,6 +284,7 @@ function directIdentity(
   mechanismDigest: string,
   http: Readonly<Record<string, HttpGrant>>,
   acp: Readonly<Record<string, PrivateAcpAgentProvider>>,
+  tools: Readonly<Record<string, PrivateOfflineToolRuntime>>,
   selector: string,
 ): { readonly digest: string; readonly observation: PrivateActivationRecipeObservation } {
   const adapterDigest = privateDomainDigest('JIG-Private-Bun-Direct-Adapter/1', {
@@ -283,6 +313,7 @@ function directIdentity(
     { digest: mechanismDigest },
     http,
     acp,
+    tools,
   )
   const observation = createPrivateActivationRecipeObservation({
     requestDigest: request.digest,
@@ -321,6 +352,7 @@ function logicalLaunchDigest(
   mechanism: Pick<PrivateExecutionBackendMechanismSupport, 'digest'>,
   http: Readonly<Record<string, HttpGrant>>,
   acp: Readonly<Record<string, PrivateAcpAgentProvider>>,
+  tools: Readonly<Record<string, PrivateOfflineToolRuntime>>,
 ): string {
   return privateDomainDigest('JIG-Private-Bun-Logical-Launch/1', {
     requestDigest: request.digest,
@@ -339,6 +371,14 @@ function logicalLaunchDigest(
     presentationChannelLimits: PRESENTATION_CHANNEL_LIMITS,
     http,
     acp: Object.fromEntries(Object.entries(acp).map(([slot, provider]) => [slot, provider.digest])),
+    ...(Object.keys(tools).length === 0
+      ? {}
+      : {
+          tools: Object.fromEntries(
+            Object.entries(tools).map(([slot, tool]) => [slot, tool.digest]),
+          ),
+          toolLimits: OFFLINE_TOOL_LIMITS,
+        }),
     environment: Object.freeze({
       LD_LIBRARY_PATH: '/jig-runtime/lib',
     }),

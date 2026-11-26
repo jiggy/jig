@@ -23,6 +23,7 @@ export type DisplayCompositionResourceKind =
   | 'http-request'
   | 'project-command'
   | 'project-evaluation'
+  | 'offline-tool'
   | 'finite-acp'
   | 'run-checkpoint'
   | 'child-checkpoint'

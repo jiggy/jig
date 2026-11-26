@@ -5,8 +5,8 @@ import {
   DISPLAY_COMPOSITION_NODE_LIMIT,
 } from '@jigging/display-model'
 import {
-  type PrivateCompositionSource,
   observePrivateRunComposition,
+  type PrivateCompositionSource,
   projectPrivateRunComposition,
 } from '../../src/cli-composition.js'
 import type { InvocationSlot, NativeInvocation } from '../../src/project/invocation-slots.js'
@@ -87,6 +87,7 @@ test('composition retains every native invocation kind as a separate caller slot
     'http-request',
     'project-command',
     'project-evaluation',
+    'offline-tool',
     'finite-acp',
     'run-checkpoint',
     'child-checkpoint',
@@ -103,8 +104,8 @@ test('composition retains every native invocation kind as a separate caller slot
       .map((node) => node.resourceKind)
       .sort(),
   ).toEqual([...kinds].sort())
-  expect(new Set(value.nodes.map((node) => node.id)).size).toBe(7)
-  expect(value.edges).toHaveLength(6)
+  expect(new Set(value.nodes.map((node) => node.id)).size).toBe(kinds.length + 1)
+  expect(value.edges).toHaveLength(kinds.length)
 })
 
 test('composition bounds fail the whole map and never return partial routes', () => {

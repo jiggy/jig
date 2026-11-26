@@ -287,11 +287,12 @@ test('composition is optional producer evidence and unavailable projections neve
   ).toThrow(TypeError)
 })
 
-test('all six supplied native kinds remain distinct while private or malformed graph fields fail closed', () => {
+test('all supplied native kinds remain distinct while private or malformed graph fields fail closed', () => {
   const kinds: DisplayCompositionResourceKind[] = [
     'http-request',
     'project-command',
     'project-evaluation',
+    'offline-tool',
     'finite-acp',
     'run-checkpoint',
     'child-checkpoint',

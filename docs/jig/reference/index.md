@@ -33,6 +33,7 @@ Reader guides explain how to use them without changing their authority.
 | Agent work | [Agent Run](../spec/agent-run.md), [Finite ACP](../spec/finite-acp.md) | [Add an Agent](../build/agents.md), [conversations](../build/conversations.md) |
 | Network and commands | [HTTP Request](../spec/http-request.md), [Project Command](../spec/project-command.md) | [Delegate HTTP](../build/http.md), [tested patch](../examples/tested-patch.md) |
 | Dependency-backed checks | [Project Evaluation](../spec/project-evaluation.md) | [Contact import](../examples/contact-import.md) |
+| Offline file tools | [Offline Tool](../spec/offline-tool.md) | [File composition](../build/files.md#compose-file-work) |
 | Generated declarations | [Contract authoring](../spec/contract-authoring.md) | [Author contracts](../build/contracts.md) |
 | Messages and progress | [Channels](../spec/channels.md), [reporting](../spec/reporting.md) | [Live progress](../build/channels.md) |
 | Retained output | [Run Checkpoint](../spec/run-checkpoint.md), [display archives](../spec/display-archive.md) | [Results](../build/results.md) |

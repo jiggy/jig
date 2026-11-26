@@ -299,7 +299,7 @@ remain supported and are not rewritten by a review default.
 - Public grant declarations contain authored policy, not retained host metadata.
   Private linked grants retain evaluation operands through `PrivateRetainedGrantedSlot`.
 
-- Binding slots select inline HTTP, command or finite ACP grants, or optional
+- Binding slots select inline HTTP, command, evaluation, tool or finite ACP grants, or optional
   named JSON policies for meaningful reuse or independent management.
   `src/cli-review-agent-setup.ts` renders bounded read-only captured policy
   facts: verified client literals, selection context or honest file/slot

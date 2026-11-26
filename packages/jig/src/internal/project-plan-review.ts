@@ -131,6 +131,21 @@ export function renderPrivateProjectPlanReview(
         '\nData supplied to these slots goes to the selected clients. Credentials remain private.\n\n',
       )
     }
+    if (includeUnchanged) {
+      const tools = recipes.flatMap((recipe) =>
+        Object.entries(recipe.tools).map(([slot, runtime]) => ({
+          target: targetKey(recipe.request.target),
+          slot,
+          installation: runtime.digest,
+          storePaths: runtime.projections.length,
+        })),
+      )
+      if (tools.length !== 0) {
+        summary.write('Offline tool installations selected for resource slots:\n')
+        writePolicy(summary, tools, 1)
+        summary.write('\n')
+      }
+    }
     const beforeEntrypoint = review.baseCandidate?.lock.entrypoint
     const afterEntrypoint = plan.proposed.lock.entrypoint
     if (

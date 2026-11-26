@@ -129,6 +129,7 @@ export interface PrivateLinuxLaunchPlan {
   readonly nestedUserNamespaces?: boolean
   /** One bounded anonymous output mount; its retained descriptor is host-only. */
   readonly output?: boolean
+  readonly offlineToolOutputBytes?: number
   readonly preparationOutput?: 'production' | 'evaluation'
   readonly preparationLimits?: DependencyPreparationOutputLimits
   readonly capturedInputs?: readonly PrivateLinuxCapturedInput[]
@@ -1630,6 +1631,7 @@ function supervisorConfiguration(data: SealedOwnerData, inputFds: readonly numbe
     network: data.sealedPlan.network,
     nestedUserNamespaces: data.sealedPlan.nestedUserNamespaces,
     output: data.sealedPlan.output,
+    offlineToolOutputBytes: data.sealedPlan.offlineToolOutputBytes ?? null,
     preparationOutput: data.sealedPlan.preparationOutput ?? null,
     capturedInputs: data.sealedPlan.capturedInputs.map((file, index) => ({
       fd: inputFds[index],
@@ -1838,6 +1840,18 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
     throw new TypeError('Bun preparation cannot share another native output profile')
   const evaluationWorkspace = normalizePrivateProjectEvaluationWorkspace(value.evaluationWorkspace)
   if (
+    value.offlineToolOutputBytes !== undefined &&
+    (output !== true ||
+      network !== 'isolated' ||
+      evaluationWorkspace !== undefined ||
+      !Number.isSafeInteger(value.offlineToolOutputBytes) ||
+      value.offlineToolOutputBytes < 4096 ||
+      value.offlineToolOutputBytes > 16 * 1024 * 1024 ||
+      !value.command[0]!.startsWith('/nix/store/') ||
+      !mounts.some(({ destination }) => value.command[0]!.startsWith(`${destination}/`)))
+  )
+    throw new TypeError('offline tool requires its closed Linux output profile')
+  if (
     evaluationWorkspace !== undefined &&
     (!output ||
       network !== 'isolated' ||
@@ -1917,6 +1931,9 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
     network,
     nestedUserNamespaces,
     output,
+    ...(value.offlineToolOutputBytes === undefined
+      ? {}
+      : { offlineToolOutputBytes: value.offlineToolOutputBytes }),
     ...(preparationOutput === undefined ? {} : { preparationOutput }),
     ...(preparationLimits === undefined ? {} : { preparationLimits }),
     capturedInputs: Object.freeze(capturedInputs.map((file) => Object.freeze({ ...file }))),

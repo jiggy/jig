@@ -137,6 +137,14 @@ network, credentials or choice of host executable. Candidate codegen and tests
 remain untrusted computation. A passing phase is process evidence, not an
 independent application acceptance decision.
 
+Offline Tool grants select an exact executable and invocation from a
+system-managed Linux Nix store. Jig verifies the chosen closure before
+dispatch and projects only those store paths as read-only. The tool receives
+the held source artifact and a fresh bounded output mount in its own
+offline cgroup. Jig grants access to captured output after confirmed
+descendant fencing and cleanup. The grant may explicitly allow nested user
+namespaces for a tool's secondary sandbox.
+
 ### Submission identity, time and retained evidence
 
 The installed application client invokes the installed machine boundary; it

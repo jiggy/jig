@@ -89,6 +89,7 @@ interface Configuration {
   readonly network: 'isolated' | 'inherited'
   readonly nestedUserNamespaces: boolean
   readonly output: boolean
+  readonly offlineToolOutputBytes: number | null
   readonly preparationOutput: 'production' | 'evaluation' | null
   readonly capturedInputs: readonly {
     readonly fd: number
@@ -554,6 +555,7 @@ async function innerMain(
   projectedOutput = false,
   payloadEnvironment?: Readonly<Record<string, string>>,
   evaluationWorkspace?: PrivateProjectEvaluationWorkspace,
+  offlineTool = false,
 ): Promise<void> {
   if (command.length === 0 || !absolute(command[0]!))
     throw new Error('invalid rootless inner command')
@@ -612,8 +614,9 @@ async function innerMain(
   restrictInheritedDescriptors(SANDBOX_LIBRARY_PATH, [])
   const child = spawn(command[0]!, command.slice(1), {
     cwd: '/work',
-    env:
-      payloadEnvironment === undefined
+    env: offlineTool
+      ? payloadEnvironment
+      : payloadEnvironment === undefined
         ? process.env
         : { ...payloadEnvironment, LD_LIBRARY_PATH: SANDBOX_LIBRARY_PATH },
     stdio: 'inherit',
@@ -786,6 +789,7 @@ function restrictInheritedDescriptors(
 }
 
 function bubblewrapArguments(configuration: Configuration): string[] {
+  const offlineTool = configuration.offlineToolOutputBytes !== null
   const result = [
     '--unshare-all',
     ...(configuration.network === 'inherited' ? ['--share-net'] : []),
@@ -835,7 +839,12 @@ function bubblewrapArguments(configuration: Configuration): string[] {
     result.push('--symlink', alias.target, `/jig-input/${alias.name}`)
   if (configuration.inputDirectories.length > 0) result.push('--remount-ro', '/jig-input')
   if (configuration.output) {
-    result.push('--size', String(16 * 1024 * 1024), '--tmpfs', '/jig-output')
+    result.push(
+      '--size',
+      String(configuration.offlineToolOutputBytes ?? 16 * 1024 * 1024),
+      '--tmpfs',
+      '/jig-output',
+    )
   }
   if (configuration.output || configuration.preparationOutput !== null) {
     result.push('--sync-fd', '4', '--json-status-fd', '5')
@@ -854,7 +863,7 @@ function bubblewrapArguments(configuration: Configuration): string[] {
   }
   result.push('--ro-bind', configuration.supervisorPath, MODULE_DESTINATION)
   for (const [name, value] of Object.entries(
-    configuration.evaluationWorkspace !== null ? {} : configuration.environment,
+    configuration.evaluationWorkspace !== null || offlineTool ? {} : configuration.environment,
   ).sort(([a], [b]) => a.localeCompare(b))) {
     result.push('--setenv', name, value)
   }
@@ -877,9 +886,11 @@ function bubblewrapArguments(configuration: Configuration): string[] {
     MODULE_DESTINATION,
     configuration.evaluationWorkspace !== null
       ? '--inner-output-project'
-      : configuration.output || configuration.preparationOutput !== null
-        ? '--inner-output'
-        : '--inner',
+      : offlineTool
+        ? '--inner-offline-tool'
+        : configuration.output || configuration.preparationOutput !== null
+          ? '--inner-output'
+          : '--inner',
     JSON.stringify(
       configuration.capturedInputs.map(({ destination, bytes, digest }) => ({
         path: destination,
@@ -892,7 +903,9 @@ function bubblewrapArguments(configuration: Configuration): string[] {
           JSON.stringify(configuration.environment),
           JSON.stringify(configuration.evaluationWorkspace),
         ]
-      : []),
+      : offlineTool
+        ? [JSON.stringify(configuration.environment)]
+        : []),
     '--',
     ...configuration.command,
   )
@@ -1029,6 +1042,7 @@ function requireStart(value: unknown): Configuration {
     'nestedUserNamespaces',
     'network',
     'output',
+    'offlineToolOutputBytes',
     'preparationOutput',
     'ownerDigest',
     'ownerStateAllocationDigest',
@@ -1097,6 +1111,13 @@ function requireStart(value: unknown): Configuration {
     (configuration.network !== 'isolated' && configuration.network !== 'inherited') ||
     typeof configuration.nestedUserNamespaces !== 'boolean' ||
     typeof configuration.output !== 'boolean' ||
+    (configuration.offlineToolOutputBytes !== null &&
+      (!configuration.output ||
+        configuration.network !== 'isolated' ||
+        configuration.evaluationWorkspace !== null ||
+        !Number.isSafeInteger(configuration.offlineToolOutputBytes) ||
+        configuration.offlineToolOutputBytes < 4096 ||
+        configuration.offlineToolOutputBytes > 16 * 1024 * 1024)) ||
     ![null, 'production', 'evaluation'].includes(configuration.preparationOutput) ||
     (configuration.preparationOutput !== null &&
       (configuration.output || configuration.evaluationWorkspace !== null)) ||
@@ -1515,23 +1536,28 @@ async function main(): Promise<void> {
   }
   if (mode === '--enter') return await enterMain(arguments_)
   if (
-    ['--inner', '--inner-output', '--inner-output-project', '--inner-output-projected'].includes(
-      mode ?? '',
-    )
+    [
+      '--inner',
+      '--inner-output',
+      '--inner-output-project',
+      '--inner-output-projected',
+      '--inner-offline-tool',
+    ].includes(mode ?? '')
   ) {
     const privateProjection =
       mode === '--inner-output-project' || mode === '--inner-output-projected'
-    const separator = privateProjection ? 3 : 1
+    const offlineTool = mode === '--inner-offline-tool'
+    const separator = privateProjection ? 3 : offlineTool ? 2 : 1
     if (arguments_[separator] !== '--') throw new Error('invalid rootless inner separator')
     let payloadEnvironment: Readonly<Record<string, string>> | undefined
-    if (privateProjection) {
+    if (privateProjection || offlineTool) {
       const decoded: unknown = JSON.parse(arguments_[1]!)
       if (!validEnvironment(decoded)) throw new Error('invalid inert payload environment')
       payloadEnvironment = decoded
       if (
         Object.keys(process.env).sort().join('\0') !==
-          (mode === '--inner-output-project' ? 'LD_LIBRARY_PATH\0PWD' : 'LD_LIBRARY_PATH') ||
-        (mode === '--inner-output-project' && process.env.PWD !== '/work') ||
+          (mode === '--inner-output-projected' ? 'LD_LIBRARY_PATH' : 'LD_LIBRARY_PATH\0PWD') ||
+        (mode !== '--inner-output-projected' && process.env.PWD !== '/work') ||
         process.env.LD_LIBRARY_PATH !== SANDBOX_LIBRARY_PATH ||
         process.execArgv.length !== POLICY.length ||
         process.execArgv.some((value, index) => value !== POLICY[index])
@@ -1571,6 +1597,7 @@ async function main(): Promise<void> {
       privateProjection
         ? normalizePrivateProjectEvaluationWorkspace(JSON.parse(arguments_[2]!))
         : undefined,
+      offlineTool,
     )
   }
   throw new Error('invalid rootless supervisor mode')

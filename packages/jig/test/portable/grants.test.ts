@@ -12,12 +12,18 @@ import {
   FINITE_ACP_CONTRACT_VERSION,
 } from '../../src/internal/private-finite-acp-contract.js'
 import { HTTP_REQUEST_CONTRACT_DIGEST } from '../../src/internal/private-http-request.js'
+import {
+  OFFLINE_TOOL_CONTRACT_DIGEST,
+  OFFLINE_TOOL_CONTRACT_ID,
+  OFFLINE_TOOL_CONTRACT_VERSION,
+} from '../../src/internal/private-offline-tool.js'
 import { PROJECT_COMMAND_CONTRACT_DIGEST } from '../../src/internal/private-project-command.js'
 import {
   PROJECT_EVALUATION_CONTRACT_DIGEST,
   PROJECT_EVALUATION_CONTRACT_ID,
   PROJECT_EVALUATION_CONTRACT_VERSION,
 } from '../../src/internal/private-project-evaluation.js'
+import { parseInvocationContract } from '../../src/invocation-contract.js'
 import { captureGrantSource } from '../../src/project/grant-source.js'
 import { normalizeGrant } from '../../src/project/grants.js'
 import { resolveInvocationSlots } from '../../src/project/invocation-slots.js'
@@ -41,6 +47,55 @@ const finiteAcp = {
   version: FINITE_ACP_CONTRACT_VERSION,
   digest: FINITE_ACP_CONTRACT_DIGEST,
 }
+
+test('offline tools require a fixed installation and a matching file invocation grant', async () => {
+  const root = '/nix/store/00000000000000000000000000000000-tools'
+  const value = {
+    kind: 'tool',
+    executable: `${root}/bin/check`,
+    runtimeRoots: [root],
+    args: ['/jig-input/source/candidate', '/jig-output/report'],
+    exitCodes: [1, 0],
+  }
+  const tool = normalizeGrant(value)
+  expect(tool).toEqual({
+    ...value,
+    exitCodes: [0, 1],
+    environment: {},
+    timeoutMs: 60000,
+    outputBytes: 16 * 1024 * 1024,
+  })
+  const contract = {
+    id: OFFLINE_TOOL_CONTRACT_ID,
+    version: OFFLINE_TOOL_CONTRACT_VERSION,
+    digest: OFFLINE_TOOL_CONTRACT_DIGEST,
+  }
+  const descriptor = parseInvocationContract(
+    await Bun.file(
+      new URL('../../../docs/jig/spec/contracts/offline-tool/contract.json', suiteTestUrl),
+    ).bytes(),
+  )
+  expect(descriptor.digest).toBe(contract.digest)
+  descriptor.schemas.get('/input')!.validate({})
+  for (const input of [{ args: ['unexpected'] }, { environment: {} }, { executable: '/bin/sh' }])
+    expect(() => descriptor.schemas.get('/input')!.validate(input)).toThrow()
+  expect(
+    resolveInvocationSlots({ check: contract }, { check: { kind: 'grant', policy: tool } }),
+  ).toMatchObject({ check: { kind: 'native', native: 'offline-tool', contract } })
+  expect(() => resolveInvocationSlots({ check: contract }, {})).toThrow()
+  for (const policy of [
+    { executable: '/usr/bin/check' },
+    { executable: `${root}/bin/../../escape` },
+    { runtimeRoots: [root, root] },
+    { environment: { LD_PRELOAD: 'loader' } },
+    { args: ['a\0b'] },
+    { exitCodes: [0, 0] },
+    { outputBytes: 16 * 1024 * 1024 + 1 },
+    { timeoutMs: 60001 },
+    { network: true },
+  ])
+    expect(() => normalizeGrant({ ...value, ...policy })).toThrow()
+})
 
 test('evaluation authority is a reviewed recipe and exact generic attachment permissions', () => {
   const value = {

@@ -313,16 +313,18 @@ slots: {
 For intentional policy reuse or independent management, select
 `reference: 'grant:documents'` and include
 `grants: discover('./grants')` in `jig.ts`. The filename
-`grants/documents.json` supplies the policy name; its object uses exactly the
-same grammar as an inline grant. Each selected slot must declare the exact
-supported contract for its resource kind. HTTP, Project Command, and Finite ACP
-use the ordinary Binding slot limit of eight total; selecting a resource does
-not increase execution capacity.
+`grants/documents.json` supplies the policy name. It uses the same grammar as
+an inline grant.
+
+Each selected slot must declare the exact
+supported contract for its resource kind. A Binding may select eight slots per
+resource kind. These slots use the ordinary execution capacity.
 [Grants](grants.md) owns capture limits and explicit authority approval.
+
 Parent permissions are never inherited. A simple ACP policy needs no separate
-grant file. The explicit review-only `--agent` argument may propose another
-client in all selected normalized ACP policies without changing declarations;
-[project policy](project-policy.md#review-client-selection) defines its retained
+grant file. The review-only `--agent` argument can propose another client
+across selected ACP policies while preserving the source declarations.
+[Project policy](project-policy.md#review-client-selection) defines its retained
 meaning and refusal rules. It adds no Binding field or Run override.
 
 `attachments` optionally binds declared read attachments to project-relative

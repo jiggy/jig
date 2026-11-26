@@ -19,6 +19,7 @@ export type PrivateCompositionSource = Readonly<{
 const nativeKinds = new Set([
   'http-request',
   'project-command',
+  'offline-tool',
   'project-evaluation',
   'finite-acp',
   'run-checkpoint',
