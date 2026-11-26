@@ -1,7 +1,8 @@
 import { type ClientRequest, request as httpRequest } from 'node:http'
-import { request as httpsRequest } from 'node:https'
+import { Agent as HttpsAgent, request as httpsRequest } from 'node:https'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from '../json.js'
 import { httpRequestBody, normalizeHttpGrant } from './http-grants.js'
+import { normalizeHttpRequestProxy } from './http-request-proxy.js'
 import { type HttpWorkerResult, httpCredentialEcho } from './private-http-request.js'
 
 /** Trusted transport only: no authored imports, ambient credentials or retry policy. */
@@ -10,11 +11,16 @@ export async function requestGrantedHttp(value: unknown): Promise<HttpWorkerResu
     throw new TypeError('invalid HTTP dispatch')
   const input = value as Record<string, unknown>
   if (
-    Object.keys(input).some((key) => !['grant', 'body', 'bearer', 'response'].includes(key)) ||
+    Object.keys(input).some(
+      (key) => !['grant', 'body', 'bearer', 'response', 'proxy'].includes(key),
+    ) ||
     (Object.hasOwn(input, 'response') && input.response !== 'json')
   )
     throw new TypeError('invalid HTTP dispatch')
   const grant = normalizeHttpGrant(input.grant)
+  const https = grant.url.startsWith('https:')
+  const proxy = normalizeHttpRequestProxy(input.proxy)
+  if (proxy !== undefined && !https) throw new TypeError('HTTP proxy requires an HTTPS grant')
   const bearer = input.bearer
   if (
     (bearer !== undefined &&
@@ -31,12 +37,14 @@ export async function requestGrantedHttp(value: unknown): Promise<HttpWorkerResu
   return new Promise((resolve) => {
     let settled = false
     let request: ClientRequest | undefined
+    let agent: HttpsAgent | undefined
     let timer: ReturnType<typeof setTimeout> | undefined
     const finish = (result: HttpWorkerResult) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
       request?.destroy()
+      agent?.destroy()
       resolve(result)
     }
     const headers: Record<string, string> = { connection: 'close', 'accept-encoding': 'identity' }
@@ -46,10 +54,19 @@ export async function requestGrantedHttp(value: unknown): Promise<HttpWorkerResu
     }
     if (typeof bearer === 'string') headers.authorization = `Bearer ${bearer}`
     try {
-      const send = grant.url.startsWith('https:') ? httpsRequest : httpRequest
+      if (proxy !== undefined) {
+        agent = new HttpsAgent({
+          proxyEnv: { https_proxy: proxy },
+          keepAlive: false,
+          maxCachedSessions: 0,
+          rejectUnauthorized: true,
+          timeout: grant.timeoutMs,
+        })
+      }
+      const send = https ? httpsRequest : httpRequest
       request = send(
         grant.url,
-        { method: grant.method, headers, agent: false, maxHeaderSize: 16384 },
+        { method: grant.method, headers, agent: agent ?? false, maxHeaderSize: 16384 },
         (response) => {
           // Pinned Bun does not enforce Node's maxHeaderSize option. Validate
           // parsed fields too; the worker envelope bounds parser allocation.

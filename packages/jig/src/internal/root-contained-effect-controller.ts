@@ -45,7 +45,8 @@ import {
   privateExecutionPath,
 } from './execution-intent.js'
 import type { PrivateFlowFileContext } from './flow-file-context.js'
-import { httpCredential, type PrivateHttpGrants } from './http-grants.js'
+import { httpCredential, httpRequestProxy, type PrivateHttpGrants } from './http-grants.js'
+import { HTTP_REQUEST_PROXY_HINT } from './http-request-proxy.js'
 import { privateDomainDigest } from './identity.js'
 import { capturePrivateInput, type PrivateCapturedInput } from './input-capture.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
@@ -162,7 +163,13 @@ export async function executePrivateContainedEffect(
           }
     if (prepared.kind === 'http') {
       bearer = httpCredential(input.httpGrants, prepared.value.grant)
-      httpInput = Buffer.from(encodeHttpWorkerInput(prepared.value, bearer)).toString('utf8')
+      let proxy: string | undefined
+      try {
+        proxy = httpRequestProxy(input.httpGrants, prepared.value.grant)
+      } catch {
+        return failed('UNAVAILABLE', HTTP_REQUEST_PROXY_HINT)
+      }
+      httpInput = Buffer.from(encodeHttpWorkerInput(prepared.value, bearer, proxy)).toString('utf8')
     }
   } catch {
     return failed(

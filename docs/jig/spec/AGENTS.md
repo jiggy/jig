@@ -20,7 +20,7 @@ sections.
 | `display-archive.md` | Explicit final bundles, atomic presentation retention, original receipts, evidence binding, scoped inspection, and generation checks |
 | `agent-run.md` | Explicit Agent values, package claims, feature contracts, channels, conversations, and session receipts |
 | `finite-acp.md` | Native grants, credential separation, client and effort selection, bounded lifecycle, retention, and restoration |
-| `http-request.md` | Endpoint grants, requests, response decoding, private bearer delivery, and contained-worker settlement |
+| `http-request.md` | Endpoint grants, requests, response decoding, private credentials, operator proxy routing, and contained-worker settlement |
 | `execution-client.md` | Non-dispatching preparation and lookup, exact ticket acceptance, owner/observer roles, scoped cancellation, bounded retention, forgetting, and export without re-execution |
 | `project-command.md` | Bounded candidate execution and trusted command evidence collection |
 | `project-evaluation.md` | Reviewed Bun/TypeScript evaluation, exact descriptor, closed recipes, and candidate evidence distinct from application acceptance |

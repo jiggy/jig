@@ -842,6 +842,11 @@ private. Missing or unsafe profile selection cannot change execution outcomes.
 
 ## HTTP readonly qualification
 
+`portable/http-request.test.ts` checks operator transport selection and private
+credential separation. A real CONNECT peer routes a DNS-unavailable grant to a
+trusted TLS origin. The suite checks its direct control, tunnel refusal, TLS
+refusal, and a redirect outside the grant with no additional request.
+
 `portable/cli-explorer-web.test.ts` uses real loopback transport, bundled assets, and an actual unreviewed project session.
 It checks capability separation, strict input decoding, refused selection, duplicate identities, and idle-owner closure without synthetic execution.
 Retained request lookup stays separate from global Run state. Unknown request identities cannot establish a launch refusal.

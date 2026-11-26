@@ -359,9 +359,15 @@ These links locate module rules. All selected domain requirements still apply.
   or normal --yes. The fixed HTTP worker receives only one request's credential
   over private stdin. It imports no authored code.
 
-  The collector validates its bounded result after fencing. No redirect, proxy,
-  automatic retry or raw credential projection is permitted. Remote effects
-  remain possible after an unsuccessful local result.
+  The collector validates its bounded result after fencing. Reject redirects,
+  automatic retries, caller-selected routing, and raw credential projection.
+  Remote effects remain possible after an unsuccessful local result.
+
+  For HTTPS the operator can select a CONNECT proxy through `JIG_HTTP_REQUEST_HTTPS_PROXY`.
+  Pass its checked URL on private stdin to the existing owned worker. Keep it
+  out of bearer lookup, launch plans, retained identities and diagnostics. Tunnel
+  only to the grant authority and verify its TLS identity. Keep CONNECT credentials
+  separate from the endpoint bearer and end the attempt on proxy failure.
 
 ## Local Contracts
 

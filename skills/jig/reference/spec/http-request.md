@@ -105,6 +105,27 @@ Host cancellation and deadline expiry remain `CANCELLED` and
 did nothing. Jig never retries them. Ordinary language recovery is available
 after confirmed local cleanup; failed fencing or cleanup remains fatal.
 
+## Operator proxy for HTTPS requests
+
+Set `JIG_HTTP_REQUEST_HTTPS_PROXY` in Jig's operator environment to route reviewed
+HTTPS requests through a trusted forward proxy. Use an `http://` or `https://`
+proxy URL with an optional port and percent-encoded Basic credentials. Keep the
+value in your launcher environment. Jig keeps it out of project files, review
+identity and diagnostics. `bearerEnv` cannot refer to this setting.
+
+The proxy receives a CONNECT for the hostname and port in the grant. Jig sends
+the exact approved method, path and query inside TLS and verifies the approved
+hostname and certificate. Proxy credentials go in CONNECT and the endpoint's
+bearer goes inside TLS. The same bounds, cancellation, and verified cleanup apply
+to the connection and request. A refused or broken tunnel gives `UNCERTAIN`
+without trying a direct connection. An invalid setting gives `UNAVAILABLE`
+before dispatch and names the setting to correct.
+
+Unset the setting to use direct HTTPS. Jig ignores ambient proxy and bypass
+variables for this worker. Explicit numeric-loopback HTTP grants always connect
+directly. Configure [dependency preparation](../build/dependencies.md#dependency-preparation-proxy)
+separately when review also needs a proxy.
+
 ## Enforcement and limits of the guarantee
 
 A fixed trusted worker executes one request in its own contained envelope.
@@ -124,10 +145,12 @@ coordinator loss fence the worker and socket owner before resources are
 released. A result becomes successful only after confirmed local cleanup.
 Recovery settles recorded owners without starting another HTTP request.
 
-HTTPS uses normal certificate and hostname verification. This is exact-URL
-enforcement, **not an IP firewall**: the operator-selected hostname uses the
-host resolver; explicitly selected private services are allowed. The remote
-service must be trusted with its credential. Literal credential echoes are
+HTTPS uses normal certificate and hostname verification. The exact-URL policy
+allows explicitly selected private services. Direct connections use the host
+resolver, and proxy connections delegate resolution to the selected proxy. Use
+host or proxy policy if you also need to constrain destination IP addresses.
+
+Trust the remote service with its credential. Literal credential echoes are
 rejected defensively, but transformed or encoded disclosure cannot generally
 be detected. This is not an information-flow or remote-service honesty guarantee.
 

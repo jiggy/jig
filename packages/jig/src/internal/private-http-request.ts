@@ -17,12 +17,17 @@ export interface HttpResponse {
 }
 
 /** Validate the complete private envelope before allocating or dispatching work. */
-export function encodeHttpWorkerInput(request: PreparedHttpRequest, bearer?: string): Uint8Array {
+export function encodeHttpWorkerInput(
+  request: PreparedHttpRequest,
+  bearer?: string,
+  proxy?: string,
+): Uint8Array {
   return canonicalJson({
     grant: request.grant as unknown as JsonValue,
     ...(request.body === undefined ? {} : { body: request.body }),
     ...(request.response === undefined ? {} : { response: request.response }),
     ...(bearer === undefined ? {} : { bearer }),
+    ...(proxy === undefined ? {} : { proxy }),
   })
 }
 export type HttpWorkerResult =
