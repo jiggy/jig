@@ -71,6 +71,7 @@ These links locate module rules. All selected domain requirements still apply.
 - Per root, retain at most 256 live participant references and sixteen sealed snapshots.
   Snapshots plus read materializations share 256 MiB. Original operator inputs keep their separate bound.
   Enforce an operation's exact byte limit before adding its snapshot to the root's retention budget.
+
   Final result selection forwards an existing snapshot without resealing.
   `root-run-files.ts` transfers selected snapshot retirement to command/ticket ownership before live rights close.
   Output identity is boolean native-output intent, never an export path.
