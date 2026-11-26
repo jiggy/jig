@@ -78,9 +78,10 @@ preparation never becomes a consumer requirement.
   files with isolated workers and preserves their full JUnit coverage. A failed
   stage stops later work.
 
-  These stages lint selected Bun files for focused registrations before test
-  execution. Bun's JUnit can report a passing file after focus hides its
-  sibling cases.
+  `check-bun-test-focus.mjs` runs once before any selected Bun source stage.
+  It lints tracked JavaScript and TypeScript and local unignored additions.
+  That scope includes imported registration helpers outside the selected test files.
+  Bun's JUnit can report a passing file after focus hides its sibling cases.
 
   `source-test-durations.json` records slower-file timings from the successful
   source job in CI run 45578818280. Bun uses them to start longer files earlier.
@@ -434,8 +435,10 @@ They consume frozen package exports with tracked test helpers and installed
   job without falling back from failures. `merge-retry.mjs` owns PR CI input
   acquisition and per-job evidence across attempts within one original run.
   It downloads immutable artifact IDs and verifies ZIP transport hashes before
-  extraction. The collector verifies up to four independent job artifacts at
-  once and writes its receipt only after every artifact and the run recheck pass.
+  extraction. The collector downloads up to four independent job artifacts in
+  parallel using bounded asynchronous GitHub CLI processes. It writes its
+  receipt only after every artifact and the run recheck pass.
+
   PR CI metadata and archive reads reuse the bounded GitHub transport policy of
   three attempts with one-second backoff. Validation of artifact identity,
   digest, receipt and coverage remains fail-closed.
@@ -630,6 +633,9 @@ They consume frozen package exports with tracked test helpers and installed
   behavior and exercise native PR acquisition after a CI-only retry.
   The PR CI CLI test retries transient metadata and ZIP reads and refuses
   persistent transport errors and corrupt archive bytes.
+
+  The collection CLI test verifies overlapping archive downloads through its
+  production client and the four-download batch limit.
 - `node --test scripts/ci/source-stages.test.mjs` checks serial order, failure
   propagation, canonical-input reuse and protocol-only prerequisites through the
   actual source shell with controlled tools on Bash and POSIX sh.
@@ -637,7 +643,8 @@ They consume frozen package exports with tracked test helpers and installed
   It also checks both source inventories through the root test recipe.
 - `node --test scripts/ci/source-stage-evidence.test.mjs` exercises real
   parallel Bun JUnit through the report merger. It verifies complete passing
-  reports and rejects skips, failures, missing files and focused registrations.
+  reports and rejects skips, failures and missing files. It also reproduces
+  incomplete JUnit from a focused imported helper and verifies the source guard.
 - Exercise provision, the hostile suite, cleanup, and `assert-clean` on a
   disposable supported runner.
 - `node --test scripts/ci/host-test-coverage.test.mjs` verifies exhaustive Mac

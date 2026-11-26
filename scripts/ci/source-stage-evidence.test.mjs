@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import {
   mkdirSync,
   mkdtempSync,
@@ -140,33 +140,58 @@ test('actual Node reporter retains owning file identities and unexpected skip/fa
   assert.notEqual(empty.status, 0)
 })
 
-test('the source focus check rejects Bun registrations that hide sibling cases', () => {
+test('the source focus check rejects focused Bun registrations in imported helpers', () => {
   const root = fixture()
-  const file = write(
-    root,
-    'suite.test.ts',
-    'import { test } from "bun:test"; test("regular", () => {});',
-  )
-  const lint = () =>
-    spawnSync(
-      'bun',
-      [
-        'x',
-        '--no-install',
-        'biome',
-        'lint',
-        '--only=suspicious/noFocusedTests',
-        '--error-on-warnings',
-        file,
-      ],
-      { cwd: new URL('../..', import.meta.url), encoding: 'utf8' },
-    )
-  const regular = lint()
+  const first = 'first.test.ts'
+  const second = 'second.test.ts'
+  const helper = 'helpers/nested fixtures/register.ts'
+  const header = 'import { test } from "bun:test";'
+  write(root, first, `${header}\nimport "./${helper}"; test("regular first case", () => {});`)
+  write(root, second, `${header}\ntest("regular second case", () => {});`)
+  const registration = write(root, helper, `${header}\ntest("helper case", () => {});`)
+  const inventory = write(root, 'selected.files', `${first}\n${second}\n`)
+  execFileSync('git', ['init', '-q'], { cwd: root })
+  execFileSync('git', ['add', '--', first, second, helper], { cwd: root })
+  write(root, '.gitignore', 'helpers/\n')
+  const check = () =>
+    spawnSync(process.execPath, [script('check-bun-test-focus.mjs')], {
+      cwd: root,
+      encoding: 'utf8',
+    })
+  const regular = check()
   assert.equal(regular.status, 0, regular.stderr)
-  writeFileSync(file, 'import { test } from "bun:test"; test.only("focused", () => {});')
-  const focused = lint()
-  assert.equal(focused.status, 1, focused.stderr)
-  assert.match(focused.stderr, /noFocusedTests/)
+  writeFileSync(registration, `${header}\ntest.only("focused helper case", () => {});`)
+
+  // The pinned runner and the whole-file report merger both accept this incomplete result.
+  const report = join(root, 'bun.xml')
+  const run = spawnSync(
+    'bun',
+    [
+      'test',
+      '--parallel=4',
+      '--reporter=junit',
+      `--reporter-outfile=${report}`,
+      `./${first}`,
+      `./${second}`,
+    ],
+    { cwd: root, encoding: 'utf8', timeout: 10_000 },
+  )
+  assert.equal(run.status, 0, run.stderr)
+  const output = join(root, 'merged.xml')
+  const merged = python(root, 'merge-source-junit.py', [output, report, '--files', inventory])
+  assert.equal(merged.status, 0, merged.stderr)
+  assert.deepEqual(
+    readJUnitCases(output)
+      .map(({ name }) => name)
+      .sort(),
+    ['focused helper case', 'regular second case'],
+  )
+
+  const focused = check()
+  assert.ifError(focused.error)
+  assert.notEqual(focused.status, 0, focused.stderr)
+  assert.match(focused.stdout + focused.stderr, /noFocusedTests/)
+  assert.match(focused.stdout + focused.stderr, /nested fixtures\/register\.ts/)
 })
 
 test('real parallel Bun proof retains every selected file and rejects skips, failures and omissions', () => {

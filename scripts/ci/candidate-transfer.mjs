@@ -1,8 +1,9 @@
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import {
   candidateBinding,
   digest,
@@ -14,6 +15,8 @@ import {
 } from './candidate-provenance.mjs'
 import { allRunJobs, latestJob } from './merge-attempts.mjs'
 import { LINUX_QUALIFICATION_JOBS, requireJobs, verifyQualification } from './release-readiness.mjs'
+
+const execFileAsync = promisify(execFile)
 
 export function githubClient(
   repository = process.env.GITHUB_REPOSITORY,
@@ -33,13 +36,15 @@ export function githubClient(
     download: async (artifactId, destination) => {
       if (!Number.isSafeInteger(artifactId) || artifactId <= 0)
         throw new Error('Invalid artifact ID')
-      const bytes = await readArchive(() =>
-        execFileSync('gh', ['api', `repos/${repository}/actions/artifacts/${artifactId}/zip`], {
+      const { stdout } = await readArchive(() =>
+        execFileAsync('gh', ['api', `repos/${repository}/actions/artifacts/${artifactId}/zip`], {
+          encoding: 'buffer',
           timeout: 120_000,
+          killSignal: 'SIGKILL',
           maxBuffer: 256 * 1024 * 1024,
         }),
       )
-      await writeFile(destination, bytes, { flag: 'wx' })
+      await writeFile(destination, stdout, { flag: 'wx' })
     },
   }
 }

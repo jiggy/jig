@@ -200,13 +200,7 @@ async function fixture(t) {
   return { root, env, snapshot, jobs, artifacts, client, reports, pack, downloaded }
 }
 
-test('merge input CLI retries GitHub reads before validating and binding an artifact', async (t) => {
-  const { root, env, snapshot, artifacts } = await fixture(t)
-  const archive = join(root, 'quick.zip')
-  const reporting = artifacts.find((item) => item.id === 3)
-  reporting.digest = 'sha256:' + digest(await readFile(archive))
-  const config = join(root, 'github.json')
-  await writeFile(config, JSON.stringify({ ...snapshot, archive }))
+async function writeGitHubCommand(root) {
   await writeFile(
     join(root, 'gh'),
     `#!/usr/bin/env node
@@ -214,6 +208,26 @@ const fs = require('node:fs')
 const url = new URL('https://api.github.com/' + process.argv[3])
 const kind = url.pathname.split('/').pop()
 const fixture = JSON.parse(fs.readFileSync(process.env.FIXTURE))
+if (kind === 'zip' && fixture.batches) {
+  const id = Number(url.pathname.split('/').at(-2))
+  const index = fixture.batches.findIndex(batch => batch.includes(id))
+  if (index < 0) throw Error('Unknown archive ' + id)
+  const marker = (phase, member) => process.env.COUNTERS + '/' + phase + '-' + member
+  if (!fixture.batches.slice(0, index).flat().every(member => fs.existsSync(marker('done', member)))) {
+    throw Error('Download started before the previous batch finished')
+  }
+  fs.writeFileSync(marker('started', id), '', { flag: 'wx' })
+  const deadline = Date.now() + 5000
+  const wait = new Int32Array(new SharedArrayBuffer(4))
+  while (!fixture.batches[index].every(member => fs.existsSync(marker('started', member)))) {
+    if (Date.now() >= deadline) throw Error('Downloads in this batch did not overlap')
+    Atomics.wait(wait, 0, 0, 10)
+  }
+  process.stdout.write(fs.readFileSync(fixture.archives[id]), () => {
+    fs.writeFileSync(marker('done', id), '', { flag: 'wx' })
+  })
+  return
+}
 const counter = process.env.COUNTERS + '/' + kind
 const count = fs.existsSync(counter) ? Number(fs.readFileSync(counter)) + 1 : 1
 fs.writeFileSync(counter, String(count))
@@ -230,7 +244,16 @@ else throw Error('Unexpected API path ' + url.pathname)
 `,
     { mode: 0o755 },
   )
+}
 
+test('merge input CLI retries GitHub reads before validating and binding an artifact', async (t) => {
+  const { root, env, snapshot, artifacts } = await fixture(t)
+  const archive = join(root, 'quick.zip')
+  const reporting = artifacts.find((item) => item.id === 3)
+  reporting.digest = 'sha256:' + digest(await readFile(archive))
+  const config = join(root, 'github.json')
+  await writeFile(config, JSON.stringify({ ...snapshot, archive }))
+  await writeGitHubCommand(root)
   for (const mode of ['recover', 'persistent', 'corrupt']) {
     const counters = join(root, mode)
     await mkdir(counters)
@@ -280,6 +303,51 @@ else throw Error('Unexpected API path ' + url.pathname)
       assert.equal(await reads('zip'), 1)
     }
   }
+})
+
+test('the production merge CLI overlaps four archive downloads and verifies every ZIP', async (t) => {
+  const { root, env, snapshot } = await fixture(t)
+  const archives = Object.fromEntries(
+    MERGE_JOBS.map((spec, index) => [10 + index, join(root, spec.stem + '.zip')]),
+  )
+  const ids = Object.keys(archives).map(Number)
+  const batches = []
+  for (let index = 0; index < ids.length; index += 4) batches.push(ids.slice(index, index + 4))
+  const config = join(root, 'github.json')
+  const counters = join(root, 'downloads')
+  const output = join(root, 'receipt.json')
+  await mkdir(counters)
+  await writeFile(config, JSON.stringify({ ...snapshot, archives, batches }))
+  await writeGitHubCommand(root)
+
+  execFileSync(
+    process.execPath,
+    [
+      'scripts/ci/merge-retry.mjs',
+      'collect',
+      '--directory',
+      join(root, 'evidence'),
+      '--output',
+      output,
+    ],
+    {
+      env: {
+        ...process.env,
+        ...env,
+        PATH: root + delimiter + process.env.PATH,
+        FIXTURE: config,
+        COUNTERS: counters,
+      },
+      stdio: 'pipe',
+      timeout: 15_000,
+    },
+  )
+  const receipt = JSON.parse(await readFile(output, 'utf8'))
+  assert.deepEqual(
+    receipt.jobs.map(({ artifactId }) => artifactId),
+    ids,
+  )
+  for (const id of ids) await stat(join(counters, 'done-' + id))
 })
 
 test('merge retry uses latest execution and never falls back from a later failure', () => {
