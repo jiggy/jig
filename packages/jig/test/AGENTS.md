@@ -409,6 +409,9 @@ Its direct Run cases cover normal publication and moving an anchored destination
 parent during execution. Recover the original Run with the public CLI and
 verify exact bytes, foreign-project refusal, no replacement and no new Runs.
 
+The direct Run observer waits briefly for a concurrent SQLite writer. It reports
+the stage and a closed diagnostic code if publication or recovery fails.
+
 Its consumer may enable the existing private phase trace through the public
 client environment for each result command, using a unique absolute destination.
 On failure, report only bounded fixed result phases, outcomes and timings.

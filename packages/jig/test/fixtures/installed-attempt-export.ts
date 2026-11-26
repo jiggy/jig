@@ -162,7 +162,7 @@ export default defineBinding({package:'flows/root',slots:{
 
 const consumer = `
 import assert from 'node:assert/strict';
-import {constants,Database} from 'bun:sqlite';
+import {constants,Database,SQLiteError} from 'bun:sqlite';
 import {mkdir,open,readFile,rename,writeFile,readdir,unlink} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {AttemptClientError,createAttemptClient} from '@jigging/jig/client';
@@ -171,18 +171,26 @@ process.on('uncaughtExceptionMonitor',error=>{
   console.error('Foundation client failure: '+JSON.stringify({
     application:'attempt-export',stage,mode:modeLabel,terminalCode,
     ...(error instanceof AttemptClientError
-      ? {code:error.code,operation:error.operation,uncertain:error.uncertain}:{})
+      ? {code:error.code,operation:error.operation,uncertain:error.uncertain}
+      : error instanceof SQLiteError ? {code:error.code} : {})
   }));
 });
 const client=createAttemptClient({executable:resolve(process.argv[2]),cwd:process.cwd(),timeoutMs:195000});
 function runCount(){
   const db=Database.open('.jig/jig.sqlite3',constants.SQLITE_OPEN_READONLY|constants.SQLITE_OPEN_NOFOLLOW);
-  try{return db.query('SELECT count(*) AS n FROM root_runs').get().n;}
+  try{
+    // A rollback-journal writer can briefly hold the database exclusively.
+    db.exec('PRAGMA busy_timeout = 1000');
+    return db.query('SELECT count(*) AS n FROM root_runs').get().n;
+  }
   finally{db.close();}
 }
 function cli(args,cwd=process.cwd()){
   const child=Bun.spawn([resolve(process.argv[2]),...args],{cwd,stdin:'ignore',stdout:'pipe',stderr:'pipe'});
   return Promise.all([child.exited,new Response(child.stdout).text(),new Response(child.stderr).text()]);
+}
+function observeCliExit([code,,stderr]){
+  terminalCode=/Diagnostic code: ([A-Z][A-Z0-9_]{0,63})/.exec(stderr)?.[1]??'CLI_EXIT_'+code;
 }
 stage='direct-control';
 const originalCount=runCount();
@@ -193,33 +201,54 @@ const control=JSON.parse(controlText);
 assert.equal(control.delivery.status,'written');
 const binary=await readFile('direct-control/files/binary.bin');
 assert.deepEqual(binary,Buffer.from([0,255,128]));
+assert.equal(runCount(),originalCount+1);
 
-stage='direct-publication-race';
+stage='direct-race-acceptance';
 await mkdir('publication-parent');
-const raced=cli([...directArgs,'--input','"hold-packet"','--out','publication-parent/packet']);
+let raceExit;
+const raced=cli([...directArgs,'--input','"hold-packet"','--out','publication-parent/packet'])
+  .then(result=>{raceExit=result;return result;});
 // Acceptance follows anchoring of --out. Move the actual directory while the
 // accepted Flow is still running, before the real publisher revalidates it.
 const until=performance.now()+100000;
-while(runCount()===originalCount+1){
+for(;;){
+  const count=runCount();
+  if(count!==originalCount+1){
+    assert.equal(count,originalCount+2);
+    break;
+  }
+  if(raceExit!==undefined){
+    observeCliExit(raceExit);
+    throw Error('Direct Run exited before acceptance');
+  }
   if(performance.now()>until) throw Error('Direct Run was not accepted');
   await Bun.sleep(50);
 }
+stage='direct-race-move';
 await rename('publication-parent','publication-parent-moved');
-const [raceCode,raceText,raceError]=await raced;
+stage='direct-race-exit';
+const result=await raced;
+observeCliExit(result);
+const [raceCode,raceText,raceError]=result;
 assert.equal(raceCode,2);
+stage='direct-race-terminal';
 const lost=JSON.parse(raceText);
 assert.equal(lost.status,'succeeded');
 assert.equal(lost.outcome,'done');
 assert.deepEqual(lost.output,control.output);
 assert.notEqual(lost.delivery.status,'written');
 assert.notEqual(lost.runId,control.runId);
+stage='direct-race-recovery-hint';
 assert.match(raceError,/jig attempt export --run /);
+stage='direct-race-no-publication';
 await assert.rejects(readFile('publication-parent/packet/result.json'),{code:'ENOENT'});
 await assert.rejects(readFile('publication-parent-moved/packet/result.json'),{code:'ENOENT'});
 
 stage='direct-recovery';
 const exportArgs=['attempt','export','--run',lost.runId,'--out'];
-const [recoveryCode,recoveryText]=await cli([...exportArgs,'direct-recovered']);
+const recovery=await cli([...exportArgs,'direct-recovered']);
+observeCliExit(recovery);
+const [recoveryCode,recoveryText]=recovery;
 assert.equal(recoveryCode,0);
 assert.equal(JSON.parse(recoveryText).source,'final');
 const recovered=JSON.parse(await readFile('direct-recovered/result.json','utf8'));
