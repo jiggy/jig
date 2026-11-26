@@ -122,7 +122,9 @@ async function verifyInterruption(cli: string, root: string, runtime: string) {
       terminal: { status: 'failed', code: 'CANCELLED' },
     })
     await verifyToolCleanup(scope, active)
-    expect((await client.result({ ticket: cancelled.ticket })).artifactResults).toEqual([])
+    expect((await client.result({ ticket: cancelled.ticket })).artifactResults).toEqual([
+      { name: 'report', availability: 'unavailable' },
+    ])
     console.log(
       'Cancellation verified after both tool processes started, with confirmed cleanup and zero artifacts',
     )
@@ -182,7 +184,9 @@ async function verifyInterruption(cli: string, root: string, runtime: string) {
     })
     expect(await client.reconcile({ ticket: lost.ticket })).toEqual(settled)
     await verifyToolCleanup(scope, active)
-    expect((await client.result({ ticket: lost.ticket })).artifactResults).toEqual([])
+    expect((await client.result({ ticket: lost.ticket })).artifactResults).toEqual([
+      { name: 'report', availability: 'unavailable' },
+    ])
     expect(acceptedRunCount(root)).toBe(runs)
     recovered = true
     console.log(
@@ -329,6 +333,7 @@ export default defineBinding({package: 'flows/check', slots: {tool: ${JSON.strin
       code: 'DEADLINE_EXCEEDED',
       details: { tool: { cleanup: 'complete', stopReason: 'deadline' } },
     })
+    console.log('Binary delivery, changed and restored input, output cap, and deadline verified')
     await verifyInterruption(cli, root, runtime)
     passed = true
   } finally {
