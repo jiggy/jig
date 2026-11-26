@@ -78,12 +78,18 @@ exec "$FIXTURE_REAL_NODE" "$@"
   executable(
     'bun',
     `#!/usr/bin/env node
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs';import path from 'node:path';const a=process.argv.slice(2);
 const event=s=>fs.appendFileSync(process.env.FIXTURE_EVENTS,s+'\\n');
 if(a.includes('--destination')) {
  const destination=a[a.indexOf('--destination')+1];
  fs.mkdirSync(destination,{recursive:true});fs.writeFileSync(path.join(destination,'fixture.tgz'),'frozen fixture');event('pack');
 } else if(a[0]==='test') {
+ if (process.env.FIXTURE_REAL_BUN) {
+  const result = spawnSync(process.env.FIXTURE_REAL_BUN, a, { stdio: 'inherit' });
+  if (result.error) throw result.error;
+  process.exit(result.status ?? 1);
+ }
  const stage=a.includes('./fixtures/source-portable.test.ts')?'portable':'protocol';event(stage+'-start');
  const workers=a.find(arg=>arg.startsWith('--parallel='));
  if(workers)event(stage+':'+workers);
@@ -204,6 +210,29 @@ test('a failed source stage stops later stages and cannot produce successful arc
   assert.ok(!events.includes('protocol-start'))
   assert.equal(events.filter((event) => event === 'archive-hash').length, 1)
   assert.deepEqual(readdirSync(f.temp), [])
+})
+
+test('local source checks reject aliased Bun focus even when CI is false', (t) => {
+  const f = fixture(t, 'source-portable')
+  writeFileSync(
+    join(f.root, 'fixtures/source-portable.test.ts'),
+    `import { test } from 'bun:test';
+test('ordinary case', () => {});
+const register = test;
+register.only('focused case', () => {});`,
+  )
+  const bun = spawnSync('bun', ['-e', 'console.log(process.execPath)'], { encoding: 'utf8' })
+  assert.ifError(bun.error)
+  assert.equal(bun.status, 0, bun.stderr)
+  const result = f.run('/bin/sh', {
+    CI: 'false',
+    GITHUB_ACTIONS: 'false',
+    FIXTURE_REAL_BUN: bun.stdout.trim(),
+  })
+  assert.ifError(result.error)
+  assert.equal(result.status, 1, result.stderr)
+  assert.match(result.stderr, /\.only is disabled in CI environments/)
+  assert.ok(!existsSync(join(f.reports, 'source-portable.xml')))
 })
 
 test('protocol-only execution builds Jig methods and consumes the external SDK without portable tests', (t) => {
