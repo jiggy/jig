@@ -137,15 +137,18 @@ export async function acquisitionExpectation(sourceRevision, env = process.env) 
   }
 }
 
-async function producerJobReady(client, expected, run, name) {
-  const merge = run.event === 'pull_request'
-  const jobs = merge
-    ? await allRunJobs(client, expected.repository, run)
-    : await paginated(
+function producerJobs(client, expected, run) {
+  return run.event === 'pull_request'
+    ? allRunJobs(client, expected.repository, run)
+    : paginated(
         client,
         `repos/${expected.repository}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`,
         'jobs',
       )
+}
+
+function producerJobReady(jobs, run, name, { acceptMacAllocation = false } = {}) {
+  const merge = run.event === 'pull_request'
   const matching = jobs.filter((job) => job.name === name)
   if (!merge && matching.length > 1) throw new Error(`Ambiguous current-attempt ${name}`)
   if (!matching.length) {
@@ -177,6 +180,19 @@ async function producerJobReady(client, expected, run, name) {
   if (!['queued', 'in_progress'].includes(job.status) || job.conclusion !== null)
     throw new Error(`Invalid pending ${name} status`)
   if (run.status === 'completed') throw new Error(`Completed CI producer has unfinished ${name}`)
+  if (
+    acceptMacAllocation &&
+    job.status === 'in_progress' &&
+    Number.isSafeInteger(job.runner_id) &&
+    job.runner_id > 0 &&
+    typeof job.runner_name === 'string' &&
+    job.runner_name.trim() &&
+    typeof job.started_at === 'string' &&
+    Number.isFinite(Date.parse(job.started_at)) &&
+    Array.isArray(job.labels) &&
+    job.labels.includes('macos-15')
+  )
+    return job
   console.error(
     `Waiting for ${name} in CI run ${run.id}, attempt ${job.run_attempt}: ${job.status}`,
   )
@@ -192,12 +208,17 @@ export async function acquireCandidate({
   timeoutSeconds = 90,
   producerTimeoutSeconds = 0,
   afterQuick = false,
+  afterMacPythonStart = false,
   now = () => Date.now(),
   sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
   extract,
 }) {
   requireRevision(sourceRevision)
   if (typeof afterQuick !== 'boolean') throw new Error('afterQuick must be boolean')
+  if (typeof afterMacPythonStart !== 'boolean')
+    throw new Error('afterMacPythonStart must be boolean')
+  if (afterMacPythonStart && (expected.event !== 'pull_request' || !producerTimeoutSeconds))
+    throw new Error('Waiting for Mac Python allocation requires bounded PR producer acquisition')
   const maximumTimeout = afterQuick ? 600 : 300
   if (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 0 || timeoutSeconds > maximumTimeout)
     throw new Error(`Candidate acquisition timeout must be 0–${maximumTimeout} seconds`)
@@ -209,7 +230,8 @@ export async function acquireCandidate({
     throw new Error('Candidate producer timeout must be 0–1800 whole seconds')
   if (producerRunId !== undefined && (!Number.isSafeInteger(producerRunId) || producerRunId <= 0))
     throw new Error('Invalid producer run ID')
-  const producerDeadline = now() + producerTimeoutSeconds * 1000
+  const producerStarted = now()
+  const producerDeadline = producerStarted + producerTimeoutSeconds * 1000
   let deadline = producerTimeoutSeconds ? undefined : now() + timeoutSeconds * 1000
   let readyProducer
   while (true) {
@@ -254,8 +276,11 @@ export async function acquireCandidate({
       )
         throw new Error('Canonical CI producer changed after readiness')
       let producerJob
-      if (run.event === 'pull_request') {
-        producerJob = await producerJobReady(client, expected, run, 'candidate-build')
+      const checkBuild = run.event === 'pull_request' || (!readyProducer && producerTimeoutSeconds)
+      const checkQuick = !readyProducer && afterQuick
+      const jobs = checkBuild || checkQuick ? await producerJobs(client, expected, run) : []
+      if (checkBuild) {
+        producerJob = producerJobReady(jobs, run, 'candidate-build')
         if (
           readyProducer &&
           (!producerJob ||
@@ -265,13 +290,16 @@ export async function acquireCandidate({
           throw new Error('Merge candidate build changed after readiness')
       }
       if (!readyProducer) {
-        if (run.event !== 'pull_request' && producerTimeoutSeconds)
-          producerJob = await producerJobReady(client, expected, run, 'candidate-build')
-        const buildReady =
-          run.event === 'pull_request' || producerTimeoutSeconds ? Boolean(producerJob) : true
-        const quickReady =
-          !afterQuick || (await producerJobReady(client, expected, run, 'Quick development checks'))
+        const buildReady = !checkBuild || Boolean(producerJob)
+        const quickReady = !checkQuick || producerJobReady(jobs, run, 'Quick development checks')
         if (!buildReady || !quickReady) continue
+        if (afterMacPythonStart) {
+          const pythonJob = producerJobReady(jobs, run, 'Python 3.14 on macos-15', {
+            acceptMacAllocation: true,
+          })
+          if (!pythonJob) continue
+          console.error(`Mac Python job ${pythonJob.id} has started before native allocation`)
+        }
         if (producerTimeoutSeconds) {
           if (now() >= producerDeadline)
             throw new Error(
@@ -353,9 +381,9 @@ export async function acquireCandidate({
           ? 'Canonical CI candidate producer was not ready before the producer deadline'
           : 'Canonical CI candidate was not available before the acquisition deadline',
       )
-    await sleep(
-      Math.min(deadline === undefined ? 30000 : 10000, Math.max(1, phaseDeadline - now())),
-    )
+    const fastPoll =
+      deadline !== undefined || (afterMacPythonStart && now() - producerStarted < 60_000)
+    await sleep(Math.min(fastPoll ? 10_000 : 30_000, Math.max(1, phaseDeadline - now())))
   }
 }
 
@@ -474,15 +502,21 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       !options.source
     )
       throw new Error(
-        'Use acquire OUTPUT --source SHA [--producer-run ID] [--after-quick true|false] [--producer-timeout-seconds N] [--timeout-seconds N] or acquire-linux OUTPUT --source SHA --qualification-output DIR [--linux-run ID]',
+        'Use acquire OUTPUT --source SHA [--producer-run ID] [--after-quick true|false] [--after-mac-python-start true|false] [--producer-timeout-seconds N] [--timeout-seconds N] or acquire-linux OUTPUT --source SHA --qualification-output DIR [--linux-run ID]',
       )
     if (options['after-quick'] !== undefined && !['true', 'false'].includes(options['after-quick']))
       throw new Error('--after-quick must be true or false')
     const afterQuick = options['after-quick'] === 'true'
+    const macPythonStart = options['after-mac-python-start']
+    if (macPythonStart !== undefined && !['true', 'false'].includes(macPythonStart))
+      throw new Error('--after-mac-python-start must be true or false')
+    const afterMacPythonStart = macPythonStart === 'true'
     if (positional[0] === 'acquire-linux' && options['producer-timeout-seconds'] !== undefined)
       throw new Error('--producer-timeout-seconds applies only to canonical candidate acquisition')
     if (positional[0] === 'acquire-linux' && afterQuick)
       throw new Error('--after-quick applies only to canonical candidate acquisition')
+    if (positional[0] === 'acquire-linux' && afterMacPythonStart)
+      throw new Error('--after-mac-python-start applies only to canonical candidate acquisition')
     // Reject empty or malformed timeout operands before contacting GitHub.
     for (const key of ['timeout-seconds', 'producer-timeout-seconds']) {
       const value = options[key]
@@ -517,6 +551,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         timeoutSeconds: Number(options['timeout-seconds'] ?? 90),
         producerTimeoutSeconds: Number(options['producer-timeout-seconds'] ?? 0),
         afterQuick,
+        afterMacPythonStart,
       })
     if (options['github-output'])
       await appendFile(

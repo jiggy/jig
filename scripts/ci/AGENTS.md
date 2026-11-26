@@ -232,17 +232,22 @@ They consume frozen package exports with tracked test helpers and installed
   the selected producer.
 
   Producer readiness has one absolute deadline, including job queues.
-  Missing, queued or running jobs poll every 30 seconds. Failed, skipped,
-  duplicate, stale or completed-but-missing proof refuses immediately. Strict
-  hosted Mac runs also require `Quick development checks` success through
+  Missing, queued or running jobs poll every 30 seconds. PR Mac preparation
+  starts with 10-second polls for the first minute. It waits for the required
+  macOS Python job in the same CI run to acquire a runner or complete
+  successfully.
+
+  Failed, skipped, duplicate, stale or completed-but-missing proof refuses
+  immediately. Strict hosted Mac runs also require
+  `Quick development checks` success through
   `--after-quick true`. Main/manual runs require current-attempt success.
 
   Readiness pins the workflow run and current attempt, selected build job ID
   and producer attempt before artifact transfer. A later producer change refuses
   acquisition. Transfer retains its separate 300-second Linux and Mac PR or
   600-second strict Mac maximum and 10-second polling. Other callers retain their existing
-  bounds without producer waiting. These prerequisites grant no qualification
-  and do not wait for unrelated source or Python work.
+  bounds without producer waiting. Runner assignment grants no test evidence.
+  The required CI aggregate verifies the completed Python profile separately.
 
 - `release-readiness.mjs` rechecks all current-attempt CI, Linux, hosted Mac and
   native obligations after completion events. Qualification receipts bind the

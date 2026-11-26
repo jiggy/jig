@@ -426,8 +426,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Different observed patch builds may contribute coverage within one required major.
   This union establishes the ARM behavior contract, rather than independently certifying each observed build.
 
-  One Ubuntu preparation job acquires canonical inputs as soon as their PR
-  producer succeeds. The required CI aggregate independently requires Quick
+  One Ubuntu preparation job waits for the canonical PR build and lets the
+  required macOS Python job acquire a runner before requesting native workers.
+  The required CI aggregate independently verifies completed Python and Quick
   checks. Strict Mac runs wait for Quick checks before acquiring inputs.
   Every worker downloads the prepared artifact by immutable ID.
   Workers verify canonical provenance before execution and compare archive hashes afterward.

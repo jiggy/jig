@@ -85,8 +85,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |-
           set -eu
-          set -- --timeout-seconds 300
-          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            set -- --after-mac-python-start true --timeout-seconds 300
+          else
             set -- --after-quick true --timeout-seconds 600
           fi
           node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --producer-timeout-seconds 1800 "$@"
