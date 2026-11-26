@@ -727,7 +727,7 @@ test('PR scheduling binds the Quick head to the producer metadata rather than it
   })
 })
 
-test('PR Mac preparation gives Python the first Mac allocation in the same CI run', async () => {
+test('PR Mac preparation acquires the exact candidate while Python is still queued', async () => {
   const ci = run(100, 'pull_request', { head_sha: prHead, head_branch: 'feature' })
   await withFixture([ci], async (fixture) => {
     const expected = {
@@ -741,79 +741,34 @@ test('PR Mac preparation gives Python the first Mac allocation in the same CI ru
     const python = quickJob(ci, {
       id: 10002,
       name: 'Python 3.14 on macos-15',
+      status: 'queued',
       conclusion: null,
     })
-    const assigned = {
-      ...python,
-      status: 'in_progress',
-      runner_id: 42,
-      runner_name: 'GitHub Actions 42',
-      started_at: '2026-11-25T10:55:23Z',
-      labels: ['macos-15'],
-    }
-    const observations = [
-      { ...python, status: 'queued' },
-      { ...assigned, runner_id: null, runner_name: '' },
-      { ...assigned, labels: ['ubuntu-24.04'] },
-      assigned,
-    ]
-    let clock = Date.now()
+    let clock = 0
     let polls = 0
-    fixture.jobsByRun.set(ci.id, [buildJob(ci), observations[0]])
+    fixture.jobsByRun.set(ci.id, [buildJob(ci, { status: 'queued', conclusion: null }), python])
     const acquired = await acquireCandidate({
       destination: join(fixture.temporary, 'mac-pr'),
       sourceRevision: source,
       expected,
       client: fixture.client,
       extract: fixture.extract,
-      afterMacPythonStart: true,
       producerTimeoutSeconds: 40,
       now: () => clock,
       sleep: async (milliseconds) => {
         assert.deepEqual(fixture.requestedArtifacts, [])
         assert.equal(milliseconds, 10_000)
         clock += milliseconds
-        fixture.jobsByRun.set(ci.id, [buildJob(ci), observations[++polls]])
+        if (++polls === 2) fixture.jobsByRun.set(ci.id, [buildJob(ci), python])
       },
     })
-    assert.equal(polls, 3)
+    assert.equal(polls, 2)
+    assert.equal(python.status, 'queued')
     assert.equal(acquired.artifactId, 1000)
   })
 })
 
-test('PR Mac preparation accepts completed Python and refuses failed or foreign Python evidence', async () => {
-  const ci = run(100, 'pull_request', { head_sha: prHead, head_branch: 'feature' })
-  await withFixture([ci], async (fixture) => {
-    const expected = {
-      repository,
-      workflowPath,
-      event: 'pull_request',
-      headSha: prHead,
-      headBranch: 'feature',
-      headRepository: repository,
-    }
-    const acquire = () =>
-      acquireCandidate({
-        destination: join(fixture.temporary, 'mac-pr'),
-        sourceRevision: source,
-        expected,
-        client: fixture.client,
-        extract: fixture.extract,
-        afterMacPythonStart: true,
-        producerTimeoutSeconds: 10,
-      })
-    const python = quickJob(ci, { id: 10002, name: 'Python 3.14 on macos-15' })
-    fixture.jobsByRun.set(ci.id, [buildJob(ci), { ...python, conclusion: 'failure' }])
-    await assert.rejects(acquire(), /Python 3\.14 on macos-15 did not succeed/)
-    fixture.jobsByRun.set(ci.id, [buildJob(ci), { ...python, head_sha: source }])
-    await assert.rejects(acquire(), /identity mismatch/)
-    assert.deepEqual(fixture.requestedArtifacts, [])
-    fixture.jobsByRun.set(ci.id, [buildJob(ci), python])
-    assert.equal((await acquire()).artifactId, 1000)
-  })
-})
-
-test('PR Mac hosts wait for Python allocation and strict hosts wait for Quick', async () => {
+test('PR Mac hosts acquire as soon as the canonical build passes and strict hosts wait for Quick', async () => {
   const workflow = parse(
     await readFile(
       new URL('../../.github/workflows/macos-hosted-candidates.yml', import.meta.url),
@@ -826,7 +781,7 @@ test('PR Mac hosts wait for Python allocation and strict hosts wait for Quick', 
   )
   assert.match(
     acquire.run,
-    /if \[ "\$GITHUB_EVENT_NAME" = pull_request \]; then\s+set -- --after-mac-python-start true --timeout-seconds 300\s+else\s+set -- --after-quick true --timeout-seconds 600\s+fi/,
+    /if \[ "\$GITHUB_EVENT_NAME" = pull_request \]; then\s+set -- --timeout-seconds 300\s+else\s+set -- --after-quick true --timeout-seconds 600\s+fi/,
   )
   assert.match(acquire.run, /--source "\$GITHUB_SHA" --producer-timeout-seconds 1800 "\$@"/)
   const upload = acquisition.steps.find((step) => step.id === 'prepared-artifacts')

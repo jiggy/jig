@@ -151,6 +151,12 @@ preparation never becomes a consumer requirement.
   Separate runs with and without retries. Measure from original workflow creation
   through observed completion, without claiming exact push or merge-ready latency.
 
+  The required-check report measures time from the first workflow creation to
+  successful CI, Linux and Mac checks. Both host preparation jobs must be observed
+  for the full-qualification cohort. Omitted and unverified scope counts remain visible.
+  Unselected candidate failures affect the workflow report, while the required-check
+  report uses the observed final gate results.
+
   Earlier successful jobs retained in the latest history supply observed runner
   time only. Receipt acceptance and hypothetical latency savings remain unproved.
   Copied successful checks contribute no execution time. Their unique observed
@@ -234,10 +240,9 @@ They consume frozen package exports with tracked test helpers and installed
   the selected producer.
 
   Producer readiness has one absolute deadline, including job queues.
-  Missing, queued or running jobs poll every 30 seconds. PR Mac preparation
-  starts with 10-second polls for the first minute. It waits for the required
-  macOS Python job in the same CI run to acquire a runner or complete
-  successfully.
+  Missing, queued or running jobs poll every 30 seconds. Bounded PR producer
+  waits poll every 10 seconds for the first minute. Mac preparation and the
+  installed Python check proceed independently.
 
   Failed, skipped, duplicate, stale or completed-but-missing proof refuses
   immediately. Strict hosted Mac runs also require

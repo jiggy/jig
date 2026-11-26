@@ -11,6 +11,19 @@ export const PERFORMANCE_WORKFLOWS = Object.freeze([
   '.github/workflows/linux-host-conformance.yml',
   '.github/workflows/macos-hosted-candidates.yml',
 ])
+const PR_GATE_JOBS = {
+  [PERFORMANCE_WORKFLOWS[0]]: { gate: 'test' },
+  [PERFORMANCE_WORKFLOWS[1]]: {
+    gate: 'affected-linux',
+    scope: 'Determine linux host scope',
+    inputs: 'Acquire canonical linux host artifacts',
+  },
+  [PERFORMANCE_WORKFLOWS[2]]: {
+    gate: 'affected-macos',
+    scope: 'Determine macos host scope',
+    inputs: 'Prepare Mac inputs',
+  },
+}
 const MAX_RUNS = 1000
 const MAX_ATTEMPTS = 10
 const MAX_REQUESTS = 200
@@ -113,15 +126,14 @@ function summarize(values) {
   }
 }
 
-function summarizePrEnvelopes(envelopes) {
+function summarizePrEnvelopes(envelopes, elapsedField = 'threeWorkflowEnvelopeSeconds') {
   const selected = envelopes.filter((envelope) => envelope.event === 'pull_request')
   const outcomes = { success: 0, failed: 0, cancelled: 0, incomplete: 0, ambiguous: 0 }
   for (const envelope of selected) outcomes[envelope.outcome]++
   const successful = selected.filter((envelope) => envelope.outcome === 'success')
   const durations = (rows) => ({
-    ...summarize(rows.map((row) => row.threeWorkflowEnvelopeSeconds)),
-    overBudgetCount: rows.filter((row) => row.threeWorkflowEnvelopeSeconds > PR_BUDGET_SECONDS)
-      .length,
+    ...summarize(rows.map((row) => row[elapsedField])),
+    overBudgetCount: rows.filter((row) => row[elapsedField] > PR_BUDGET_SECONDS).length,
   })
   return {
     budgetSeconds: PR_BUDGET_SECONDS,
@@ -130,6 +142,68 @@ function summarizePrEnvelopes(envelopes) {
     successful: durations(successful),
     successfulFirstAttempts: durations(successful.filter((row) => !row.hasRetries)),
     successfulWithRetries: durations(successful.filter((row) => row.hasRetries)),
+  }
+}
+
+function observePrGate(workflow, latestJobs) {
+  const { gate, scope, inputs } = PR_GATE_JOBS[workflow]
+  const required = latestJobs.get(gate)
+  const scopeJob = latestJobs.get(scope)
+  const inputJob = latestJobs.get(inputs)
+  return {
+    gate:
+      required && !required.carriedExecution
+        ? { id: required.id, conclusion: required.conclusion, completedAt: required.completedAt }
+        : null,
+    // Preparation is conditional on the host scope job's full-qualification decision.
+    hostScope:
+      scopeJob?.conclusion === 'success' && !scopeJob.carriedExecution && inputJob
+        ? inputJob.conclusion === 'skipped'
+          ? 'omitted'
+          : inputJob.jobQueueSeconds !== null
+            ? 'full'
+            : 'unverified'
+        : 'unverified',
+  }
+}
+
+function prGateEnvelope(group, { duplicate, complete }) {
+  const hosts = group.filter((run) => run.workflow !== PERFORMANCE_WORKFLOWS[0])
+  const hostScope =
+    !duplicate && hosts.some((run) => run.prGate.hostScope === 'omitted')
+      ? 'omitted'
+      : !duplicate && hosts.length === 2 && hosts.every((run) => run.prGate.hostScope === 'full')
+        ? 'full'
+        : 'unverified'
+  const gates = group.map((run) => run.prGate.gate)
+  const successful =
+    complete && gates.every((gate) => gate?.conclusion === 'success' && gate.completedAt)
+  const conclusions = group.map((run, index) => gates[index]?.conclusion ?? run.conclusion)
+  const failed = conclusions.some((conclusion) =>
+    ['failure', 'timed_out', 'startup_failure'].includes(conclusion),
+  )
+  const outcome = duplicate
+    ? 'ambiguous'
+    : successful
+      ? 'success'
+      : failed
+        ? 'failed'
+        : conclusions.includes('cancelled')
+          ? 'cancelled'
+          : 'incomplete'
+  return {
+    hostScope,
+    outcome,
+    requiredGateElapsedSeconds: successful
+      ? seconds(
+          group.map((run) => run.createdAt).sort(timeOrder)[0],
+          gates
+            .map((gate) => gate.completedAt)
+            .sort(timeOrder)
+            .at(-1),
+          'PR required check envelope',
+        )
+      : null,
   }
 }
 
@@ -309,6 +383,7 @@ export function analyzeCiPerformance(snapshot) {
     )
     latestRuns.push({
       ...latest,
+      prGate: run.event === 'pull_request' ? observePrGate(run.path, newest) : null,
       createdAt: run.created_at,
       timeToLatestAttemptSeconds: seconds(
         run.created_at,
@@ -386,6 +461,8 @@ export function analyzeCiPerformance(snapshot) {
       runIds: group.map((run) => run.runId),
       outcome,
       hasRetries: group.some((run) => run.attempt > 1),
+      requiredChecks:
+        first.event === 'pull_request' ? prGateEnvelope(group, { duplicate, complete }) : null,
       reason: !complete
         ? 'missing-or-duplicate-workflow'
         : !successful
@@ -403,6 +480,9 @@ export function analyzeCiPerformance(snapshot) {
         : null,
     }
   })
+  const prGateEnvelopes = envelopes
+    .filter((row) => row.requiredChecks)
+    .map((row) => ({ event: row.event, hasRetries: row.hasRetries, ...row.requiredChecks }))
   return {
     schemaVersion: 1,
     repository,
@@ -411,6 +491,14 @@ export function analyzeCiPerformance(snapshot) {
     workflowSummaries,
     envelopes,
     prEnvelopeSummary: summarizePrEnvelopes(envelopes),
+    prRequiredChecksSummary: {
+      omittedHostScope: prGateEnvelopes.filter((row) => row.hostScope === 'omitted').length,
+      unverifiedHostScope: prGateEnvelopes.filter((row) => row.hostScope === 'unverified').length,
+      ...summarizePrEnvelopes(
+        prGateEnvelopes.filter((row) => row.hostScope === 'full'),
+        'requiredGateElapsedSeconds',
+      ),
+    },
     attempts,
     latestRuns,
     notes: [
@@ -584,6 +672,7 @@ export function performanceMarkdown(report) {
       .replace(/[\r\n]/g, ' ')
   const minutes = (value) => (value === null ? '—' : (value / 60).toFixed(1))
   const pr = report.prEnvelopeSummary
+  const gates = report.prRequiredChecksSummary
   return [
     '## CI performance observations',
     '',
@@ -629,6 +718,20 @@ export function performanceMarkdown(report) {
     '',
     'Rerun timing includes the earlier attempts and the wait before retry. A cancelled run is never a fast success.',
     'Breach counts use unrounded seconds. Exactly 25 minutes remains within budget.',
+    '',
+    '### Required checks on full-qualification PRs',
+    '',
+    'Elapsed time runs from the earliest workflow creation until the CI, Linux and macOS gates pass. It includes runner waits and retains the original start on retries.',
+    'A full host scope requires observed preparation in both host workflows. Event heads still require a separate check for tested merge identity.',
+    `Observed full-qualification groups: ${gates.groupCount}. Omitted host scope: ${gates.omittedHostScope}. Unverified host scope: ${gates.unverifiedHostScope}.`,
+    '',
+    '| Gate outcomes | Passed | Failed | Cancelled | Incomplete | Retried passes |',
+    '| --- | ---: | ---: | ---: | ---: | ---: |',
+    `| Full qualification | ${gates.outcomes.success} | ${gates.outcomes.failed} | ${gates.outcomes.cancelled} | ${gates.outcomes.incomplete} | ${gates.successfulWithRetries.count} |`,
+    '',
+    '| Passing full-qualification PRs | Median minutes | P90 minutes | Over 25 minutes |',
+    '| ---: | ---: | ---: | ---: |',
+    `| ${gates.successful.count} | ${minutes(gates.successful.medianSeconds)} | ${minutes(gates.successful.p90Seconds)} | ${gates.successful.overBudgetCount} |`,
     '',
     `Measured ${report.latestRuns.length} runs and ${report.attempts.length} attempts.`,
     'JSON retains individual job queues, release offsets, pre-job delay and execution intervals.',

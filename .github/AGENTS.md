@@ -251,6 +251,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   It uses repository and Actions read permission without builds, native
   allocation or publication.
+  The report tracks median and P90 time to green for full-qualification PRs.
   Retain its JSON metadata and Markdown observations for fourteen days.
   Collection preserves the qualification API reserve and requires complete
   coverage for the reported interval.
@@ -433,10 +434,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Different observed patch builds may contribute coverage within one required major.
   This union establishes the ARM behavior contract, rather than independently certifying each observed build.
 
-  One Ubuntu preparation job waits for the canonical PR build and lets the
-  required macOS Python job acquire a runner before requesting native workers.
-  The required CI aggregate independently verifies completed Python and Quick
-  checks. Strict Mac runs wait for Quick checks before acquiring inputs.
+  One Ubuntu preparation job waits for the canonical PR build before requesting
+  native workers. The native Mac workers and the required macOS Python check
+  request runners independently. The CI aggregate verifies completed Python and
+  Quick checks. Strict Mac runs wait for Quick checks before acquiring inputs.
+
   Every worker downloads the prepared artifact by immutable ID.
   Workers verify canonical provenance before execution and compare archive hashes afterward.
   Complete reports, confirmed cleanup, and unchanged input identity remain mandatory.

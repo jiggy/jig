@@ -86,7 +86,7 @@ jobs:
         run: |-
           set -eu
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            set -- --after-mac-python-start true --timeout-seconds 300
+            set -- --timeout-seconds 300
           else
             set -- --after-quick true --timeout-seconds 600
           fi

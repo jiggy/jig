@@ -80,6 +80,27 @@ function workflowGroup(idBase, elapsedSeconds = 600, event = 'pull_request') {
   })
 }
 
+function requiredGateGroup(idBase, elapsedSeconds = 600) {
+  const runs = workflowGroup(idBase, elapsedSeconds)
+  const gates = ['test', 'affected-linux', 'affected-macos']
+  const preparations = [
+    ['Determine linux host scope', 'Acquire canonical linux host artifacts'],
+    ['Determine macos host scope', 'Prepare Mac inputs'],
+  ]
+  for (const [index, { run, attempts }] of runs.entries()) {
+    attempts[0].jobs[0].name = gates[index]
+    for (const [offset, name] of (preparations[index - 1] ?? []).entries()) {
+      attempts[0].jobs.push(
+        job(idBase * 10 + 3 + index * 2 + offset, name, 1, {
+          run_id: run.id,
+          head_sha: run.head_sha,
+        }),
+      )
+    }
+  }
+  return runs
+}
+
 test('workflow waiting, job queue, release offsets and concurrent work remain separate observations', () => {
   const run = entry()
   run.attempts[0].jobs.push(
@@ -706,7 +727,7 @@ test('PR timing quantiles and maximum use successful envelopes rather than summe
 })
 
 test('successful retry envelopes retain the original creation time and preceding unsuccessful attempt', () => {
-  const runs = workflowGroup(200)
+  const runs = requiredGateGroup(200)
   const retried = runs[2]
   retried.run.run_attempt = 2
   retried.attempts[0].conclusion = retried.attempts[0].jobs[0].conclusion = 'failure'
@@ -715,7 +736,7 @@ test('successful retry envelopes retain the original creation time and preceding
     startedAt: stamp(1800),
     conclusion: 'success',
     jobs: [
-      job(2030, 'host', 2, {
+      job(2030, 'affected-macos', 2, {
         run_id: retried.run.id,
         head_sha: retried.run.head_sha,
         created_at: stamp(1810),
@@ -727,6 +748,8 @@ test('successful retry envelopes retain the original creation time and preceding
   const report = analyzeCiPerformance(snapshot(runs))
   assert.equal(report.envelopes[0].hasRetries, true)
   assert.equal(report.envelopes[0].threeWorkflowEnvelopeSeconds, 1860)
+  assert.equal(report.envelopes[0].requiredChecks.requiredGateElapsedSeconds, 1860)
+  assert.equal(report.prRequiredChecksSummary.successfulWithRetries.medianSeconds, 1860)
   assert.equal(report.latestRuns[2].elapsedSeconds, 60)
   assert.equal(report.attempts[2].conclusion, 'failure')
   assert.equal(report.prEnvelopeSummary.successfulFirstAttempts.count, 0)
@@ -741,6 +764,69 @@ test('successful retry envelopes retain the original creation time and preceding
   assert.ok(
     performanceMarkdown(report).includes('| After reruns | 1 | 31.0 | 31.0 | 31.0 | 31.0 | 1 |'),
   )
+})
+
+test('full qualification timing ends at the required checks and retains nonpassing runs', () => {
+  const fast = requiredGateGroup(410)
+  const mac = fast[2]
+  mac.run.conclusion = mac.attempts[0].conclusion = 'failure'
+  mac.attempts[0].jobs.push(
+    job(4110, 'Unused Mac candidate', 1, {
+      run_id: mac.run.id,
+      head_sha: mac.run.head_sha,
+      completed_at: stamp(1800),
+      conclusion: 'cancelled',
+    }),
+  )
+  const slower = requiredGateGroup(420, 1501)
+  const failed = requiredGateGroup(430)
+  failed[0].run.conclusion = failed[0].attempts[0].conclusion = 'failure'
+  failed[0].attempts[0].jobs[0].conclusion = 'failure'
+  const cancelled = requiredGateGroup(440)
+  cancelled[2].run.conclusion = cancelled[2].attempts[0].conclusion = 'cancelled'
+  cancelled[2].attempts[0].jobs[0].conclusion = 'cancelled'
+  const omitted = requiredGateGroup(450)
+  omitted[2].attempts[0].jobs.at(-1).conclusion = 'skipped'
+  const unverified = requiredGateGroup(460)
+  unverified[2].attempts[0].jobs.pop()
+  const incomplete = requiredGateGroup(470).slice(1)
+  const report = analyzeCiPerformance(
+    snapshot([
+      ...fast,
+      ...slower,
+      ...failed,
+      ...cancelled,
+      ...omitted,
+      ...unverified,
+      ...incomplete,
+    ]),
+  )
+  assert.equal(report.envelopes[0].outcome, 'failed')
+  assert.deepEqual(report.envelopes[0].requiredChecks, {
+    hostScope: 'full',
+    outcome: 'success',
+    requiredGateElapsedSeconds: 600,
+  })
+  const gates = report.prRequiredChecksSummary
+  assert.equal(gates.groupCount, 5)
+  assert.equal(gates.omittedHostScope, 1)
+  assert.equal(gates.unverifiedHostScope, 1)
+  assert.deepEqual(gates.outcomes, {
+    success: 2,
+    failed: 1,
+    cancelled: 1,
+    incomplete: 1,
+    ambiguous: 0,
+  })
+  assert.deepEqual(gates.successful, {
+    count: 2,
+    medianSeconds: 1050.5,
+    p90Seconds: 1501,
+    p95Seconds: 1501,
+    maxSeconds: 1501,
+    overBudgetCount: 1,
+  })
+  assert.match(performanceMarkdown(report), /Required checks on full-qualification PRs/)
 })
 
 test('a window without PR successes reports empty timing without a fast-success fallback', () => {
