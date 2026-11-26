@@ -33,6 +33,7 @@ export const NOOP_STEP_NAMES = Object.freeze([
 export const selectorJobName = (shard) => `Select PR Mac worker — shard ${shard}`
 const maximumArchiveBytes = 16384
 const maximumRecordBytes = 4096
+const maximumPublicationClockSkewMs = 5000
 const positive = (value) => Number.isSafeInteger(value) && value > 0
 const revision = (value) => /^[a-f0-9]{40}$/.test(value ?? '')
 const sha256 = (value) => /^[a-f0-9]{64}$/.test(value ?? '')
@@ -216,13 +217,15 @@ function boundedRead(path, maximum) {
 }
 async function readRecord(client, artifact, context, name, file, now) {
   verifyArtifactMetadata(artifact, { name, runId: context.runId, headSha: context.headSha, now })
+  const created = Date.parse(artifact.created_at)
   if (
     !positive(artifact.size_in_bytes) ||
     artifact.size_in_bytes > maximumArchiveBytes ||
-    !Number.isFinite(Date.parse(artifact.created_at)) ||
-    Date.parse(artifact.created_at) > now
+    !Number.isFinite(created) ||
+    created - now > maximumPublicationClockSkewMs
   )
     throw new Error('Invalid or oversized Mac decision artifact')
+  if (created > now) throw pending('GitHub artifact publication is ahead of the runner clock')
   const temporary = await mkdtemp(join(tmpdir(), 'jig-mac-decision-'))
   try {
     const directory = join(temporary, 'record')

@@ -375,6 +375,23 @@ test('transport, expired metadata, foreign inputs, oversized expansion and unsaf
   )
 })
 
+test('already listed Mac decisions wait for a small publication clock difference', async (t) => {
+  const s = await store(t)
+  const { artifact } = await s.decision()
+  const jobs = [job(), selector()]
+  const created = Date.parse(artifact.created_at)
+  await assert.rejects(
+    readMacDecisionArtifact(s.client, artifact, context, { jobs, now: created - 250 }),
+    { code: 'MAC_RACE_PENDING' },
+  )
+  await assert.rejects(
+    readMacDecisionArtifact(s.client, artifact, context, { jobs, now: created - 6000 }),
+    /Invalid or oversized Mac decision artifact/,
+  )
+  const accepted = await readMacDecisionArtifact(s.client, artifact, context, { jobs, now: created })
+  assert.equal(accepted.artifact.id, artifact.id)
+})
+
 test('a fixed failed Mac never hands off to the other ready candidate', async (t) => {
   const s = await store(t),
     result = await s.decision(),

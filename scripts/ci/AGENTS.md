@@ -391,6 +391,8 @@ They consume frozen package exports with tracked test helpers and installed
   Artifact names do not provide mutual exclusion. Duplicate decisions, unverified transport and mismatched identities refuse.
 
   A listed artifact may not yet have a readable archive. Transient archive reads remain pending under the original observation deadline.
+  A publication timestamp up to five seconds ahead of the runner clock stays pending until the runner catches up. A larger discrepancy fails.
+
   API transport retries allow at most three reads with one-second backoff. Authorization, record, digest and identity failures remain fatal.
   Offer selection and worker decision resolution start with three waits of 15
   seconds, then use the ordinary one-minute cadence.
