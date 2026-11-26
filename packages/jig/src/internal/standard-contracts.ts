@@ -8,6 +8,7 @@ import { markdownAgentContract } from './markdown-agent-contract.js'
 import { CHILD_CHECKPOINT_CONTRACT_DIGEST } from './private-child-checkpoint.js'
 import { FINITE_ACP_CONTRACT_DIGEST } from './private-finite-acp-contract.js'
 import { HTTP_REQUEST_CONTRACT_DIGEST } from './private-http-request.js'
+import { OFFLINE_TOOL_CONTRACT_DIGEST } from './private-offline-tool.js'
 import { PROJECT_COMMAND_CONTRACT_DIGEST } from './private-project-command.js'
 import { PROJECT_EVALUATION_CONTRACT_DIGEST } from './private-project-evaluation.js'
 import { RUN_CHECKPOINT_CONTRACT_DIGEST } from './private-run-checkpoint.js'
@@ -15,6 +16,13 @@ import { RUN_CHECKPOINT_CONTRACT_DIGEST } from './private-run-checkpoint.js'
 /** Installed agreements only: names never select implementations or grant authority. */
 export const JIG_STANDARD_CONTRACTS = Object.freeze(
   [
+    {
+      name: 'offline-tool',
+      kind: 'invocation',
+      file: 'contract.json',
+      digest: OFFLINE_TOOL_CONTRACT_DIGEST,
+      description: 'Run a reviewed offline tool on held files and collect its output.',
+    },
     {
       name: 'project-evaluation',
       kind: 'invocation',

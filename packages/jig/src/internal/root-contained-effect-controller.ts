@@ -2,6 +2,7 @@ import { CheckError } from '../diagnostics.js'
 import { decodeJson1, JSON_1_LIMITS, type JsonObject, type JsonValue } from '../json.js'
 import type { ProjectCommand } from '../project/commands.js'
 import type { GrantPolicy, HttpGrant } from '../project/grants.js'
+import { OFFLINE_TOOL_LIMITS, type OfflineTool } from '../project/offline-tool.js'
 import type { RunHostCall, RunHostOperationTerminal, WireFailureCode } from '../run/session.js'
 import { RunHostFatalOperationError } from '../run/session.js'
 import {
@@ -13,6 +14,11 @@ import {
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
 } from './activation-admission-store.js'
+import {
+  type PrivateCapturedOutput,
+  PrivateOutputProfileError,
+  privateCapturedOutputManifestDigest,
+} from './captured-output.js'
 import type { PrivateFileLocation } from './descriptor-files.js'
 import {
   type PrivateDirectRunInstalledSupport,
@@ -44,7 +50,18 @@ import {
   privateExecutionFileProjections,
   privateExecutionPath,
 } from './execution-intent.js'
-import type { PrivateFlowFileContext } from './flow-file-context.js'
+import {
+  closePrivateExecutionOutput,
+  isPrivateOutputRetirementUnconfirmed,
+  type PrivateExecutionOutput,
+} from './execution-output.js'
+import {
+  capturePrivateFlowArtifact,
+  commitPrivateFlowArtifact,
+  privateFlowArtifactExecutionProjection,
+  type PrivateFlowFileContext,
+  resolvePrivateFlowArtifact,
+} from './flow-file-context.js'
 import { httpCredential, httpRequestProxy, type PrivateHttpGrants } from './http-grants.js'
 import { HTTP_REQUEST_PROXY_HINT } from './http-request-proxy.js'
 import { privateDomainDigest } from './identity.js'
@@ -67,6 +84,7 @@ import {
   parseHttpRequest,
   parseHttpWorkerResult,
 } from './private-http-request.js'
+import { OFFLINE_TOOL_CONTRACT_DIGEST } from './private-offline-tool.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 import { privateProfileSpan } from './private-profile.js'
 import {
@@ -83,6 +101,7 @@ import {
 
 const KIND = 'private-contained-effect-owner/1'
 const ROOT = '/jig-input/project'
+type EffectKind = 'command' | 'http' | 'tool'
 export type PrivateContainedEffectFailurePhase =
   | 'preparation'
   | 'sealing'
@@ -111,7 +130,8 @@ import {
 
 interface Allocation {
   readonly kind: typeof KIND
-  readonly effect: 'project-command' | 'http-request'
+  readonly effect: 'project-command' | 'http-request' | 'offline-tool'
+  readonly effectMemoryBytes?: number
   readonly parentRunId: string
   readonly coordinatorEpoch: number
   readonly operationId: string
@@ -140,6 +160,7 @@ export async function executePrivateContainedEffect(
     route.grant === undefined ||
     !(
       (route.native === 'project-command' && isProjectCommandContract(route.contract)) ||
+      (route.native === 'offline-tool' && route.contract.digest === OFFLINE_TOOL_CONTRACT_DIGEST) ||
       (route.native === 'http-request' && route.contract.digest === HTTP_REQUEST_CONTRACT_DIGEST)
     )
   )
@@ -148,19 +169,49 @@ export async function executePrivateContainedEffect(
   let prepared:
     | { kind: 'command'; value: PreparedProjectCommand }
     | { kind: 'http'; value: PreparedHttpRequest }
+    | { kind: 'tool'; value: { grant: OfflineTool; inputDigest: string } }
+  let toolInput: PrivateCapturedOutput | undefined
+  let toolProjection: ReturnType<typeof privateFlowArtifactExecutionProjection> | undefined
   let httpInput: string | undefined
   let bearer: string | undefined
   try {
-    prepared =
-      route.grant.kind === 'command'
-        ? {
-            kind: 'command',
-            value: parseProjectCommandInput(input.call.input, commandPolicy(route.grant)),
-          }
-        : {
-            kind: 'http',
-            value: parseHttpRequest(input.call.input, httpPolicy(route.grant)),
-          }
+    if (route.grant.kind === 'tool') {
+      const attachments = input.call.attachments
+      if (
+        input.files === undefined ||
+        input.call.input === null ||
+        typeof input.call.input !== 'object' ||
+        Array.isArray(input.call.input) ||
+        Object.keys(input.call.input).length !== 0 ||
+        attachments === undefined ||
+        Object.keys(attachments).sort().join() !== 'deliverables,source' ||
+        !('read' in attachments.source!) ||
+        !('create' in attachments.deliverables!) ||
+        attachments.deliverables.create !== true
+      )
+        throw new TypeError('offline tool requires a held source and fresh deliverables')
+      toolInput = resolvePrivateFlowArtifact(input.files, attachments.source.read)
+      toolProjection = privateFlowArtifactExecutionProjection(
+        input.files,
+        attachments.source.read,
+        'source',
+      )
+      prepared = {
+        kind: 'tool',
+        value: { grant: route.grant, inputDigest: privateCapturedOutputManifestDigest(toolInput) },
+      }
+    } else {
+      prepared =
+        route.grant.kind === 'command'
+          ? {
+              kind: 'command',
+              value: parseProjectCommandInput(input.call.input, commandPolicy(route.grant)),
+            }
+          : {
+              kind: 'http',
+              value: parseHttpRequest(input.call.input, httpPolicy(route.grant)),
+            }
+    }
     if (prepared.kind === 'http') {
       bearer = httpCredential(input.httpGrants, prepared.value.grant)
       let proxy: string | undefined
@@ -174,7 +225,9 @@ export async function executePrivateContainedEffect(
   } catch {
     return failed(
       'INVALID_INPUT',
-      'supply valid bounded input for an admitted command or HTTP resource',
+      route.native === 'offline-tool'
+        ? 'supply empty input, a held source artifact and fresh deliverables'
+        : 'supply valid bounded input for an admitted command or HTTP resource',
     )
   }
 
@@ -198,10 +251,15 @@ export async function executePrivateContainedEffect(
       revalidatePrivateInstalledBunSupport(input.installedSupport),
     )
   } catch {
+    if (input.signal.aborted) return failed('CANCELLED', 'the contained operation was cancelled')
     return failed('UNAVAILABLE', 'the admitted contained-operation runtime cannot be reproduced')
   }
   const operationTimeoutMs =
-    prepared.kind === 'http' ? prepared.value.grant.timeoutMs : PROJECT_COMMAND_LIMITS.timeoutMs
+    prepared.kind === 'http'
+      ? prepared.value.grant.timeoutMs
+      : prepared.kind === 'tool'
+        ? prepared.value.grant.timeoutMs
+        : PROJECT_COMMAND_LIMITS.timeoutMs
   const setupAllowanceMs = privateExecutionSetupAllowance(input.backend)
   const ownDeadlineUnixMs = Date.now() + operationTimeoutMs + setupAllowanceMs
   const effectiveBootDeadline = await privateInvocationBootDeadline(
@@ -253,6 +311,7 @@ export async function executePrivateContainedEffect(
   const allocation: Allocation = {
     kind: KIND,
     effect: route.native as Allocation['effect'],
+    ...(prepared.kind === 'tool' ? { effectMemoryBytes: OFFLINE_TOOL_LIMITS.memoryBytes } : {}),
     parentRunId: input.parent.run.runId,
     coordinatorEpoch: input.parent.run.coordinatorEpoch,
     operationId: input.call.operationId,
@@ -283,7 +342,10 @@ export async function executePrivateContainedEffect(
       })
     } catch (cleanupError) {
       throw new RunHostFatalOperationError(
-        isPrivateExecutionFenceUnconfirmed(cleanupError) ? 'UNCERTAIN' : 'EXECUTION_FAILED',
+        isPrivateExecutionFenceUnconfirmed(cleanupError) ||
+          isPrivateOutputRetirementUnconfirmed(cleanupError)
+          ? 'UNCERTAIN'
+          : 'EXECUTION_FAILED',
         { cause: new AggregateError([error, cleanupError], 'operation allocation cleanup failed') },
       )
     }
@@ -293,6 +355,7 @@ export async function executePrivateContainedEffect(
   }
   const files: { readonly input: PrivateCapturedInput; readonly destination: string }[] = []
   let attempted = false
+  let toolOutput: PrivateExecutionOutput | undefined
   let phase = 'preparing input'
   let failurePhase: PrivateContainedEffectFailurePhase = 'preparation'
   try {
@@ -318,7 +381,17 @@ export async function executePrivateContainedEffect(
               deadlineUnixMs,
               effectiveBootDeadline,
             )
-          : httpPlan(recipe, identity, deadlineUnixMs, effectiveBootDeadline),
+          : prepared.kind === 'tool'
+            ? toolPlan(
+                recipe,
+                input.call.slot,
+                prepared.value.grant,
+                toolProjection!,
+                identity,
+                deadlineUnixMs,
+                effectiveBootDeadline,
+              )
+            : httpPlan(recipe, identity, deadlineUnixMs, effectiveBootDeadline),
         ownerAllocation,
       ),
     )
@@ -335,6 +408,7 @@ export async function executePrivateContainedEffect(
     const component = await privateProfileSpan('contained-effect-launch', () =>
       admitPrivateExecutionOwner(sealed, input.signal),
     )
+    if (prepared.kind === 'tool') toolOutput = component.output
     let workloadDeadline = false
     const workloadTimer =
       setupAllowanceMs === 0
@@ -343,7 +417,8 @@ export async function executePrivateContainedEffect(
             workloadDeadline = true
             void component.terminate().catch(() => undefined)
           }, operationTimeoutMs)
-    const stdin = prepared.kind === 'command' ? (prepared.value.input.stdin ?? '') : httpInput!
+    const stdin =
+      prepared.kind === 'command' ? (prepared.value.input.stdin ?? '') : (httpInput ?? '')
     let observed: Awaited<ReturnType<typeof collectEffect>>
     try {
       phase = 'collecting the worker result'
@@ -358,16 +433,39 @@ export async function executePrivateContainedEffect(
     } finally {
       clearTimeout(workloadTimer)
     }
+    const reason =
+      workloadDeadline && observed.fence.stopReason === 'cancelled'
+        ? 'deadline'
+        : observed.fence.stopReason
+    let toolSnapshot: PrivateCapturedOutput | undefined
+    let toolCaptureRefused = false
+    if (prepared.kind === 'tool') {
+      if (
+        reason === 'payload_exit' &&
+        !input.signal.aborted &&
+        observed.fence.exitCode !== null &&
+        observed.completion.signal === null &&
+        prepared.value.grant.exitCodes.includes(observed.fence.exitCode)
+      ) {
+        try {
+          if (toolOutput === undefined) throw new TypeError('offline tool output custody is absent')
+          toolSnapshot = await capturePrivateFlowArtifact(input.files!, toolOutput, input.signal)
+          if (toolSnapshot.bytes > prepared.value.grant.outputBytes)
+            throw new PrivateOutputProfileError()
+        } catch (error) {
+          if (isPrivateOutputRetirementUnconfirmed(error)) throw error
+          toolCaptureRefused = true
+        }
+      }
+      await closePrivateExecutionOutput(toolOutput)
+      toolOutput = undefined
+    }
     phase = 'fencing and cleanup'
     failurePhase = 'settlement'
     await privateProfileSpan('contained-effect-settlement', () =>
       releaseEffect(input, lifecycle, observed.fence),
     )
     phase = 'checking the collected result'
-    const reason =
-      workloadDeadline && observed.fence.stopReason === 'cancelled'
-        ? 'deadline'
-        : observed.fence.stopReason
     if (!['payload_exit', 'cancelled', 'deadline'].includes(reason)) {
       try {
         input.onFailure?.(
@@ -423,6 +521,57 @@ export async function executePrivateContainedEffect(
         result: { outcome: 'done', output: result.response as unknown as JsonValue },
       }
     }
+    if (prepared.kind === 'tool') {
+      const evidence = {
+        toolDigest: privateDomainDigest('JIG-Offline-Tool-Invocation/1', {
+          installation: recipe.tools[input.call.slot]!.digest,
+          grant: prepared.value.grant,
+        } as unknown as JsonValue),
+        inputDigest: prepared.value.inputDigest,
+        exitCode: observed.fence.exitCode,
+        signal: observed.completion.signal,
+        stopReason: reason === 'payload_exit' ? 'exited' : reason,
+        cleanup: 'complete',
+      }
+      const details = { tool: evidence } as unknown as JsonValue
+      if (input.signal.aborted || reason === 'cancelled')
+        return failed('CANCELLED', 'the offline tool was cancelled', details)
+      if (reason === 'deadline')
+        return failed(
+          'DEADLINE_EXCEEDED',
+          privateContainedWorkerDeadlineMessage('tool', deadlineLimit),
+          details,
+        )
+      if (toolCaptureRefused)
+        return failed(
+          'EXECUTION_FAILED',
+          'offline tool output failed capture; check file and byte limits',
+          details,
+        )
+      if (toolSnapshot === undefined)
+        return failed(
+          'EXECUTION_FAILED',
+          'offline tool exited outside the reviewed status set; check its input and output capacity',
+          details,
+        )
+      return {
+        status: 'succeeded',
+        result: {
+          outcome: 'done',
+          output: {
+            ...evidence,
+            inputFiles: toolInput!.files.map(({ path, bytes, digest }) => ({
+              path,
+              bytes,
+              digest,
+            })),
+            outputDigest: privateCapturedOutputManifestDigest(toolSnapshot),
+            files: toolSnapshot.files.map(({ path, bytes, digest }) => ({ path, bytes, digest })),
+          } as unknown as JsonValue,
+          artifacts: { deliverables: commitPrivateFlowArtifact(input.files!, toolSnapshot) },
+        },
+      }
+    }
     const command = prepared.value
     const value: ProjectCommandResult = Object.freeze({
       candidateDigest: command.candidateDigest,
@@ -455,6 +604,7 @@ export async function executePrivateContainedEffect(
       // Test-only observation cannot change contained operation settlement.
     }
     try {
+      await closePrivateExecutionOutput(toolOutput)
       const row = (await owners(input)).find(
         (row) =>
           row.operationId === input.call.operationId &&
@@ -469,10 +619,15 @@ export async function executePrivateContainedEffect(
         // Test-only observation cannot change contained operation settlement.
       }
       throw new RunHostFatalOperationError(
-        isPrivateExecutionFenceUnconfirmed(cleanupError) ? 'UNCERTAIN' : 'EXECUTION_FAILED',
+        isPrivateExecutionFenceUnconfirmed(cleanupError) ||
+          isPrivateOutputRetirementUnconfirmed(cleanupError)
+          ? 'UNCERTAIN'
+          : 'EXECUTION_FAILED',
         { cause: new AggregateError([error, cleanupError], 'operation cleanup failed') },
       )
     }
+    if (isPrivateOutputRetirementUnconfirmed(error))
+      throw new RunHostFatalOperationError('UNCERTAIN', { cause: error })
     if (input.signal.aborted) return failed('CANCELLED', 'the contained operation was cancelled')
     if (privateBootRemaining(effectiveBootDeadline) <= 0)
       return failed(
@@ -492,23 +647,27 @@ export async function executePrivateContainedEffect(
 
 /** Static diagnostic facts; budget ties favor the root Run's outer authority. */
 export function privateContainedDeadlineLimit(
-  kind: 'command' | 'http',
+  kind: EffectKind,
   rootDeadlineUnixMs: number,
   parentDeadlineUnixMs: number,
   ownDeadlineUnixMs: number,
-): 'root Run' | 'parent Flow' | 'HTTP grant' | 'project command' {
+): 'root Run' | 'parent Flow' | 'HTTP grant' | 'project command' | 'offline tool' {
   const deadline = Math.min(rootDeadlineUnixMs, parentDeadlineUnixMs, ownDeadlineUnixMs)
   if (deadline === rootDeadlineUnixMs) return 'root Run'
   if (deadline === parentDeadlineUnixMs) return 'parent Flow'
-  return kind === 'http' ? 'HTTP grant' : 'project command'
+  return kind === 'http' ? 'HTTP grant' : kind === 'tool' ? 'offline tool' : 'project command'
+}
+
+function effectLabel(kind: EffectKind): 'HTTP request' | 'project command' | 'offline tool' {
+  return kind === 'http' ? 'HTTP request' : kind === 'tool' ? 'offline tool' : 'project command'
 }
 
 export function privateContainedDeadlineMessage(
-  kind: 'command' | 'http',
+  kind: EffectKind,
   limit: ReturnType<typeof privateContainedDeadlineLimit>,
   phase: string,
 ): string {
-  const effect = kind === 'http' ? 'HTTP request' : 'project command'
+  const effect = effectLabel(kind)
   const uncertainty =
     kind === 'http'
       ? 'remote effects may have occurred'
@@ -518,20 +677,20 @@ export function privateContainedDeadlineMessage(
 
 /** The worker's fence establishes that its own deadline stopped execution. */
 export function privateContainedWorkerDeadlineMessage(
-  kind: 'command' | 'http',
+  kind: EffectKind,
   limit: ReturnType<typeof privateContainedDeadlineLimit>,
 ): string {
   return kind === 'http'
     ? `the HTTP request worker stopped at its effective deadline (limited by ${limit}); remote effects may have occurred and no response was proved`
-    : `the project command worker stopped at its effective deadline (limited by ${limit}); cleanup completed but no successful command result was proved`
+    : `the ${effectLabel(kind)} worker stopped at its effective deadline (limited by ${limit}); cleanup completed but no successful ${kind === 'tool' ? 'tool' : 'command'} result was proved`
 }
 
 /** A deadline reached before owner allocation or worker dispatch is conclusive. */
 export function privateContainedDeadlineBeforeDispatchMessage(
-  kind: 'command' | 'http',
+  kind: EffectKind,
   limit: ReturnType<typeof privateContainedDeadlineLimit>,
 ): string {
-  const effect = kind === 'http' ? 'HTTP request' : 'project command'
+  const effect = effectLabel(kind)
   return `the ${effect} did not start before its effective deadline (limited by ${limit}); it was not dispatched`
 }
 
@@ -560,6 +719,43 @@ function httpPlan(
     readOnlyCwd: '/',
     storageBytes: 0,
     maxOutputBytes: JSON_1_LIMITS.bytes + PROJECT_COMMAND_LIMITS.streamBytes,
+  }
+}
+
+function toolPlan(
+  recipe: PrivateDirectRunRecipe,
+  slot: string,
+  grant: OfflineTool,
+  source: ReturnType<typeof privateFlowArtifactExecutionProjection>,
+  identity: string,
+  deadlineUnixMs: number,
+  bootDeadline: PrivateBootDeadline,
+): PrivateExecutionIntent {
+  const runtime = recipe.tools[slot]
+  if (runtime === undefined) throw new TypeError('offline tool runtime was not planned')
+  return {
+    runId: `effect-${identity.slice(0, 40)}`,
+    limits: {
+      ...recipe.resourceCeilings,
+      memoryBytes: OFFLINE_TOOL_LIMITS.memoryBytes,
+      pids: OFFLINE_TOOL_LIMITS.pids,
+      deadlineUnixMs,
+      bootDeadline,
+      cancellationGraceMs: 1000,
+    },
+    projections: [
+      ...privateExecutionFileProjections(recipe.installedSupport.runtimeMounts),
+      ...runtime.projections,
+    ],
+    command: [privateExecutionPath(grant.executable), ...grant.args],
+    environment: { HOME: '/tmp', XDG_CACHE_HOME: '/tmp/cache', TZ: 'UTC', ...grant.environment },
+    network: 'isolated',
+    nestedUserNamespaces: grant.nestedUserNamespaces === true,
+    ...source,
+    output: true,
+    offlineToolOutputBytes: grant.outputBytes,
+    storageBytes: 512 * 1024 * 1024,
+    maxOutputBytes: 16 * 1024 * 1024,
   }
 }
 
@@ -704,7 +900,10 @@ async function releaseEffect(
         route.native === allocation.effect &&
         (route.native === 'project-command'
           ? isProjectCommandContract(route.contract)
-          : route.contract.digest === HTTP_REQUEST_CONTRACT_DIGEST),
+          : route.contract.digest ===
+            (route.native === 'offline-tool'
+              ? OFFLINE_TOOL_CONTRACT_DIGEST
+              : HTTP_REQUEST_CONTRACT_DIGEST)),
     ) ||
     allocation.ownerAllocation.parent !== (await protectedOwnerRoot(input.projectRoot)) ||
     allocation.ownerAllocation.name !== `x-${identity.slice(0, 62)}` ||
@@ -783,6 +982,7 @@ function parseAllocation(row: PrivateRootChildOwnerLifecycle): Allocation {
     'deadlineUnixMs',
     'effectiveBootDeadline',
     'ownerAllocation',
+    ...(value.effect === 'offline-tool' ? ['effectMemoryBytes'] : []),
   ]
   if (
     !value ||
@@ -791,7 +991,9 @@ function parseAllocation(row: PrivateRootChildOwnerLifecycle): Allocation {
     fields.some((field) => !Object.hasOwn(value, field)) ||
     value.kind !== KIND ||
     typeof value.effect !== 'string' ||
-    !['project-command', 'http-request'].includes(value.effect) ||
+    !['project-command', 'http-request', 'offline-tool'].includes(value.effect) ||
+    (value.effect === 'offline-tool' &&
+      value.effectMemoryBytes !== OFFLINE_TOOL_LIMITS.memoryBytes) ||
     value.parentRunId !== row.parentRunId ||
     value.operationId !== row.operationId ||
     typeof value.coordinatorEpoch !== 'number' ||

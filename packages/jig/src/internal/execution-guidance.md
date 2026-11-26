@@ -243,6 +243,16 @@ These links locate module rules. All selected domain requirements still apply.
   still attempts independent endpoint/descriptor release. Confirm retirement
   before indefinite inspection.
 
+### offline-tool-runtime
+
+- The Offline Tool runtime reads only pre-provisioned system-managed Nix store
+  paths. Verify hashes for the complete selected closure and include its exact
+  identity in the execution recipe. The installed launch path must reproduce
+  that identity before dispatch.
+- Use the ordinary held-artifact and contained-effect owners. Capture output
+  after native fencing and grant artifact access after confirmed cleanup.
+  Keep the tool's environment out of the trusted inner launcher.
+
 ### invocation-context
 
 - `invocation-context.ts` owns shared admitted-parent identity and durable

@@ -136,6 +136,7 @@ const resourceLabels: Record<DisplayCompositionResourceKind, string> = {
   'http-request': 'HTTP request',
   'project-command': 'Project command',
   'project-evaluation': 'Project evaluation',
+  'offline-tool': 'Offline tool',
   'finite-acp': 'Agent conversation',
   'run-checkpoint': 'Save checkpoint',
   'child-checkpoint': 'Read child checkpoint',

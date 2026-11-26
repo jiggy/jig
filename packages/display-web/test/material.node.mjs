@@ -328,6 +328,7 @@ test('all native resource kinds have human labels and retain exact kind in their
     ['http-request', 'HTTP request'],
     ['project-command', 'Project command'],
     ['project-evaluation', 'Project evaluation'],
+    ['offline-tool', 'Offline tool'],
     ['finite-acp', 'Agent conversation'],
     ['run-checkpoint', 'Save checkpoint'],
     ['child-checkpoint', 'Read child checkpoint'],

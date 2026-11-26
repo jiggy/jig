@@ -203,6 +203,12 @@ Delivery inspection verifies that raster reservations cannot consume the separat
   qualifications.
 - `experimental/image-preview.test.ts` owns the explicitly opted-in, unqualified
   thread-renderer candidate. It is not part of release qualification.
+- `experimental/offline-tool.test.ts` runs a public CLI consumer for the Linux
+  offline tool candidate. Use a delegated Nix host and set
+  `JIG_OFFLINE_TOOL_TEST_RUNTIME` to a provisioned Nix coreutils root.
+  It checks exact binary delivery, changed and restored inputs, bounded output
+  failure, and a deadline. Browser cancellation and coordinator-loss evidence
+  require separate native trials.
 - `fixtures/` and root `*.fixture.ts` modules own shared construction and
   assertions. Imported helpers register no tests and acquire no native owners.
   Each case owns fresh project capture, admission, Run, durable state and

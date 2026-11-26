@@ -61,7 +61,7 @@ Completed publication is not undone. Process loss may leave an unpublished
 
 `jig import-contract --list` lists the installed standard agreements and their
 purposes without project loading or host acquisition. Exact `jig:` selectors
-cover Agent Run, Project Command, Project Evaluation, HTTP Request, Run Checkpoint, Child Checkpoint, Finite ACP,
+cover Agent Run, Project Command, Project Evaluation, Offline Tool, HTTP Request, Run Checkpoint, Child Checkpoint, Finite ACP,
 ACP public updates and reporting. They copy the bundled canonical descriptor,
 referenced agreements and license. Unsupported names fail without a fallback.
 

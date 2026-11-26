@@ -805,6 +805,7 @@ function createSession(
                 backend: host.backend,
                 httpGrants: host.httpGrants,
                 acpResources: host.acpResources,
+                signal: budget.signal,
               }),
             )
           } catch (error) {

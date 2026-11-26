@@ -42,6 +42,9 @@ export function privateLinuxExecutionPlan(intent: PrivateExecutionIntent): Priva
     ...(intent.network === undefined ? {} : { network: intent.network }),
     ...(intent.nestedUserNamespaces ? { nestedUserNamespaces: true } : {}),
     ...(intent.output === undefined ? {} : { output: intent.output }),
+    ...(intent.offlineToolOutputBytes === undefined
+      ? {}
+      : { offlineToolOutputBytes: intent.offlineToolOutputBytes }),
     ...(preparationOutput === undefined ? {} : { preparationOutput }),
     ...(preparationLimits === undefined ? {} : { preparationLimits }),
     ...(intent.capturedInputs === undefined ? {} : { capturedInputs: intent.capturedInputs }),
@@ -63,6 +66,8 @@ export function privateMacosExecutionPlan(
   intent: PrivateExecutionIntent,
   allocation: PrivateMacosOwnerStateAllocationIdentity,
 ): PrivateMacosLaunchPlan {
+  if (intent.offlineToolOutputBytes !== undefined)
+    throw new TypeError('the offline tool runtime requires Linux')
   const preparationOutput = requirePrivateBunPreparationOutput(intent.preparationOutput)
   const preparationLimits = requirePrivateBunPreparationLimits(
     intent.preparationLimits,

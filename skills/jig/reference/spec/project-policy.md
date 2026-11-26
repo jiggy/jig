@@ -604,9 +604,8 @@ A Flow selector must identify a direct Flow target, using empty settings and its
 own resolved routes. A Binding selector uses that Binding's own validated settings.
 Either may have further routes, within the fixed aggregate resource budget. Grant slots
 do not count as child routes. Either target may use the exact
-ordinary [Agent Run](agent-run.md) invocation, and a configured
-Binding may also use [Project Command](project-command.md) or
-[HTTP Request](http-request.md) or [Finite ACP](finite-acp.md).
+ordinary [Agent Run](agent-run.md) invocation. A configured Binding may also
+use the [native resource grants](grants.md).
 
 Slots cannot select the parent's own package, directly or through a Binding.
 The following reject the candidate:
@@ -637,7 +636,7 @@ need no additional declaration and cannot receive project defaults.
 Without a
 selected ordinary default, only qualified Run Checkpoint and Child Checkpoint requirements
 resolve implicitly to host support. Agent requirements resolve to ordinary
-Flows offering the exact contract. HTTP Request, Finite ACP, Project Command, and Project Evaluation require explicit grants.
+Flows offering the exact contract. Native resource slots require explicit grants.
 These resource contracts and both checkpoint contracts remain host-only evidence and authority interfaces. Claiming a
 descriptor grants no credentials, endpoint access, command execution or
 retention authority.
@@ -731,21 +730,21 @@ generation and cannot retarget an already admitted Run.
 
 ### Resource grants
 
-A Binding supplies inline `kind: 'http'`, `kind: 'command'` or `kind: 'acp'`
+A Binding supplies inline `http`, `command`, `evaluation`, `tool` or `acp` grant
 policies through its ordinary `slots` map. Optional `grants: discover('./grants')`
 membership enables `grant:<name>` reuse with one JSON policy per named file.
 These are proposals until explicit admission. [Grants](grants.md) defines the
 closed grammar, capture limits, recipient-scoped continuity and authority
-approval. Each grant requires its exact HTTP Request, Project Command or
-Finite ACP invocation contract.
+approval. Each grant requires the exact invocation contract for its kind.
+See [Grants](grants.md) for the supported contracts.
 
 An admitted slot pins its policy. The host enforces it outside Flow execution.
-For finite ACP, the grant selects the native client; the host holds private
-authentication and constrains dispatch and process lifetime, while an ordinary
-Agent Flow owns the dialogue and answer interpretation.
-Source edits do not revoke active admissions; a new approved
-generation changes new Runs, while cancellation settles existing work.
-HTTP, finite ACP and command calls share the existing exclusive effect capacity.
+For finite ACP, the grant selects the native client. The host holds private
+authentication and controls dispatch and process lifetime. The Agent Flow owns
+the dialogue and answer interpretation.
+
+New Runs use the new approved generation. Cancellation settles existing work.
+Native resource calls share the existing exclusive effect capacity.
 Root and child Bindings receive only their own grants. Grant slots do not
 introduce nested Flow routes or additional execution capacity.
 

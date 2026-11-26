@@ -1,0 +1,60 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
+  "id": "https://jig.md/contracts/offline-tool",
+  "version": "0.1.0",
+  "attachments": { "source": "read", "deliverables": "read-write" },
+  "input": { "type": "object", "properties": {}, "additionalProperties": false },
+  "result": {
+    "type": "object",
+    "properties": {
+      "outcome": { "const": "done" },
+      "output": { "$ref": "#/$defs/Evidence" }
+    },
+    "required": ["outcome", "output"],
+    "additionalProperties": false
+  },
+  "$defs": {
+    "Digest": { "type": "string", "minLength": 71, "maxLength": 71 },
+    "File": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "bytes": { "type": "integer", "minimum": 0, "maximum": 67108864 },
+        "digest": { "$ref": "#/$defs/Digest" }
+      },
+      "required": ["path", "bytes", "digest"],
+      "additionalProperties": false
+    },
+    "Files": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/File" },
+      "maxItems": 64
+    },
+    "Evidence": {
+      "type": "object",
+      "properties": {
+        "toolDigest": { "$ref": "#/$defs/Digest" },
+        "inputDigest": { "$ref": "#/$defs/Digest" },
+        "inputFiles": { "$ref": "#/$defs/Files" },
+        "outputDigest": { "$ref": "#/$defs/Digest" },
+        "files": { "$ref": "#/$defs/Files" },
+        "exitCode": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "signal": { "type": "null" },
+        "stopReason": { "const": "exited" },
+        "cleanup": { "const": "complete" }
+      },
+      "required": [
+        "toolDigest",
+        "inputDigest",
+        "inputFiles",
+        "outputDigest",
+        "files",
+        "exitCode",
+        "signal",
+        "stopReason",
+        "cleanup"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -38,6 +38,8 @@ export interface PrivateExecutionIntent {
   readonly inputDirectories?: readonly string[]
   readonly inputEmptyDirectories?: readonly string[]
   readonly output?: boolean
+  /** A Linux offline tool uses native loader policy and a reviewed output capacity. */
+  readonly offlineToolOutputBytes?: number
   /** Fixed dependency collection from fenced native work, separate from Flow output. */
   readonly preparationOutput?: 'production' | 'evaluation'
   readonly preparationLimits?: DependencyPreparationOutputLimits

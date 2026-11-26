@@ -118,7 +118,7 @@ docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema
 docs/jig/spec/machine/project-evaluation-recipe-1.schema.json|project-evaluation-recipe-1.schema.json|https://jig.md/schemas/project-evaluation-recipe-1.schema.json'
     forbidden_page='spec/package-format.html'
     mkdir -p -- "$staging/contracts"
-    for contract in agent-run project-command project-evaluation http-request run-checkpoint child-checkpoint finite-acp; do
+    for contract in agent-run project-command project-evaluation offline-tool http-request run-checkpoint child-checkpoint finite-acp; do
       if [ ! -s "$staging/contracts/$contract.html" ]; then
         echo "the $contract identity landing page is missing" >&2
         exit 1
@@ -143,6 +143,7 @@ docs/jig/spec/machine/project-evaluation-recipe-1.schema.json|project-evaluation
     test -s "$staging/spec/finite-acp.html"
     test -s "$staging/spec/http-request.html"
     test -s "$staging/spec/project-evaluation.html"
+    test -s "$staging/spec/offline-tool.html"
     test -s "$staging/spec/execution-client.html"
     test -s "$staging/build/http.html"
     test -s "$staging/build/agent-method.html"

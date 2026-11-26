@@ -11,6 +11,7 @@ const STATES = ['requested', 'active', 'cancel-requested', 'returned', 'failed',
 const RESOURCES = [
   'http-request',
   'project-command',
+  'offline-tool',
   'project-evaluation',
   'finite-acp',
   'run-checkpoint',

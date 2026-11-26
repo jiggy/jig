@@ -60,6 +60,10 @@ tests use genuine host capture through their own fixture entry.
   Rejection immediately stops the root Run before exposing a catchable child failure.
   The Agent guide owns matching limits and launch-copy cleanup.
 
+- Offline Tool grants use the contained-effect owner, sealed artifact projection
+  and a separate bounded output mount. The system-managed store supplies verified
+  runtime bytes. Apply the execution and file guidance to tool work.
+
 - Collaborator declaration stages a sidecar edit outside Flow source.
   When a source is supplied, stage its bounded contract bytes there too.
   Publish any bundle without replacement before replacing the checked sidecar.

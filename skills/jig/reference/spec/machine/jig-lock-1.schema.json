@@ -397,6 +397,40 @@
         {
           "type": "object",
           "properties": {
+            "kind": { "const": "tool" },
+            "executable": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "runtimeRoots": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "maxLength": 255 },
+              "minItems": 1,
+              "maxItems": 8
+            },
+            "args": {
+              "type": "array",
+              "items": { "type": "string", "maxLength": 1024 },
+              "maxItems": 32
+            },
+            "environment": {
+              "type": "object",
+              "maxProperties": 16,
+              "additionalProperties": { "type": "string", "maxLength": 1024 }
+            },
+            "exitCodes": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+              "minItems": 1,
+              "maxItems": 8
+            },
+            "timeoutMs": { "type": "integer", "minimum": 1000, "maximum": 60000 },
+            "outputBytes": { "type": "integer", "minimum": 4096, "maximum": 16777216 },
+            "nestedUserNamespaces": { "const": true }
+          },
+          "required": ["kind", "executable", "runtimeRoots"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
             "kind": { "const": "evaluation" },
             "recipe": { "type": "string", "minLength": 1, "maxLength": 256 },
             "attachments": {

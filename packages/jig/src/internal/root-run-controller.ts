@@ -1569,6 +1569,7 @@ function operationDispatcher(
       if (
         route.native === 'project-command' ||
         route.native === 'http-request' ||
+        route.native === 'offline-tool' ||
         route.native === 'project-evaluation'
       )
         return enter(

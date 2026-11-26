@@ -23,6 +23,7 @@ sections.
 | `http-request.md` | Endpoint grants, requests, response decoding, private credentials, operator proxy routing, and contained-worker settlement |
 | `execution-client.md` | Non-dispatching preparation and lookup, exact ticket acceptance, owner/observer roles, scoped cancellation, bounded retention, forgetting, and export without re-execution |
 | `project-command.md` | Bounded candidate execution and trusted command evidence collection |
+| `offline-tool.md` | Reviewed offline native invocations with held file input and output |
 | `project-evaluation.md` | Reviewed Bun/TypeScript evaluation, exact descriptor, closed recipes, and candidate evidence distinct from application acceptance |
 | `run-checkpoint.md` | Per-invocation latest aggregate retention under the original root attempt, held artifact associations, and bounded publication |
 | `child-checkpoint.md` | Settled direct-child checkpoint retrieval, caller-local operation identity, and fresh held artifact custody |

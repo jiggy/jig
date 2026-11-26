@@ -1,5 +1,8 @@
 import { validateReportingMessage } from '@jigging/reporting/validation'
 import {
+  DISPLAY_COMPARISON_CALL_ANCESTORS,
+  DISPLAY_COMPARISON_CALL_BYTES,
+  DISPLAY_COMPARISON_CALL_ROWS,
   DISPLAY_COMPOSITION_BYTE_LIMIT,
   DISPLAY_COMPOSITION_EDGE_LIMIT,
   DISPLAY_COMPOSITION_NODE_LIMIT,
@@ -9,9 +12,6 @@ import {
   DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT,
   DISPLAY_PROJECT_SCHEMA_BYTE_LIMIT,
   DISPLAY_PROJECT_TARGET_LIMIT,
-  DISPLAY_COMPARISON_CALL_ANCESTORS,
-  DISPLAY_COMPARISON_CALL_BYTES,
-  DISPLAY_COMPARISON_CALL_ROWS,
   DISPLAY_SNAPSHOT_LIMIT,
   type DisplayProjectRun,
   type DisplayProjectRunEvidence,
@@ -228,6 +228,7 @@ function composition(value: unknown): void {
         'http-request',
         'project-command',
         'project-evaluation',
+        'offline-tool',
         'finite-acp',
         'run-checkpoint',
         'child-checkpoint',

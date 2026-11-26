@@ -56,6 +56,7 @@ export const expectedInstalledFiles = [
     'agent-run',
     'project-command',
     'project-evaluation',
+    'offline-tool',
     'http-request',
     'run-checkpoint',
     'child-checkpoint',

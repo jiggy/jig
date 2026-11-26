@@ -212,6 +212,10 @@ automatically.
 [Child file policy](../spec/project-policy.md#child-file-runs) owns exact
 mapping, artifact limits, lifecycle, and cleanup requirements.
 
+An [Offline Tool](../spec/offline-tool.md) grant uses the same held artifact
+handoff. The tool reads the supplied artifact and can return a new artifact for
+another Flow to inspect.
+
 ## Receive one packet
 
 Omit `--out` when a reviewed root target declares writable deliverables or

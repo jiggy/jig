@@ -7,6 +7,7 @@ import type { SchemaValue } from '../schema/types.js'
 import { snapshotJsonObject } from './author-value.js'
 import { normalizeProjectCommand, type ProjectCommand } from './commands.js'
 import { normalizeProjectEvaluation, type ProjectEvaluation } from './evaluation.js'
+import { normalizeOfflineTool, type OfflineTool, type OfflineToolInput } from './offline-tool.js'
 
 export const HTTP_LIMITS = Object.freeze({
   requestBytes: 262144,
@@ -99,11 +100,13 @@ export type GrantInput =
   | ({ readonly kind: 'http' } & HttpGrantInput)
   | ({ readonly kind: 'command' } & ProjectCommand)
   | ({ readonly kind: 'evaluation' } & ProjectEvaluation)
+  | ({ readonly kind: 'tool' } & OfflineToolInput)
   | AcpGrant
 export type GrantPolicy =
   | ({ readonly kind: 'http' } & HttpGrant)
   | ({ readonly kind: 'command' } & ProjectCommand)
   | ({ readonly kind: 'evaluation' } & ProjectEvaluation)
+  | ({ readonly kind: 'tool' } & OfflineTool)
   | AcpGrant
 export type NativeAcpClient = 'codex' | 'claude'
 
@@ -132,6 +135,7 @@ export function normalizeGrant(value: unknown): GrantPolicy {
   if (kind === 'http') return Object.freeze({ kind, ...normalizeHttpGrant(policy) })
   if (kind === 'command') return Object.freeze({ kind, ...normalizeProjectCommand(policy) })
   if (kind === 'evaluation') return Object.freeze({ kind, ...normalizeProjectEvaluation(policy) })
+  if (kind === 'tool') return Object.freeze({ kind, ...normalizeOfflineTool(policy) })
   if (kind === 'acp') {
     if (
       Object.keys(policy).some(
@@ -176,7 +180,7 @@ export function normalizeGrant(value: unknown): GrantPolicy {
       ...('retainSessions' in policy ? { retainSessions: true as const } : {}),
     })
   }
-  throw new TypeError('grant kind must be http, command, evaluation, or acp')
+  throw new TypeError('grant kind must be http, command, evaluation, tool, or acp')
 }
 
 export function grantName(value: unknown): string {
