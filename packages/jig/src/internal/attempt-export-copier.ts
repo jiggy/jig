@@ -1,9 +1,10 @@
 import { resolve } from 'node:path'
-import type { AttemptRequests, AttemptResults } from '../attempt-contract.js'
+import type { AttemptResults } from '../attempt-contract.js'
 import type { JsonValue } from '../json.js'
 import {
   acquirePrivateAttemptExport,
   completePrivateAttemptExportDelivery,
+  type PrivateRetainedExportSelection,
   reconcilePrivateAttemptExportDelivery,
   releasePrivateAttemptExport,
 } from './activation-admission-store.js'
@@ -20,8 +21,8 @@ import { privateBootRemaining, watchPrivateBootDeadline } from './native-clock.j
 import { PrivateAttemptError } from './prepared-attempt-store.js'
 import { privatePresentationNow } from './root-run-timeout-policy.js'
 
-export type PrivateAttemptExportRequest = AttemptRequests['export'] & {
-  readonly projectRoot: string
+export type PrivateAttemptExportRequest = PrivateRetainedExportSelection & {
+  readonly destination: string
 }
 
 /** Runs in the independent file-command process. No execution/coordinator recovery,

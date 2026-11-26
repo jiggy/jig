@@ -147,6 +147,9 @@ capacity before execution. Lookup is observational. Exact accepted duplicates
 identify the original work; expiry, missing history, interrupted acknowledgment
 and cleanup uncertainty never authorize replacement work or automatic retry.
 Ticket possession identifies a record, not additional operator authority.
+Local packet export can select an accepted Run by ID. Jig verifies the original
+project state and retention before copying final bytes. The machine interface
+authenticates its original ticket.
 
 Native enforcement uses a once-frozen boot identity and suspend-inclusive
 monotonic cutoff. Unix timestamps are presentation and retention hints, not

@@ -31,6 +31,7 @@ import {
   privateActivationPlanDigestV2,
 } from '../../src/internal/activation-admission.js'
 import {
+  acquirePrivateAttemptExport,
   allocatePrivateRootChildOwner,
   applyPrivateActivationReviewPlan,
   cancelPrivateAttempt,
@@ -439,6 +440,12 @@ test('prepared ticket acceptance is atomic with one original root and binds requ
     expect(duplicate.role).toBe('observer')
     expect(duplicate.receipt.runId).toBe(first.receipt.runId)
     expect(duplicate.run.deadlineUnixMs).toBe(first.run.deadlineUnixMs)
+    await expect(
+      acquirePrivateAttemptExport({ projectRoot: fixture.root, runId: first.receipt.runId }),
+    ).rejects.toMatchObject({
+      code: 'UNAVAILABLE',
+      message: 'This Run did not request a result packet.',
+    })
     await expect(
       submitPrivateAttempt({
         ...submission,

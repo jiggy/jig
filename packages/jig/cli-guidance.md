@@ -34,6 +34,10 @@ All selected domain requirements still apply.
   It uses the installed machine boundary, never embedded native internals or private-state reads.
 
   `src/cli-attempt-io.ts` bounds machine requests without consuming the owning submit connection.
+
+  The local `attempt export --run RUN_ID --out DIR` form uses the independent
+  publisher and skips execution host acquisition. Print the local recovery
+  command after a settled successful Run's delivery failure.
   Request completion differs from client closure. Duplicate observers never inherit cancellation ownership.
   Keep execution, retained-byte availability, export and retirement facts distinct in machine and human output.
 

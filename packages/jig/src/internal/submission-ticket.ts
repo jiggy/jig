@@ -90,7 +90,7 @@ function matches(value: unknown, pattern: RegExp, maxLength: number): value is s
   return typeof value === 'string' && value.length <= maxLength && pattern.test(value)
 }
 
-function claimsFrom(value: unknown): PrivateSubmissionTicketClaims {
+export function parsePrivateSubmissionTicketClaims(value: unknown): PrivateSubmissionTicketClaims {
   const claims = closed(value, fields)
   if (
     !matches(claims.domainId, hexIdentity, 64) ||
@@ -128,7 +128,10 @@ export function issuePrivateSubmissionTicket(
       input,
       fields.filter((name) => name !== 'ticketNonce'),
     )
-    const claims = claimsFrom({ ...supplied, ticketNonce: randomBytes(32).toString('hex') })
+    const claims = parsePrivateSubmissionTicketClaims({
+      ...supplied,
+      ticketNonce: randomBytes(32).toString('hex'),
+    })
     const iv = randomBytes(12)
     const cipher = createCipheriv('aes-256-gcm', bytes, iv)
     cipher.setAAD(aad)
@@ -179,7 +182,7 @@ export function openPrivateSubmissionTicket(
       // Do not decode or expose update's unauthenticated plaintext before final.
       const plaintext = Buffer.concat([decipher.update(packed.subarray(12, -16)), decipher.final()])
       const value = decodeJson1(plaintext)
-      claims = claimsFrom(value)
+      claims = parsePrivateSubmissionTicketClaims(value)
       if (!plaintext.equals(canonicalJson(value))) return refuse('INVALID_TICKET')
     } catch {
       return refuse('INVALID_TICKET')

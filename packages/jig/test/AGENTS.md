@@ -405,6 +405,10 @@ Native residue checks remain separate from portable archive cases and unfamiliar
 `portable/attempt-export.test.ts` checks parser inputs and actual copy-process identity.
 `host/installed-attempt-export.test.ts` exercises protected acquisition and publication.
 Pins and delivery receipts must come from the production owner.
+Its direct Run cases cover normal publication and moving an anchored destination
+parent during execution. Recover the original Run with the public CLI and
+verify exact bytes, foreign-project refusal, no replacement and no new Runs.
+
 Its consumer may enable the existing private phase trace through the public
 client environment for each result command, using a unique absolute destination.
 On failure, report only bounded fixed result phases, outcomes and timings.
