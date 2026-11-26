@@ -132,7 +132,13 @@ import {
   ProjectInitError,
   type ProjectInitStarter,
 } from './project-init.js'
-import { parseRun, parseTarget, parseVerification, privateRunDisplay } from './run-arguments.js'
+import {
+  parseRun,
+  parseRunExport,
+  parseTarget,
+  parseVerification,
+  privateRunDisplay,
+} from './run-arguments.js'
 import { SCHEMA_1_URI, schemaTypeMismatchText } from './schema/types.js'
 
 const VERIFICATION_HELP = `Startup verification:
@@ -230,9 +236,10 @@ Context creates presentation storage and returns opaque publication metadata.
 Receipt recovery returns the original acceptance without reinstalling removed material.
 Reset invalidates older contexts. Close inspection leaves retained material intact.`,
   attempt: `Usage: jig attempt <inspect|prepare|submit|lookup|cancel|reconcile|result|export> --json
+       jig attempt export --run RUN_ID --out DIR
 
-Read one bounded JSON request envelope from stdin and write machine records to
-stdout. The application client uses this same installed boundary.
+The --json form reads one bounded JSON request envelope from stdin and writes
+machine records to stdout. The application client uses this same boundary.
 Requests contain protocolVersion: 1, operation, and request. Tickets and input
 belong in stdin, never command arguments. This command does not approve source.
 
@@ -247,6 +254,10 @@ not undo remote effects or acknowledge cleanup. reconcile tries to recover the
 original older owner without submitting work. export publishes retained bytes
 without executing the Flow. Expired or unavailable history is not permission
 to retry. Use @jigging/jig/client for typed application integration.
+
+From the original project directory, use export --run with the Run ID from
+the result and a fresh destination. This recovers retained final output from
+a successful, cleaned-up Run that requested a packet. It writes a JSON receipt.
 
 Example:
   jig attempt lookup --json < lookup-request.json`,
@@ -1306,9 +1317,30 @@ async function executeAttempt(
   options: PrivateCliOptions,
   runtime: CliRuntime,
 ): Promise<number> {
+  const localExport = parseRunExport(arguments_)
+  if (localExport !== undefined) {
+    try {
+      if (runtime.host.delivery?.exportAttempt === undefined)
+        throw new Error('the independent delivery owner is unavailable')
+      const receipt = await runtime.host.delivery.exportAttempt(
+        { projectRoot: runtime.currentDirectory, ...localExport },
+        runtime.signal,
+      )
+      await runtime.writeRecord(
+        `${textDecoder.decode(canonicalJson(receipt as unknown as JsonValue))}\n`,
+      )
+      return 0
+    } catch {
+      throw new CliDiagnostic(
+        'JIG_RUN_EXPORT_UNAVAILABLE',
+        'The retained Run packet could not be exported. Use the original project directory and Run ID. Check that the successful result is still retained and the destination is a new directory under an existing parent. No Flow was started.',
+        2,
+      )
+    }
+  }
   const operation = privateCliAttemptOperation(arguments_)
   if (operation === undefined)
-    usage('attempt', 'Specify one operation and --json; supply its request envelope on stdin.')
+    usage('attempt', 'Use --json with a request on stdin, or export --run RUN_ID --out DIR.')
   const input = new PrivateAttemptInput(options.attemptInputStream ?? process.stdin, {
     maxBytes: ATTEMPT_REQUEST_BYTES,
     ...(runtime.signal === undefined ? {} : { signal: runtime.signal }),
@@ -3073,9 +3105,14 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       runtime.writeError(
         renderDiagnostic(
           'JIG_DELIVERY_FAILED',
-          delivery.status === 'unknown'
-            ? 'execution is settled; delivery was not acknowledged and the packet may exist; repeating the command starts new work'
-            : 'execution is settled, but delivery failed; repeating the command starts new work',
+          [
+            delivery.status === 'unknown'
+              ? 'Execution is settled. Delivery was unconfirmed. Inspect the original destination first.'
+              : 'Execution is settled. Packet delivery failed.',
+            terminal.status === 'succeeded'
+              ? `To export retained files to a fresh directory, run:\n\n  $ jig attempt export --run ${shellWord(status.runId)} --out ./recovered-packet`
+              : 'Repeating the Run starts new work.',
+          ].join('\n'),
         ),
       )
       return 2

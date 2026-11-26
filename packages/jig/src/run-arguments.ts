@@ -10,6 +10,26 @@ import { npmPackageName } from './project/package-selector.js'
 
 const textEncoder = new TextEncoder()
 
+/** The local retained-packet selector has its own grammar and takes no stdin. */
+export function parseRunExport(
+  arguments_: readonly string[],
+): { readonly runId: string; readonly destination: string } | undefined {
+  const [command, operation, run, runId, out, destination] = arguments_
+  if (
+    arguments_.length !== 6 ||
+    command !== 'attempt' ||
+    operation !== 'export' ||
+    run !== '--run' ||
+    runId?.length !== 71 ||
+    !/^sha256:[a-f0-9]{64}$/.test(runId) ||
+    out !== '--out' ||
+    !destination ||
+    destination.startsWith('--')
+  )
+    return undefined
+  return { runId, destination }
+}
+
 /** Automatic screen ownership requires terminal input, stdout and stderr. */
 export function privateRunDisplay(
   display: 'auto' | 'plain' | 'tui' | 'web',

@@ -311,6 +311,9 @@ published packet. Connection loss can leave delivery unknown even when the
 packet exists. `JIG_REPORT_LIMIT` keeps the terminal on stdout and reports
 delivery separately on stderr.
 
+For successful Runs, the original Run ID can select a
+[new export of retained files](../spec/execution-client.md#export-a-local-run-packet).
+
 `--timeout` bounds execution, with a 30-second default. Capture, export, and
 cleanup have separate bounds.
 [Root file policy](../spec/project-policy.md#root-file-runs) owns exact

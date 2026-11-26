@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path'
 import { parseAttemptFrame } from '../attempt-contract.js'
 import { privateCliStderrDiagnostic } from '../cli-presentation.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
+import { parseRunExport } from '../run-arguments.js'
 import {
   acquirePrivateAttemptRunCheckpointExport,
   readPrivateAttemptRunCheckpoint,
@@ -140,7 +141,9 @@ export function privateNeedsFileOwner(arguments_: readonly string[]): boolean {
     arguments_[1] === 'export' &&
     arguments_[2] === '--json'
   return (
-    (exportsRetained || (arguments_[0] === 'run' && arguments_.includes('--out'))) &&
+    (exportsRetained ||
+      parseRunExport(arguments_) !== undefined ||
+      (arguments_[0] === 'run' && arguments_.includes('--out'))) &&
     marker() === undefined
   )
 }
@@ -310,7 +313,7 @@ export async function privateOwnFileCommand(
             if (
               !input ||
               typeof input.projectRoot !== 'string' ||
-              typeof input.ticket !== 'string' ||
+              (typeof input.ticket !== 'string' && typeof input.runId !== 'string') ||
               typeof input.destination !== 'string' ||
               (input.source !== undefined &&
                 input.source !== 'final' &&

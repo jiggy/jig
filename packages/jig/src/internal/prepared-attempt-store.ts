@@ -28,6 +28,7 @@ import {
   issuePrivateSubmissionTicket,
   openPrivateSubmissionTicket,
   type PrivateSubmissionTicketClaims,
+  parsePrivateSubmissionTicketClaims,
 } from './submission-ticket.js'
 
 export const PRIVATE_ATTEMPT_VALIDITY_MS = 600_000
@@ -502,8 +503,38 @@ export function authenticatePrivateAttempt(
       claims.ticketNonce,
     ])[0] ?? null
   if (!row) return { claims, row, retired: claims.issuedUnixMs <= Number(identity.retired_through) }
+  return requirePrivateAttemptRecord(row, claims)
+}
+
+/** The checked local project store supplies authority for this output selector. */
+export function selectPrivatePacketAttempt(
+  db: AttemptDatabase,
+  projectDigest: string,
+  runId: string,
+): PrivateAuthenticatedAttempt {
+  const identity = domain(db)
+  const row = attemptQuery<PrivateAttemptRow>(
+    db,
+    'SELECT * FROM prepared_attempts WHERE run_id = ?1',
+    [runId],
+  )[0]
+  if (!identity || !row) attemptRefuse('UNAVAILABLE', 'No retained packet exists for this Run.')
+  const claims = parsePrivateSubmissionTicketClaims(decodeJson1(row.claims_bytes))
+  if (claims.domainId !== identity.domain_id || claims.projectDigest !== projectDigest)
+    attemptRefuse('IDENTITY_UNAVAILABLE', 'The retained Run belongs to another project.')
+  const attempt = requirePrivateAttemptRecord(row, claims)
+  if (!attempt.request?.outputIntent.packet)
+    attemptRefuse('UNAVAILABLE', 'This Run did not request a result packet.')
+  return attempt
+}
+
+function requirePrivateAttemptRecord(
+  row: PrivateAttemptRow,
+  claims: PrivateSubmissionTicketClaims,
+): PrivateAuthenticatedAttempt {
   if (
     !Buffer.from(row.claims_bytes).equals(canonicalJson(claims as unknown as JsonValue)) ||
+    row.nonce !== claims.ticketNonce ||
     row.request_digest !== claims.requestDigest
   )
     return attemptRefuse('IDENTITY_UNAVAILABLE', 'Protected attempt identity is inconsistent.')

@@ -136,6 +136,7 @@ import {
   retainedPrivateAttemptArtifacts,
   retainPrivateAttemptArtifacts,
   retirePrivateAttempts,
+  selectPrivatePacketAttempt,
 } from './prepared-attempt-store.js'
 import { privateProfileSpan, privateProfileSyncSpan } from './private-profile.js'
 import {
@@ -3005,11 +3006,27 @@ export interface PrivateAttemptExportArtifact {
   readonly directories: readonly string[]
 }
 
-function privateAttemptExportSelection(input: {
+export type PrivateRetainedExportSelection = {
+  readonly projectRoot: string
   readonly source?: 'final' | 'checkpoint'
   readonly artifactResult?: string
   readonly checkpointScope?: CheckpointScope
-}): string {
+} & (
+  | { readonly ticket: string; readonly runId?: never }
+  | { readonly runId: string; readonly ticket?: never }
+)
+
+function privateAttemptExportSelection(input: PrivateRetainedExportSelection): string {
+  if (input.runId !== undefined) {
+    requireDigest(input.runId, 'root Run')
+    if (
+      input.ticket !== undefined ||
+      input.source === 'checkpoint' ||
+      input.artifactResult !== undefined ||
+      input.checkpointScope !== undefined
+    )
+      attemptRefuse('INVALID_REQUEST', 'A Run ID selects the complete final packet.')
+  }
   if (input.source !== 'checkpoint') {
     if (input.checkpointScope !== undefined)
       attemptRefuse('INVALID_REQUEST', 'A checkpoint scope requires checkpoint export.')
@@ -3023,25 +3040,28 @@ function privateAttemptExportSelection(input: {
   return scope
 }
 
+function selectPrivateExportAttempt(
+  owner: StateOwner,
+  input: PrivateRetainedExportSelection,
+): PrivateAuthenticatedAttempt {
+  const project = attemptProjectDigest(owner.root)
+  return input.runId === undefined
+    ? authenticatePrivateAttempt(owner.database, project, input.ticket)
+    : selectPrivatePacketAttempt(owner.database, project, input.runId)
+}
+
 /** One finite copier receives owned bytes; expiry does not silently release its pin. */
-export async function acquirePrivateAttemptExport(input: {
-  readonly projectRoot: string
-  readonly ticket: string
-  readonly artifactResult?: string
-  readonly source?: 'final' | 'checkpoint'
-  readonly checkpointScope?: CheckpointScope
-  readonly destination?: string
-}) {
+export async function acquirePrivateAttemptExport(
+  input: PrivateRetainedExportSelection & {
+    readonly destination?: string
+  },
+) {
   const selection = privateAttemptExportSelection(input)
   const owner = await openStateOwner(input.projectRoot, false)
   let failure: unknown
   try {
     const result = await immediate(owner, async () => {
-      const attempt = authenticatePrivateAttempt(
-        owner.database,
-        attemptProjectDigest(owner.root),
-        input.ticket,
-      )
+      const attempt = selectPrivateExportAttempt(owner, input)
       reconcilePrivateAttemptExportOwners(owner.database)
       const retained = observePrivateAttempt(owner, attempt)
       const checkpointSource = input.source === 'checkpoint'
@@ -3088,6 +3108,27 @@ export async function acquirePrivateAttemptExport(input: {
         : input.artifactResult === undefined
           ? attempt.request!.outputIntent.receive
           : [input.artifactResult]
+      const required = new Set<string>()
+      if (input.runId !== undefined) {
+        const run = retained.run
+        if (
+          run?.terminal?.status !== 'succeeded' ||
+          !run.files.output ||
+          run.origin.submissionId !== attempt.claims.ticketNonce ||
+          run.admissionDigest !== attempt.request!.expectedApproval
+        )
+          attemptRefuse('UNAVAILABLE', 'The original Run has no settled final packet.')
+        const candidate = loadCandidateRow(
+          requireCandidateRow(owner.database, BigInt(run.candidateRevision)),
+        )
+        const target = findPrivateActivationCandidateTargetV5(candidate, run.target)
+        if (target === undefined)
+          attemptRefuse('IDENTITY_UNAVAILABLE', 'The original Run target is unavailable.')
+        for (const [name, access] of Object.entries(target.request.attachments))
+          if (access === 'read-write') required.add(name)
+        for (const name of Object.keys(run.terminal.result.artifactResults ?? {}))
+          required.add(name)
+      }
       for (const name of names) {
         const manifestRow = attemptQuery<{ digest: string; content: Uint8Array }>(
           owner.database,
@@ -3095,7 +3136,7 @@ export async function acquirePrivateAttemptExport(input: {
           [attempt.row.nonce, 'manifest', name, ''],
         )[0]
         if (!manifestRow) {
-          if (input.artifactResult !== undefined)
+          if (input.artifactResult !== undefined || required.has(name))
             attemptRefuse('UNAVAILABLE', 'Artifact bytes are unavailable.')
           continue
         }
@@ -3126,6 +3167,8 @@ export async function acquirePrivateAttemptExport(input: {
           directories: manifest.directories,
         }
       }
+      if ([...required].some((name) => !Object.hasOwn(artifacts, name)))
+        attemptRefuse('UNAVAILABLE', 'The original packet has unavailable artifact bytes.')
       const pinId = randomUUID()
       const deadlineMonotonicMs = clock.monotonicMs + 300_000
       if (input.destination !== undefined) {
@@ -3187,25 +3230,18 @@ export async function acquirePrivateAttemptExport(input: {
   }
 }
 
-/** Authorizes every reconciliation from protected ticket state, never packet bytes. */
-export async function reconcilePrivateAttemptExportDelivery(input: {
-  readonly projectRoot: string
-  readonly ticket: string
-  readonly destination: string
-  readonly source?: 'final' | 'checkpoint'
-  readonly artifactResult?: string
-  readonly checkpointScope?: CheckpointScope
-}): Promise<import('../attempt-contract.js').AttemptResults['export'] | undefined> {
+/** Authorizes every reconciliation from protected attempt state, never packet bytes. */
+export async function reconcilePrivateAttemptExportDelivery(
+  input: PrivateRetainedExportSelection & {
+    readonly destination: string
+  },
+): Promise<import('../attempt-contract.js').AttemptResults['export'] | undefined> {
   const selection = privateAttemptExportSelection(input)
   const owner = await openStateOwner(input.projectRoot, false)
   let failure: unknown
   try {
     const result = await immediate(owner, () => {
-      const attempt = authenticatePrivateAttempt(
-        owner.database,
-        attemptProjectDigest(owner.root),
-        input.ticket,
-      )
+      const attempt = selectPrivateExportAttempt(owner, input)
       reconcilePrivateAttemptExportOwners(owner.database)
       const row = attemptQuery<{ status: string; result_bytes: Uint8Array | null }>(
         owner.database,

@@ -339,6 +339,18 @@ Repeating `jig run` starts new execution and does not resume the earlier deliver
 Read [file evidence](../build/files.md#read-file-evidence) to distinguish accepted results, checkpoints, and delivered artifacts.
 Unfinished scratch files are not final results.
 
+If a successful Run printed a Run ID and its packet is missing, export
+the retained result from the original project directory:
+
+```sh
+jig attempt export --run RUN_ID --out ./recovered-packet
+```
+
+Choose a new destination under an existing directory. The export requires local
+access to the protected project state, confirmed cleanup, and retained final
+bytes. It uses the original Run. [Local packet export](../spec/execution-client.md#export-a-local-run-packet)
+defines what the new packet contains.
+
 An application with its original prepared ticket can read retained results and export available bytes without executing again.
 Use the [saved-ticket procedure](#applications-with-a-saved-ticket).
 Do not choose another output path to bypass unresolved work.
@@ -412,6 +424,7 @@ Jig has no generic command to discover or force-clean an ordinary CLI invocation
 `jig inspect` reads approved target information and cannot establish that this invocation settled.
 Saved-result inspection requires an existing packet and does not cancel work.
 
+For a successful Run with a Run ID, follow [result delivery recovery](#result-delivery-is-unconfirmed).
 Without a recovery identity or usable packet, preserve state and request a maintainer-directed recovery procedure.
 Report bounded diagnostic codes and version without attaching private state or application data publicly.
 State that cleanup remains unconfirmed and no usable result is available.

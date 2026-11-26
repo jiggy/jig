@@ -52,6 +52,7 @@ import { privatePresentationDeadline } from './internal/root-run-timeout-policy.
 import { type SlotSpecialization, specializeWorkingSlot } from './internal/specialize-slot.js'
 import { inspectWorkingFlow, inspectWorkingFlowReport } from './internal/working-flow-inspection.js'
 import { canonicalJson } from './json.js'
+import { parseRunExport } from './run-arguments.js'
 
 interface InstalledCliOutcome {
   readonly exitCode: number | null
@@ -187,15 +188,28 @@ async function runWithEnvironment(
   }
   if (!privateCliRequiresHost(arguments_)) {
     if (arguments_[0] === 'attempt') {
-      if (privateNeedsFileOwner(arguments_))
-        return await privateOwnFileCommand(
-          [executablePath, ...BUN_POLICY, installedCliPath],
-          arguments_,
-          signal,
-          privateCliCommandLifetimeMs(arguments_),
-        )
+      const localExport = parseRunExport(arguments_) !== undefined
+      if (privateNeedsFileOwner(arguments_)) {
+        try {
+          return await privateOwnFileCommand(
+            [executablePath, ...BUN_POLICY, installedCliPath],
+            arguments_,
+            signal,
+            privateCliCommandLifetimeMs(arguments_),
+          )
+        } catch (error) {
+          if (!localExport) throw error
+          return runExportConnectionFailure()
+        }
+      }
       const profileResult = arguments_[1] === 'result'
-      const delivery = await privateConnectFileOwner()
+      let delivery: Awaited<ReturnType<typeof privateConnectFileOwner>>
+      try {
+        delivery = await privateConnectFileOwner()
+      } catch (error) {
+        if (!localExport) throw error
+        return runExportConnectionFailure()
+      }
       const outputStop = new AbortController()
       const stdout = new PrivateCliOutput(process.stdout, outputStop)
       const stderr = new PrivateCliOutput(process.stderr, outputStop)
@@ -474,6 +488,16 @@ async function runWithEnvironment(
     }
     return exit(2)
   }
+}
+
+function runExportConnectionFailure(): InstalledCliOutcome {
+  process.stderr.write(
+    privateCliStderrDiagnostic(
+      'JIG_RUN_EXPORT_UNAVAILABLE',
+      'The file-delivery connection could not be confirmed. Inspect the destination before trying another export. No Flow was started.',
+    ),
+  )
+  return exit(2)
 }
 
 function exit(exitCode: number): InstalledCliOutcome {

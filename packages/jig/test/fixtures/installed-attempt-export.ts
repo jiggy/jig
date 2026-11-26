@@ -90,6 +90,7 @@ await handle(async run=>{
   await writeFile(root+'/binary.bin',new Uint8Array([0,255,128]));
   await writeFile(root+'/empty.bin',new Uint8Array());
   await mkdir(root+'/empty');
+  if(run.input==='hold-packet') await Bun.sleep(6000);
   return {outcome:'done',output:{produced:true}};
 });`,
   )
@@ -161,6 +162,7 @@ export default defineBinding({package:'flows/root',slots:{
 
 const consumer = `
 import assert from 'node:assert/strict';
+import {constants,Database} from 'bun:sqlite';
 import {mkdir,open,readFile,rename,writeFile,readdir,unlink} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {AttemptClientError,createAttemptClient} from '@jigging/jig/client';
@@ -173,6 +175,67 @@ process.on('uncaughtExceptionMonitor',error=>{
   }));
 });
 const client=createAttemptClient({executable:resolve(process.argv[2]),cwd:process.cwd(),timeoutMs:195000});
+function runCount(){
+  const db=Database.open('.jig/jig.sqlite3',constants.SQLITE_OPEN_READONLY|constants.SQLITE_OPEN_NOFOLLOW);
+  try{return db.query('SELECT count(*) AS n FROM root_runs').get().n;}
+  finally{db.close();}
+}
+function cli(args,cwd=process.cwd()){
+  const child=Bun.spawn([resolve(process.argv[2]),...args],{cwd,stdin:'ignore',stdout:'pipe',stderr:'pipe'});
+  return Promise.all([child.exited,new Response(child.stdout).text(),new Response(child.stderr).text()]);
+}
+stage='direct-control';
+const originalCount=runCount();
+const directArgs=['run','flow:flows/producer','--json','--record-calls','--timeout','2m'];
+const [controlCode,controlText]=await cli([...directArgs,'--out','direct-control']);
+assert.equal(controlCode,0);
+const control=JSON.parse(controlText);
+assert.equal(control.delivery.status,'written');
+const binary=await readFile('direct-control/files/binary.bin');
+assert.deepEqual(binary,Buffer.from([0,255,128]));
+
+stage='direct-publication-race';
+await mkdir('publication-parent');
+const raced=cli([...directArgs,'--input','"hold-packet"','--out','publication-parent/packet']);
+// Acceptance follows anchoring of --out. Move the actual directory while the
+// accepted Flow is still running, before the real publisher revalidates it.
+const until=performance.now()+100000;
+while(runCount()===originalCount+1){
+  if(performance.now()>until) throw Error('Direct Run was not accepted');
+  await Bun.sleep(50);
+}
+await rename('publication-parent','publication-parent-moved');
+const [raceCode,raceText,raceError]=await raced;
+assert.equal(raceCode,2);
+const lost=JSON.parse(raceText);
+assert.equal(lost.status,'succeeded');
+assert.equal(lost.outcome,'done');
+assert.deepEqual(lost.output,control.output);
+assert.notEqual(lost.delivery.status,'written');
+assert.notEqual(lost.runId,control.runId);
+assert.match(raceError,/jig attempt export --run /);
+await assert.rejects(readFile('publication-parent/packet/result.json'),{code:'ENOENT'});
+await assert.rejects(readFile('publication-parent-moved/packet/result.json'),{code:'ENOENT'});
+
+stage='direct-recovery';
+const exportArgs=['attempt','export','--run',lost.runId,'--out'];
+const [recoveryCode,recoveryText]=await cli([...exportArgs,'direct-recovered']);
+assert.equal(recoveryCode,0);
+assert.equal(JSON.parse(recoveryText).source,'final');
+const recovered=JSON.parse(await readFile('direct-recovered/result.json','utf8'));
+assert.equal(recovered.runId,lost.runId);
+assert.equal(recovered.status,lost.status);
+assert.equal(recovered.outcome,lost.outcome);
+assert.deepEqual(recovered.output,lost.output);
+assert.deepEqual(await readFile('direct-recovered/files/report/binary.bin'),binary);
+assert.equal((await readFile('direct-recovered/files/report/empty.bin')).length,0);
+assert.equal((await cli([...exportArgs,'direct-control']))[0],2);
+assert.deepEqual(await readFile('direct-control/files/binary.bin'),binary);
+assert.notEqual((await cli([...exportArgs,'foreign'],resolve('publication-parent-moved')))[0],0);
+assert.notEqual((await cli(['attempt','export','--run','sha256:'+'0'.repeat(64),'--out','missing']))[0],0);
+await assert.rejects(readFile('missing/result.json'),{code:'ENOENT'});
+assert.equal(runCount(),originalCount+2);
+
 let resultOrdinal=0;
 const resultPhases=new Set(['result-open','result-authenticate','result-retention',
   'result-observe','result-checkpoint','result-finish','result-dispose']);
@@ -283,7 +346,10 @@ for(const mode of ['complete','fail','cancel']){
     await assert.rejects(client.export({ticket:prepared.ticket,destination:mode+'-aborted',source},{signal:abort.signal}));
     await assert.rejects(readFile(mode+'-aborted/result.json'));
     stage='final-unavailable';
-    if(mode!=='complete') await assert.rejects(client.export({ticket:prepared.ticket,destination:mode+'-final'}));
+    if(mode!=='complete'){
+      await assert.rejects(client.export({ticket:prepared.ticket,destination:mode+'-final'}));
+      assert.notEqual((await cli(['attempt','export','--run',owner.receipt.runId,'--out',mode+'-direct-final']))[0],0);
+    }
     stage='final-lookup';
     assert.equal((await client.lookup({ticket:prepared.ticket})).receipt.runId,owner.receipt.runId);
   } finally { owner.close(); await owner.completion; }

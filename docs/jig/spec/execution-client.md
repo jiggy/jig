@@ -309,6 +309,29 @@ Omitting `source` selects `final`.
 Checkpoint replies also echo `checkpointScope`.
 The selected scope participates in the publication digest and protected delivery reconciliation.
 
+### Export a local Run packet
+
+From the original project directory, use a Run ID printed by `jig run`:
+
+```sh
+jig attempt export --run RUN_ID --out ./recovered-packet
+```
+
+The command requires local access to the protected project state. It selects one
+accepted Run that requested a packet and verifies successful execution, confirmed
+cleanup, and retained final bytes. The Run ID selects the record.
+
+The export writes a JSON receipt and uses the same no-replace publisher as
+ticket-based export. Write to a fresh destination under an existing parent.
+The packet carries the original Run ID, outcome, result and verified artifact
+bytes. Files use the named export layout under `files/`. Call records and
+other observations captured only during the original command may be absent.
+
+An exact repeated export can return its already recorded delivery receipt.
+Missing or expired evidence refuses a new export. This command leaves the
+original Run and its execution history intact. The machine `--json` form
+requires a prepared ticket.
+
 ### Export an accepted checkpoint
 
 Checkpoint export selects one invocation's latest accepted aggregate.

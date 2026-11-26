@@ -1,12 +1,28 @@
 import { expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
+import { parseAttemptRequest } from '../../src/attempt-contract.js'
 import {
   type PrivateAttemptExportOwner,
   parsePrivateExportProcessStat,
   privateAttemptExportOwner,
   privateAttemptExportOwnerGone,
 } from '../../src/internal/attempt-export-owner.js'
+import { parseRunExport } from '../../src/run-arguments.js'
+
+test('local Run export selects a final packet without extending machine requests', () => {
+  const runId = `sha256:${'a'.repeat(64)}`
+  const args = ['attempt', 'export', '--run', runId, '--out', './recovered']
+  expect(parseRunExport(args)).toEqual({ runId, destination: './recovered' })
+  for (const invalid of [
+    [...args, '--json'],
+    args.slice(0, -1),
+    [...args.slice(0, 3), `${runId}\n`, ...args.slice(4)],
+    ['attempt', 'export', '--json'],
+  ])
+    expect(parseRunExport(invalid)).toBeUndefined()
+  expect(() => parseAttemptRequest('export', { runId, destination: './recovered' })).toThrow()
+})
 
 test('proc stat parsing uses field 22 after the complete parenthesized process name', () => {
   const fields = ['S', ...Array(49).fill('0')]

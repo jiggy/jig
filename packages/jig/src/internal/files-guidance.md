@@ -115,6 +115,10 @@ These links locate module rules. All selected domain requirements still apply.
   At most 64 delivery records per attempt share the protected 4 GiB budget.
   Count outcome reservations, intent/index overhead and pin metadata.
 
+  Local Run-ID export selects the accepted packet attempt under the protected
+  project authority. Check the original terminal and required artifacts before
+  copying. The machine request continues to authenticate the supplied ticket.
+
 - Bind copy ownership to boot/PID generation.
   Mutating maintenance may retire proved-dead copy owners, never merely expired or uncertain owners.
   Lookup never repairs state. Settled checkpoint export never reacquires the original Run execution owner.
