@@ -16,7 +16,6 @@ import {
 } from './activation-admission-store.js'
 import {
   type PrivateCapturedOutput,
-  PrivateOutputProfileError,
   privateCapturedOutputManifestDigest,
 } from './captured-output.js'
 import type { PrivateFileLocation } from './descriptor-files.js'
@@ -58,8 +57,8 @@ import {
 import {
   capturePrivateFlowArtifact,
   commitPrivateFlowArtifact,
-  privateFlowArtifactExecutionProjection,
   type PrivateFlowFileContext,
+  privateFlowArtifactExecutionProjection,
   resolvePrivateFlowArtifact,
 } from './flow-file-context.js'
 import { httpCredential, httpRequestProxy, type PrivateHttpGrants } from './http-grants.js'
@@ -449,9 +448,12 @@ export async function executePrivateContainedEffect(
       ) {
         try {
           if (toolOutput === undefined) throw new TypeError('offline tool output custody is absent')
-          toolSnapshot = await capturePrivateFlowArtifact(input.files!, toolOutput, input.signal)
-          if (toolSnapshot.bytes > prepared.value.grant.outputBytes)
-            throw new PrivateOutputProfileError()
+          toolSnapshot = await capturePrivateFlowArtifact(
+            input.files!,
+            toolOutput,
+            input.signal,
+            prepared.value.grant.outputBytes,
+          )
         } catch (error) {
           if (isPrivateOutputRetirementUnconfirmed(error)) throw error
           toolCaptureRefused = true

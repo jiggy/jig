@@ -3,6 +3,7 @@ import { mkdtemp, open, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  PrivateOutputProfileError,
   readPrivateCapturedOutput,
   requirePrivateCapturedOutput,
 } from '../../src/internal/captured-output.js'
@@ -113,6 +114,40 @@ test('artifact snapshot count is bounded for the whole root, including ungranted
     await expect(
       capturePrivateFlowArtifact(root, { kind: 'linux-directory', directory: source }),
     ).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' })
+  } finally {
+    root.close()
+    await source.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('output above its exact byte limit leaves capacity for valid artifacts in the same Run', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-artifact-byte-limit-'))
+  const source = await open(directory)
+  const root = createPrivateRootFlowFileContext({ declarations: {}, captured: [] })
+  const byteLimit = 4097
+  const capture = () =>
+    capturePrivateFlowArtifact(
+      root,
+      { kind: 'linux-directory', directory: source },
+      undefined,
+      byteLimit,
+    )
+  try {
+    await writeFile(join(directory, 'first.bin'), Buffer.alloc(4096, 0x89))
+    const second = join(directory, 'second.bin')
+    await writeFile(second, Buffer.from([0x00, 0xff]))
+    for (let index = 0; index < 16; index++)
+      await expect(capture()).rejects.toBeInstanceOf(PrivateOutputProfileError)
+
+    await writeFile(second, Buffer.from([0xff]))
+    const snapshot = await capture()
+    expect(snapshot.bytes).toBe(byteLimit)
+    const reference = commitPrivateFlowArtifact(root, snapshot)
+    const [, delivered] = readPrivateCapturedOutput(resolvePrivateFlowArtifact(root, reference))
+    expect(delivered).toMatchObject({ path: 'second.bin', contents: Buffer.from([0xff]) })
+    for (let index = 1; index < 16; index++) await capture()
+    await expect(capture()).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' })
   } finally {
     root.close()
     await source.close()

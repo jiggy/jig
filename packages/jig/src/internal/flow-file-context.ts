@@ -11,6 +11,7 @@ import {
   capturePrivateOutput,
   capturePrivateRetainedOutput,
   type PrivateCapturedOutput,
+  PrivateOutputProfileError,
 } from './captured-output.js'
 import type { PrivateExecutionIntent } from './execution-intent.js'
 import type { PrivateExecutionOutput } from './execution-output.js'
@@ -292,6 +293,7 @@ export async function capturePrivateFlowArtifact(
   context: PrivateFlowFileContext,
   output: PrivateExecutionOutput,
   signal?: AbortSignal,
+  byteLimit?: number,
 ): Promise<PrivateCapturedOutput> {
   const held = requireContext(context)
   if (
@@ -303,10 +305,12 @@ export async function capturePrivateFlowArtifact(
   try {
     const snapshot =
       output.kind === 'linux-directory'
-        ? capturePrivateOutput(output.directory.fd, signal)
+        ? capturePrivateOutput(output.directory.fd, signal, byteLimit)
         : await output.ready
     try {
       requireContext(context)
+      if (output.kind === 'snapshot' && byteLimit !== undefined && snapshot.bytes > byteLimit)
+        throw new PrivateOutputProfileError()
     } catch (error) {
       if (output.kind === 'linux-directory') snapshot.close()
       throw error

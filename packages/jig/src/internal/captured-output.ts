@@ -62,9 +62,16 @@ export interface PrivateOutputManifest {
 export function inspectPrivateOutput(
   directory: number,
   signal?: AbortSignal,
+  byteLimit = PRIVATE_CAPTURE_LIMITS.output,
 ): PrivateOutputManifest {
   if (!Number.isSafeInteger(directory) || directory < 0 || !fstatSync(directory).isDirectory())
     throw new TypeError('output capture requires an owned directory')
+  if (
+    !Number.isSafeInteger(byteLimit) ||
+    byteLimit < 0 ||
+    byteLimit > PRIVATE_CAPTURE_LIMITS.output
+  )
+    throw new TypeError('invalid output byte limit')
   const end = performance.now() + PRIVATE_FILE_LIMITS.deliveryMs
   let bytes = 0,
     entries = 0
@@ -115,7 +122,7 @@ export function inspectPrivateOutput(
       try {
         const before = fstatSync(fd, { bigint: true })
         if (!before.isFile() || before.nlink !== 1n) throw new PrivateFileInputError('linked')
-        if (before.size < 0n || before.size > BigInt(PRIVATE_CAPTURE_LIMITS.output - bytes))
+        if (before.size < 0n || before.size > BigInt(byteLimit - bytes))
           throw new PrivateOutputProfileError()
         const size = Number(before.size)
         const hash = createHash('sha256')
@@ -165,13 +172,14 @@ export function inspectPrivateOutput(
 export function capturePrivateOutput(
   directory: number,
   signal?: AbortSignal,
+  byteLimit = PRIVATE_CAPTURE_LIMITS.output,
 ): PrivateCapturedOutput {
   const deadline = performance.now() + PRIVATE_FILE_LIMITS.deliveryMs
   const check = () => {
     signal?.throwIfAborted()
     if (performance.now() >= deadline) throw new Error('output capture deadline exceeded')
   }
-  const manifest = inspectPrivateOutput(directory, signal)
+  const manifest = inspectPrivateOutput(directory, signal, byteLimit)
   function* contents() {
     for (const file of manifest.files) {
       check()
