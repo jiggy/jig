@@ -7,6 +7,7 @@ import {
 import { validateHttpPolicy } from '../project/grant-validation.js'
 import type { InvocationSlots } from '../project/invocation-slots.js'
 import { compileEmbeddedSchema } from '../schema/index.js'
+import { HTTP_REQUEST_PROXY_ENV, normalizeHttpRequestProxy } from './http-request-proxy.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 export {
   type HttpGrant,
@@ -18,14 +19,21 @@ export {
 export interface PrivateHttpGrants {
   readonly kind: 'private-grant-credentials'
 }
-const secrets = new WeakMap<PrivateHttpGrants, Readonly<Record<string, string | undefined>>>()
+const secrets = new WeakMap<
+  PrivateHttpGrants,
+  {
+    readonly environment: Readonly<Record<string, string | undefined>>
+    readonly proxy: string | undefined
+  }
+>()
 
 /** Only the private owner keeps environment bytes; public policy comes from admitted slots. */
 export function openPrivateHttpGrants(
   environment: Readonly<Record<string, string | undefined>>,
 ): PrivateHttpGrants {
   const owner = Object.freeze({ kind: 'private-grant-credentials' as const })
-  secrets.set(owner, Object.freeze({ ...environment }))
+  const { [HTTP_REQUEST_PROXY_ENV]: proxy, ...bearerEnvironment } = environment
+  secrets.set(owner, { environment: Object.freeze(bearerEnvironment), proxy })
   return owner
 }
 
@@ -34,11 +42,19 @@ export function httpCredential(
   grant: HttpGrant,
 ): string | undefined {
   if (grant.bearerEnv === undefined) return undefined
-  if (owner === undefined || !secrets.has(owner)) throw new HttpGrantError()
-  const credential = secrets.get(owner)![grant.bearerEnv]
+  const credential =
+    owner === undefined ? undefined : secrets.get(owner)?.environment[grant.bearerEnv]
   if (credential === undefined || !/^[\x21-\x7e]{1,8192}$/.test(credential))
     throw new HttpGrantError()
   return credential
+}
+
+export function httpRequestProxy(
+  owner: PrivateHttpGrants | undefined,
+  grant: HttpGrant,
+): string | undefined {
+  if (owner === undefined || !grant.url.startsWith('https:')) return undefined
+  return normalizeHttpRequestProxy(secrets.get(owner)?.proxy)
 }
 
 /** Check only credentials selected by this exact target; never dispatch or expose their values. */

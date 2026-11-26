@@ -91,18 +91,22 @@ are reviewed as provider identity. Jig exposes
 no public provider SPI or registry.
 
 The HTTP Request worker receives one reviewed exact URL/method grant and its
-optional bearer via private stdin. It alone has network access for that request;
-Flow code gets neither the credential nor sockets. No authored imports, redirects,
-proxies, arbitrary headers or automatic retries run in that worker. Request and
+optional bearer via private stdin. It alone has network access for that request.
+Flow code gets neither the credential nor sockets. The worker forbids authored
+imports, redirects, arbitrary headers and automatic retries. Request and
 response sizes and deadlines are bounded, and optional operator-owned Schema/0
 validates the JSON request body. Public grant policy is review-pinned; secrets
 are excluded from identities and retained records. Revocation stops new commands;
 cancel existing commands to stop their snapshotted authority. Remote effects
 already accepted cannot be recalled. HTTP status is evidence, not domain success.
-Exact HTTPS URLs use normal TLS verification and host DNS; this is not an IP
-firewall, and selected private services are permitted. Numeric-loopback HTTP is
-also supported explicitly. The selected service must be trusted with its token:
-literal echoes reject, but encoded disclosure is not generally detectable.
+Exact HTTPS URLs use normal TLS verification. The operator can route them through
+`JIG_HTTP_REQUEST_HTTPS_PROXY`. The worker gets the proxy URL privately and sends
+its credentials only on CONNECT for the grant's hostname and port. A tunnel
+failure ends the attempt. The endpoint bearer travels inside verified TLS.
+Direct connections use host DNS, while the selected proxy resolves tunneled
+destinations. Use host or proxy policy for IP-level restrictions. Explicit
+numeric-loopback HTTP stays direct. Trust the selected service with its token.
+The worker rejects literal echoes. Encoded disclosure is generally undetectable.
 See [HTTP Request](docs/jig/spec/http-request.md) for the complete boundary.
 
 Authored package code and lifecycle scripts never execute during preparation,

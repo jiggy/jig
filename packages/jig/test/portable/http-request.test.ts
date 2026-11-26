@@ -1,17 +1,25 @@
 const suiteTestUrl = new URL('../' + import.meta.url.split('/').at(-1), import.meta.url).href
 
 import { describe, expect, test } from 'bun:test'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
+import { connect, type Socket } from 'node:net'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   HTTP_LIMITS,
   HTTP_MAX_LIMITS,
   httpCredential,
+  httpRequestProxy,
   normalizeHttpGrant,
   openPrivateHttpGrants,
   selectHttpGrants,
 } from '../../src/internal/http-grants.js'
+import {
+  HTTP_REQUEST_PROXY_ENV,
+  HTTP_REQUEST_PROXY_HINT,
+} from '../../src/internal/http-request-proxy.js'
 import { requestGrantedHttp } from '../../src/internal/http-request-worker.js'
 import {
   encodeHttpWorkerInput,
@@ -453,6 +461,199 @@ describe('delegated HTTP policy and trusted transport', () => {
     ])
       expect(() => parseHttpWorkerResult(value, grant)).toThrow()
   })
+
+  test('selects the reviewed HTTPS proxy from a private operator snapshot', () => {
+    const grant = normalizeHttpGrant({ url: 'https://example.org/', method: 'GET' })
+    const loopback = normalizeHttpGrant({ url: 'http://127.0.0.1/', method: 'GET' })
+    const proxy = 'http://runner:private%40token@proxy.example.org:8080/'
+    const environment = { [HTTP_REQUEST_PROXY_ENV]: proxy, HTTPS_PROXY: 'http://ambient/' }
+    const owner = openPrivateHttpGrants(environment)
+    environment[HTTP_REQUEST_PROXY_ENV] = 'http://replacement/'
+    expect(httpRequestProxy(owner, grant)).toBe(proxy)
+    expect(httpRequestProxy(owner, loopback)).toBeUndefined()
+    expect(httpRequestProxy(openPrivateHttpGrants({ HTTPS_PROXY: proxy }), grant)).toBeUndefined()
+    expect(() => httpCredential(owner, { ...grant, bearerEnv: HTTP_REQUEST_PROXY_ENV })).toThrow()
+    for (const invalid of [
+      '',
+      'socks5://proxy/',
+      'http://proxy/path',
+      'http://proxy/?q',
+      'http://runner:private%0Atoken@proxy/',
+      'http://runner:%zz@proxy/',
+    ]) {
+      expect(() =>
+        httpRequestProxy(openPrivateHttpGrants({ [HTTP_REQUEST_PROXY_ENV]: invalid }), grant),
+      ).toThrow(HTTP_REQUEST_PROXY_HINT)
+    }
+    expect(() => parseHttpRequest({ url: 'https://elsewhere.invalid/' }, grant)).toThrow()
+    expect(() => parseHttpRequest({ proxy }, grant)).toThrow()
+    expect(() => parseHttpRequest({ method: 'POST' }, grant)).toThrow()
+  })
+
+  test('uses only the reviewed CONNECT and TLS request even with direct DNS unavailable', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-http-proxy-'))
+    const certFile = join(root, 'peer.pem')
+    const keyFile = join(root, 'key.pem')
+    const name = 'jig-reviewed-http.invalid'
+    const originRequests: unknown[] = []
+    const connectRequests: unknown[] = []
+    const sockets = new Set<Socket>()
+    const servers: ReturnType<typeof createServer>[] = []
+    const listen = async (server: ReturnType<typeof createServer>) => {
+      servers.push(server)
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject)
+        server.listen(0, '127.0.0.1', resolve)
+      })
+      const address = server.address()
+      if (!address || typeof address === 'string') throw new Error('missing TCP listener')
+      return address.port
+    }
+    try {
+      const generated = Bun.spawnSync([
+        'openssl',
+        'req',
+        '-x509',
+        '-newkey',
+        'rsa:2048',
+        '-nodes',
+        '-days',
+        '2',
+        '-subj',
+        `/CN=${name}`,
+        '-addext',
+        `subjectAltName=DNS:${name},IP:127.0.0.1`,
+        '-keyout',
+        keyFile,
+        '-out',
+        certFile,
+      ])
+      if (generated.exitCode !== 0) throw new Error(generated.stderr.toString())
+      const tls = { cert: await readFile(certFile), key: await readFile(keyFile) }
+      const origin = createHttpsServer(tls, async (request, response) => {
+        const chunks: Buffer[] = []
+        for await (const chunk of request) chunks.push(Buffer.from(chunk))
+        originRequests.push({
+          method: request.method,
+          path: request.url,
+          auth: request.headers.authorization,
+          proxyAuth: request.headers['proxy-authorization'],
+          body: Buffer.concat(chunks).toString('utf8'),
+        })
+        response.writeHead(302, { location: 'https://outside-grant.invalid/' })
+        response.end('redirect')
+      })
+      const originPort = await listen(origin)
+      const policy = {
+        url: `https://${name}:${originPort}/approved?q=1`,
+        method: 'POST',
+        bearerEnv: 'TOKEN',
+        timeoutMs: 1500,
+      }
+      const bearer = 'endpoint-test-token'
+      const run = async (url: string, proxy?: string, trust = true) => {
+        const request = parseHttpRequest(
+          { body: { term: 'hello' } },
+          normalizeHttpGrant({ ...policy, url }),
+        )
+        const child = Bun.spawn(
+          [
+            process.execPath,
+            '--no-env-file',
+            new URL('../../src/internal/http-request-worker.ts', import.meta.url).pathname,
+          ],
+          {
+            env: {
+              ...(trust ? { NODE_EXTRA_CA_CERTS: certFile } : {}),
+              NO_PROXY: '*',
+              HTTPS_PROXY: 'http://127.0.0.1:1',
+              NODE_USE_ENV_PROXY: '1',
+            },
+            stdin: Buffer.from(encodeHttpWorkerInput(request, bearer, proxy)),
+            stdout: 'pipe',
+            stderr: 'pipe',
+          },
+        )
+        const [code, stdout, stderr] = await Promise.all([
+          child.exited,
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+        ])
+        expect(code).toBe(0)
+        expect(stderr).toBe('')
+        return JSON.parse(stdout)
+      }
+      const ok = { response: { status: 302, body: 'redirect' }, bodyBytes: 8 }
+      const failure = { failure: 'UNCERTAIN' }
+      const localUrl = `https://127.0.0.1:${originPort}/approved?q=1`
+      expect(await run(localUrl)).toEqual(ok)
+      expect(await run(policy.url)).toEqual(failure)
+      const proxyAuth = `Basic ${Buffer.from('runner:proxy@test').toString('base64')}`
+      for (const protocol of ['http', 'https']) {
+        const proxy = protocol === 'http' ? createServer() : createHttpsServer(tls)
+        proxy.on('connect', (request, client) => {
+          connectRequests.push({
+            authority: request.url,
+            auth: request.headers['proxy-authorization'],
+            bearer: request.headers.authorization,
+          })
+          if (
+            request.url !== `${name}:${originPort}` ||
+            request.headers['proxy-authorization'] !== proxyAuth
+          ) {
+            client.end('HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n')
+            return
+          }
+          const upstream = connect(originPort, '127.0.0.1', () => {
+            client.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+            client.pipe(upstream).pipe(client)
+          })
+          sockets.add(upstream)
+          sockets.add(client)
+          upstream.on('error', () => client.destroy())
+          client.on('error', () => upstream.destroy())
+          client.on('close', () => upstream.destroy())
+        })
+        const proxyUrl = `${protocol}://runner:proxy%40test@127.0.0.1:${await listen(proxy)}/`
+        expect(await run(policy.url, proxyUrl)).toEqual(ok)
+        expect(await run(localUrl, proxyUrl)).toEqual(failure)
+        if (protocol === 'http') expect(await run(policy.url, proxyUrl, false)).toEqual(failure)
+      }
+      const approvedConnect = {
+        authority: `${name}:${originPort}`,
+        auth: proxyAuth,
+        bearer: undefined,
+      }
+      const deniedConnect = { ...approvedConnect, authority: `127.0.0.1:${originPort}` }
+      expect(connectRequests).toEqual([
+        approvedConnect,
+        deniedConnect,
+        approvedConnect,
+        approvedConnect,
+        deniedConnect,
+      ])
+      const expected = {
+        method: 'POST',
+        path: '/approved?q=1',
+        auth: `Bearer ${bearer}`,
+        proxyAuth: undefined,
+        body: '{"term":"hello"}',
+      }
+      expect(originRequests).toEqual([expected, expected, expected])
+    } finally {
+      for (const socket of sockets) socket.destroy()
+      await Promise.all(
+        servers
+          .filter((server) => server.listening)
+          .map((server) => {
+            server.closeAllConnections()
+            return new Promise<void>((resolve) => server.close(() => resolve()))
+          }),
+      )
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 15000)
+
   test('does not disable TLS verification for an operator-selected endpoint', async () => {
     let requests = 0
     const server = createHttpsServer(

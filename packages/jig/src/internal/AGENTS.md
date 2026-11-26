@@ -80,6 +80,8 @@ tests use genuine host capture through their own fixture entry.
 
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
+  The execution guide owns private operator proxy delivery for each reviewed
+  HTTPS request.
 
 - Deadlines and cancellation fence descendants, settle each terminal once, and
   complete bounded cleanup. Do not replay uncertain operations.
