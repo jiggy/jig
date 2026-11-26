@@ -50,6 +50,8 @@ jobs:
         run: |
           bun install --ignore-scripts --filter @jigging/jig --filter @jigging/agent-method --filter @jigging/agent-acp --filter @jigging/reporting --filter @jigging/display-model --filter @jigging/display-web --filter @jigging/display-tui
           just --justfile packages/jig/justfile build
+      - name: Check byte-exact snapshot forwarding across capture chunks
+        run: bun test packages/jig/test/portable/flow-file-context.test.ts
       - name: Run the Offline Tool smoke test as an unprivileged user
         run: |
           scripts/ci/provision-github-rootless-host.sh run-delegated env \

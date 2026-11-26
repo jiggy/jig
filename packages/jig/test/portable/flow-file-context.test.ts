@@ -1,9 +1,12 @@
 import { expect, test } from 'bun:test'
+import { readPrivateCapturedOutput } from '../../src/internal/captured-output.js'
+import { PRIVATE_CAPTURE_CHUNK_BYTES } from '../../src/internal/file-input-policy.js'
 import {
   createPrivateChildFlowFileContext,
   createPrivateRootFlowFileContext,
   planPrivateChildFlowFiles,
   privateFlowFileExecutionProjection,
+  resolvePrivateFlowArtifact,
 } from '../../src/internal/flow-file-context.js'
 import { capturePrivateInput, readPrivateCapturedInput } from '../../src/internal/input-capture.js'
 
@@ -193,5 +196,25 @@ test('closing an authenticated caller revokes descendant writable views', () => 
     child.close()
   } finally {
     caller.close()
+  }
+})
+
+test('initial read artifacts retain exact bytes across capture chunks', () => {
+  const bytes = Buffer.alloc(PRIVATE_CAPTURE_CHUNK_BYTES + 1, 0x89)
+  bytes[PRIVATE_CAPTURE_CHUNK_BYTES] = 0xff
+  const input = capturePrivateInput(bytes)
+  const root = createPrivateRootFlowFileContext({
+    declarations: { source: 'read' },
+    captured: [{ name: 'source', files: [{ path: 'image.bin', input }] }],
+  })
+  try {
+    const { attachments } = privateFlowFileExecutionProjection(root)
+    const artifact = resolvePrivateFlowArtifact(root, attachments.source!.artifact!)
+    expect(readPrivateCapturedOutput(artifact)).toEqual([
+      { path: 'image.bin', offset: 0, bytes: bytes.length, digest: input.digest, contents: bytes },
+    ])
+  } finally {
+    root.close()
+    input.close()
   }
 })

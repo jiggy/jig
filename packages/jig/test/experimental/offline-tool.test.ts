@@ -218,7 +218,6 @@ test('reviewed offline tools preserve binary identity and withhold failed output
         new Response(process.stderr).text(),
       ])
       expect(exit, stdout + stderr).toBe(0)
-      if (stderr.includes('Native input trial:')) console.error(stderr)
       return stdout
     }
     const put = async (path: string, text: string) => {
