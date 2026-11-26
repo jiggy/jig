@@ -243,24 +243,37 @@ await mkdir('publication-parent');
 let raceExit;
 const raced=cli([...directArgs,'--input','"hold-packet"','--out','publication-parent/packet'])
   .then(result=>{raceExit=result;return result;});
-// Acceptance follows anchoring of --out. Move the actual directory while the
-// accepted Flow is still running, before the real publisher revalidates it.
-const until=performance.now()+100000;
-for(;;){
-  const count=runCount();
-  if(count!==originalCount+1){
-    assert.equal(count,originalCount+2);
-    break;
+void raced.catch(()=>undefined);
+try {
+  // Acceptance follows anchoring of --out. Move the actual directory while the
+  // accepted Flow is still running, before the real publisher revalidates it.
+  const until=performance.now()+100000;
+  for(;;){
+    if(raceExit!==undefined){
+      observeCliExit(raceExit);
+      throw Error('Direct Run exited before the observer confirmed acceptance');
+    }
+    if(performance.now()>=until) throw Error('Direct Run was not accepted');
+    let count;
+    try {
+      count=runCount();
+    } catch(error) {
+      // The busy timeout can still return SQLITE_BUSY during native acceptance.
+      if(!(error instanceof SQLiteError)||error.code!=='SQLITE_BUSY') throw error;
+    }
+    if(count!==undefined&&count!==originalCount+1){
+      assert.equal(count,originalCount+2);
+      break;
+    }
+    await Bun.sleep(50);
   }
-  if(raceExit!==undefined){
-    observeCliExit(raceExit);
-    throw Error('Direct Run exited before acceptance');
-  }
-  if(performance.now()>until) throw Error('Direct Run was not accepted');
-  await Bun.sleep(50);
+  stage='direct-race-move';
+  await rename('publication-parent','publication-parent-moved');
+} catch(error) {
+  // Join the command and its cleanup before reporting the observer failure.
+  await raced.catch(()=>undefined);
+  throw error;
 }
-stage='direct-race-move';
-await rename('publication-parent','publication-parent-moved');
 stage='direct-race-exit';
 const result=await raced;
 observeCliExit(result);

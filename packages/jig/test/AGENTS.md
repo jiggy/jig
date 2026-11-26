@@ -418,8 +418,9 @@ artifacts whose combined file count exceeds the per-artifact limit. Recover the
 original Run with the public CLI and verify exact bytes, foreign-project
 refusal, no replacement and no new Runs.
 
-The direct Run observer waits briefly for a concurrent SQLite writer. It reports
-the stage and a closed diagnostic code if publication or recovery fails.
+The direct Run observer retries only `SQLITE_BUSY` within its acceptance
+deadline. If observation or the directory move fails, join the original command
+before reporting the failure. Report the stage and a closed diagnostic code.
 
 Its consumer may enable the existing private phase trace through the public
 client environment for each result command, using a unique absolute destination.
