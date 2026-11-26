@@ -168,11 +168,6 @@ test('canonical candidates retain independent quick checks and complete source e
     step.run?.includes('npm-candidate-preflight.mjs'),
   )
   expect(preflight.env.SOURCE_REVISION).toBe('${{ github.sha }}')
-  expect(
-    ci.jobs['source-tests'].steps.some((step: any) =>
-      step.run?.includes('scripts/test-release.sh'),
-    ),
-  ).toBeTrue()
   expect(ci.jobs.test.if).toBe('always()')
   expect(new Set(ci.jobs.test.needs)).toEqual(
     new Set([
@@ -197,9 +192,13 @@ test('canonical candidates retain independent quick checks and complete source e
   )
   expect(sourceInputs.run).toContain('--producer-run "$GITHUB_RUN_ID"')
   expect(sourceInputs.run).toContain('CI_CANDIDATE_BUNDLE')
+  expect(sourceInputs['timeout-minutes']).toBe(35)
+  expect(sourceInputs.run).toContain('merge-retry.mjs input canonical')
+  expect(sourceInputs.run.match(/--producer-timeout-seconds 1800/g)).toHaveLength(2)
   const source = ci.jobs['source-tests']
   expect(source.if).toBeUndefined()
-  expect(source.needs).toEqual(['candidate-build', 'python-build'])
+  expect(source.needs).toEqual(['python-build'])
+  expect(source['timeout-minutes']).toBe(65)
   const execute = source.steps.find((step: any) => step.run?.includes('scripts/test-release.sh'))
   expect(execute.run).toContain('scripts/test-release.sh --profile portable-linux')
   expect(execute.env.JIG_CI_SOURCE_REPORT_DIRECTORY).toContain('/source-reports')

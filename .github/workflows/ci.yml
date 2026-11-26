@@ -290,7 +290,8 @@ jobs:
   source-tests:
     name: Source and package tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # The canonical producer can run while this job requests and prepares its runner.
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -314,13 +315,14 @@ jobs:
           bun install --ignore-scripts
           python -m pip install --disable-pip-version-check build==1.3.0 twine==6.2.0 mypy==1.18.2 jiggy-flow==0.1.0a8
       - name: Read the canonical npm bytes
+        timeout-minutes: 35
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            node scripts/ci/merge-retry.mjs input canonical --destination "$RUNNER_TEMP/candidates" --inputs "$RUNNER_TEMP/merge-inputs.json"
+            node scripts/ci/merge-retry.mjs input canonical --destination "$RUNNER_TEMP/candidates" --inputs "$RUNNER_TEMP/merge-inputs.json" --producer-timeout-seconds 1800
           else
-            node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/candidates" --source "$GITHUB_SHA" --producer-run "$GITHUB_RUN_ID" --timeout-seconds 0
+            node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/candidates" --source "$GITHUB_SHA" --producer-run "$GITHUB_RUN_ID" --producer-timeout-seconds 1800 --timeout-seconds 300
           fi
           printf 'CI_CANDIDATE_BUNDLE=%s\n' "$RUNNER_TEMP/candidates" >> "$GITHUB_ENV"
       - name: Read verified merge python input
@@ -399,7 +401,6 @@ jobs:
           if-no-files-found: error
           overwrite: true
     needs:
-      - candidate-build
       - python-build
     permissions:
       contents: read

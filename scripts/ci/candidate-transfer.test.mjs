@@ -1090,10 +1090,23 @@ for (const producerTimeoutSeconds of [0, 1800]) {
         }),
       )
       const inputsPath = join(fixture.temporary, 'inputs.json')
+      const api = fixture.client.api
+      let pendingInventory = producerTimeoutSeconds > 0
+      fixture.client.api = async (path) => {
+        const response = await api(path)
+        if (pendingInventory && response.jobs) {
+          pendingInventory = false
+          const producer = response.jobs.find((job) => job.name === 'candidate-build')
+          producer.status = 'queued'
+          producer.conclusion = null
+        }
+        return response
+      }
       const binding = await acquireMergeInput({
         kind: 'canonical',
         destination: join(fixture.temporary, 'ci-consumer'),
         inputsPath,
+        producerTimeoutSeconds,
         client: fixture.client,
         extract: fixture.extract,
         env: {
@@ -1106,6 +1119,7 @@ for (const producerTimeoutSeconds of [0, 1800]) {
           GITHUB_WORKFLOW_REF: repository + '/.github/workflows/ci.yml@refs/pull/1/merge',
         },
       })
+      assert.equal(pendingInventory, false)
       assert.equal(binding.producerAttempt, 1)
       assert.equal(binding.artifactId, 1000)
       assert.deepEqual(JSON.parse(await readFile(inputsPath, 'utf8')), [binding])

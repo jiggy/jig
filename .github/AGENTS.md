@@ -113,6 +113,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   The PR canonical producer uses `ubuntu-slim`. All other events use
   `ubuntu-24.04` with the same archive builder and tool versions.
+
+  Source testing requests its runner after the Python build. Tool installation
+  can overlap canonical npm production. A bounded step verifies the original
+  candidate before running any source and package gates.
 - Installed Python consumer checks use explicit GitHub runner labels from the
   source catalog. Full PRs run the macOS 15 Python 3.14 profile on a selected
   native worker. CI runs the standalone profile when a PR omits native

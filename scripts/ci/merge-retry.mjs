@@ -8,9 +8,9 @@ import {
   parseOptions,
   readMetadata,
   requireRevision,
-  verifyCandidateBundle,
 } from './candidate-provenance.mjs'
 import {
+  acquireCandidate,
   acquisitionExpectation,
   downloadArtifactDirectory,
   githubClient,
@@ -199,42 +199,40 @@ export async function acquireMergeInput({
   kind,
   destination,
   inputsPath,
+  producerTimeoutSeconds = 0,
   env = process.env,
   client = mergeGitHubClient(env.GITHUB_REPOSITORY),
   extract,
 }) {
-  const snapshot = await mergeContext({ env, client })
-  const binding = inputArtifact(snapshot, kind)
-  const artifact = snapshot.artifacts.find((item) => item.id === binding.artifactId)
-  await downloadArtifactDirectory(client, artifact, destination, { extract })
-  if (kind === 'canonical') {
-    const receipt = await verifyCandidateBundle(destination, {
-      sourceRevision: snapshot.source,
-      producerRunId: snapshot.run.id,
-      producerRunAttempt: binding.producerAttempt,
-      producerRepository: snapshot.context.repository,
-    })
-    for (const key of ['workflowPath', 'event', 'headBranch', 'headRepository', 'headSha'])
-      if (receipt.producer[key] !== snapshot.context[key])
-        throw new Error('Merge candidate ' + key + ' mismatch')
-    await writeFile(
-      join(destination, 'ARTIFACT.json'),
-      JSON.stringify(
-        {
-          schemaVersion: 1,
-          repository: snapshot.context.repository,
+  if (!INPUTS[kind]) throw new Error('Unknown merge input')
+  if (kind !== 'canonical' && producerTimeoutSeconds !== 0)
+    throw new Error('Producer waiting is available for the canonical merge input')
+  let snapshot = await mergeContext({ env, client })
+  const canonical =
+    kind === 'canonical'
+      ? await acquireCandidate({
+          destination,
           sourceRevision: snapshot.source,
-          runId: snapshot.run.id,
-          runAttempt: binding.producerAttempt,
-          artifactId: binding.artifactId,
-          artifactDigest: binding.artifactDigest,
-          receiptSha256: receipt.receiptSha256,
-        },
-        null,
-        2,
-      ) + '\n',
-      { flag: 'wx' },
+          producerRunId: snapshot.run.id,
+          expected: snapshot.expected,
+          client,
+          timeoutSeconds: producerTimeoutSeconds ? 300 : 0,
+          producerTimeoutSeconds,
+          extract,
+        })
+      : null
+  if (canonical) snapshot = await mergeContext({ env, client })
+  const binding = inputArtifact(snapshot, kind)
+  if (canonical) {
+    if (
+      canonical.artifactId !== binding.artifactId ||
+      canonical.artifactDigest !== binding.artifactDigest ||
+      canonical.runAttempt !== binding.producerAttempt
     )
+      throw new Error('Canonical merge input changed after acquisition')
+  } else {
+    const artifact = snapshot.artifacts.find((item) => item.id === binding.artifactId)
+    await downloadArtifactDirectory(client, artifact, destination, { extract })
   }
   let inputs = []
   try {
@@ -481,13 +479,16 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       positional.length === 2 &&
       options.destination &&
       options.inputs
-    )
+    ) {
+      const wait = options['producer-timeout-seconds'] ?? '0'
+      if (!/^\d+$/.test(wait)) throw new Error('--producer-timeout-seconds requires an integer')
       await acquireMergeInput({
         kind: positional[1],
         destination: resolve(options.destination),
         inputsPath: resolve(options.inputs),
+        producerTimeoutSeconds: Number(wait),
       })
-    else if (
+    } else if (
       positional[0] === 'record' &&
       positional.length === 1 &&
       options.job &&
@@ -510,7 +511,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       })
     else
       throw new Error(
-        'Use input KIND --destination DIR --inputs FILE, record --job NAME --evidence PATH [--inputs FILE], or collect --directory DIR --output FILE',
+        'Use input KIND --destination DIR --inputs FILE [--producer-timeout-seconds N], record --job NAME --evidence PATH [--inputs FILE], or collect --directory DIR --output FILE',
       )
   } catch (error) {
     console.error(error.message)

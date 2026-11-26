@@ -463,6 +463,10 @@ They consume frozen package exports with tracked test helpers and installed
   three attempts with one-second backoff. Validation of artifact identity,
   digest, receipt and coverage remains fail-closed.
 
+  Source tests can start while the canonical npm job is pending. The shared
+  acquisition validates its latest producer and archive before the merge
+  evidence records the exact binding. Python artifacts retain their job dependency.
+
   Native PR acquisition may retain that run's original successful canonical
   producer. Newly executing native shards always use fresh fixtures. Main/manual
   candidate acquisition and release readiness remain current-attempt.
