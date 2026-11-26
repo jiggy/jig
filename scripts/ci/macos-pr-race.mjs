@@ -21,6 +21,7 @@ import { allRunJobs, latestJob } from './merge-attempts.mjs'
 export const SELECT_STEP_NAME = 'Select one ready PR worker'
 export const DECISION_UPLOAD_STEP_NAME = 'Publish PR shard decision'
 export const WATCH_STEP_NAME = 'Watch selected PR worker'
+export const MACOS_PR_SELECTOR_RUNNER = 'ubuntu-slim'
 export const NOOP_STEP_NAMES = Object.freeze([
   'Publish PR worker readiness',
   'Resolve PR shard decision',
@@ -190,7 +191,7 @@ function selectorJob(jobs, value, context) {
     value.selectorJobId,
     selectorJobName(value.shard),
     value.attempt,
-    'ubuntu-24.04',
+    MACOS_PR_SELECTOR_RUNNER,
     context,
   )
 }
@@ -504,7 +505,7 @@ export function selectMacPrDecisions({
         selector.id,
         selectorJobName(shard),
         selector.run_attempt,
-        'ubuntu-24.04',
+        MACOS_PR_SELECTOR_RUNNER,
         context,
       )
       effectiveSelector = selector
@@ -723,7 +724,7 @@ async function cli() {
       candidate.id,
       selectorJobName(context.shard),
       context.attempt,
-      'ubuntu-24.04',
+      MACOS_PR_SELECTOR_RUNNER,
       context,
     )
   }

@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { parse } from 'yaml'
 import { NATIVE_PREREQUISITE_TESTS } from './macos-host-test-shards.mjs'
-import { NOOP_STEP_NAMES } from './macos-pr-race.mjs'
+import { MACOS_PR_SELECTOR_RUNNER, NOOP_STEP_NAMES } from './macos-pr-race.mjs'
 import { CI_QUALIFICATION_JOBS, LINUX_QUALIFICATION_JOBS } from './release-readiness.mjs'
 
 const workflows = new URL('../../.github/workflows/', import.meta.url)
@@ -124,7 +124,7 @@ test('Mac workflow runs only generated useful ARM shards with full native baseli
   assert.equal(native.strategy['fail-fast'], false)
   assert.deepEqual(native.needs, ['scope', 'host-artifacts'])
   assert.equal(native['runs-on'], '${{ matrix.runner }}')
-  assert.equal(workflow.jobs.selectors['runs-on'], 'ubuntu-slim')
+  assert.equal(workflow.jobs.selectors['runs-on'], MACOS_PR_SELECTOR_RUNNER)
   assert.equal(native.strategy.matrix, '${{ fromJSON(needs.scope.outputs.workers) }}')
   assert.equal(native.environment, undefined)
   assert.equal(native['continue-on-error'], "${{ github.event_name == 'pull_request' }}")

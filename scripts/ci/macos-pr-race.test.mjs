@@ -11,6 +11,7 @@ import {
   chooseMacOffer,
   DECISION_UPLOAD_STEP_NAME,
   decisionName,
+  MACOS_PR_SELECTOR_RUNNER,
   NOOP_STEP_NAMES,
   offerName,
   readMacDecisionArtifact,
@@ -84,7 +85,7 @@ function selector(attempt = 1, patch = {}) {
     ...job(15, attempt),
     id: 500 + attempt,
     name: selectorJobName(0),
-    labels: ['ubuntu-24.04'],
+    labels: [MACOS_PR_SELECTOR_RUNNER],
     steps: [step(SELECT_STEP_NAME, 1, 125, 130), step(DECISION_UPLOAD_STEP_NAME, 2, 131, null)],
     ...patch,
   }
@@ -267,7 +268,7 @@ test('sole-selector identity, successful select, upload phase and referenced off
   const s = await store(t),
     result = await s.decision()
   for (const changed of [
-    selector(1, { labels: ['ubuntu-22.04'] }),
+    selector(1, { labels: ['ubuntu-24.04'] }),
     selector(1, { name: selectorJobName(1) }),
     selector(1, { runner_id: 0 }),
     selector(1, { run_attempt: 2 }),

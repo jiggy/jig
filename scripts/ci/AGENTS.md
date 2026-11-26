@@ -384,7 +384,7 @@ They consume frozen package exports with tracked test helpers and installed
   It verifies the current assigned execution before establishing the absolute deadline.
   Child process groups settle after completion or failure. Expired work cannot publish a completion marker.
 - `macos-pr-race.mjs` selects PR workers before native work. Candidates publish unique readiness offers.
-  One Ubuntu selector per role publishes a decision bound to its actual execution and the chosen offer's immutable ID and digest.
+  One `ubuntu-slim` selector per role publishes a decision bound to its actual execution and the chosen offer's immutable ID and digest.
   Both records bind source, run, attempt, allocated worker, frozen plan and prepared inputs.
   Artifact names do not provide mutual exclusion. Duplicate decisions, unverified transport and mismatched identities refuse.
 

@@ -22,7 +22,7 @@ import {
   INSTALLED_STARTUP_TEST,
   NATIVE_PREREQUISITE_TESTS,
 } from './macos-host-test-shards.mjs'
-import { selectorJobName } from './macos-pr-race.mjs'
+import { MACOS_PR_SELECTOR_RUNNER, selectorJobName } from './macos-pr-race.mjs'
 import { macQualificationJobNames, validateMacCoverage } from './macos-qualification.mjs'
 
 const source = 'a'.repeat(40)
@@ -167,7 +167,7 @@ function selector(shard, attempt = 1) {
   return {
     ...job(shard, attempt, shard + 600),
     name: selectorJobName(shard),
-    labels: ['ubuntu-24.04'],
+    labels: [MACOS_PR_SELECTOR_RUNNER],
     steps: [
       'Select one ready PR worker',
       'Publish PR shard decision',
