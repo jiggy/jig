@@ -81,7 +81,8 @@ preparation never becomes a consumer requirement.
   `check-bun-test-focus.mjs` runs once before any selected Bun source stage.
   It lints tracked JavaScript and TypeScript and local unignored additions.
   That scope includes imported registration helpers outside the selected test files.
-  Bun's JUnit can report a passing file after focus hides its sibling cases.
+  Bun source test invocations set `CI=true` so the runtime rejects focused
+  registrations, including aliases the lint rule misses.
 
   `source-test-durations.json` records slower-file timings from the successful
   source job in CI run 45578818280. Bun uses them to start longer files earlier.
@@ -666,7 +667,8 @@ They consume frozen package exports with tracked test helpers and installed
 - `node --test scripts/ci/source-stages.test.mjs` checks serial order, failure
   propagation, canonical-input reuse and protocol-only prerequisites through the
   actual source shell with controlled tools on Bash and POSIX sh.
-  It executes actual Node tests through the owning reporter and Python merger.
+  It executes actual Node tests through the owning reporter and Python merger,
+  and real Bun to verify that local `CI=false` cannot suppress the focus guard.
   It also checks both source inventories through the root test recipe.
 - `node --test scripts/ci/source-stage-evidence.test.mjs` exercises real
   parallel Bun JUnit through the report merger. It verifies complete passing

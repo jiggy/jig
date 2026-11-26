@@ -108,8 +108,10 @@ operational baselines, and public-site assembly.
 
   Both portable and protocol stages run `.node.mjs` files with the verified
   `FLOW_NODE` executable. Other selected files run with Bun after the source
-  focus check scans repository code, including test-registration helpers. The stages merge
-  actual reports and require exact coverage of their complete selected files.
+  focus check scans repository code, including test-registration helpers.
+  All Bun source test invocations use `CI=true` to reject focused registrations
+  in both local and hosted checks. The stages merge actual reports and require
+  exact coverage of their complete selected files.
 
   An explicit report directory retains raw Bun and Node reports under each stage, including failures.
   Node also prints assertion details to stdout.
