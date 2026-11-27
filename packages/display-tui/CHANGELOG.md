@@ -1,5 +1,13 @@
 # @jigging/display-tui
 
+## 0.1.0-alpha.12
+
+### Patch Changes
+
+- Rebuild packages that include changed workspace inputs.
+- Updated dependencies [2198be7]
+  - @jigging/display-model@0.1.0-alpha.12
+
 ## 0.1.0-alpha.11
 
 ### Patch Changes

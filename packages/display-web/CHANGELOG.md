@@ -1,5 +1,15 @@
 # @jigging/display-web
 
+## 0.1.0-alpha.13
+
+### Patch Changes
+
+- 2198be7: Add reviewed offline tool slots for exact binary input and output within a Run.
+  The Linux candidate verifies an operator-provisioned Nix runtime and uses
+  Jig's existing resource, cancellation and artifact custody rules.
+- Updated dependencies [2198be7]
+  - @jigging/display-model@0.1.0-alpha.12
+
 ## 0.1.0-alpha.12
 
 ### Minor Changes

@@ -1,5 +1,45 @@
 # @jigging/jig
 
+## 0.1.0-alpha.59
+
+### Minor Changes
+
+- e55d148: Export the retained final result of a successful packet-producing Run by its
+  Run ID from the original project directory. Recover files after a delivery
+  failure without executing the Flow again.
+- 2198be7: Add reviewed offline tool slots for exact binary input and output within a Run.
+  The Linux candidate verifies an operator-provisioned Nix runtime and uses
+  Jig's existing resource, cancellation and artifact custody rules.
+
+### Patch Changes
+
+- 6715c81: Allow an ACP grant to require exact reasoning effort. Jig shows the
+  requirement in review and checks it before forwarding prompts and starting
+  native turns.
+- f334272: Deliver, recover, and inspect Run packets that combine more than 64 files
+  across individually bounded artifacts. Packet recovery preserves the original
+  Run ID and verifies every delivered file.
+- 4564c3c: Count a shared dependency capture once per review while charging each retained
+  execution layout. Report aggregate preparation overflows against the project.
+- 1cf3501: Route the dependency installer's HTTPS requests through an operator-selected proxy during review.
+  Keep lock validation, the default registry, and explicit permission for missing-lock resolution.
+- 8915e09: Guide new Jig projects through composition checks, explicit review, and a greeting Run with inline JSON input.
+  Allow `jig init` in the current directory and print one README handoff for every mode.
+  Ship local FLOW and Jig authoring skills and preserve the DOX hierarchy in every new project.
+  Record the upstream skill sources for project updates.
+  Add a Bun test to the greeting and an opt-in kitchen starter that builds a weekend roster and verifies each assignment call.
+  Keep the kitchen fixtures in `tests/fixtures` for the tests, CLI, and Explorer.
+- bfd3224: Bundle the newest FLOW authoring skill in canonical npm candidates.
+  Build from source without a FLOW fetch and warn when its skill needs separate installation.
+- f386e96: Report a confirmed payload SIGKILL as an execution failure even when its output
+  stream closes before native completion is reported.
+- a5f6bc8: Report unresolved prior Run cleanup separately from contention for a project
+  session. Preserve the original reconciliation ticket and protected evidence.
+- 152cc1c: Report conflicting finite ACP runtime mounts during review. Review and execution
+  use the same projection and coalesce identical files at the same destination.
+- 14e307d: Allow operators to route reviewed HTTPS requests through an explicit CONNECT proxy with `JIG_HTTP_REQUEST_HTTPS_PROXY`.
+  Keep the exact HTTP grant, TLS verification, private credentials, and contained-worker cleanup.
+
 ## 0.1.0-alpha.58
 
 ### Minor Changes
